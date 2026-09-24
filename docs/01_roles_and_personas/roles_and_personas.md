@@ -4,7 +4,7 @@
 
 HackMatch helps participants form teams before a hackathon. Following the professor's template, the MVP roles below each have a description, goals, technical expertise, characteristics, constraints, and personas. Team-specific permissions, unauthenticated visitors, stakeholders, and threat actors are distinguished from account roles.
 
-The MVP account roles are Participant (`PART`) and Platform Administrator (`ADMIN`). Team Lead is a Participant who owns a particular team, not a global account role. Visitors have no stored role. Hackathon organizers are external stakeholders now and possible future system users.
+The MVP account roles are Participant (`PART`) and Platform Administrator (`ADMIN`). Team Lead is a Participant who owns a particular team, not a global account role. Visitors have no stored role.
 
 ---
 
@@ -47,13 +47,20 @@ The MVP account roles are Participant (`PART`) and Platform Administrator (`ADMI
 - **Pain Points:** Past teams abandoned projects at 3:00 AM. Cannot afford to waste Saturday morning coordinating basics or working with teammates who only want to brainstorm and not code.
 - **Workflow:** Records his availability for an event, links his GitHub repository, filters open teams for a compatible concept and schedule, and applies to a suitable team.
 
+### Persona 1.3: Marcus Thorne (Accepted Teammate Seeking Active Collaboration)
+- **Demographics:** 22 years old, 3rd-year Software Engineering Technology student at Centennial College.
+- **Technical Background:** Intermediate backend developer; Node.js, Express, PostgreSQL, Git.
+- **Goals & Motivations:** Wants to join an active team early to align on project architecture and repository setup before the event begins.
+- **Pain Points:** Frustrated by joining teams where the team lead stops communicating or pivots the project unexpectedly, leaving him trapped on an inactive roster.
+- **Workflow:** Accepts an invitation from a Team Lead, accesses his team view to retrieve teammate contact details, and coordinates setup. If the team stalls or becomes inactive prior to roster lock, he leaves the team to return to looking-for-team status.
+
 ---
 
 ## Team-Specific Responsibility: Team Lead
 
 **Role Identifier:** `PART` with team-owner permission; no separate `LEAD` or `CAPT` account role.
 
-**Description:** A Participant who creates and owns a team leads that team. For that team, the lead can manage its recruitment listing and open slots, review recommended participant candidates, send invitations, process applications, and confirm and lock the roster. The same person may lead one team and act as a regular Participant elsewhere. Roster export is deferred unless needed for event check-in.
+**Description:** A Participant who creates and owns a team leads that team. For that team, the lead can manage its recruitment listing and open slots, review recommended participant candidates, send invitations, process applications, and confirm and lock the roster. The same person may lead one team and act as a regular Participant in another hackathon. Roster export is deferred unless needed for event check-in.
 
 **Primary Goals:**
 - Publish the team's project concept, goal, and open skill needs.
@@ -112,12 +119,12 @@ The MVP account roles are Participant (`PART`) and Platform Administrator (`ADMI
 
 **Personas:**
 
-### Persona 2.1: Riley Miller (Lead Operations & Moderation Engineer)
-- **Demographics:** 28 years old, Senior Systems Administrator / Open Source Maintainer.
-- **Technical Background:** Expert in PostgreSQL, OAuth2/OIDC, Docker, RESTful security architectures, and logging systems.
-- **Goals & Motivations:** Keep event listings accurate and address spam or abusive posts while protecting participant data.
-- **Pain Points:** Outdated event details and misleading recruitment posts can erode trust; a small team needs a simple way to correct them.
-- **Workflow:** Signs in with email-based login 2FA, updates an official listing, removes a spam team post, and deactivates an abusive account when needed.
+### Persona 2.1: Riley Miller (Student Hackathon Operations Lead)
+- **Demographics:** 22 years old, final-year Computer Systems student and VP of Logistics for a student computing society.
+- **Technical Background:** Proficient with web admin consoles, spreadsheet management, Discord community moderation, and basic SQL data lookups.
+- **Goals & Motivations:** Keep campus hackathon listings accurate, ensure recruitment listings comply with student codes of conduct, and maintain platform credibility.
+- **Pain Points:** Spammed with duplicate, misleading, or joke recruitment listings; needs a straightforward administrative dashboard to hide offensive posts and disable troll accounts.
+- **Workflow:** Signs in with email-based login 2FA, updates official hackathon details, removes inappropriate team listings, and deactivates abusive accounts when reported.
 
 ---
 
@@ -145,39 +152,6 @@ The MVP account roles are Participant (`PART`) and Platform Administrator (`ADMI
 - **Goals & Motivations:** Wants to browse upcoming local student hackathons and see if there are teams welcoming beginners before she registers.
 - **Pain Points:** Skeptical of platforms that force registration behind paywalls or immediate email requirements before showing any content.
 - **Workflow:** Browses public hackathons and team listings, finds a beginner-friendly team, and registers to participate.
-
----
-
-## External and Academic Stakeholders
-
-### Hackathon Organizer
-
-**MVP status:** External stakeholder; no `ORG` application role. A future release may offer organizer accounts.
-
-**Description:** A club, campus group, or other event host that benefits when participants form teams before an event. Organizers can provide official event information to the platform administrator and share the public listing. Direct event submission, organizer dashboards, and roster exports are future possibilities.
-
-**Primary Goals:** Publish accurate event information and reduce last-minute team-formation friction.
-
-**Technical Expertise:** Comfortable with common web and event tools.
-
-**Key Characteristics:** Works to a fixed event schedule and communicates across several channels.
-
-**Constraints or Pain Points:** Event changes may make third-party listings outdated.
-
-**Personas:**
-
-### Organizer Stakeholder Persona: Alex Chen (Campus Tech Club Lead & Hackathon Director)
-- **Demographics:** 22 years old, President of Centennial College Computing Society, lead organizer of "HackCentennial" (350 anticipated attendees).
-- **Technical Background:** Competent with web administration, Markdown, Discord bots, and Google Workspace.
-- **Goals & Motivations:** Ensure that at least 80% of registered solo participants are matched into balanced teams before Opening Ceremony, eliminating the day-one team formation bottleneck.
-- **Pain Points:** Overwhelmed by managing Google Sheets and answering repetitive Discord DMs from solo attendees panicking about finding a team 30 minutes before hacking starts.
-- **Workflow:** Provides official event details to the HackMatch administrator and shares the public listing with attendees. Direct organizer listing management may come later.
-
-### Course Supervisor and Evaluators
-
-**MVP status:** Academic stakeholders only; no application role.
-
-**Description:** Assess the proposal, MVP, working prototype, testing, and course deliverables. Their academic role does not give them participant or administrator permissions.
 
 ---
 

@@ -2,9 +2,9 @@
 
 ## Overview
 
-This document defines HackMatch user stories using the roles in [Roles and Personas](../01_roles_and_personas/roles_and_personas.md). The MVP account roles are Participant (PART) and Platform Administrator (ADMIN). Public registration creates PART accounts only; ADMIN account provisioning is outside the public registration flow. An unauthenticated Visitor can browse public hackathon information but has no stored account role. A Team Lead is a PART with permissions for a team they own, not a separate account role. Hackathon Organizers are external stakeholders in the MVP and possible future system users.
+This document defines HackMatch user stories using the roles in [Roles and Personas](../01_roles_and_personas/roles_and_personas.md). The MVP account roles are Participant (PART) and Platform Administrator (ADMIN). Public registration creates PART accounts only; ADMIN account provisioning is outside the public registration flow. An unauthenticated Visitor can browse public hackathon information but has no stored account role. A Team Lead is a PART with permissions for a team they own, not a separate account role.
 
-The canonical story IDs are US-001 through US-022. Eighteen stories are in MVP scope; US-005, US-006, US-011, and US-016 are explicitly future scope. The MVP stories cover the agreed features in Word Sections 5, 8, and 9. Future stories do not add requirements to the MVP.
+The canonical story IDs include eighteen stories in MVP scope and two future-scope stories (US-011 and US-016). The MVP stories cover the agreed features in Word Sections 5, 8, and 9. Future stories do not add requirements to the MVP.
 
 ### Structure of a User Story
 
@@ -17,7 +17,7 @@ Every story below follows the professor-provided [user-story template](user_stor
 | Feature area | MVP stories | Future stories |
 | --- | --- | --- |
 | Authentication and Participant Profiles | US-001, US-002, US-003, US-018, US-020 | — |
-| Hackathon Directory and Event Management | US-004, US-019 | US-005, US-006 |
+| Hackathon Directory and Event Management | US-004, US-019 | — |
 | Team Recruitment and Looking-for-Team Boards | US-007, US-008, US-009 | — |
 | Rule-Based Matching | US-010 | US-011 |
 | Invitations, Applications, and Rosters | US-012, US-013, US-014, US-015, US-021 | — |
@@ -179,49 +179,7 @@ The MVP has public hackathon discovery and ADMIN-managed listings. Direct Organi
 
 **Complexity/Effort Estimate:** Medium
 
-**Related Stories:** US-002, US-004, US-005, US-006, US-018
-
----
-
-#### US-005: Organizer Self-Service Listing Management (Future Scope)
-
-**User/Role:** Hackathon Organizer (possible future system user; no MVP account role)
-
-**Story Statement:** As a Hackathon Organizer, I want to submit and maintain my event listing, so that Participants can form teams for my event.
-
-**Description:** This story is deferred until Organizer accounts and self-service event submissions are approved for a future release. In the MVP, Administrators manage listings under US-019.
-
-**Acceptance Criteria:**
-1. In a future release with Organizer accounts, an authorized Organizer can submit an event listing for administrative review.
-2. The Organizer can update listings they own but cannot edit another Organizer's listings.
-3. A submitted listing is not public until the applicable review process is complete.
-
-**Priority:** Medium
-
-**Complexity/Effort Estimate:** Medium
-
-**Related Stories:** US-004, US-006, US-019
-
----
-
-#### US-006: Organizer Submission Verification (Future Scope)
-
-**User/Role:** ADMIN
-
-**Story Statement:** As a Platform Administrator, I want to review Organizer-submitted event listings, so that only approved submissions become public.
-
-**Description:** This future workflow depends on the Organizer self-service capability in US-005. It is separate from the MVP's direct Administrator listing management in US-019.
-
-**Acceptance Criteria:**
-1. An Administrator can review a listing submitted through the future Organizer workflow.
-2. Approval makes the listing eligible for public display; rejection keeps it unpublished and communicates the decision to the Organizer.
-3. An Administrator can unpublish a previously approved listing when necessary.
-
-**Priority:** Medium
-
-**Complexity/Effort Estimate:** Small
-
-**Related Stories:** US-004, US-005, US-019
+**Related Stories:** US-002, US-004, US-018
 
 ---
 
@@ -262,6 +220,7 @@ Participants can declare event-specific availability, create listings for teams 
 1. A Participant can create a team listing linked to one hackathon and describe its open places and desired skills.
 2. The listing appears among open teams for that hackathon while it has available places.
 3. Only the team owner can manage the listing, and the team cannot exceed the applicable event or team capacity.
+4. The team owner can remove an accepted member or delete the team listing before the roster is locked, reopening open places or canceling pending requests.
 
 **Priority:** High
 
@@ -355,6 +314,7 @@ Both Team Lead invitations and Participant applications use a simple decision wo
 1. A Team Lead can invite a candidate to a team they own while it has an open place.
 2. The system creates a pending invitation and alerts the invitee.
 3. A Team Lead cannot send invitations for another owner's team or a team with no open place.
+4. A Team Lead can cancel a pending invitation they previously issued before the recipient responds.
 
 **Priority:** High
 
@@ -398,6 +358,7 @@ Both Team Lead invitations and Participant applications use a simple decision wo
 2. Accepting an invitation updates its status and the team roster and alerts the Team Lead; declining updates its status and alerts the Team Lead without adding the Participant to the roster.
 3. Acceptance cannot exceed team capacity or confirm the Participant on more than one team for the same hackathon.
 4. A Participant cannot respond to another person's invitation or respond again after a decision.
+5. An accepted team member can view their team's details and teammate contact information, and can leave the team prior to roster lock, which reopens the slot and restores their looking-for-team status.
 
 **Priority:** High
 
