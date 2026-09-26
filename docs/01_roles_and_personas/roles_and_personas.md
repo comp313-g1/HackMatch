@@ -4,7 +4,7 @@
 
 HackMatch is a pre-hackathon team formation platform designed to connect students with complementary technical skills, schedule availability, and project ambitions before an event begins. This document formally defines the user taxonomy, operational boundaries, and concrete user personas governing system design.
 
-Following the course guidelines, the platform defines two global authenticated account types, one contextual role, one unauthenticated public state, and an explicit anti-user security boundary:
+Following the course guidelines, the platform defines two global authenticated account types, one contextual role, one unauthenticated public state, external/academic stakeholder groups, and an explicit anti-user security boundary:
 
 | Role Category | Role Name | Identifier | Account Type | Primary Responsibility |
 |---|---|---|---|---|
@@ -12,6 +12,7 @@ Following the course guidelines, the platform defines two global authenticated a
 | **Contextual** | Team Lead | `LEAD` | Contextual Permission | A `PART` who creates a team. Requests unlisted events, defines vacancies, and locks rosters. |
 | **Governance** | Platform Administrator | `ADMIN` | Privileged Account | Verifies crowdsourced event requests, moderates abuse reports, and audits system integrity. |
 | **Public** | Unauthenticated Visitor | `VISITOR` | Session State | Discovers hackathons and previews open teams with strict privacy-redacted views. |
+| **Stakeholder** | Event Organizers & Academic Evaluators | `STAKE` | External / Academic | Enforces hackathon eligibility/limits, inspects check-in manifests, and evaluates course deliverables. |
 | **Anti-User** | Malicious Actor / Scraper | `THREAT` | Security Boundary | Unauthorized data harvesting, phishing event URLs, and platform harassment. |
 
 ---
@@ -177,6 +178,37 @@ Following the course guidelines, the platform defines two global authenticated a
 - **Technical Background:** Novice. Learning basic Python and web scripting; intimidated by high-pressure competitive environments.
 - **Pain Points:** Skeptical of platforms that force immediate account registration or credit card entry just to view event listings.
 - **Workflow:** Lands on the HackMatch homepage via a campus Discord flyer link on her lab desktop. Browses verified hackathon listings, filters open teams by "Beginner Welcome", finds Jordan’s team, and clicks "Sign in with Google" to create her verified `PART` profile.
+
+---
+
+## Project Stakeholders
+
+Stakeholders are external individuals, regulatory entities, or evaluators who do not hold interactive software accounts or perform day-to-day application workflows in HackMatch, but whose rules, operational constraints, and assessment criteria directly dictate platform requirements and system artifacts.
+
+Following the project guidelines, the platform identifies two core stakeholder groups:
+
+### 1. External Stakeholders: Hackathon Organizers & Collegiate Tech Clubs
+- **Representative Entities:** Major League Hacking (MLH), collegiate hackathon organizing committees (e.g., Hack the North, MetHacks), and student tech clubs (Google Developer Student Clubs, ACM student chapters).
+- **Relationship to System:** External beneficiaries and rule enforcers. Organizers do not log in or manage teams through HackMatch; rather, they interact with the outputs produced by HackMatch teams during event registration and check-in.
+- **Key Interests & Operational Constraints:**
+  - **Team Capacity Integrity:** Enforcing strict event-configured team size caps (maximum 4 members) to maintain fair competition rules.
+  - **Fraud and Multi-Registration Prevention:** Ensuring that students cannot appear on multiple confirmed rosters for the same event or change roster composition during the hackathon.
+  - **Auditability of Team Formation:** Demanding verifiable proof that teams were legally formed, finalized, and locked prior to the official hackathon submission cutoff.
+- **System Traceability & Alignment:**
+  - **Manifest & Hash Generation:** Captured in [`US-024: Export Team Manifest & Check-In Card`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-024) and [`FR-071`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/04_requirements/functional_nonfunctional_requirements.md#FR-071)/[`FR-072`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/04_requirements/functional_nonfunctional_requirements.md#FR-072). Teams export a printable PDF/JSON manifest featuring an SHA-256 cryptographic verification hash of the locked roster that organizers inspect at registration tables.
+  - **Event Accuracy:** Supported by administrative verification workflows ([`US-010`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-010) / [`FR-024`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/04_requirements/functional_nonfunctional_requirements.md#FR-024)) ensuring event rules accurately mirror official hackathon guidelines.
+
+---
+
+### 2. Academic Stakeholders: Course Evaluators & Faculty Supervisors
+- **Representative Entities:** Course Professor, Faculty Evaluators, and Academic Project Mentors (Centennial College Software Engineering Technology / COMP 313).
+- **Relationship to System:** Academic evaluators who assess the engineering rigor, architectural integrity, documentation quality, and security posture of the software engineering deliverable.
+- **Key Interests & Operational Constraints:**
+  - **Requirements Traceability:** End-to-end alignment connecting personas and user stories (`US-001`–`US-028`) to system requirements (`FR-001`–`FR-080`, `NR-001`–`NR-024`), database entities, and test suites.
+  - **Defensive Engineering & Security:** Enforcing industry-grade authentication (Argon2id password hashing, mandatory email OTP MFA, constant-time comparisons, OWASP Top 10 mitigation).
+  - **Academic Rigor:** Adherence to IEEE citation standards, professional documentation formatting, and disciplined version control conventions.
+- **System Traceability & Alignment:**
+  - Directly governs platform-wide non-functional requirements ([`NR-001`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/04_requirements/functional_nonfunctional_requirements.md#NR-001) through [`NR-024`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/04_requirements/functional_nonfunctional_requirements.md#NR-024)), immutable audit logs ([`US-028`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-028) / [`FR-080`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/04_requirements/functional_nonfunctional_requirements.md#FR-080)), and architectural quality gates.
 
 ---
 

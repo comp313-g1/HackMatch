@@ -488,7 +488,7 @@ These stories manage formal team recruitment state transitions, in-app alerts, c
 
 **Acceptance Criteria:**
 1. An invited Participant can view details of pending invitations (team pitch, roster members, goal, and assigned role).
-2. Clicking `Accept` updates the invitation to `Accepted`, assigns the user to the team roster, deactivates their "Looking for Team" flag for that hackathon, and dispatches a notification to the Team Lead.
+2. Clicking `Accept` updates the invitation to `Accepted`, assigns the user to the team roster, deactivates their "Looking for Team" flag for that hackathon, automatically cancels all other pending incoming invitations and automatically withdraws all active applications submitted by the user for that hackathon, and dispatches a notification to the Team Lead.
 3. Acceptance is wrapped in an atomic transaction: if the team reached full capacity via concurrent application approval before the invitee clicks accept, the system aborts with a `"Team Capacity Reached"` notice.
 4. Clicking `Decline` marks the invitation `Declined`, alerts the Team Lead, and leaves the user's availability flag unchanged.
 5. An accepted member can leave the team prior to roster lock, which reopens the vacancy slot and restores their "Looking for Team" availability status.
