@@ -2,133 +2,147 @@
 
 ## Overview
 
-This document defines the Minimum Viable Product (MVP) scope, MoSCoW prioritization, and implementation roadmap for **HackMatch**. The MVP represents the most cohesive, high-impact subset of capabilities that solves the core problem articulated in [`docs/00_starter_pack/HackMatch_Project_Proposal.md`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/00_starter_pack/HackMatch_Project_Proposal.md): eliminating chaotic, last-minute hackathon team formation by connecting students based on complementary skills, availability, and goals.
+This document categorizes the current [canonical backlog](../02_user_stories/user_stories.md) using the professor's five categories. The expanded product contains **29 stories: 20 Must-Haves, 7 Should-Haves, and 2 May-Haves**. **Only the 20 Must-Haves constitute the MVP.** Current story numbering is preserved.
 
-Using the MoSCoW framework, this specification categorizes all twenty-nine user stories from [`docs/02_user_stories/user_stories.md`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md) into delivery tiers. The initial release package encompasses twenty-seven tightly coupled user stories structured across four implementation phases, providing sufficient technical depth and balanced ownership for a 6-person engineering team while strictly excluding non-core distractions like in-app chat or public discussion forums.
+The team confirmed this split and approval-before-publication for hackathon submissions. Richer post-MVP capabilities remain in the product roadmap; they do not drive the semester implementation schedule. [Roles](../01_roles_and_personas/roles_and_personas.md) and [requirements](../04_requirements/functional_nonfunctional_requirements.md) define the detailed behaviour. Proposed parameter decisions remain in the [policy register](../04_requirements/functional_nonfunctional_requirements.md#policy-register); investment/readiness claims must not imply those targets have already been demonstrated.
 
 ---
 
-## User Story Categorization (MoSCoW)
+## User Story Categorization
 
-### Must-Haves (Core MVP Engine)
+### Must-Haves
 
-Must-Haves represent the non-negotiable operational core of HackMatch. Without these capabilities, participants cannot securely authenticate, discover hackathons, declare availability, publish open team vacancy slots, receive rule-based match recommendations, or finalize confirmed rosters.
+These stories are essential to the agreed expanded MVP. The template's typical 5–15 stories is guidance, not a mandatory ceiling; the team has explicitly retained this 20-story baseline. All must pass their acceptance criteria for MVP completion.
 
 | User Story | Justification |
 |---|---|
-| [`US-001: Participant Registration & Email Verification`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-001) | Foundational identity barrier; required to verify student email ownership, prevent bot spam, and establish a secure baseline for participant accounts. |
-| [`US-002: Federated OAuth Registration & Authentication`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-002) | Essential developer onboarding primitive mandated by stakeholders; provides single-click sign-in via Google and GitHub OAuth to eliminate registration friction. |
-| [`US-003: User Login & Session Management`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-003) | Fundamental session security; enforces credential verification, rate-limiting, and JWT/refresh token lifecycles with HTTP-only cookie storage. |
-| [`US-004: Login Multi-Factor Authentication (MFA)`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-004) | Non-negotiable security requirement mandated by stakeholder review; enforces secondary email-based OTP verification on recurring logins to protect against credential stuffing. |
-| [`US-005: Password Recovery for PART/ADMIN`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-005) | Essential account maintenance; provides cryptographic single-use reset links to prevent user lockout without compromising multi-factor security. |
-| [`US-006: Participant Profile Management`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-006) | Core data asset; captures standardized technical roles, skill tags, academic institution, and portfolio URLs necessary to power the recommendation engine. |
-| [`US-008: Public Hackathon Discovery & Multi-Filter Search`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-008) | Essential top-of-funnel discovery; anchors team formation to specific hackathons with external website links, format filters, and verified event badges. |
-| [`US-009: Team Lead Crowdsourced Event Registration Request`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-009) | Core scalability mechanism; allows Team Leads to submit unlisted hackathons on the fly and begin recruiting immediately under optimistic `Pending Verification` status. |
-| [`US-010: Administrative Event Verification, Correction, and Lifecycle Management`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-010) | Single source of truth gatekeeper; allows administrators to audit crowdsourced event URLs, factually correct mismatched team limits/dates, merge duplicates, and approve listings. |
-| [`US-011: Declare Event Availability & Looking-for-Team Status`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-011) | Core participation trigger; enables solo students to signal event-specific availability, commitment hours, and competitive goals. |
-| [`US-012: Create & Manage Team Recruitment Listing`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-012) | Essential team recruitment capability; enables Team Leads to define discrete vacancy slots, manage project pitches, and exercise self-service editing before roster lock. |
-| [`US-013: Browse & Filter Open Team Vacancies`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-013) | Primary solo participant discovery; allows candidates to search open vacancy slots filtered by required skill tags and team objectives. |
-| [`US-015: Candidate Recommendations for Team Leads`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-015) | Core market differentiator; computes a deterministic compatibility score ($0\text{--}100\%$) matching candidate skills and availability against open vacancy slot requirements. |
-| [`US-017: Issue a Team Invitation`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-017) | Essential interaction primitive; allows Team Leads to convert recommended candidates into potential teammates with a 48-hour time-to-live (TTL). |
-| [`US-018: Apply to Join a Team Vacancy`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-018) | Essential bottom-up recruitment primitive; allows solo participants to apply for specific team slots with an introductory note (max 3 concurrent active applications). |
-| [`US-019: Respond to a Team Invitation`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-019) | Critical workflow resolution engine; handles acceptance, rejection, capacity limits, and atomic race-condition prevention across concurrent slot filling. |
-| [`US-020: Team Lead Approves or Declines an Application`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-020) | Team Lead evaluation gate; enables reviewing applicant profiles and approving members while auto-canceling remaining invites when capacity saturates. |
-| [`US-022: Confirm and Lock a Team Roster`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-022) | Milestone completion; enforces team capacity bounds ($2 \le \text{size} \le \text{max}$), permanently freezes membership mutations, and unlocks post-formation tooling. |
-| [`US-026: Administrative Content Moderation & Safety Queue`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-026) | Platform safety enforcement; empowers administrators to triage reported listings, redact offensive descriptions, and purge malicious phishing URLs. |
-| [`US-027: Administrative Account Management & Enforcement`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-027) | Platform integrity and legal compliance; supports account deactivations for code of conduct violators and handles GDPR/PIPEDA student right-to-be-forgotten purges. |
+| [US-001: Participant Registration and Email Verification](../02_user_stories/user_stories.md#us-001) | Establish verified PART accounts without public ADMIN provisioning. |
+| [US-002: Federated OAuth Registration and Authentication](../02_user_stories/user_stories.md#us-002) | Preserve the expanded Google/GitHub primary login paths; both still require email OTP. |
+| [US-003: User Login and Session Management](../02_user_stories/user_stories.md#us-003) | Authenticate authorized accounts and maintain/revoke protected sessions. |
+| [US-004: Email-Based Login Two-Factor Authentication (2FA)](../02_user_stories/user_stories.md#us-004) | Required email OTP for every primary login, with the confirmed expiry/lock policy. |
+| [US-005: Password Recovery for PART/ADMIN](../02_user_stories/user_stories.md#us-005) | Recover credential access without bypassing 2FA. |
+| [US-006: Participant Profile Management](../02_user_stories/user_stories.md#us-006) | Provide skills, goals and permitted profile information for recruitment. |
+| [US-008: Public Hackathon Discovery and Multi-Filter Search](../02_user_stories/user_stories.md#us-008) | Discover public verified event records and their team boards. |
+| [US-009: Participant Hackathon Event Submission](../02_user_stories/user_stories.md#us-009) | Let any verified PART propose a missing event for ADMIN review. |
+| [US-010: Administrative Event Verification, Correction, and Lifecycle Management](../02_user_stories/user_stories.md#us-010) | Create and verify trusted canonical event records, resolve duplicates, and manage their lifecycle. |
+| [US-011: Declare Event Availability and Looking-for-Team Status](../02_user_stories/user_stories.md#us-011) | Identify available candidates for one specific event. |
+| [US-012: Create and Manage a Team Recruitment Listing](../02_user_stories/user_stories.md#us-012) | Create an owned team and manage its slots/pre-lock lifecycle. |
+| [US-013: Browse and Filter Open Team Vacancies](../02_user_stories/user_stories.md#us-013) | Let Participants browse/filter teams without algorithmic team recommendations. |
+| [US-015: Candidate Recommendations for Team Leads](../02_user_stories/user_stories.md#us-015) | Recommend eligible candidates to owners using explainable rules. |
+| [US-017: Issue a Team Invitation](../02_user_stories/user_stories.md#us-017) | Invite a candidate to a specific open slot with basic status alerts. |
+| [US-018: Apply to Join a Team Vacancy](../02_user_stories/user_stories.md#us-018) | Apply to an open slot with basic status alerts. |
+| [US-019: Respond to a Team Invitation](../02_user_stories/user_stories.md#us-019) | Accept/decline invitations and manage pre-lock placement without duplicate memberships. |
+| [US-020: Team Lead Approves or Declines an Application](../02_user_stories/user_stories.md#us-020) | Approve/decline applications using the same atomic membership rules. |
+| [US-022: Confirm and Lock a Team Roster](../02_user_stories/user_stories.md#us-022) | Confirm and lock an event-compliant roster. |
+| [US-026: Administrative Content Moderation and Safety Queue](../02_user_stories/user_stories.md#us-026) | Allow ADMIN inspection and basic moderation without requiring participant reporting. |
+| [US-027: Administrative Account Management and Enforcement](../02_user_stories/user_stories.md#us-027) | Control accounts and process authorized deletion requests under the documented privacy policy. |
 
 ---
 
-### Should-Haves (Supporting MVP Enhancements)
+### Should-Haves
 
-Should-Haves provide critical operational polish, transparency, and collaboration infrastructure that turn a bare-bones matching demo into an investor-grade, production-quality product. In a 6-person team, these stories distribute workload and guarantee adequate technical depth.
+These seven capabilities are planned for the first or second post-MVP update (roadmap v1.1/v1.2), after core acceptance and capacity review. They are not required for the November 29 MVP or December 18 course delivery. There is no calendar commitment for those later updates; they are planned enhancements, distinct from speculative May-Haves.
 
-| User Story | Value & Justification |
+| User Story | Value & Timeline |
 |---|---|
-| [`US-007: Participant Hackathon History & Portfolio Verification`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-007) | Replaces unverifiable claims with an objective track record; tracks past hackathons attended and calculates objective experience tier badges (`Beginner`, `Competitor`, `Veteran`). |
-| [`US-014: Advanced Candidate Directory Search & Filter for Team Leads`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-014) | Supplements algorithmic recommendations by giving Team Leads manual multi-tag filter tools across declared skills, experience tiers, and availability. |
-| [`US-021: In-App Notification Center & Real-Time Recruitment Alerts`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-021) | Eliminates communication lag; surfaces in-app badge counters and action links for invitations, application approvals, and event verification status changes. |
-| [`US-023: Team Private Coordination Workspace`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-023) | Delivers the post-match value proposition; provides a private dashboard for locked teams to access external Discord/Slack channels, GitHub repository links, and shared pitch notes. |
-| [`US-024: Export Team Manifest & Check-In Verification Card`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-024) | Bridges the virtual platform to physical hackathon check-in; generates a standardized, printable HTML/PDF card and downloadable JSON roster with pre-event verification hashes. |
-| [`US-025: User Reporting Modal for Abusive Content & Malicious Links`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-025) | Provides the crowd-sourced intake channel for the administrative moderation queue (US-026); rate-limited to 5 reports/hour to prevent griefing. |
-| [`US-028: Immutable Administrative Audit Logging`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-028) | Ensures governance transparency; records append-only audit entries capturing Admin ID, Target Entity, Prior/New State, and UTC Timestamp for all moderation and verification decisions. |
+| [US-007: Participant Hackathon History and Portfolio Records](../02_user_stories/user_stories.md#us-007) | Self-declared history and experience badges. Planned early post-MVP update; no semester implementation dependency. |
+| [US-014: Advanced Candidate Directory Search and Filter for Team Leads](../02_user_stories/user_stories.md#us-014) | Advanced manual candidate discovery beyond MVP recommendations. Planned early post-MVP update; no semester implementation dependency. |
+| [US-021: In-App Notification Center and Real-Time Recruitment Alerts](../02_user_stories/user_stories.md#us-021) | Unread feed and read management beyond basic status alerts. Planned early post-MVP update; no semester implementation dependency. |
+| [US-023: Team Private Coordination Workspace](../02_user_stories/user_stories.md#us-023) | Locked-team external links and versioned notes. Planned early post-MVP update; no semester implementation dependency. |
+| [US-024: Export Team Manifest and Check-In Verification Card](../02_user_stories/user_stories.md#us-024) | Printable/JSON roster export with an integrity checksum; organizer acceptance is not assumed. Planned early post-MVP update; no semester implementation dependency. |
+| [US-025: User Reporting Modal for Abusive Content and Malicious Links](../02_user_stories/user_stories.md#us-025) | Participant reporting feeding the existing ADMIN case workflow. Planned early post-MVP update; no semester implementation dependency. |
+| [US-028: Administrative Audit Review and Filtering](../02_user_stories/user_stories.md#us-028) | Search/filter interface over administrative records already collected in MVP. Planned early post-MVP update; no semester implementation dependency. |
 
 ---
 
-### Could-Haves (Future Scope — Post-Launch v1.1)
+### Nice-To-Haves
 
-Capabilities that enhance convenience and two-sided discovery, formally deferred to subsequent releases to protect MVP release velocity.
+No canonical story is assigned here. Desirable additions will be categorized here only after their user value and feasibility are understood.
 
-| User Story | Value & Post-Launch Timeline |
+| User Story |
+|---|
+| None currently classified. |
+
+---
+
+### May-Haves
+
+These stories are considered but not committed to a release. Their presence does not weaken the mandatory MVP email-OTP or participant-browsing policies.
+
+The previously mentioned Discord channel automation, GitHub repository scaffolding and schedule-overlap visualization are retained as speculative idea notes outside the numbered backlog. They require team/backlog and feasibility review before becoming stories; they have no IDs or implementation dates and do not change the 29-story count.
+
+| User Story | Tentative Status |
 |---|---|
-| [`US-016: Recommended Teams for Participants`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-016) | **v1.1 - Post-Launch.** Reverse matching algorithm pushing recommended teams to solo hackers; in MVP v1.0, solo users discover teams via multi-parameter search and manual filtering (US-013). |
-| [`US-029: Authenticator App (TOTP) Multi-Factor Authentication`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-029) | **v1.1 - Post-Launch.** Adds zero-latency, app-based multi-factor authentication (Google Authenticator / Microsoft Authenticator) for security-conscious developers, expanding beyond the baseline email OTP implementation. |
+| [US-016: Recommended Teams for Participants (Future Scope)](../02_user_stories/user_stories.md#us-016) | Participant-facing recommendations require user-value and algorithm review; no release date. |
+| [US-029: Authenticator-App Two-Factor Authentication (Future Scope)](../02_user_stories/user_stories.md#us-029) | Authenticator enrollment/recovery and any change to email OTP require future security approval; no release date. |
+
 
 ---
 
-### Nice-To-Haves (v1.2+)
+### Out of Scope
 
-Exploratory integrations adding ecosystem automation:
-* **US-N01: Automated Discord Webhook & Server Sync:** Auto-provisioning private Discord channels and role assignments upon roster lock.
-* **US-N02: GitHub Organization & Repo Scaffolding:** Automated API creation of a shared team GitHub repository pre-configured with template README and gitignore.
-* **US-N03: Interactive Time-Zone & Schedule Matrix:** Visual schedule heat-map showing team overlap across conflicting classes and weekend commitments.
-
----
-
-### Out of Scope (Explicitly Excluded)
-
-Capabilities deliberately barred from the HackMatch product architecture to maintain focus, prevent unmaintainable code bloat, and avoid duplicating existing mature platforms:
-
-| Excluded Capability | Justification |
+| Title or User Story | Reason Out of Scope |
 |---|---|
-| **In-App Real-Time Chat (WebSocket Messaging)** | Hackathon students already communicate on Discord and Slack. Building custom in-app chat creates an inferior, unmoderated tool that users immediately abandon. Solved pragmatically by sharing Discord/Slack invite links in the Private Team Workspace ([`US-023`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-023)). |
-| **Reddit-Style Public Discussion Forums / Articles** | HackMatch is a purpose-driven matchmaking engine, not a social media aggregator. Discussion threads introduce massive comment moderation overhead without advancing team formation. |
-| **Native Audio / Video Calling (WebRTC)** | Video infrastructure introduces immense bandwidth, signaling, and maintenance overhead already solved by Zoom, Google Meet, and Discord. |
-| **Full Hackathon Event Management & Project Judging** | Outside the core product domain; platforms like Devpost and Eventbrite already dominate project judging and ticket management. |
-| **Mobile Viewports (< 1024px) & Native Mobile Application Builds** | HackMatch is intentionally engineered and scoped as a **Desktop-First Web Application** (optimized for screen resolutions $\ge 1024 \times 768$). Hackathon team leads and developers assemble teams, draft project pitches, and link GitHub repositories on laptops and workstations where development tools, IDEs, and browser developer consoles reside. Optimizing complex candidate filter matrices and split-pane team workspaces for small smartphone screens (360px–390px) and handling touch-based orientation reflow introduces substantial CSS and responsive layout overhead with negligible value during pre-event team formation sprints. Mobile screens display a non-blocking advisory banner recommending a desktop browser, with mobile touch layouts formally deferred to post-capstone releases. |
+| Ticketing, payments, judging, attendee registration, and full event scheduling | Event records support trusted team formation; HackMatch does not operate the hackathon. |
+| Organizer self-service accounts | Organizers remain external stakeholders and possible future system users. PART submits records; ADMIN verifies them. |
+| In-app real-time chat, audio/video, public discussion feeds | Outside the agreed recruitment/coordination scope; external tool links can serve communication. |
+| Native iOS/Android applications | The product is a responsive website, including tablet/iPad and phone portrait/landscape support. |
+| Advanced AI/vector/embedding matching | MVP candidate recommendations use explicit rules. Future participant recommendations do not automatically authorize advanced AI. |
+| Calendar integrations, project idea boards, public reputation/rating systems | Not committed; self-declared post-MVP participation history is separately defined in US-007. |
+| Extensive enterprise administration or event operations | MVP retains verified listings, account controls and basic moderation; later audit/reporting interfaces follow their own story categories. |
 
 ---
 
-## MVP Release Definition
+## MVP Definition
 
-**Release Baseline:** The HackMatch MVP release package consists of all **Must-Have** (20 stories) and **Should-Have** (7 stories) user stories, totaling **27 operational user stories**. 
+**MVP User Stories:** US-001, US-002, US-003, US-004, US-005, US-006, US-008, US-009, US-010, US-011, US-012, US-013, US-015, US-017, US-018, US-019, US-020, US-022, US-026, US-027.
 
-**Release Target Date:** November 20, 2026
+**MVP Scope:** A visitor discovers a verified hackathon; a PART registers or uses Google/GitHub, completes mandatory email OTP, maintains a profile and event availability, and browses/applies to teams or responds to invitations. A PART owns and recruits for a team through rule-based candidate recommendations, resolves both joining routes without duplicate event memberships, and locks a valid roster. ADMIN creates/verifies canonical event records and manages accounts/basic moderation; only approved events enable recruitment.
 
-**Target Release Objective:** Deliver an investor-grade, end-to-end team formation platform enabling student hackers to authenticate securely (Google/GitHub OAuth + MFA), crowdsource verified hackathons, create structured vacancy-based recruitment listings, receive explainable match recommendations, coordinate in private team workspaces, and export verified check-in manifests.
+**MVP Success Condition:** All 20 Must-Have stories pass end-to-end acceptance, including event approval, both joining routes, duplicate-event safeguards, owner authorization, responsive tablet/phone tasks, and a locked roster. Confirmed membership starts at team creation/acceptance/approval, not at lock. Basic invitation/application/event/roster status alerts and basic administrative action records are included within those stories; the full notification centre, history, advanced search, workspace, export, participant reports and audit-query interface are not prerequisites.
 
----
+**MVP Target Release Date:** November 29, 2026 — planned implementation target at Sprint / Iteration 2 completion.
 
-## MVP Implementation Plan
+**Final Course Delivery and Presentation:** December 18, 2026. The intervening period covers validation, fixes, report completion and presentation preparation, not uncommitted feature expansion.
 
-The table below sequences all 27 implementation stories across four dependency-ordered development phases. Dependencies are strictly respected: no story is scheduled before its architectural prerequisites are completed.
+### MVP Implementation Plan
 
-| Phase | Priority | User Story | Depends On | Primary Owner / Domain |
-|---|---|---|---|---|
-| **Phase 1: Foundation, Auth & Events** | **1** | [`US-001: Participant Registration & Email Verification`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-001) | None | Identity / Security |
-| | **2** | [`US-002: Federated OAuth Registration & Authentication`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-002) | US-001 | Identity / Security |
-| | **3** | [`US-003: User Login & Session Management`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-003) | US-001, US-002 | Identity / Security |
-| | **4** | [`US-004: Login Multi-Factor Authentication (MFA)`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-004) | US-003 | Identity / Security |
-| | **5** | [`US-005: Password Recovery for PART/ADMIN`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-005) | US-001, US-003 | Identity / Security |
-| | **6** | [`US-008: Public Hackathon Discovery & Multi-Filter Search`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-008) | None | Directory / Events |
-| | **7** | [`US-009: Team Lead Crowdsourced Event Registration Request`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-009) | US-003, US-008 | Directory / Events |
-| | **8** | [`US-010: Administrative Event Verification, Correction & Lifecycle`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-010) | US-008, US-009 | Directory / Events |
-| **Phase 2: Profiles, Availability & Recruitment** | **9** | [`US-006: Participant Profile Management`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-006) | US-003 | Profiles & Records |
-| | **10** | [`US-007: Participant Hackathon History & Portfolio Verification`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-007) | US-006 | Profiles & Records |
-| | **11** | [`US-011: Declare Event Availability & Looking-for-Team Status`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-011) | US-006, US-008 | Recruitment Boards |
-| | **12** | [`US-012: Create & Manage Team Recruitment Listing`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-012) | US-006, US-008 | Recruitment Boards |
-| | **13** | [`US-013: Browse & Filter Open Team Vacancies`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-013) | US-008, US-012 | Recruitment Boards |
-| | **14** | [`US-014: Advanced Candidate Directory Search & Filter`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-014) | US-006, US-011 | Recruitment Boards |
-| **Phase 3: Matching & Recruitment State Machine** | **15** | [`US-015: Candidate Recommendations for Team Leads`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-015) | US-006, US-011, US-012 | Algorithmic Matching |
-| | **16** | [`US-017: Issue a Team Invitation`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-017) | US-012, US-015 | Recruitment Workflows |
-| | **17** | [`US-018: Apply to Join a Team Vacancy`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-018) | US-006, US-013 | Recruitment Workflows |
-| | **18** | [`US-019: Respond to a Team Invitation`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-019) | US-017, US-018 | Recruitment Workflows |
-| | **19** | [`US-020: Team Lead Approves or Declines an Application`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-020) | US-018, US-019 | Recruitment Workflows |
-| | **20** | [`US-021: In-App Notification Center & Recruitment Alerts`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-021) | US-017, US-018, US-019, US-020 | Communication Alerts |
-| | **21** | [`US-022: Confirm and Lock a Team Roster`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-022) | US-012, US-019, US-020 | Roster Finalization |
-| **Phase 4: Workspace, Manifest & Governance** | **22** | [`US-023: Team Private Coordination Workspace`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-023) | US-022 | Team Workspace |
-| | **23** | [`US-024: Export Team Manifest & Check-In Card`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-024) | US-022 | Team Workspace |
-| | **24** | [`US-025: User Reporting Modal for Abusive Content & Links`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-025) | US-006, US-012 | Trust & Safety |
-| | **25** | [`US-026: Administrative Content Moderation & Safety Queue`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-026) | US-025 | Trust & Safety |
-| | **26** | [`US-027: Administrative Account Management & Enforcement`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-027) | US-003, US-026 | Administration |
-| | **27** | [`US-028: Immutable Administrative Audit Logging`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-028) | US-010, US-026, US-027 | Administration / Audit |
+Depends On lists prerequisite capabilities needed to implement the story against real account/event/team data. Relates To lists integrations or shared workflows that can be developed in parallel. Authentication stories are tested as one secure flow before release: primary-login work can precede the OTP screen, but no full session is enabled until both are complete. Membership integrity (FR-083), basic alerts (FR-064) and action records (FR-079) are shared implementation work under these stories, not additional user stories or post-MVP blockers. Test fixtures may support parallel work before integration.
+
+| Priority | User Story | Depends On | Relates To |
+|---|---|---|---|
+| 1 | [US-001: Participant Registration and Email Verification](../02_user_stories/user_stories.md#us-001) | None | US-002, US-003, US-004, US-005 |
+| 2 | [US-003: User Login and Session Management](../02_user_stories/user_stories.md#us-003) | US-001 | US-002, US-004, US-005, US-027 |
+| 3 | [US-004: Email-Based Login Two-Factor Authentication (2FA)](../02_user_stories/user_stories.md#us-004) | US-003 | US-001, US-002, US-005 |
+| 4 | [US-002: Federated OAuth Registration and Authentication](../02_user_stories/user_stories.md#us-002) | US-001 | US-003, US-004, US-006 |
+| 5 | [US-005: Password Recovery for PART/ADMIN](../02_user_stories/user_stories.md#us-005) | US-001 | US-003, US-004 |
+| 6 | [US-008: Public Hackathon Discovery and Multi-Filter Search](../02_user_stories/user_stories.md#us-008) | None | US-009, US-010, US-013 |
+| 7 | [US-009: Participant Hackathon Event Submission](../02_user_stories/user_stories.md#us-009) | US-003 | US-008, US-010, US-012 |
+| 8 | [US-010: Administrative Event Verification, Correction, and Lifecycle Management](../02_user_stories/user_stories.md#us-010) | US-003 | US-008, US-009, US-012, US-026, US-027, US-028 |
+| 9 | [US-006: Participant Profile Management](../02_user_stories/user_stories.md#us-006) | US-003 | US-002, US-007, US-011, US-015 |
+| 10 | [US-011: Declare Event Availability and Looking-for-Team Status](../02_user_stories/user_stories.md#us-011) | US-006, US-010 | US-012, US-015, US-019, US-020 |
+| 11 | [US-012: Create and Manage a Team Recruitment Listing](../02_user_stories/user_stories.md#us-012) | US-003, US-010 | US-006, US-011, US-013, US-019, US-020, US-022 |
+| 12 | [US-013: Browse and Filter Open Team Vacancies](../02_user_stories/user_stories.md#us-013) | US-012 | US-008, US-018 |
+| 13 | [US-015: Candidate Recommendations for Team Leads](../02_user_stories/user_stories.md#us-015) | US-006, US-011, US-012 | US-014, US-017 |
+| 14 | [US-017: Issue a Team Invitation](../02_user_stories/user_stories.md#us-017) | US-011, US-012 | US-015, US-019, US-020, US-021 |
+| 15 | [US-018: Apply to Join a Team Vacancy](../02_user_stories/user_stories.md#us-018) | US-012, US-013 | US-017, US-020, US-021 |
+| 16 | [US-019: Respond to a Team Invitation](../02_user_stories/user_stories.md#us-019) | US-017 | US-018, US-020, US-021, US-022 |
+| 17 | [US-020: Team Lead Approves or Declines an Application](../02_user_stories/user_stories.md#us-020) | US-018 | US-017, US-019, US-021, US-022 |
+| 18 | [US-022: Confirm and Lock a Team Roster](../02_user_stories/user_stories.md#us-022) | US-012 | US-019, US-020, US-023, US-024 |
+| 19 | [US-026: Administrative Content Moderation and Safety Queue](../02_user_stories/user_stories.md#us-026) | US-003 | US-010, US-012, US-025, US-027, US-028 |
+| 20 | [US-027: Administrative Account Management and Enforcement](../02_user_stories/user_stories.md#us-027) | US-003 | US-004, US-010, US-012, US-026, US-028 |
+
+
+Roster locking consumes the common membership model and can be implemented/tested with valid roster fixtures before both joining screens are finished. MVP completion still requires both joining stories. Event discovery uses verified-record fixtures while verification is built. Moderation starts from ADMIN-created cases; participant reports and audit querying are later additions, not prerequisites.
+
+### Official Course Milestones — MVP Work Only
+
+| Milestone | Date | Planned evidence |
+|---|---|---|
+| Sprint / Iteration 1 | October 25, 2026 | Secure registration/primary login/email OTP, recovery, profiles, event directory/submission/verification foundation; demonstrate authorization and approval gating. |
+| Progress Report | November 8, 2026 | Report MVP progress, integration results, unresolved policy/benchmark decisions, and remaining scope. |
+| Sprint / Iteration 2 — MVP implementation target | November 29, 2026 | All 20 Must-Haves integrated: availability, team discovery/recommendations, both joining paths, lock, account/moderation controls, basic alerts/records, responsive and integrity acceptance. |
+| Final Project Report | December 13, 2026 | Consolidated MVP test evidence, limitations, specifications and research-backed proposal/report artifacts. |
+| Final Project & Presentation | December 18, 2026 | Tested MVP demonstration and final course delivery. |
+
+The Word proposal and required repository Markdown are both deliverables. Detailed stories stay in user_stories.md unless the Word template explicitly requests them. The later Word timeline should summarize these Must-Have phases/milestones only; the product roadmap must remain separately labelled.

@@ -2,18 +2,23 @@
 
 ## Overview
 
-HackMatch is a pre-hackathon team formation platform designed to connect students with complementary technical skills, schedule availability, and project ambitions before an event begins. This document formally defines the user taxonomy, operational boundaries, and concrete user personas governing system design.
+HackMatch is a pre-hackathon team formation platform designed to connect students with complementary technical skills, schedule availability, and project ambitions before an event begins. This document defines account roles, contextual permissions, stakeholders, and illustrative personas for the expanded product. The personas are hypothetical design aids; no interviews, measured user research, or organizer endorsement are claimed. Named events and rules in their workflows are illustrative, not assertions about actual event policies.
 
 Following the course guidelines, the platform defines two global authenticated account types, one contextual role, one unauthenticated public state, external/academic stakeholder groups, and an explicit anti-user security boundary:
 
 | Role Category | Role Name | Identifier | Account Type | Primary Responsibility |
 |---|---|---|---|---|
 | **Primary** | Hackathon Participant | `PART` | Global Account | Maintains portfolio profile, declares event availability, applies to teams, accepts invites. |
-| **Contextual** | Team Lead | `LEAD` | Contextual Permission | A `PART` who creates a team. Requests unlisted events, defines vacancies, and locks rosters. |
-| **Governance** | Platform Administrator | `ADMIN` | Privileged Account | Verifies crowdsourced event requests, moderates abuse reports, and audits system integrity. |
+| **Contextual** | Team Lead | `LEAD` | Contextual Permission | A `PART` who creates a team. Defines vacancies, recruits candidates, and locks their team roster. Any verified PART may submit an event before owning a team. |
+| **Governance** | Platform Administrator | `ADMIN` | Privileged Account | Creates/verifies event records, manages accounts, and handles basic moderation; reporting/audit interfaces expand after MVP. |
 | **Public** | Unauthenticated Visitor | `VISITOR` | Session State | Discovers hackathons and previews open teams with strict privacy-redacted views. |
-| **Stakeholder** | Event Organizers & Academic Evaluators | `STAKE` | External / Academic | Enforces hackathon eligibility/limits, inspects check-in manifests, and evaluates course deliverables. |
+| **Stakeholder** | Event Organizers & Academic Evaluators | `STAKE` | External / Academic | Provides official event rules or evaluates course deliverables; no application permissions. |
 | **Anti-User** | Malicious Actor / Scraper | `THREAT` | Security Boundary | Unauthorized data harvesting, phishing event URLs, and platform harassment. |
+
+
+Delivery scope follows the [MVP definition](../03_mvp/mvp_definition.md): **20 Must-Haves in MVP, 7 Should-Haves after MVP, 2 May-Haves uncommitted** across [29 current stories](../02_user_stories/user_stories.md). Candidate recommendations, basic status alerts and ADMIN action records are MVP. History/badges, advanced candidate search, full notification centre, workspace, export, participant reporting and searchable audit review are post-MVP. Participant-facing recommendations and authenticator methods remain May-Haves. Proposed numerical rules require the confirmations in the [policy register](../04_requirements/functional_nonfunctional_requirements.md#policy-register).
+
+PART and ADMIN are the only stored account roles. LEAD is a label for ownership permissions on one team; VISITOR is an unauthenticated state. STAKE/THREAT labels describe stakeholders/security analysis and never become account roles. A PART can lead a team in one event and be a regular member elsewhere. Every login, including Google/GitHub, requires email OTP: **10-minute expiry; 5 incorrect OTP attempts lock the account for 15 minutes**.
 
 ---
 
@@ -21,11 +26,11 @@ Following the course guidelines, the platform defines two global authenticated a
 
 **Role Identifier:** `PART`
 
-**Description:** A student, recent graduate, or self-taught developer looking to find or join a balanced hackathon team. Participants sign in via federated OAuth (Google or GitHub) or email/password secured with mandatory Login Multi-Factor Authentication (MFA). They manage a structured technical profile (skills, primary role, experience tier, portfolio URLs, and historical hackathon records), search verified and pending hackathon directories, toggle event availability flags, apply to open vacancy slots, and process incoming team invitations.
+**Description:** A student, recent graduate, or self-taught developer looking to find or join a balanced hackathon team. Participants use Google/GitHub or email/password as primary sign-in, followed in every case by mandatory email OTP. They maintain self-declared skills/roles and portfolio URLs, browse Verified events, declare availability, apply and respond to invitations. Any verified PART may submit an unlisted event to ADMIN; pending submissions are visible only to their submitter and ADMIN. History and experience badges are post-MVP.
 
 **Primary Goals:**
-- Showcase verified technical, design, or project management capabilities and past hackathon history.
-- Discover hackathons, declare event-specific participation, and set personal objectives (`Learning`, `Project Completion`, or `Competitive / Prize-Hunting`).
+- Showcase self-declared technical/design capabilities and portfolio links; add participation history when the post-MVP feature is delivered.
+- Discover hackathons, declare event-specific participation, and set personal objectives (`Learning`, `Project Completion`, or `Competitive`).
 - Find open team vacancies matching their skills and schedule constraints without manual Discord searching.
 - Secure a spot on a confirmed, roster-locked team prior to hackathon registration deadlines.
 
@@ -34,13 +39,13 @@ Following the course guidelines, the platform defines two global authenticated a
 **Key Characteristics:**
 - Time-constrained students balancing coursework and hackathon preparation.
 - Diverse academic backgrounds, technical competencies, and hackathon experience tiers.
-- Desktop-focused workflow: students access the platform via desktop or laptop web browsers (Chrome, Firefox, Safari, Edge) alongside their IDEs, terminal windows, and coursework.
+- Responsive-browser workflow: students may use desktops/laptops alongside development tools or tablet/iPad and phone browsers in portrait or landscape. Core tasks support these layouts; native apps are outside scope.
 - Reluctant to cold-message strangers on unstructured chat boards without knowing their real technical background and time commitment.
 
 **Constraints or Pain Points:**
 - **Single-Team Invariant:** A participant cannot belong to more than one confirmed roster for the same hackathon.
-- **Application Throttle:** Limited to a maximum of 3 concurrent active team applications per event to eliminate mass-spamming.
-- **Privacy Protections:** Student contact details (email, Discord handle) are concealed until a mutual invitation or application is formally accepted.
+- **Application Throttle:** Retained proposed limit of 3 pending applications per event reduces bulk applications; it does not guarantee prevention of spam (policy R-02).
+- **Privacy Protections:** Account email/authentication data remain private. Optional shared contact handles become visible only to confirmed teammates, with the owner informed; leaving/removal revokes this access. Profile skills/portfolio links are visible to authenticated PART users, not Visitors.
 
 ---
 
@@ -50,7 +55,7 @@ Following the course guidelines, the platform defines two global authenticated a
 - **Technical Background:** Intermediate. Proficient in React, Tailwind CSS, TypeScript, and Figma; basic Node.js; no database administration experience.
 - **Goals & Motivations:** Wants to build a polished, accessible frontend for an AI sustainability tool at an upcoming inter-collegiate hackathon. Needs a reliable backend/API partner to manage server infrastructure.
 - **Pain Points:** Overwhelmed by disorganized, fast-scrolling Discord `#looking-for-team` channels. Frustrated by reaching out to students who claim "full-stack skills" but cannot integrate REST APIs.
-- **Workflow:** Signs in via Google OAuth on her laptop in the campus library. Searches for an upcoming regional hackathon, filters open team listings for "Backend / Node.js vacancy" with a "Competitive" goal, reviews the team pitch, and submits a join application.
+- **Workflow:** Signs in via Google followed by email OTP on her laptop in the campus library. Searches for an upcoming regional hackathon, filters open team listings for a "Frontend / React vacancy" in a team whose existing members cover backend/API work with a "Competitive" goal, reviews the team pitch, and submits a join application.
 
 ---
 
@@ -60,11 +65,11 @@ Following the course guidelines, the platform defines two global authenticated a
 - **Technical Background:** Intermediate. Fluent in Kotlin, Flutter, and Firebase; highly proficient with Git version control.
 - **Goals & Motivations:** Wants to build a native mobile proof-of-concept to strengthen his junior developer portfolio. Must find teammates who respect a strict 20-hour weekend time budget.
 - **Pain Points:** Burned by previous hackathons where disorganized teams spent 14 hours debating project ideas and abandoned the code repository at 3:00 AM.
-- **Workflow:** Signs in with GitHub OAuth. Populates his profile with his past GitHub repositories, sets his hackathon availability flag to "15–20 hours commitment / Pragmatic Delivery", and reviews inbound invitations sent by Team Leads.
+- **Workflow:** Signs in with GitHub followed by email OTP. Populates his profile with his past GitHub repositories, sets his hackathon availability flag to "20 commitment hours / Project Completion", and reviews inbound invitations sent by Team Leads.
 
 ---
 
-### Persona 1.3: Marcus Thorne (Accessibility-Focused Developer / Screen Reader User)
+### Persona 1.3: Adrian Thorne (Accessibility-Focused Developer / Screen Reader User)
 - **Demographics:** 22 years old, final-year Computer Science student, low-vision developer.
 - **Device & Environment:** Windows 11 laptop running NVDA screen reader, high-contrast OS mode, full keyboard navigation (no mouse).
 - **Technical Background:** Advanced backend and systems engineer. Proficient in Python, Go, PostgreSQL, Docker, and Linux.
@@ -78,11 +83,11 @@ Following the course guidelines, the platform defines two global authenticated a
 
 **Role Identifier:** `LEAD` *(Contextual authorization state of a `PART`)*
 
-**Description:** Any authenticated Participant (`PART`) who initializes a new team listing assumes the contextual `LEAD` permissions for that specific team record. The Team Lead anchors the team to an existing official hackathon or submits a crowdsourced event registration request. They specify the project concept, competitive objective, and discrete vacancy slots, review incoming applications, send direct invitations to solo candidates, and lock the final roster.
+**Description:** Any authenticated Participant (`PART`) who initializes a new team listing assumes the contextual `LEAD` permissions for that specific team record. The Team Lead anchors their team to a Verified event. Before team creation, any verified PART may submit a missing event, but ADMIN approval must occur before it is public or usable for recruitment. They specify the project concept, competitive objective, and discrete vacancy slots, review incoming applications, send direct invitations to solo candidates, and lock the final roster.
 
 **Primary Goals:**
 - Form a well-rounded, complementary team before the hackathon kickoff.
-- Register an unlisted hackathon if not currently in the platform directory.
+- As a PART, propose a missing event and track its verification status before team creation.
 - Define explicit skill vacancies (e.g., "1 UI/UX Designer" and "1 Backend Engineer") to attract targeted talent.
 - Update and refine team details (project concept pitch, vacancy roles, required skills) through self-service editing prior to roster lock.
 - Screen candidate profiles, approve or decline applications, and lock the confirmed roster.
@@ -94,9 +99,9 @@ Following the course guidelines, the platform defines two global authenticated a
 - Seeks transparency regarding applicant skill levels and past hackathon delivery reliability.
 
 **Constraints or Pain Points:**
-- **Capacity Limits:** Enforced team size limits ($2 \le \text{members} \le 6$) bounded by the target hackathon's rules.
-- **Invitation Race Condition:** Pending invitations must auto-cancel if open slots fill via approved applications before the invitee responds.
-- **Roster Freezing:** Once the Lead locks the roster, no further membership mutations, invitations, or applications are permitted.
+- **Capacity Limits:** The verified event defines official minimum/maximum team size, including the owner. No universal 4-person or 2–6 limit is imposed. Missing official limits keep the event pending (policy R-01).
+- **Membership Integrity:** Creating a team, accepting an invitation and approving an application enforce the same one-confirmed-team-per-event rule atomically. A filled slot cancels its remaining requests; the newly confirmed participant's other pending requests for that event are canceled/withdrawn.
+- **Roster Freezing:** Lock permanently closes recruitment/membership edits. Before lock, non-owners may leave or be removed with a reason; owners may disband but cannot leave an owned team or transfer ownership in this release. See R-02 for retained lifecycle defaults.
 
 ---
 
@@ -104,9 +109,9 @@ Following the course guidelines, the platform defines two global authenticated a
 - **Demographics:** 23 years old, 4th-year Software Engineering student; veteran of 5 hackathons (2 podium placements).
 - **Device & Environment:** High-DPI laptop (1440p, macOS Chrome).
 - **Technical Background:** Advanced. TypeScript, Next.js, Python FastAPI, PostgreSQL, AWS, Docker.
-- **Goals & Motivations:** Has a validated project concept for an automated medical note summarizer. Aims to place in the top 3 at an upcoming university hackathon. Needs exactly 1 ML engineer and 1 UI/UX designer.
+- **Goals & Motivations:** Has a project concept for an automated medical note summarizer. Aims to place in the top 3 at an upcoming university hackathon. Needs exactly 1 ML engineer and 1 UI/UX designer.
 - **Pain Points:** Inability to find an unlisted local hackathon on generic platforms; spending valuable hacking time setting up basic team logistics.
-- **Workflow:** Searches HackMatch for "MetHacks 2026". Finds no matching event. Submits an event creation request (Title, Website URL, Dates, Max Team Size = 4). Optimistically initializes the team under `Pending Verification` status, publishes 2 structured vacancy slots, reviews rule-ranked candidate recommendations, dispatches invitations, and locks the roster once accepted.
+- **Workflow:** Searches HackMatch for "MetHacks 2026". Finds no matching event. Submits an event request as a PART (title, official URL, dates, official limits; the hypothetical example has a maximum of 4). Waits for ADMIN approval before creating a team, publishes the needed ML/UI vacancies within event capacity, reviews rule-ranked candidates, sends invitations, and locks a valid roster.
 
 ---
 
@@ -116,7 +121,7 @@ Following the course guidelines, the platform defines two global authenticated a
 - **Technical Background:** Beginner-to-Intermediate. Basic Java, Python, HTML/CSS, Git.
 - **Goals & Motivations:** Wants to recruit two beginner-friendly peers who value learning and mentorship over ruthless competition.
 - **Pain Points:** Intimidated by hyper-competitive teams; needs a transparent, friendly way to evaluate applicants without feeling inadequate.
-- **Workflow:** Selects an existing verified hackathon from the directory. Posts a team listing with the goal set to "Casual / Learning", configures vacancy cards on the web dashboard, reviews interested applicants, and approves candidates who share a learning mindset.
+- **Workflow:** Selects an existing verified hackathon from the directory. Posts a team listing with the goal set to "Learning", configures vacancy cards on the web dashboard, reviews interested applicants, and approves candidates who share a learning mindset.
 
 ---
 
@@ -124,23 +129,23 @@ Following the course guidelines, the platform defines two global authenticated a
 
 **Role Identifier:** `ADMIN`
 
-**Description:** An authorized system operator responsible for platform safety, content moderation, directory verification, and operational governance. Administrators access a restricted administrative dashboard protected by mandatory multi-factor authentication. They review crowdsourced event creation requests with full authority to factually correct mismatched parameters (such as rectifying user-submitted team size caps to match official event terms, adjusting dates, or correcting website links) prior to approval, merge duplicate submissions, or reject non-compliant requests with explanatory feedback. Administrators also maintain published canonical event records if external event rules change.
+**Description:** An authorized system operator responsible for platform safety, content moderation, directory verification, and operational governance. Administrators access a restricted administrative dashboard protected by mandatory multi-factor authentication. They create official listings and review PART event submissions with authority to factually correct mismatched parameters (such as rectifying user-submitted team size caps to match official event terms, adjusting dates, or correcting website links) prior to approval, merge duplicate submissions, or reject non-compliant requests with feedback. A merge or rule correction that would invalidate memberships/capacity is rejected without partial changes. ADMIN can disable unsafe event recruitment but cannot secretly rewrite team rosters.
 
 **Primary Goals:**
 - Audit, correct, and verify crowdsourced event metadata (e.g., aligning team size limits and dates with official website terms) before publishing.
 - Maintain an accurate, verified hackathon directory by evaluating crowdsourced requests and updating published records.
 - Protect participants from phishing schemes, harassment, and fraudulent profiles.
-- Enforce fair platform usage and maintain transparent, immutable audit trails.
+- Enforce fair platform usage and keep basic action records; searchable audit review is post-MVP.
 
 **Technical Expertise:** Proficient in administrative web consoles, data verification, basic SQL queries, and community moderation workflows.
 
 **Key Characteristics:**
-- Operates under strict least-privilege principles (cannot tamper with private team rosters or read unflagged private communications).
+- Operates under strict least-privilege principles (cannot rewrite private rosters or read private team workspace notes solely through ADMIN status).
 - Requires clear, actionable workflows to prevent verification backlogs.
 
 **Constraints or Pain Points:**
-- **Verification Velocity:** Must quickly verify or reject crowdsourced event submissions to prevent blocking team recruitment.
-- **Compliance & Privacy:** Must ensure account deletions comply with data privacy regulations (PIPEDA / GDPR right-to-be-forgotten).
+- **Verification Workload:** Recruitment waits for approval, so ADMIN needs a clear pending queue and reasons/status visible to submitters.
+- **Privacy:** Uses the proposed 30-day live-data deletion service target; legal applicability and backup/log retention require team confirmation under R-06 before real-user production.
 
 ---
 
@@ -150,7 +155,7 @@ Following the course guidelines, the platform defines two global authenticated a
 - **Technical Background:** Advanced. Web security, database management, regex pattern matching, DNS validation, moderation tooling.
 - **Goals & Motivations:** Ensure HackMatch remains a safe, credible platform for all collegiate participants while preventing spam bots and malicious actors.
 - **Pain Points:** Flooded with duplicate event creation requests caused by slight user spelling variations; dealing with fake hackathon postings linking to malicious credential harvesters.
-- **Workflow:** Signs in via mandatory credentials + hardware/email MFA. Opens the Administrative Dashboard. Reviews the Event Verification Queue: inspects Elena’s submission for "MetHacks 2026"; notices the student requested Max Team Size = 6, but verification of the official event rules shows a strict 4-person limit; edits the record's max team size field to 4, validates the official SSL certificate and domain, checks for existing duplicate records, and clicks `Approve & Publish`. Transitions to the Moderation Queue to review a flagged team posting containing offensive language, issues a formal warning, and redacts the listing text.
+- **Workflow:** Signs in via credentials and mandatory email OTP. Opens the Administrative Dashboard. Reviews the Event Verification Queue: inspects Elena’s submission for "MetHacks 2026"; confirms the submitted maximum of 4 against the hypothetical official rules, checks organizer identity, edition, URL destination, dates, and duplicates, and clicks `Approve & Publish`. A TLS certificate alone is not evidence of legitimacy. Creates a moderation case for an offensive public team post, records a warning, and redacts it. Participant report intake and searchable audit review join this workflow after MVP.
 
 ---
 
@@ -158,14 +163,18 @@ Following the course guidelines, the platform defines two global authenticated a
 
 **Role Identifier:** `VISITOR`
 
-**Description:** A prospective user who lands on the HackMatch web client without an active authenticated session. Visitors can browse upcoming hackathon listings, view anonymized team vacancy boards, and inspect public platform documentation. To prevent commercial talent scraping and student stalking, all personal contact information, verified profile links, and direct messaging features remain strictly locked behind registration.
+**Description:** A prospective user who lands on the HackMatch web client without an active authenticated session. Visitors can browse upcoming hackathon listings, view anonymized team vacancy boards, and inspect public platform documentation. To prevent commercial talent scraping and student stalking, participant profile cards, member handles, and portfolio/contact links are not exposed to Visitors. Registration does not unlock private contacts; confirmed team membership is required. In-app direct messaging is outside scope.
 
 **Primary Goals:**
 - Explore available hackathons and evaluate open team vacancies before creating an account.
 - Experience zero-friction, registration-free preview of platform value.
-- Register a new `PART` account or authenticate via Google/GitHub OAuth once a suitable team or event is found.
+- Register a new PART account or use Google/GitHub primary sign-in, then complete email OTP before interaction.
 
 **Technical Expertise:** Variable.
+
+**Key Characteristics:**
+- Has no stored account role or authenticated session.
+- Uses responsive public pages to assess events and anonymized team vacancies.
 
 **Constraints or Pain Points:**
 - Read-only access: cannot create teams, submit join applications, send invitations, or access full participant profiles.
@@ -176,39 +185,35 @@ Following the course guidelines, the platform defines two global authenticated a
 - **Demographics:** 19 years old, 1st-year Computer Programming student who has never attended a tech event.
 - **Device & Environment:** Campus computer lab desktop workstation (1920x1080 resolution, Chrome desktop).
 - **Technical Background:** Novice. Learning basic Python and web scripting; intimidated by high-pressure competitive environments.
+- **Goals & Motivations:** Explore suitable events and learning-oriented teams before committing to registration.
 - **Pain Points:** Skeptical of platforms that force immediate account registration or credit card entry just to view event listings.
-- **Workflow:** Lands on the HackMatch homepage via a campus Discord flyer link on her lab desktop. Browses verified hackathon listings, filters open teams by "Beginner Welcome", finds Jordan’s team, and clicks "Sign in with Google" to create her verified `PART` profile.
+- **Workflow:** Lands on the HackMatch homepage via a campus Discord flyer link on her lab desktop. Browses verified hackathon listings and anonymized team previews, notices Jordan’s "Learning" goal, and uses Google primary sign-in followed by mandatory email OTP to create/access her PART account. She can then filter teams and apply.
 
 ---
 
 ## Project Stakeholders
 
-Stakeholders are external individuals, regulatory entities, or evaluators who do not hold interactive software accounts or perform day-to-day application workflows in HackMatch, but whose rules, operational constraints, and assessment criteria directly dictate platform requirements and system artifacts.
+Direct users (PART and ADMIN) are stakeholders too. The groups below have external or academic interests and no MVP account permissions. They do not confer implementation authority through hypothetical personas.
 
-Following the project guidelines, the platform identifies two core stakeholder groups:
+### External Stakeholders: Hackathon Organizers and Campus Clubs
 
-### 1. External Stakeholders: Hackathon Organizers & Collegiate Tech Clubs
-- **Representative Entities:** Major League Hacking (MLH), collegiate hackathon organizing committees (e.g., Hack the North, MetHacks), and student tech clubs (Google Developer Student Clubs, ACM student chapters).
-- **Relationship to System:** External beneficiaries and rule enforcers. Organizers do not log in or manage teams through HackMatch; rather, they interact with the outputs produced by HackMatch teams during event registration and check-in.
-- **Key Interests & Operational Constraints:**
-  - **Team Capacity Integrity:** Enforcing strict event-configured team size caps (maximum 4 members) to maintain fair competition rules.
-  - **Fraud and Multi-Registration Prevention:** Ensuring that students cannot appear on multiple confirmed rosters for the same event or change roster composition during the hackathon.
-  - **Auditability of Team Formation:** Demanding verifiable proof that teams were legally formed, finalized, and locked prior to the official hackathon submission cutoff.
-- **System Traceability & Alignment:**
-  - **Manifest & Hash Generation:** Captured in [`US-024: Export Team Manifest & Check-In Card`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-024) and [`FR-071`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/04_requirements/functional_nonfunctional_requirements.md#FR-071)/[`FR-072`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/04_requirements/functional_nonfunctional_requirements.md#FR-072). Teams export a printable PDF/JSON manifest featuring an SHA-256 cryptographic verification hash of the locked roster that organizers inspect at registration tables.
-  - **Event Accuracy:** Supported by administrative verification workflows ([`US-010`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-010) / [`FR-024`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/04_requirements/functional_nonfunctional_requirements.md#FR-024)) ensuring event rules accurately mirror official hackathon guidelines.
+- **Role Identifier:** STAKE-EXT (stakeholder label, not account role).
+- **Description:** Publish official event information that ADMIN checks when creating/verifying canonical records. Examples include collegiate event committees and clubs; no partnership or endorsement is claimed.
+- **Primary Goals:** Accurate dates/eligibility/team rules; participants forming valid teams; fewer duplicate or misleading event records.
+- **Technical Expertise:** Variable event operations/web literacy; no HackMatch console required.
+- **Key Characteristics:** External source of official event rules and possible future self-service users. Event-configured limits vary; there is no universal four-person requirement.
+- **Constraints or Pain Points:** HackMatch verification does not replace official registration or make a team eligible. Later roster export is optional information whose acceptance by an organizer must be established, not presumed.
+- **Traceability:** [US-009](../02_user_stories/user_stories.md#us-009), [US-010](../02_user_stories/user_stories.md#us-010), [FR-085](../04_requirements/functional_nonfunctional_requirements.md#fr-085); later [US-024](../02_user_stories/user_stories.md#us-024). No ticketing, payments, judging or full scheduling is included.
 
----
+### Academic Stakeholders: Course Professor and Evaluators
 
-### 2. Academic Stakeholders: Course Evaluators & Faculty Supervisors
-- **Representative Entities:** Course Professor, Faculty Evaluators, and Academic Project Mentors (Centennial College Software Engineering Technology / COMP 313).
-- **Relationship to System:** Academic evaluators who assess the engineering rigor, architectural integrity, documentation quality, and security posture of the software engineering deliverable.
-- **Key Interests & Operational Constraints:**
-  - **Requirements Traceability:** End-to-end alignment connecting personas and user stories (`US-001`–`US-028`) to system requirements (`FR-001`–`FR-080`, `NR-001`–`NR-024`), database entities, and test suites.
-  - **Defensive Engineering & Security:** Enforcing industry-grade authentication (Argon2id password hashing, mandatory email OTP MFA, constant-time comparisons, OWASP Top 10 mitigation).
-  - **Academic Rigor:** Adherence to IEEE citation standards, professional documentation formatting, and disciplined version control conventions.
-- **System Traceability & Alignment:**
-  - Directly governs platform-wide non-functional requirements ([`NR-001`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/04_requirements/functional_nonfunctional_requirements.md#NR-001) through [`NR-024`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/04_requirements/functional_nonfunctional_requirements.md#NR-024)), immutable audit logs ([`US-028`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md#US-028) / [`FR-080`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/04_requirements/functional_nonfunctional_requirements.md#FR-080)), and architectural quality gates.
+- **Role Identifier:** STAKE-ACAD (stakeholder label, not account role).
+- **Description:** Evaluate COMP313 deliverables, traceability, scope realism and engineering quality; no application role is needed.
+- **Primary Goals:** Both required Markdown and Word deliverables, evidence-based proposal with at least 20 references, detailed testable FR/NFR coverage, secure and usable MVP.
+- **Technical Expertise:** Software-development and academic evaluation expertise.
+- **Key Characteristics:** Supplied feedback includes email OTP in FR and NFR, 10-minute expiry, account lock for 15 minutes after 5 incorrect OTP attempts, and tablet/phone orientation support. Specific libraries, numerical matching weights and enterprise traffic targets are not attributed to the professor.
+- **Constraints or Pain Points:** The Word timeline must focus on Must-Have MVP work; detailed stories stay in Markdown unless its template asks otherwise. MVP target November 29, 2026; final report December 13, 2026; final delivery/presentation December 18, 2026. Sprint 1 is October 25, 2026.
+- **Traceability:** [Current backlog](../02_user_stories/user_stories.md), [MVP milestones](../03_mvp/mvp_definition.md), and [requirements/policy register](../04_requirements/functional_nonfunctional_requirements.md#policy-register). Citation style must be consistent; IEEE is not asserted as mandatory where the template allows alternatives.
 
 ---
 
@@ -216,5 +221,5 @@ Following the project guidelines, the platform identifies two core stakeholder g
 
 Threat actors represent unauthorized entities whose motivations directly oppose system security, user privacy, and platform integrity. Modeling these boundaries ensures non-functional security and moderation requirements are grounded in defensive specifications:
 
-1. **Commercial Scraper / Talent Harvester (`THREAT-SCRAPE`):** Automated bot scripts or aggressive third-party recruiters attempting to harvest student emails, GitHub profiles, and portfolio data without consent. Countered by strict rate limiting (max 60 req/min per IP) and data redaction on all public directory endpoints.
-2. **Phishing Impersonator / Griefing Troll (`THREAT-TROLL`):** Malicious actors seeking to submit fake hackathon postings with phishing links, post abusive or harassing team descriptions, or flood team leads with spam applications. Countered by mandatory URL schema validation, HTML input sanitization, optimistic `Unverified` event badges, rate-limited applications (max 3 active), and administrative instant-suspension tooling backed by immutable audit logs.
+1. **Commercial Scraper / Talent Harvester (`THREAT-SCRAPE`):** Automated bot scripts or aggressive third-party recruiters attempting to harvest student emails, GitHub profiles, and portfolio data without consent. Mitigated by public-data redaction and the proposed 60 requests/minute/IP limit (R-07). These controls do not guarantee that scraping is impossible; shared-network impact must be tested.
+2. **Phishing Impersonator / Griefing Troll (`THREAT-TROLL`):** Malicious actors seeking to submit fake hackathon postings with phishing links, post abusive or harassing team descriptions, or flood team leads with spam applications. Mitigated by private pending submissions, ADMIN approval before publication/recruitment, safe URL/content handling, proposed application limits, account suspension and basic action records. Full participant reporting/audit review arrives after MVP.
