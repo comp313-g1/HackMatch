@@ -2,9 +2,17 @@
 
 ## Overview
 
-HackMatch helps participants form teams before a hackathon. Following the professor's template, the MVP roles below each have a description, goals, technical expertise, characteristics, constraints, and personas. Team-specific permissions, unauthenticated visitors, stakeholders, and threat actors are distinguished from account roles.
+HackMatch is a pre-hackathon team formation platform designed to connect students with complementary technical skills, schedule availability, and project ambitions before an event begins. This document formally defines the user taxonomy, operational boundaries, and concrete user personas governing system design.
 
-The MVP account roles are Participant (`PART`) and Platform Administrator (`ADMIN`). Team Lead is a Participant who owns a particular team, not a global account role. Visitors have no stored role.
+Following the course guidelines, the platform defines two global authenticated account types, one contextual role, one unauthenticated public state, and an explicit anti-user security boundary:
+
+| Role Category | Role Name | Identifier | Account Type | Primary Responsibility |
+|---|---|---|---|---|
+| **Primary** | Hackathon Participant | `PART` | Global Account | Maintains portfolio profile, declares event availability, applies to teams, accepts invites. |
+| **Contextual** | Team Lead | `LEAD` | Contextual Permission | A `PART` who creates a team. Requests unlisted events, defines vacancies, and locks rosters. |
+| **Governance** | Platform Administrator | `ADMIN` | Privileged Account | Verifies crowdsourced event requests, moderates abuse reports, and audits system integrity. |
+| **Public** | Unauthenticated Visitor | `VISITOR` | Session State | Discovers hackathons and previews open teams with strict privacy-redacted views. |
+| **Anti-User** | Malicious Actor / Scraper | `THREAT` | Security Boundary | Unauthorized data harvesting, phishing event URLs, and platform harassment. |
 
 ---
 
@@ -12,87 +20,102 @@ The MVP account roles are Participant (`PART`) and Platform Administrator (`ADMI
 
 **Role Identifier:** `PART`
 
-**Description:** A student, recent graduate, or independent hacker seeking teammates. Participants include developers, designers, and other contributors. They sign in with email-based login 2FA, maintain profiles with skills, stack, experience, school, goals, availability, and portfolio links, browse hackathons and open team listings, apply to teams, and accept or decline invitations. Regular participants browse and filter open teams; they do not receive algorithmic team recommendations in the MVP.
+**Description:** A student, recent graduate, or self-taught developer looking to find or join a balanced hackathon team. Participants sign in via federated OAuth (Google or GitHub) or email/password secured with mandatory Login Multi-Factor Authentication (MFA). They manage a structured technical profile (skills, primary role, experience tier, portfolio URLs, and historical hackathon records), search verified and pending hackathon directories, toggle event availability flags, apply to open vacancy slots, and process incoming team invitations.
 
 **Primary Goals:**
-- Present skills and goals clearly in a profile.
-- Find an event and declare availability for it.
-- Browse and filter open teams, then apply or respond to an invitation.
-- Join a confirmed team before the event begins.
+- Showcase verified technical, design, or project management capabilities and past hackathon history.
+- Discover hackathons, declare event-specific participation, and set personal objectives (`Learning`, `Project Completion`, or `Competitive / Prize-Hunting`).
+- Find open team vacancies matching their skills and schedule constraints without manual Discord searching.
+- Secure a spot on a confirmed, roster-locked team prior to hackathon registration deadlines.
 
-**Technical Expertise:** Variable, from first-time hackers and designers to experienced developers.
+**Technical Expertise:** Variable, ranging from complete beginners (first-time hackathon attendees) to advanced senior engineering students and experienced open-source contributors.
 
 **Key Characteristics:**
-- May contribute development, design, or another project skill.
-- Has limited time to assess team fit before an event.
-- May seek teammates outside an existing school or social circle.
+- Time-constrained students balancing coursework and hackathon preparation.
+- Diverse academic backgrounds, technical competencies, and hackathon experience tiers.
+- Desktop-focused workflow: students access the platform via desktop or laptop web browsers (Chrome, Firefox, Safari, Edge) alongside their IDEs, terminal windows, and coursework.
+- Reluctant to cold-message strangers on unstructured chat boards without knowing their real technical background and time commitment.
 
 **Constraints or Pain Points:**
-- Unstructured channels make skills and commitment hard to compare.
-- A user cannot belong to more than one confirmed team for the same hackathon.
-
-**Personas:**
-
-### Persona 1.1: Nisha Sharma (Frontend Specialist Seeking Systems Teammate)
-- **Demographics:** 21 years old, 3rd-year Software Engineering student at Centennial College.
-- **Technical Background:** Proficient in React, Tailwind CSS, and Figma; basic Node.js knowledge; limited SQL/database experience.
-- **Goals & Motivations:** Wants to win a category prize at an upcoming regional collegiate hackathon. Needs a reliable backend/API partner to handle database architecture and deployment.
-- **Pain Points:** Tired of scouring 500+ unorganized messages on Discord. Reluctant to reach out to strangers without knowing their actual technical competency and commitment level.
-- **Workflow:** Signs in with email-based login 2FA, selects an upcoming hackathon, filters open teams for compatible goals and skill needs, and applies to a suitable team.
-
-### Persona 1.2: Omar Vance (Self-Taught Mobile Dev with Strict Availability)
-- **Demographics:** 24 years old, career changer enrolled in an accelerated diploma program; works part-time on Friday evenings.
-- **Technical Background:** Intermediate Flutter and Kotlin; comfortable consuming RESTful APIs.
-- **Goals & Motivations:** Wants to build a portfolio-grade mobile prototype over the weekend to show potential employers.
-- **Pain Points:** Past teams abandoned projects at 3:00 AM. Cannot afford to waste Saturday morning coordinating basics or working with teammates who only want to brainstorm and not code.
-- **Workflow:** Records his availability for an event, links his GitHub repository, filters open teams for a compatible concept and schedule, and applies to a suitable team.
-
-### Persona 1.3: Marcus Thorne (Accepted Teammate Seeking Active Collaboration)
-- **Demographics:** 22 years old, 3rd-year Software Engineering Technology student at Centennial College.
-- **Technical Background:** Intermediate backend developer; Node.js, Express, PostgreSQL, Git.
-- **Goals & Motivations:** Wants to join an active team early to align on project architecture and repository setup before the event begins.
-- **Pain Points:** Frustrated by joining teams where the team lead stops communicating or pivots the project unexpectedly, leaving him trapped on an inactive roster.
-- **Workflow:** Accepts an invitation from a Team Lead, accesses his team view to retrieve teammate contact details, and coordinates setup. If the team stalls or becomes inactive prior to roster lock, he leaves the team to return to looking-for-team status.
+- **Single-Team Invariant:** A participant cannot belong to more than one confirmed roster for the same hackathon.
+- **Application Throttle:** Limited to a maximum of 3 concurrent active team applications per event to eliminate mass-spamming.
+- **Privacy Protections:** Student contact details (email, Discord handle) are concealed until a mutual invitation or application is formally accepted.
 
 ---
 
-## Team-Specific Responsibility: Team Lead
+### Persona 1.1: Nisha Sharma (Collaborative Frontend Developer)
+- **Demographics:** 21 years old, 3rd-year Software Engineering Technology student at Centennial College.
+- **Device & Environment:** 13-inch Apple MacBook Air (1440x900 resolution, Chrome/Safari), working from campus library and computer labs.
+- **Technical Background:** Intermediate. Proficient in React, Tailwind CSS, TypeScript, and Figma; basic Node.js; no database administration experience.
+- **Goals & Motivations:** Wants to build a polished, accessible frontend for an AI sustainability tool at an upcoming inter-collegiate hackathon. Needs a reliable backend/API partner to manage server infrastructure.
+- **Pain Points:** Overwhelmed by disorganized, fast-scrolling Discord `#looking-for-team` channels. Frustrated by reaching out to students who claim "full-stack skills" but cannot integrate REST APIs.
+- **Workflow:** Signs in via Google OAuth on her laptop in the campus library. Searches for an upcoming regional hackathon, filters open team listings for "Backend / Node.js vacancy" with a "Competitive" goal, reviews the team pitch, and submits a join application.
 
-**Role Identifier:** `PART` with team-owner permission; no separate `LEAD` or `CAPT` account role.
+---
 
-**Description:** A Participant who creates and owns a team leads that team. For that team, the lead can manage its recruitment listing and open slots, review recommended participant candidates, send invitations, process applications, and confirm and lock the roster. The same person may lead one team and act as a regular Participant in another hackathon. Roster export is deferred unless needed for event check-in.
+### Persona 1.2: Omar Vance (Self-Taught Mobile Dev with Strict Schedule Constraints)
+- **Demographics:** 24 years old, career changer enrolled in an accelerated diploma program; works a part-time job on Friday evenings.
+- **Device & Environment:** Desktop dual-monitor workstation (1920x1080, Chrome); Android device for testing.
+- **Technical Background:** Intermediate. Fluent in Kotlin, Flutter, and Firebase; highly proficient with Git version control.
+- **Goals & Motivations:** Wants to build a native mobile proof-of-concept to strengthen his junior developer portfolio. Must find teammates who respect a strict 20-hour weekend time budget.
+- **Pain Points:** Burned by previous hackathons where disorganized teams spent 14 hours debating project ideas and abandoned the code repository at 3:00 AM.
+- **Workflow:** Signs in with GitHub OAuth. Populates his profile with his past GitHub repositories, sets his hackathon availability flag to "15–20 hours commitment / Pragmatic Delivery", and reviews inbound invitations sent by Team Leads.
+
+---
+
+### Persona 1.3: Marcus Thorne (Accessibility-Focused Developer / Screen Reader User)
+- **Demographics:** 22 years old, final-year Computer Science student, low-vision developer.
+- **Device & Environment:** Windows 11 laptop running NVDA screen reader, high-contrast OS mode, full keyboard navigation (no mouse).
+- **Technical Background:** Advanced backend and systems engineer. Proficient in Python, Go, PostgreSQL, Docker, and Linux.
+- **Goals & Motivations:** Wants to join an active team early to establish repository architecture and Dockerized development environments before event check-in.
+- **Pain Points:** Inaccessible platforms with low-contrast buttons, unlabelled modal popups, and non-navigable search filters that break screen-reader focus.
+- **Workflow:** Signs in via standard credentials with email-based OTP MFA. Relies on structured WCAG 2.1 AA keyboard navigation to browse team vacancies, inspect vacancy requirements, and accept an invitation from a Team Lead.
+
+---
+
+## Contextual Role: Team Lead
+
+**Role Identifier:** `LEAD` *(Contextual authorization state of a `PART`)*
+
+**Description:** Any authenticated Participant (`PART`) who initializes a new team listing assumes the contextual `LEAD` permissions for that specific team record. The Team Lead anchors the team to an existing official hackathon or submits a crowdsourced event registration request. They specify the project concept, competitive objective, and discrete vacancy slots, review incoming applications, send direct invitations to solo candidates, and lock the final roster.
 
 **Primary Goals:**
-- Publish the team's project concept, goal, and open skill needs.
-- Review candidate recommendations and send invitations.
-- Approve or decline applications using a simple workflow.
-- Confirm and lock a complete roster.
+- Form a well-rounded, complementary team before the hackathon kickoff.
+- Register an unlisted hackathon if not currently in the platform directory.
+- Define explicit skill vacancies (e.g., "1 UI/UX Designer" and "1 Backend Engineer") to attract targeted talent.
+- Update and refine team details (project concept pitch, vacancy roles, required skills) through self-service editing prior to roster lock.
+- Screen candidate profiles, approve or decline applications, and lock the confirmed roster.
 
-**Technical Expertise:** Variable; ownership depends on creating the team, not seniority.
+**Technical Expertise:** Variable; permission is granted based on team creation, not seniority or skill level.
 
 **Key Characteristics:**
-- Initiates team formation and coordinates recruitment.
-- Values complementary skills and shared goals.
+- Proactive coordinator who takes ownership of project vision and team composition.
+- Seeks transparency regarding applicant skill levels and past hackathon delivery reliability.
 
 **Constraints or Pain Points:**
-- Must respect event team-size limits and existing team membership.
-- Cannot change membership after the roster is locked.
+- **Capacity Limits:** Enforced team size limits ($2 \le \text{members} \le 6$) bounded by the target hackathon's rules.
+- **Invitation Race Condition:** Pending invitations must auto-cancel if open slots fill via approved applications before the invitee responds.
+- **Roster Freezing:** Once the Lead locks the roster, no further membership mutations, invitations, or applications are permitted.
 
-**Personas:**
+---
 
-### Team Lead Persona 1: Elena Rostova (Competitive Full-Stack Project Lead)
-- **Demographics:** 23 years old, 4th-year Computer Science student, veteran of 5 hackathons (2 podium finishes).
-- **Technical Background:** Advanced TypeScript, Python, Docker, PostgreSQL, AWS.
-- **Goals & Motivations:** Has a refined concept for an AI-powered accessibility tool. Seeks 1 UI/UX designer and 1 machine learning student to complete a 4-person team.
-- **Pain Points:** Wastes hours interviewing students who claimed "full-stack proficiency" but cannot write basic API routes or commit code to Git branches.
-- **Workflow:** Creates the AccessiVision team listing with open skill slots, reviews rule-ranked participant candidates, processes applications, sends invitations, and locks the confirmed roster.
+### Team Lead Persona 2.1: Elena Rostova (Competitive Full-Stack Project Lead)
+- **Demographics:** 23 years old, 4th-year Software Engineering student; veteran of 5 hackathons (2 podium placements).
+- **Device & Environment:** High-DPI laptop (1440p, macOS Chrome).
+- **Technical Background:** Advanced. TypeScript, Next.js, Python FastAPI, PostgreSQL, AWS, Docker.
+- **Goals & Motivations:** Has a validated project concept for an automated medical note summarizer. Aims to place in the top 3 at an upcoming university hackathon. Needs exactly 1 ML engineer and 1 UI/UX designer.
+- **Pain Points:** Inability to find an unlisted local hackathon on generic platforms; spending valuable hacking time setting up basic team logistics.
+- **Workflow:** Searches HackMatch for "MetHacks 2026". Finds no matching event. Submits an event creation request (Title, Website URL, Dates, Max Team Size = 4). Optimistically initializes the team under `Pending Verification` status, publishes 2 structured vacancy slots, reviews rule-ranked candidate recommendations, dispatches invitations, and locks the roster once accepted.
 
-### Team Lead Persona 2: Jordan Lee (Collaborative First-Time Coordinator)
-- **Demographics:** 20 years old, 2nd-year student attending their first major inter-university hackathon with a close classmate.
-- **Technical Background:** Basic Java, Python, and HTML/CSS.
-- **Goals & Motivations:** Wants to recruit two additional teammates who share a beginner-friendly, collaborative learning mindset.
-- **Pain Points:** Intimidated by hyper-competitive teams; needs an easy, transparent way to recruit peers at a similar skill level without feeling judged.
-- **Workflow:** Posts a beginner-friendly listing with open skill slots, reviews interested participants, and approves suitable applications after checking their profiles.
+---
+
+### Team Lead Persona 2.2: Jordan Lee (Collaborative First-Time Coordinator)
+- **Demographics:** 20 years old, 2nd-year student attending their first inter-university hackathon with a close classmate.
+- **Device & Environment:** 15-inch Windows laptop (1920x1080 resolution, Edge browser).
+- **Technical Background:** Beginner-to-Intermediate. Basic Java, Python, HTML/CSS, Git.
+- **Goals & Motivations:** Wants to recruit two beginner-friendly peers who value learning and mentorship over ruthless competition.
+- **Pain Points:** Intimidated by hyper-competitive teams; needs a transparent, friendly way to evaluate applicants without feeling inadequate.
+- **Workflow:** Selects an existing verified hackathon from the directory. Posts a team listing with the goal set to "Casual / Learning", configures vacancy cards on the web dashboard, reviews interested applicants, and approves candidates who share a learning mindset.
 
 ---
 
@@ -100,67 +123,66 @@ The MVP account roles are Participant (`PART`) and Platform Administrator (`ADMI
 
 **Role Identifier:** `ADMIN`
 
-**Description:** A designated MVP user with a limited administrator interface. Administrators sign in with email-based login 2FA, create, update, and archive hackathon listings, and perform basic moderation of inappropriate team posts and accounts. Organizer submission queues, extensive reporting, and enterprise telemetry are outside this MVP role. Admin authority does not grant ownership of participant teams.
+**Description:** An authorized system operator responsible for platform safety, content moderation, directory verification, and operational governance. Administrators access a restricted administrative dashboard protected by mandatory multi-factor authentication. They review crowdsourced event creation requests with full authority to factually correct mismatched parameters (such as rectifying user-submitted team size caps to match official event terms, adjusting dates, or correcting website links) prior to approval, merge duplicate submissions, or reject non-compliant requests with explanatory feedback. Administrators also maintain published canonical event records if external event rules change.
 
 **Primary Goals:**
-- Keep official hackathon listings current.
-- Remove abusive posts and deactivate non-compliant accounts when needed.
-- Restrict administrative functions to authorized users.
+- Audit, correct, and verify crowdsourced event metadata (e.g., aligning team size limits and dates with official website terms) before publishing.
+- Maintain an accurate, verified hackathon directory by evaluating crowdsourced requests and updating published records.
+- Protect participants from phishing schemes, harassment, and fraudulent profiles.
+- Enforce fair platform usage and maintain transparent, immutable audit trails.
 
-**Technical Expertise:** Comfortable checking event information and using a web administration interface.
+**Technical Expertise:** Proficient in administrative web consoles, data verification, basic SQL queries, and community moderation workflows.
 
 **Key Characteristics:**
-- Manages platform listings and basic safety across events.
-- Keeps participant and administrator permissions distinct.
+- Operates under strict least-privilege principles (cannot tamper with private team rosters or read unflagged private communications).
+- Requires clear, actionable workflows to prevent verification backlogs.
 
 **Constraints or Pain Points:**
-- Outdated events and misleading posts reduce trust.
-- The course project calls for focused administration workflows.
-
-**Personas:**
-
-### Persona 2.1: Riley Miller (Student Hackathon Operations Lead)
-- **Demographics:** 22 years old, final-year Computer Systems student and VP of Logistics for a student computing society.
-- **Technical Background:** Proficient with web admin consoles, spreadsheet management, Discord community moderation, and basic SQL data lookups.
-- **Goals & Motivations:** Keep campus hackathon listings accurate, ensure recruitment listings comply with student codes of conduct, and maintain platform credibility.
-- **Pain Points:** Spammed with duplicate, misleading, or joke recruitment listings; needs a straightforward administrative dashboard to hide offensive posts and disable troll accounts.
-- **Workflow:** Signs in with email-based login 2FA, updates official hackathon details, removes inappropriate team listings, and deactivates abusive accounts when reported.
+- **Verification Velocity:** Must quickly verify or reject crowdsourced event submissions to prevent blocking team recruitment.
+- **Compliance & Privacy:** Must ensure account deletions comply with data privacy regulations (PIPEDA / GDPR right-to-be-forgotten).
 
 ---
 
-## Unauthenticated Visitor
+### Persona 3.1: Riley Miller (Student Platform Safety & Verification Lead)
+- **Demographics:** 22 years old, final-year Cybersecurity & Systems Administration student; student club operations lead.
+- **Device & Environment:** Desktop workstation (1080p, Firefox Developer Edition, Linux).
+- **Technical Background:** Advanced. Web security, database management, regex pattern matching, DNS validation, moderation tooling.
+- **Goals & Motivations:** Ensure HackMatch remains a safe, credible platform for all collegiate participants while preventing spam bots and malicious actors.
+- **Pain Points:** Flooded with duplicate event creation requests caused by slight user spelling variations; dealing with fake hackathon postings linking to malicious credential harvesters.
+- **Workflow:** Signs in via mandatory credentials + hardware/email MFA. Opens the Administrative Dashboard. Reviews the Event Verification Queue: inspects Elena’s submission for "MetHacks 2026"; notices the student requested Max Team Size = 6, but verification of the official event rules shows a strict 4-person limit; edits the record's max team size field to 4, validates the official SSL certificate and domain, checks for existing duplicate records, and clicks `Approve & Publish`. Transitions to the Moderation Queue to review a flagged team posting containing offensive language, issues a formal warning, and redacts the listing text.
 
-**Role Identifier:** None; there is no stored `GUEST` account role.
+---
 
-**Description:** A prospective user who can browse public hackathon information and privacy-safe previews of open team listings. Visitors cannot create profiles, apply, send invitations, or view private participant details until they register.
+## Public State: Unauthenticated Visitor
+
+**Role Identifier:** `VISITOR`
+
+**Description:** A prospective user who lands on the HackMatch web client without an active authenticated session. Visitors can browse upcoming hackathon listings, view anonymized team vacancy boards, and inspect public platform documentation. To prevent commercial talent scraping and student stalking, all personal contact information, verified profile links, and direct messaging features remain strictly locked behind registration.
 
 **Primary Goals:**
-- Explore upcoming hackathons and available teams.
-- Register to participate in team formation.
+- Explore available hackathons and evaluate open team vacancies before creating an account.
+- Experience zero-friction, registration-free preview of platform value.
+- Register a new `PART` account or authenticate via Google/GitHub OAuth once a suitable team or event is found.
 
 **Technical Expertise:** Variable.
 
-**Key Characteristics:** Has no authenticated session or team permissions.
-
-**Constraints or Pain Points:** Cannot interact with teams before registering.
-
-**Personas:**
-
-### Visitor Persona: Samira Khan (First-Year Student Exploring Hackathons)
-- **Demographics:** 19 years old, 1st-year Computer Programming student who has never attended a hackathon.
-- **Technical Background:** Learning basic Python and HTML; curious about hackathons but intimidated by high competition.
-- **Goals & Motivations:** Wants to browse upcoming local student hackathons and see if there are teams welcoming beginners before she registers.
-- **Pain Points:** Skeptical of platforms that force registration behind paywalls or immediate email requirements before showing any content.
-- **Workflow:** Browses public hackathons and team listings, finds a beginner-friendly team, and registers to participate.
+**Constraints or Pain Points:**
+- Read-only access: cannot create teams, submit join applications, send invitations, or access full participant profiles.
 
 ---
 
-## Security and Threat Actors
+### Persona 4.1: Samira Khan (First-Year Student Exploring Hackathons)
+- **Demographics:** 19 years old, 1st-year Computer Programming student who has never attended a tech event.
+- **Device & Environment:** Campus computer lab desktop workstation (1920x1080 resolution, Chrome desktop).
+- **Technical Background:** Novice. Learning basic Python and web scripting; intimidated by high-pressure competitive environments.
+- **Pain Points:** Skeptical of platforms that force immediate account registration or credit card entry just to view event listings.
+- **Workflow:** Lands on the HackMatch homepage via a campus Discord flyer link on her lab desktop. Browses verified hackathon listings, filters open teams by "Beginner Welcome", finds Jordan’s team, and clicks "Sign in with Google" to create her verified `PART` profile.
 
-Malicious scrapers, spammers, and unauthorized users are threat actors, not business stakeholders or assignable roles. Private data and protected actions must remain behind appropriate access controls. Detailed controls belong in the requirements document.
+---
 
-### Threat Scenario: "ScraperBot / Commercial Recruiter"
-- **Profile:** Automated bot or aggressive third-party recruiter seeking to build an unconsented database of student developers for commercial placement.
-- **Hostile Motivation:** Extract thousands of candidate records with minimal friction.
-- **Target Seam:** Public hackathon participant directories and unredacted candidate cards.
-- **Expected Platform Reaction:** Private account details remain unavailable to visitors and protected actions require authorization.
+## Security Boundaries & Anti-Users
+
+Threat actors represent unauthorized entities whose motivations directly oppose system security, user privacy, and platform integrity. Modeling these boundaries ensures non-functional security and moderation requirements are grounded in defensive specifications:
+
+1. **Commercial Scraper / Talent Harvester (`THREAT-SCRAPE`):** Automated bot scripts or aggressive third-party recruiters attempting to harvest student emails, GitHub profiles, and portfolio data without consent. Countered by strict rate limiting (max 60 req/min per IP) and data redaction on all public directory endpoints.
+2. **Phishing Impersonator / Griefing Troll (`THREAT-TROLL`):** Malicious actors seeking to submit fake hackathon postings with phishing links, post abusive or harassing team descriptions, or flood team leads with spam applications. Countered by mandatory URL schema validation, HTML input sanitization, optimistic `Unverified` event badges, rate-limited applications (max 3 active), and administrative instant-suspension tooling backed by immutable audit logs.

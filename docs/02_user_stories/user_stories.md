@@ -2,479 +2,701 @@
 
 ## Overview
 
-This document defines HackMatch user stories using the roles in [Roles and Personas](../01_roles_and_personas/roles_and_personas.md). The MVP account roles are Participant (PART) and Platform Administrator (ADMIN). Public registration creates PART accounts only; ADMIN account provisioning is outside the public registration flow. An unauthenticated Visitor can browse public hackathon information but has no stored account role. A Team Lead is a PART with permissions for a team they own, not a separate account role.
+This document defines HackMatch user stories using the roles established in [Roles and Personas](../01_roles_and_personas/roles_and_personas.md). The system architecture defines two global authenticated account types (**Participant** — `PART`, and **Platform Administrator** — `ADMIN`), one contextual permission set (**Team Lead** — `LEAD`, assumed by a `PART` who creates a team), and one unauthenticated public state (**Unauthenticated Visitor** — `VISITOR`).
 
-The canonical story IDs include eighteen stories in MVP scope and two future-scope stories (US-011 and US-016). The MVP stories cover the agreed features in Word Sections 5, 8, and 9. Future stories do not add requirements to the MVP.
+The specification covers twenty-seven core MVP user stories and two future-scope stories (US-016, US-029), totaling **twenty-nine user stories** organized across six cohesive feature areas. This expanded suite provides balanced workload distribution across a 6-person engineering team, eliminates ambiguous compound features, and enforces rigorous end-to-end traceability with upstream roles and downstream technical requirements.
 
 ### Structure of a User Story
 
-Every story below follows the professor-provided [user-story template](user_stories_template.md): a unique identifier and title, User/Role, Story Statement, Description, numbered Acceptance Criteria, Priority, Complexity/Effort Estimate, and Related Stories. Priority uses High, Medium, or Low; effort uses Small, Medium, or Large.
+Every story below follows the standardized format:
+- **Identifier:** A unique sequential identifier in the format `US-XXX`.
+- **User/Role:** The specific user role (`VISITOR`, `PART`, `LEAD`, `ADMIN`).
+- **Story Statement:** *"As a [user role], I want to [action/capability], so that [benefit/value]."*
+- **Description:** Contextual details, business rules, and architectural intent.
+- **Acceptance Criteria:** A numbered list of specific, testable conditions.
+- **Priority:** High, Medium, or Low.
+- **Complexity/Effort Estimate:** Small, Medium, or Large.
+- **Related Stories:** Cross-referenced sequential identifiers.
 
 ---
 
 ## User Stories by Feature Area
 
-| Feature area | MVP stories | Future stories |
-| --- | --- | --- |
-| Authentication and Participant Profiles | US-001, US-002, US-003, US-018, US-020 | — |
-| Hackathon Directory and Event Management | US-004, US-019 | — |
-| Team Recruitment and Looking-for-Team Boards | US-007, US-008, US-009 | — |
-| Rule-Based Matching | US-010 | US-011 |
-| Invitations, Applications, and Rosters | US-012, US-013, US-014, US-015, US-021 | — |
-| Platform Administration and Trust | US-017, US-022 | US-016 |
+| Feature Area | MVP Stories | Future Stories |
+|---|---|---|
+| **1. Authentication and Participant Profiles** | US-001, US-002, US-003, US-004, US-005, US-006, US-007 | US-029 |
+| **2. Hackathon Directory and Event Management** | US-008, US-009, US-010 | — |
+| **3. Team Recruitment and Looking-for-Team Boards** | US-011, US-012, US-013, US-014 | — |
+| **4. Rule-Based Matching** | US-015 | US-016 |
+| **5. Invitations, Applications, and Rosters** | US-017, US-018, US-019, US-020, US-021, US-022, US-023, US-024 | — |
+| **6. Platform Administration and Trust** | US-025, US-026, US-027, US-028 | — |
 
 ---
 
 ### Feature Area 1: Authentication and Participant Profiles
 
-These stories establish verified Participant accounts, secure access for Participants and Administrators, and the profile information used in team formation. Email verification at registration and email-based login 2FA are distinct steps.
+These stories govern account creation, federated single sign-on, multi-factor credential authentication, session security, profile management, and historical hackathon records.
 
 #### US-001: Participant Registration and Email Verification
 
-**User/Role:** Unauthenticated Visitor
+**User/Role:** VISITOR
 
-**Story Statement:** As an unauthenticated visitor, I want to create and verify a Participant account, so that I can use HackMatch's team-formation features.
+**Story Statement:** As an unauthenticated visitor, I want to create an account with my email and password and verify my email address, so that I can establish a verified Participant profile.
 
-**Description:** Public registration creates a PART account only. Administrator accounts are provisioned outside this public flow. Email verification must be completed before the new Participant can use authenticated team actions.
+**Description:** Standard email/password registration creates a `PART` account in an `Unverified` state. Full access to interactive team formation is gated behind cryptographic email verification to prevent mailbox spoofing. Public registration never grants `ADMIN` privileges.
 
 **Acceptance Criteria:**
-1. A visitor can submit their name, email address, and password to register a PART account.
-2. The system validates the email address, rejects duplicate accounts, and enforces its configured password policy.
-3. The system sends a verification link to the submitted email address; a valid link verifies the account.
-4. An unverified account cannot use authenticated team-formation actions, and public registration never grants ADMIN privileges.
+1. A visitor can submit their full name, academic email address, and a password complying with security complexity standards (minimum 8 characters, mixed case, numbers, special characters).
+2. The system validates email format, confirms uniqueness, and dispatches a 256-bit cryptographically secure verification token link expiring in 24 hours.
+3. Clicking a valid verification link transitions the account to `Verified` status; expired or tampered links return an explanatory error.
+4. An unverified account cannot declare availability, create teams, submit applications, or accept invitations.
 
 **Priority:** High
 
 **Complexity/Effort Estimate:** Medium
 
-**Related Stories:** US-002, US-003, US-018, US-020
+**Related Stories:** US-002, US-003, US-004, US-005
 
 ---
 
-#### US-002: User Login and Session Management
+#### US-002: Federated OAuth Registration and Authentication
 
-**User/Role:** PART / ADMIN
+**User/Role:** VISITOR / PART
 
-**Story Statement:** As a Participant or Platform Administrator, I want to log in and end my session securely, so that I can access only my authorized functions.
+**Story Statement:** As a visitor or Participant, I want to register and sign in using my Google or GitHub account, so that I can access the platform quickly without creating separate credentials.
 
-**Description:** This story handles credential verification, login sessions, and logout for existing PART and ADMIN accounts. A valid password begins login but does not grant full access until the email-based 2FA step in US-018 succeeds. Password recovery is covered by US-020.
-
-**Acceptance Criteria:**
-1. The system validates submitted credentials and rejects invalid credentials without revealing sensitive account information.
-2. After valid credentials, the user must complete US-018 before receiving a fully authenticated session.
-3. A fully authenticated session grants only the functions authorized for that account's role and remains active until logout or session expiry.
-4. Logout ends the authenticated session, and the ended session cannot be used to access authenticated functions.
-
-**Priority:** High
-
-**Complexity/Effort Estimate:** Small
-
-**Related Stories:** US-001, US-018, US-020
-
----
-
-#### US-020: Password Recovery for PART/ADMIN
-
-**User/Role:** PART / ADMIN
-
-**Story Statement:** As a Participant or Platform Administrator, I want to reset a forgotten password, so that I can regain access to my account.
-
-**Description:** Recovery applies to existing PART and ADMIN accounts and is separate from normal login. Resetting a password does not bypass email-based login 2FA.
+**Description:** Provides frictionless third-party authentication via Google OAuth 2.0 and GitHub OAuth. First-time OAuth sign-in automatically provisions a verified `PART` account and pre-populates relevant developer attributes (e.g., GitHub profile URL, avatar).
 
 **Acceptance Criteria:**
-1. Submitting the email address of an existing PART or ADMIN account sends a password-recovery link to that address.
-2. A valid, single-use recovery link lets the account holder set a new password that meets the configured password policy.
-3. An invalid or previously used recovery link cannot change the account password.
-4. After a reset, the account holder must still complete US-018 during login.
-
-**Priority:** High
-
-**Complexity/Effort Estimate:** Small
-
-**Related Stories:** US-001, US-002, US-018
-
----
-
-#### US-018: Email-Based Login Two-Factor Authentication
-
-**User/Role:** PART / ADMIN
-
-**Story Statement:** As a Participant or Platform Administrator, I want to confirm login with a code sent to my email, so that my password alone does not grant account access.
-
-**Description:** Email-based login 2FA is required for both MVP account roles. The code is sent after valid password verification and must be accepted before the account's authorized functions become available. SMS and authenticator-app methods are future options.
-
-**Acceptance Criteria:**
-1. After a valid password is submitted, the system sends a single-use, time-limited login code to the account's verified email address.
-2. Full authenticated access is granted only after the correct current code is submitted.
-3. Incorrect, expired, or previously used codes do not complete login.
+1. A visitor can initiate single-click sign-in via "Continue with Google" or "Continue with GitHub".
+2. Successful identity provider authorization returns a verified token; if no account exists with that email, a new `PART` record is automatically created in `Verified` state.
+3. GitHub OAuth authorization securely captures and verifies the user's public GitHub handle and repository portfolio link.
+4. If an existing account registered with email/password shares the verified OAuth email, the accounts are linked without data loss.
 
 **Priority:** High
 
 **Complexity/Effort Estimate:** Medium
 
-**Related Stories:** US-001, US-002, US-020
+**Related Stories:** US-001, US-003, US-006
 
 ---
 
-#### US-003: Participant Profile Management
+#### US-003: User Login and Session Management
+
+**User/Role:** PART / ADMIN
+
+**Story Statement:** As an authenticated user, I want to submit my credentials securely and maintain an active session, so that I can access features authorized for my role.
+
+**Description:** Validates credentials for existing `PART` and `ADMIN` accounts and coordinates the transition into the mandatory Login Multi-Factor Authentication workflow (US-004) before issuing a cryptographically signed session token.
+
+**Acceptance Criteria:**
+1. The system verifies submitted credentials using constant-time hashing comparison (`bcrypt` / `Argon2id`) to prevent timing attacks.
+2. For valid credentials, the system transitions to the secondary verification challenge in US-004 before issuing a fully authenticated session.
+3. The system enforces progressive rate-limiting, locking authentication attempts after 5 consecutive failures per IP address for 15 minutes.
+4. Fully authenticated sessions emit signed JWT access tokens (15-minute expiry) and refresh tokens stored in HTTP-only, `SameSite=Strict`, `Secure` cookies.
+5. Explicit logout revokes the refresh token and invalidates active session state immediately.
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-001, US-002, US-004, US-005
+
+---
+
+#### US-004: Login Multi-Factor Authentication (MFA)
+
+**User/Role:** PART / ADMIN
+
+**Story Statement:** As a Participant or Platform Administrator, I want to verify my identity via a one-time code sent to my email during login, so that a compromised password alone does not grant account access.
+
+**Description:** Implements mandatory secondary identity verification for standard credential logins. After primary password verification, a time-limited one-time password (OTP) is dispatched to the account's verified email.
+
+**Acceptance Criteria:**
+1. Following successful password entry, the system generates a 6-digit numeric OTP valid for exactly 10 minutes and dispatches it to the user's verified email address.
+2. The user is prompted with an MFA challenge view; submitting the matching current OTP completes authentication and issues session tokens.
+3. Submitting an incorrect code increments an invalid attempt counter; 3 failed OTP entries invalidate the code and terminate the login sequence.
+4. Expired or previously consumed OTPs are rejected immediately.
+5. Users authenticated through federated OAuth (US-002) are exempted from email OTP challenges if the provider enforces multi-factor security.
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-001, US-002, US-003, US-005
+
+---
+
+#### US-005: Password Recovery for PART/ADMIN
+
+**User/Role:** PART / ADMIN
+
+**Story Statement:** As a user, I want to request a secure password reset link via my registered email, so that I can regain access if I forget my password.
+
+**Description:** Self-service password recovery issuing single-use, time-limited cryptographic reset tokens. Resetting credentials terminates all existing active sessions.
+
+**Acceptance Criteria:**
+1. Submitting a registered email address dispatches a single-use password reset link expiring in 60 minutes.
+2. The submission endpoint returns a generic confirmation message regardless of whether the email exists to prevent user enumeration.
+3. Clicking a valid token presents a password update form enforcing system complexity rules.
+4. Successful password update invalidates all active refresh tokens and sessions across all devices.
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Small
+
+**Related Stories:** US-001, US-003, US-004
+
+---
+
+#### US-006: Participant Profile Management
 
 **User/Role:** PART
 
-**Story Statement:** As a Participant, I want to maintain a profile of my skills, experience, goals, and relevant links, so that potential teammates can assess my fit.
+**Story Statement:** As a Participant, I want to maintain my technical profile with my role, skill tags, academic institution, and portfolio links, so that prospective teammates can assess my capabilities.
 
-**Description:** Participant profiles provide the information used for team discovery and rule-based candidate recommendations. Event-specific availability is managed through US-007 rather than treated as a global account role or status.
+**Description:** Stores primary technical attributes, skill pills, and external developer portfolio links. Provides public privacy boundaries separating public profile cards from private account settings.
 
 **Acceptance Criteria:**
-1. A Participant can create and edit profile information including skills, technology stack, experience, school, goals, and relevant portfolio links.
-2. Saved profile changes remain available when the Participant returns.
-3. Other authenticated Participants can view team-relevant profile information, while private account and authentication data remain hidden.
+1. A Participant can manage structured profile fields: Primary Role (`Frontend`, `Backend`, `Mobile`, `AI/ML`, `UI/UX`, `Pitch`), Academic Institution, and standardized technical skill pills.
+2. A Participant can add verified links to their GitHub repository portfolio, Devpost profile, and LinkedIn URL.
+3. Public profile views redact sensitive private data (email, phone, system IDs), displaying only public handles and verified skill pills.
+4. Profile edits persist immediately and update existing candidate listings.
 
 **Priority:** High
 
 **Complexity/Effort Estimate:** Medium
 
-**Related Stories:** US-001, US-007, US-010
+**Related Stories:** US-001, US-002, US-007, US-011, US-015
+
+---
+
+#### US-007: Participant Hackathon History and Portfolio Verification
+
+**User/Role:** PART
+
+**Story Statement:** As a Participant, I want to record past hackathons attended and project achievements, so that Team Leads can verify my delivery track record and experience tier.
+
+**Description:** Dedicated participation history module allowing hackers to document past event participation, team roles, and external project repository URLs. The system calculates an objective experience tier based on verified records.
+
+**Acceptance Criteria:**
+1. A Participant can add historical hackathon entries specifying: Event Name, Year/Date, Team Role, Project Title, and external Devpost/GitHub repository URL.
+2. The system automatically computes and displays an Experience Tier badge: `Beginner` (0 hackathons), `Competitor` (1–3 hackathons), or `Veteran` (4+ hackathons).
+3. Other users viewing the profile can inspect historical entries and click verified project repository links.
+4. A Participant can edit or remove historical entries at any time.
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-006, US-014, US-015
+
+---
+
+#### US-029: Time-Based Authenticator App (TOTP) Multi-Factor Authentication (Post-MVP v1.1)
+
+**User/Role:** PART / ADMIN
+
+**Story Statement:** As a Participant or Platform Administrator, I want to link a standard authenticator app (such as Google Authenticator or Microsoft Authenticator) to my account, so that I can generate instant 6-digit verification codes on my mobile device without waiting for email delivery.
+
+**Description:** Implements RFC 6238 Time-Based One-Time Password (TOTP) verification as a high-security, zero-latency alternative to email-based OTP. During profile security setup, users scan a generated QR code containing an encrypted shared secret. Subsequent logins challenge for the current 6-digit TOTP code.
+
+**Acceptance Criteria:**
+1. A user can initiate authenticator app setup from their account security settings, generating a unique base32 shared secret and an inline QR code (`otpauth://` URI).
+2. The user must confirm setup by entering a valid 6-digit code generated by their authenticator app before TOTP is activated on the account.
+3. Upon activation, the system provides 8 single-use alphanumeric backup recovery codes for emergency account access.
+4. During subsequent logins, users with active TOTP are prompted for their 6-digit authenticator code instead of receiving an email OTP, with a fallback link to receive an email code.
+5. Entering an invalid code 3 consecutive times temporarily locks the MFA challenge sequence.
+
+**Priority:** Low
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-003, US-004
 
 ---
 
 ### Feature Area 2: Hackathon Directory and Event Management
 
-The MVP has public hackathon discovery and ADMIN-managed listings. Direct Organizer accounts, event submissions, and submission verification remain future scope.
+These stories define crowdsourced event discovery, unlisted event creation requests by Team Leads, and administrative verification workflows that maintain a single source of truth without requiring a separate Organizer account role.
 
-#### US-004: Public Hackathon Discovery and Filtering
+#### US-008: Public Hackathon Discovery and Multi-Filter Search
 
-**User/Role:** Unauthenticated Visitor / PART
+**User/Role:** VISITOR / PART
 
-**Story Statement:** As a visitor or Participant, I want to browse and filter hackathon listings, so that I can find an event relevant to me.
+**Story Statement:** As a visitor or Participant, I want to browse and filter upcoming hackathons, so that I can identify events I want to attend and inspect available teams.
 
-**Description:** The public directory presents hackathon information without requiring an account. Interactive team-formation actions require a PART account.
+**Description:** A centralized directory presenting verified and pending hackathon listings. Visitors can explore listings without logging in; joining or creating teams requires an authenticated `PART` account.
 
 **Acceptance Criteria:**
-1. Visitors and Participants can view published hackathons and essential event details such as dates, format, location, and official event link.
-2. Available search or filters help narrow the displayed listings.
-3. A visitor can open an event detail page without logging in but cannot apply, send invitations, or manage a team without a PART account.
+1. Users can browse a directory of hackathons displaying Event Title, Dates, Format (`In-Person`, `Hybrid`, `Virtual`), Location/City, Max Team Size, and verified status badge (`Verified` vs. `Pending Verification`).
+2. Search and filter engine allows filtering by keyword, format, and status (`Upcoming`, `Ongoing`, `Concluded`).
+3. Each event card provides a direct link to the canonical official external hackathon website.
+4. Selecting an event opens its team formation board, showing active team recruitment listings for that hackathon.
 
 **Priority:** High
 
 **Complexity/Effort Estimate:** Medium
 
-**Related Stories:** US-007, US-009, US-019
+**Related Stories:** US-009, US-010, US-011, US-013
 
 ---
 
-#### US-019: Administrator Hackathon Listing Management
+#### US-009: Team Lead Crowdsourced Event Registration Request
+
+**User/Role:** PART acting as Team Lead (LEAD)
+
+**Story Statement:** As a Team Lead, I want to submit an unlisted hackathon with its official website URL, dates, and team size limit, so that I can immediately form a team under it while awaiting administrative verification.
+
+**Description:** When a Team Lead searches for an event that does not exist in the directory, they can crowdsource its creation. The event is optimistically instantiated in a `Pending Verification` state, allowing the Lead to immediately create their team and begin recruiting without waiting for asynchronous admin approval.
+
+**Acceptance Criteria:**
+1. When directory search returns no match, a Team Lead can open an event creation modal.
+2. The modal enforces strict schema validation: Event Title, Canonical Event Website URL (must be a valid RFC 3986 HTTPS URI), Start Date, End Date ($\text{End} \ge \text{Start}$), Format, and Max Team Size ($2 \le \text{size} \le 6$).
+3. Submitting the form instantiates a canonical `Hackathon` record with status `Pending Verification` and automatically submits a review ticket to the Administrative Event Verification Queue.
+4. The Team Lead is immediately redirected to team initialization under this new event; the resulting team card displays an `Unverified Event` badge to viewers.
+5. The search engine indexes pending events to prevent duplicate creation requests if other students search for the same hackathon.
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-008, US-010, US-012
+
+---
+
+#### US-010: Administrative Event Verification, Correction, and Lifecycle Management
 
 **User/Role:** ADMIN
 
-**Story Statement:** As a Platform Administrator, I want to create, update, and archive hackathon listings, so that people can discover accurate event information.
+**Story Statement:** As a Platform Administrator, I want to review, correct, and verify crowdsourced hackathon submissions and manage published listings, so that the platform maintains an accurate single source of truth.
 
-**Description:** Administrators manage official event listings in the MVP. Organizers may provide information externally, but they do not submit listings through an MVP application account.
-
-**Acceptance Criteria:**
-1. An authenticated Administrator can create and edit a listing with the event information needed for public discovery and team formation.
-2. Published listings appear in US-004; archived or unpublished listings do not appear in the default public directory.
-3. Non-Administrators cannot use listing-management controls.
-
-**Priority:** High
-
-**Complexity/Effort Estimate:** Medium
-
-**Related Stories:** US-002, US-004, US-018
-
----
-
-### Feature Area 3: Team Recruitment and Looking-for-Team Boards
-
-Participants can declare event-specific availability, create listings for teams they own, and browse open teams. Team ownership grants permissions for that team only.
-
-#### US-007: Declare Event Availability and Looking-for-Team Status
-
-**User/Role:** PART
-
-**Story Statement:** As a Participant, I want to mark myself as looking for a team for a particular hackathon, so that Team Leads for that event know I am available.
-
-**Description:** Looking-for-Team status is specific to an event and can include a preferred role, goals, and availability. A Participant may lead a team for one event while acting as an ordinary Participant elsewhere.
+**Description:** Administrators access an Event Verification Queue to inspect unverified hackathons submitted by Team Leads. Administrators validate external links, correct factual metadata mismatches (e.g., aligning team size caps with official website rules), merge duplicate submissions, or reject malicious requests.
 
 **Acceptance Criteria:**
-1. A Participant can set, update, or remove Looking-for-Team status for a selected hackathon.
-2. The event-specific status and relevant preferences are available to Team Leads considering candidates for that event.
-3. Once the Participant is confirmed on a team for that hackathon, the system no longer presents them as an available candidate for that event.
-
-**Priority:** High
-
-**Complexity/Effort Estimate:** Medium
-
-**Related Stories:** US-003, US-008, US-010, US-015
-
----
-
-#### US-008: Create and Manage a Team Recruitment Listing
-
-**User/Role:** PART acting as Team Lead for a team they own
-
-**Story Statement:** As a Participant leading a team, I want to publish and manage its recruitment listing, so that suitable Participants can find its open places.
-
-**Description:** A listing belongs to a specific hackathon and identifies the team's purpose, goals, open places, and desired skills. Its creator receives management permissions for that team, not a global account role.
-
-**Acceptance Criteria:**
-1. A Participant can create a team listing linked to one hackathon and describe its open places and desired skills.
-2. The listing appears among open teams for that hackathon while it has available places.
-3. Only the team owner can manage the listing, and the team cannot exceed the applicable event or team capacity.
-4. The team owner can remove an accepted member or delete the team listing before the roster is locked, reopening open places or canceling pending requests.
-
-**Priority:** High
-
-**Complexity/Effort Estimate:** Medium
-
-**Related Stories:** US-007, US-009, US-010, US-012, US-015
-
----
-
-#### US-009: Browse and Filter Open Team Listings
-
-**User/Role:** PART
-
-**Story Statement:** As a Participant, I want to browse and filter open team listings, so that I can choose a team to apply to.
-
-**Description:** Participants direct their own team search in the MVP. Algorithmic recommendations of teams to Participants are deferred to US-011.
-
-**Acceptance Criteria:**
-1. The event team board shows active teams with open places.
-2. A Participant can filter teams by relevant skill needs and team goals.
-3. A team detail view provides enough information to assess fit and access the application action in US-013.
-
-**Priority:** High
-
-**Complexity/Effort Estimate:** Small
-
-**Related Stories:** US-004, US-008, US-011, US-013
-
----
-
-### Feature Area 4: Rule-Based Matching
-
-The MVP recommends available Participant candidates to the owner of an open team using explainable rules. The inverse recommendation of teams to Participants remains future scope.
-
-#### US-010: Candidate Recommendations for Team Leads
-
-**User/Role:** PART acting as Team Lead for a team they own
-
-**Story Statement:** As a Team Lead, I want to view recommended candidates for my team's open places, so that I can invite Participants whose skills, goals, and availability fit the team.
-
-**Description:** The MVP uses rule-based candidate recommendations for team owners. It does not require fixed scoring weights, a percentage score, or advanced AI, vector, or embedding matching.
-
-**Acceptance Criteria:**
-1. A Team Lead can view recommended available Participants for an open place on a team they own.
-2. Recommendations consider relevant skills, goals, and event availability and show the main reasons for a match.
-3. Participants already confirmed on another team for the same hackathon are excluded.
-4. A Team Lead can proceed from a candidate to the invitation workflow in US-012.
+1. An Administrator can access the Event Verification Queue to inspect pending event submissions, view the requester's profile, and click through to the submitted external event URL.
+2. The Administrator has full edit privileges to factually correct mismatched metadata (e.g., updating team size limits from 6 to 4 if official rules mandate 4, adjusting dates, or correcting broken URLs) prior to approval.
+3. The Administrator can click `Approve & Publish`, which transitions the event status to `Verified`, upgrades all associated team listings to verified status, and makes the event visible in the default public directory.
+4. The Administrator can `Merge` a submission into an existing verified event if a duplicate is detected, automatically rebinding all attached teams to the canonical record.
+5. The Administrator can `Reject` a submission with mandatory feedback notes (e.g., "Phishing link detected" or "Event canceled"); rejecting an event soft-deletes attached unverified team listings and alerts the creator.
+6. The Administrator can toggle published events to `Archived / Concluded` once event end dates pass, locking membership mutations.
 
 **Priority:** High
 
 **Complexity/Effort Estimate:** Large
 
-**Related Stories:** US-003, US-007, US-008, US-012, US-015
+**Related Stories:** US-008, US-009, US-026
 
 ---
 
-#### US-011: Recommended Teams for Participants (Future Scope)
+### Feature Area 3: Team Recruitment and Looking-for-Team Boards
+
+These stories govern event-specific participant availability declarations, structured vacancy-based recruitment listings, self-service editing by Team Leads, open vacancy discovery, and multi-filter candidate search.
+
+#### US-011: Declare Event Availability and Looking-for-Team Status
 
 **User/Role:** PART
 
-**Story Statement:** As a Participant, I want to receive recommendations of teams with open places, so that I can identify groups that may fit my profile.
+**Story Statement:** As a Participant, I want to declare my availability for a specific hackathon and state my desired role and commitment level, so that Team Leads can discover me as an available candidate.
 
-**Description:** Participant-facing algorithmic team recommendations are deferred. During the MVP, Participants browse and filter teams themselves under US-009.
+**Description:** Participant availability is strictly scoped to an event. Participants specify event-specific preferences without altering their global profile. Availability flags automatically deactivate upon confirmed team placement.
 
 **Acceptance Criteria:**
-1. In a future release, the system can suggest open teams using a Participant's relevant skills and event preferences.
-2. Each suggestion explains the main reason for the proposed fit.
-3. A Participant can open a suggested team's details and apply through US-013.
+1. An authenticated Participant can toggle "Looking for Team" for any verified or pending hackathon.
+2. The availability declaration captures: Desired Event Role, Commitment Hours (e.g., "15–20 hours / Part-Time" vs. "Full Weekend / 36 hours"), and Competitive Goal (`Casual / Learning`, `Pragmatic Completion`, `Competitive / Prize-Hunting`).
+3. Declared availability appears in the event candidate directory and feeds into the candidate recommendation engine (US-015).
+4. Once the Participant confirms membership on a team for that hackathon (US-019 or US-020), the system automatically deactivates their "Looking for Team" flag for that event.
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-006, US-007, US-012, US-014, US-015, US-019, US-022
+
+---
+
+#### US-012: Create and Manage a Team Recruitment Listing
+
+**User/Role:** PART acting as Team Lead (LEAD)
+
+**Story Statement:** As a Team Lead, I want to create a structured recruitment listing with discrete skill vacancy slots and edit it as our needs evolve, so that I can attract targeted teammates.
+
+**Description:** A Team Lead binds a team listing to a target hackathon. Instead of generic open text, the listing defines explicit vacancy slots. The Team Lead maintains full self-service edit control over project concepts and open slot requirements prior to roster lock.
+
+**Acceptance Criteria:**
+1. A Participant can initialize a team listing bound to a hackathon, specifying Team Name, Project Concept Pitch (max 500 characters), Team Objective, and external communication link (e.g., Discord/Slack URL).
+2. The Team Lead can create up to $(\text{MaxTeamSize} - 1)$ discrete vacancy slots, each specifying a Target Role (`Frontend`, `Backend`, `Mobile`, `AI/ML`, `UI/UX`, `Pitch`) and required skill tags.
+3. The Team Lead can self-service edit the project pitch, add/remove open vacancy slots, and update required skill tags at any time prior to roster locking without administrative intervention.
+4. Total roster count plus unfilled vacancy slots cannot exceed the event's configured `max_team_size`.
+5. The Team Lead can remove an unconfirmed member or disband the team prior to roster lock, reopening available slots and updating availability states.
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-009, US-011, US-013, US-015, US-017, US-022
+
+---
+
+#### US-013: Browse and Filter Open Team Vacancies
+
+**User/Role:** PART
+
+**Story Statement:** As a Participant, I want to browse and filter open team vacancy slots for a hackathon, so that I can identify teams matching my technical stack and project goals.
+
+**Description:** Participants inspect active recruitment boards for a specific event. Listings display remaining open slots, required skill pills, and team objectives.
+
+**Acceptance Criteria:**
+1. The event recruitment board displays active teams with at least one unfilled vacancy slot.
+2. Participants can filter team cards by required skill tags, open role categories, team goal, and available slot count.
+3. Team detail cards display the project pitch, current roster member handles with role badges, and explicit vacancy requirements.
+4. Each unfilled vacancy slot exposes an "Apply to Slot" button linking directly to US-018.
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Small
+
+**Related Stories:** US-008, US-012, US-016, US-018
+
+---
+
+#### US-014: Advanced Candidate Directory Search and Filter for Team Leads
+
+**User/Role:** PART acting as Team Lead (LEAD)
+
+**Story Statement:** As a Team Lead, I want to search and filter the event candidate pool using specific skill combinations and experience tiers, so that I can manually discover candidates who fit our vacancy needs.
+
+**Description:** Dedicated candidate discovery directory for Team Leads. Complements algorithmic recommendations with multi-parameter filter controls across declared participant skills, experience tiers, and availability.
+
+**Acceptance Criteria:**
+1. A Team Lead can search the looking-for-team candidate pool for their active hackathon.
+2. The filter interface supports multi-tag skill filtering (AND/OR logic), minimum experience tier (`Beginner`, `Competitor`, `Veteran`), and target role.
+3. Search results render candidate summary cards showing handle, primary role, experience badge, matching skill pills, and past hackathon counts.
+4. The Team Lead can open the candidate's verified profile card or trigger a direct team invitation (US-017).
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-006, US-007, US-011, US-012, US-015, US-017
+
+---
+
+### Feature Area 4: Rule-Based Matching
+
+These stories compute deterministic compatibility scores between solo participant availability profiles and open team vacancy requirements.
+
+#### US-015: Candidate Recommendations for Team Leads
+
+**User/Role:** PART acting as Team Lead (LEAD)
+
+**Story Statement:** As a Team Lead, I want to view a ranked list of compatible candidates for my team's open vacancy slots, so that I can invite teammates with complementary skills and matching commitments.
+
+**Description:** Computes an explainable, deterministic compatibility score ($0\text{--}100\%$) between open vacancy slot requirements and available event candidates. Excludes candidates already confirmed on another team for that hackathon.
+
+**Acceptance Criteria:**
+1. A Team Lead can trigger candidate recommendations for any unfilled vacancy slot on their team.
+2. The system computes a composite compatibility score based on: Skill Overlap (matching declared candidate skills against slot requirements), Goal Alignment (matching stated hackathon objectives), and Schedule Compatibility (matching commitment hours).
+3. The recommendation interface displays candidates in descending order of compatibility score, highlighting overlapping skill badges and common goals.
+4. Candidates already confirmed on a locked or full roster for that hackathon are excluded from recommendation rankings.
+5. The Team Lead can issue a direct team invitation (US-017) directly from any recommendation card.
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Large
+
+**Related Stories:** US-006, US-007, US-011, US-012, US-014, US-017, US-022
+
+---
+
+#### US-016: Recommended Teams for Participants (Future Scope)
+
+**User/Role:** PART
+
+**Story Statement:** As a Participant, I want to receive proactive recommendations of open teams matching my profile, so that I can discover compatible projects without manual filtering.
+
+**Description:** Reverse matching algorithm computing compatibility between a solo participant's skills and open team vacancy slots. Deferred to future releases; MVP users browse and filter listings manually via US-013.
+
+**Acceptance Criteria:**
+1. The system evaluates a Participant's profile against open vacancy slots for a selected hackathon and outputs top-ranked team suggestions.
+2. Recommendations surface a match percentage score and highlight matched skill tags.
+3. Participants can apply directly to suggested teams via US-018.
 
 **Priority:** Medium
 
 **Complexity/Effort Estimate:** Medium
 
-**Related Stories:** US-003, US-007, US-009, US-013
+**Related Stories:** US-006, US-011, US-013, US-018
 
 ---
 
 ### Feature Area 5: Invitations, Applications, and Rosters
 
-Both Team Lead invitations and Participant applications use a simple decision workflow. Basic alerts and request statuses are part of that workflow; a full notification centre is deferred.
+These stories manage formal team recruitment state transitions, in-app alerts, concurrency conflict resolution, roster freezing, private collaboration workspaces, and check-in manifest export.
 
-#### US-012: Issue a Team Invitation
+#### US-017: Issue a Team Invitation
 
-**User/Role:** PART acting as Team Lead for a team they own
+**User/Role:** PART acting as Team Lead (LEAD)
 
-**Story Statement:** As a Team Lead, I want to invite a Participant to my team, so that they can decide whether to join it.
+**Story Statement:** As a Team Lead, I want to issue a direct invitation to an available candidate, so that they can review my team and decide whether to join.
 
-**Description:** Invitations are tied to the Team Lead's team and hackathon. Sending an invitation creates a pending request and a basic alert for its recipient.
+**Description:** Dispatches an invitation bound to a specific team and hackathon. Implements time-to-live expiration and prevents capacity over-subscription.
 
 **Acceptance Criteria:**
-1. A Team Lead can invite a candidate to a team they own while it has an open place.
-2. The system creates a pending invitation and alerts the invitee.
-3. A Team Lead cannot send invitations for another owner's team or a team with no open place.
-4. A Team Lead can cancel a pending invitation they previously issued before the recipient responds.
+1. A Team Lead can issue an invitation to any candidate marked "Looking for Team" for that hackathon, provided the team has at least one unfilled vacancy slot.
+2. The invitation enters a `Pending` state, generates an in-app notification for the candidate (US-021), and records an expiration timestamp (48-hour TTL).
+3. The system enforces an invitation cap: a Team Lead cannot have more active pending invitations than total remaining unfilled vacancy slots.
+4. The Team Lead can cancel a pending invitation prior to candidate response, restoring the invite quota.
 
 **Priority:** High
 
 **Complexity/Effort Estimate:** Medium
 
-**Related Stories:** US-008, US-010, US-014, US-015
+**Related Stories:** US-012, US-014, US-015, US-019, US-021, US-022
 
 ---
 
-#### US-013: Apply to Join a Team
+#### US-018: Apply to Join a Team Vacancy
 
 **User/Role:** PART
 
-**Story Statement:** As a Participant, I want to apply to an open team, so that its Team Lead can consider me.
+**Story Statement:** As a Participant, I want to submit an application to an open team vacancy slot, so that the Team Lead can review my profile and consider me for membership.
 
-**Description:** Applications let Participants initiate a request to join a team they found by browsing. The Team Lead receives a basic alert and can review the applicant's profile.
+**Description:** Allows solo participants to express interest in specific vacancy slots. Rate-limited to prevent platform-wide spam applications.
 
 **Acceptance Criteria:**
-1. A Participant can apply from a team listing that has an open place.
-2. The application enters a pending state and alerts the Team Lead for that team.
-3. The Participant can view the application's status and withdraw it before a decision.
+1. A Participant can apply to any open vacancy slot on an active team for an event where they are not yet confirmed.
+2. The application captures an optional brief introductory message (max 250 characters) and references the applicant's verified profile.
+3. The system restricts each Participant to a maximum of 3 concurrent active (`Pending`) applications per hackathon.
+4. The applicant can view the status of their submitted applications and withdraw a pending application at any time prior to Team Lead review.
 
 **Priority:** High
 
 **Complexity/Effort Estimate:** Medium
 
-**Related Stories:** US-008, US-009, US-021
+**Related Stories:** US-012, US-013, US-020, US-021
 
 ---
 
-#### US-014: Respond to a Team Invitation
+#### US-019: Respond to a Team Invitation
 
 **User/Role:** PART
 
-**Story Statement:** As an invited Participant, I want to accept or decline a team invitation, so that I can decide whether to join that team.
+**Story Statement:** As an invited Participant, I want to accept or decline a team invitation, so that I can confirm my team placement or keep looking.
 
-**Description:** A Participant responds to an invitation addressed to them. The response updates the invitation status and provides a basic alert to the Team Lead. Team Lead decisions on applications are covered by US-021.
+**Description:** Allows an invited candidate to inspect team details and make a binding decision. Acceptance confirms roster placement and resolves cross-event constraints.
 
 **Acceptance Criteria:**
-1. An invited Participant can view and accept or decline their own pending invitation.
-2. Accepting an invitation updates its status and the team roster and alerts the Team Lead; declining updates its status and alerts the Team Lead without adding the Participant to the roster.
-3. Acceptance cannot exceed team capacity or confirm the Participant on more than one team for the same hackathon.
-4. A Participant cannot respond to another person's invitation or respond again after a decision.
-5. An accepted team member can view their team's details and teammate contact information, and can leave the team prior to roster lock, which reopens the slot and restores their looking-for-team status.
+1. An invited Participant can view details of pending invitations (team pitch, roster members, goal, and assigned role).
+2. Clicking `Accept` updates the invitation to `Accepted`, assigns the user to the team roster, deactivates their "Looking for Team" flag for that hackathon, and dispatches a notification to the Team Lead.
+3. Acceptance is wrapped in an atomic transaction: if the team reached full capacity via concurrent application approval before the invitee clicks accept, the system aborts with a `"Team Capacity Reached"` notice.
+4. Clicking `Decline` marks the invitation `Declined`, alerts the Team Lead, and leaves the user's availability flag unchanged.
+5. An accepted member can leave the team prior to roster lock, which reopens the vacancy slot and restores their "Looking for Team" availability status.
 
 **Priority:** High
 
 **Complexity/Effort Estimate:** Medium
 
-**Related Stories:** US-007, US-012, US-015, US-021
+**Related Stories:** US-011, US-017, US-020, US-021, US-022
 
 ---
 
-#### US-021: Team Lead Approves or Declines an Application
+#### US-020: Team Lead Approves or Declines an Application
 
-**User/Role:** PART acting as Team Lead for a team they own
+**User/Role:** PART acting as Team Lead (LEAD)
 
-**Story Statement:** As a Team Lead, I want to approve or decline an application to my team, so that I can decide who joins its roster.
+**Story Statement:** As a Team Lead, I want to review incoming applications and approve or decline candidates, so that I can select the best teammates for our vacancies.
 
-**Description:** The owner of a team decides on pending applications to that team. The decision updates the application status and provides a basic alert to the applicant.
+**Description:** Enables Team Leads to triage incoming applications. Handles slot assignment and automatic cancellation of excess pending requests upon capacity saturation.
 
 **Acceptance Criteria:**
-1. A Team Lead can view pending applications to a team they own and review each applicant's team-relevant profile.
-2. Approving an application updates its status and the team roster and alerts the applicant; declining updates its status and alerts the applicant without adding them to the roster.
-3. Approval cannot exceed team capacity or confirm the applicant on more than one team for the same hackathon.
-4. A Team Lead cannot decide applications to another owner's team or decide an application again after a decision.
+1. A Team Lead can inspect pending applications for each vacancy slot, reviewing candidate profiles, verified skill badges, and introductory notes.
+2. Clicking `Approve` assigns the applicant to the roster, fills the corresponding vacancy slot, deactivates the applicant's availability flag for that event, and notifies the candidate.
+3. If approving an application fills the team's final open vacancy slot, all remaining pending invitations and incoming applications are automatically set to `Canceled - Team Full`.
+4. Clicking `Decline` marks the application `Declined` and alerts the applicant without altering roster state.
 
 **Priority:** High
 
 **Complexity/Effort Estimate:** Medium
 
-**Related Stories:** US-008, US-013, US-014, US-015
+**Related Stories:** US-012, US-018, US-019, US-021, US-022
 
 ---
 
-#### US-015: Confirm and Lock a Team Roster
+#### US-021: In-App Notification Center and Real-Time Recruitment Alerts
 
-**User/Role:** PART acting as Team Lead for a team they own
+**User/Role:** PART / LEAD
 
-**Story Statement:** As a Team Lead, I want to confirm and lock my team's roster, so that its members know the final team for the hackathon.
+**Story Statement:** As an active user, I want an in-app notification center that alerts me to invitations, applications, and event verification updates, so that I can take timely action.
 
-**Description:** Roster confirmation finalizes membership for one hackathon. Exporting a roster for event registration or check-in is outside the MVP.
+**Description:** Dedicated notification center tracking state-change alerts across recruitment lifecycles. Surfaces unread counts in navigation bars and supports marking notifications as read.
 
 **Acceptance Criteria:**
-1. Only the owner of the team can confirm and lock its roster, subject to applicable capacity rules.
-2. Before confirmation, the system prevents any Participant from being confirmed on more than one team for the same hackathon.
-3. Once locked, the roster shows a confirmed status and ordinary invitation, application, and membership changes are closed.
-4. Confirmed team members can view their locked roster.
+1. The global navigation bar displays an interactive notification bell icon with an unread badge counter.
+2. The notification dropdown renders distinct alert types: Inbound Invitations, Join Applications Received, Application Approval/Decline Decisions, Roster Confirmation, and Event Verification Approvals.
+3. Clicking a notification redirects the user directly to the relevant action view (e.g., Invitation response modal or Team review view).
+4. Users can mark individual notifications as read or click "Mark all as read".
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-009, US-010, US-017, US-018, US-019, US-020
+
+---
+
+#### US-022: Confirm and Lock a Team Roster
+
+**User/Role:** PART acting as Team Lead (LEAD)
+
+**Story Statement:** As a Team Lead, I want to confirm and lock my team's roster, so that our membership is finalized and membership mutations are frozen.
+
+**Description:** Freezes roster composition prior to the hackathon. Prevents further membership changes and unlocks access to the team coordination workspace and check-in manifest.
+
+**Acceptance Criteria:**
+1. The Team Lead can initiate roster locking once the team contains at least 2 confirmed members and does not exceed the event's `max_team_size`.
+2. Locking transitions the team state to `Confirmed / Locked`.
+3. Once locked, all invitation, application, and member removal actions are permanently disabled.
+4. Locking the roster unlocks the Private Team Coordination Workspace (US-023) and activates the Check-In Manifest Export (US-024).
 
 **Priority:** High
 
 **Complexity/Effort Estimate:** Small
 
-**Related Stories:** US-007, US-008, US-012, US-013, US-014, US-021
+**Related Stories:** US-011, US-012, US-015, US-017, US-019, US-020, US-023, US-024
+
+---
+
+#### US-023: Team Private Coordination Workspace
+
+**User/Role:** PART / LEAD
+
+**Story Statement:** As a confirmed team member, I want to access a private team workspace with shared communication links, project concept notes, and teammate contacts, so that we can coordinate before the hackathon begins.
+
+**Description:** A secure, authenticated workspace accessible exclusively to confirmed members of a locked or active team. Centralizes external tool links, team notes, and contact channels.
+
+**Acceptance Criteria:**
+1. Only authenticated members of a specific team can access its private workspace view; unauthorized users are blocked with an HTTP 403 response.
+2. The workspace displays teammate contact handles, verified GitHub links, and assigned role badges.
+3. The Team Lead can post and update external workspace links (e.g., Discord/Slack channel, shared Google Doc, Figma board, GitHub repository URL).
+4. Members can view a shared markdown project concept note to align on technical stack and architecture before the event.
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-012, US-019, US-022, US-024
+
+---
+
+#### US-024: Export Team Manifest and Check-In Verification Card
+
+**User/Role:** PART acting as Team Lead (LEAD)
+
+**Story Statement:** As a Team Lead of a locked roster, I want to export a verified team manifest and digital check-in card, so that our team can verify our roster at official hackathon registration.
+
+**Description:** Generates a standardized, exportable summary card of the confirmed roster for event check-in and sponsor presentation.
+
+**Acceptance Criteria:**
+1. A Team Lead of a locked team can click "Export Team Manifest".
+2. The system generates a clean, printable HTML/PDF view and a downloadable JSON file containing: Team Name, Event Name, Lock Timestamp, and a member list (Full Names, Academic Institution, GitHub Handles, and Assigned Roles).
+3. The manifest includes a verifiable verification hash confirming that the roster was locked prior to the hackathon start date.
+4. Confirmed members can download or print the manifest for check-in.
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Small
+
+**Related Stories:** US-010, US-022, US-023
 
 ---
 
 ### Feature Area 6: Platform Administration and Trust
 
-The MVP has separate, limited ADMIN controls for team content moderation and account management. Participant reporting and a larger investigation dashboard remain future scope.
+These stories govern user abuse reporting, administrative moderation, account enforcement, and immutable audit logging to protect students from spam, harassment, and phishing threats.
 
-#### US-017: Basic Administrative Content Moderation
-
-**User/Role:** ADMIN
-
-**Story Statement:** As a Platform Administrator, I want to address inappropriate team recruitment content, so that the MVP remains usable and trustworthy.
-
-**Description:** This MVP story covers basic moderation of team recruitment content. It does not require a report queue, extensive dashboard, warning workflow, revision history, or enterprise audit system. Account management is covered by US-022.
-
-**Acceptance Criteria:**
-1. An authenticated Administrator can view team recruitment listings and hide or remove an inappropriate listing.
-2. A hidden or removed listing no longer appears in ordinary team browsing.
-3. Participants and unauthenticated Visitors cannot use content-moderation controls.
-
-**Priority:** High
-
-**Complexity/Effort Estimate:** Medium
-
-**Related Stories:** US-008, US-016, US-022
-
----
-
-#### US-022: Basic Administrative Account Management
-
-**User/Role:** ADMIN
-
-**Story Statement:** As a Platform Administrator, I want to manage accounts when necessary, so that access to the MVP remains appropriate.
-
-**Description:** This MVP story covers limited account management, including viewing the account information needed for an administrative decision and deactivating an account. It does not create a public ADMIN registration flow or a broad administration dashboard.
-
-**Acceptance Criteria:**
-1. An authenticated Administrator can view an account's identifier, role, and active or deactivated status.
-2. An Administrator can deactivate an account, and the deactivated account can no longer access authenticated functions.
-3. Participants and unauthenticated Visitors cannot access account-management controls.
-
-**Priority:** High
-
-**Complexity/Effort Estimate:** Medium
-
-**Related Stories:** US-002, US-017, US-018, US-019
-
----
-
-#### US-016: Report Abusive User or Listing (Future Scope)
+#### US-025: User Reporting Modal for Abusive Content and Malicious Links
 
 **User/Role:** PART
 
-**Story Statement:** As a Participant, I want to report an abusive profile or misleading listing, so that Administrators can review it.
+**Story Statement:** As a Participant, I want to report an abusive profile, offensive team listing, or suspicious external URL, so that Administrators can investigate misconduct.
 
-**Description:** Participant-initiated reporting and its review workflow are deferred. The MVP's basic ADMIN moderation in US-017 does not depend on a reporting dashboard.
+**Description:** Self-service reporting modal available across candidate profiles, team cards, and event listings. Submissions feed directly into the administrative moderation queue.
 
 **Acceptance Criteria:**
-1. In a future release, a Participant can submit a report about a profile or team listing with a reason.
-2. The system records the report for authorized administrative review.
-3. The reporting Participant receives confirmation that the report was submitted.
+1. Authenticated Participants can click "Report" on any public team card, user profile, or unverified event listing.
+2. The report modal captures: Target Entity ID, Category (`Harassment / Code of Conduct`, `Spam / Advertising`, `Phishing / Malicious Link`, `Fake Account`), and optional explanatory text.
+3. The system enforces an abuse throttle: maximum 5 reports per user per hour to prevent griefing.
+4. Submitting a report queues an actionable ticket in the Administrative Moderation Queue (US-026) and returns a submission confirmation.
 
-**Priority:** Medium
+**Priority:** High
 
 **Complexity/Effort Estimate:** Small
 
-**Related Stories:** US-003, US-008, US-017
+**Related Stories:** US-006, US-012, US-026
 
 ---
+
+#### US-026: Administrative Content Moderation and Safety Queue
+
+**User/Role:** ADMIN
+
+**Story Statement:** As a Platform Administrator, I want to review flagged team content and malicious links in a moderation queue, so that the platform remains safe, compliant, and free of phishing threats.
+
+**Description:** Centralized moderation dashboard allowing administrators to triage user reports, redact offensive text, hide non-compliant team listings, and sanitize malicious URLs.
+
+**Acceptance Criteria:**
+1. An Administrator can access the Moderation Queue displaying reported team listings and user profiles sorted by report frequency and timestamp.
+2. The Administrator can inspect the reported entity, view the reporter's rationale, and take action: `Dismiss Report`, `Redact Listing Text`, `Issue Warning`, or `Hide from Directory`.
+3. If an event or team listing contains a verified phishing or malicious link, the Administrator can purge the URL immediately and flag the owner's account for suspension.
+4. Every moderation decision records an immutable audit entry (US-028).
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-010, US-012, US-025, US-027, US-028
+
+---
+
+#### US-027: Administrative Account Management and Enforcement
+
+**User/Role:** ADMIN
+
+**Story Statement:** As a Platform Administrator, I want to suspend or deactivate non-compliant accounts, so that bad actors cannot harass students or disrupt team formation.
+
+**Description:** Administrative account lifecycle controls to enforce codes of conduct and process student right-to-be-forgotten deletion requests under PIPEDA/GDPR compliance.
+
+**Acceptance Criteria:**
+1. An Administrator can inspect an account record, viewing authentication status, report history, and attached team listings.
+2. The Administrator can deactivate or suspend an account; suspension immediately revokes all active auth tokens, cancels active applications/invites, and hides the user profile from search.
+3. An Administrator can execute an authorized account deletion request, permanently purging personally identifiable information (PII) within 30 days in compliance with privacy regulations.
+4. Regular Participants and Visitors cannot access administrative account controls.
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-003, US-004, US-010, US-026, US-028
+
+---
+
+#### US-028: Immutable Administrative Audit Logging
+
+**User/Role:** ADMIN
+
+**Story Statement:** As a Platform Administrator, I want the system to maintain an immutable log of all moderation actions and event verification decisions, so that platform governance remains transparent and auditable.
+
+**Description:** Comprehensive system audit log capturing administrative actions, state mutations, and timestamps. Essential for platform compliance and governance oversight.
+
+**Acceptance Criteria:**
+1. The system automatically records an append-only audit entry whenever an Administrator: approves/rejects/merges a hackathon event, redacts a listing, issues a warning, or suspends an account.
+2. Audit records capture: Log ID, Admin User ID, Action Type (`EVENT_APPROVE`, `EVENT_MERGE`, `CONTENT_REDACT`, `USER_SUSPEND`), Target Entity ID, Prior State, New State, and UTC Timestamp.
+3. Audit log records are read-only and cannot be altered, updated, or deleted through the web application interface.
+4. Administrators can filter audit logs by Admin ID, Action Type, and date range.
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-010, US-026, US-027
