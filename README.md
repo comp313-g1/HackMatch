@@ -1,94 +1,86 @@
-# HackMatch — Smart Pre-Hackathon Team Formation Platform
+# HackMatch
 
-**Team 1 — COMP 313 (Software Project 2)**  
-*Centennial College | Fall 2026*
+HackMatch is a planned pre-hackathon team-formation platform for students and early-career developers. Participants discover verified hackathons, find open team opportunities or create their own listings, and connect with complementary teammates through applications and invitations. Participants browse and filter teams; Participants acting as Team Leads receive rule-based candidate recommendations and manage recruitment through to a confirmed, locked roster.
 
----
+HackMatch focuses on forming teams before an event. It maintains event records to support recruitment, rather than providing a full hackathon-management service.
 
-## Executive Overview
+## Problem / Purpose
 
-**HackMatch** is a specialized web platform designed to eliminate the friction, chaos, and skill imbalances of last-minute hackathon team formation. Rather than relying on noisy, unvetted Discord channels or rushed day-of networking, HackMatch enables students and independent hackers to build rich multidisciplinary profiles, discover upcoming events, post structured recruitment openings, and receive deterministic match recommendations based on complementary skills, availability, and competitive goals.
+Team formation can be fragmented across messages and manually maintained lists, leaving openings, availability, and commitments unclear. HackMatch aims to help people find collaborators beyond their existing contacts and follow a structured path from interest to confirmed membership. The Project Proposal explains the evidence and assumptions behind this approach.
 
----
+## Core MVP Capabilities
 
-## Core Value Proposition & Differentiators
+The semester MVP consists of **20 Must-Have stories** grouped into these capabilities:
 
-- **Complementary Matching:** Evaluates teams by skill synergy (e.g., pairing a React frontend developer with a Python/PostgreSQL backend specialist and a UI/UX designer) rather than generic keywords.
-- **Goal Alignment:** Matches participants based on shared expectations (Casual Learning vs. Competitive Winning).
-- **Roster Concurrency Management:** Prevents ghosting and last-minute dropouts via 48-hour invitation lifecycles, capacity locking, and exportable check-in team manifests.
-- **Zero-Trust Privacy:** Strict PII redaction on public endpoints to protect students from unauthorized commercial recruiter harvesting and spam.
+- **Account access:** Participant registration and email verification, credential or Google/GitHub sign-in, password recovery, session management, and required email one-time passwords (OTP) for every login, including OAuth. Public registration creates Participant accounts only.
+- **Participant profiles:** Self-declared skills, contribution areas, and portfolio links, with defined profile and contact visibility boundaries.
+- **Trusted event discovery:** Public browsing/filtering of verified hackathons, Participant event submissions, and Administrator verification, correction, duplicate handling, and lifecycle management.
+- **Recruitment discovery:** Event-specific Looking-for-Team status, owned team listings with open slots, and Participant browsing/filtering of vacancies. Team Leads receive explainable, rule-based candidate recommendations.
+- **Joining and membership safeguards:** Invitations, applications, Participant invitation responses, Team Lead application decisions, and basic status alerts. Both joining routes enforce capacity and one confirmed team per Participant per hackathon, including before roster lock.
+- **Roster completion:** Team ownership, defined pre-lock membership changes, and confirmation/locking of event-compliant rosters. Team creation confirms the owner's membership under the same safeguards.
+- **Limited administration:** Event management, account controls and authorized deletion handling, basic content moderation, and administrative action records.
 
----
+The product is specified as a responsive website supporting desktop, tablet/iPad, and phone portrait/landscape layouts.
 
-## Project Specification Documents
+**Beyond the MVP:** Should-Haves include history/badges, advanced candidate search, a full notification centre, private coordination workspace, roster export, participant reporting, and audit search. Participant-facing team recommendations and authenticator-app 2FA are uncommitted May-Haves. These features are not required MVP delivery work.
 
-All project specification deliverables have been authored in compliance with project standards:
+## Roles
 
-| Milestone | Document | Description |
-|---|---|---|
-| **00** | [`HackMatch Project Proposal`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/00_starter_pack/HackMatch_Project_Proposal.md) | Problem statement, proposed solution, scope boundaries, and differentiators. |
-| **01** | [`User Roles & Personas`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/01_roles_and_personas/roles_and_personas.md) | Actor definitions (`DEV`, `CAPT`, `ORG`, `ADMIN`, `GUEST`, `ANTI`) with in-depth behavioural personas. |
-| **02** | [`User Stories Backlog`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/02_user_stories/user_stories.md) | 17 agile user stories (`US-001`–`US-017`) across 6 feature areas with testable acceptance criteria. |
-| **03** | [`MVP Definition & Implementation Plan`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/03_mvp/mvp_definition.md) | MoSCoW prioritization (12 Must-Haves) and dependency-ordered release roadmap. |
-| **04** | [`Functional & Non-Functional Requirements`](file:///C:/Users/Brian/CentennialCollege3429/Semester_202609/COMP_313_Project2/Team-1-COMP313/docs/04_requirements/functional_nonfunctional_requirements.md) | 24 Functional Requirements (`FR-001`–`FR-024`) and 21 Non-Functional Requirements (`NR-001`–`NR-021`) with measurable SLOs. |
+- **`PART` — Participant:** The standard authenticated participant account.
+- **`ADMIN` — Platform Administrator:** A privileged account for verified event records, account management, and basic moderation.
+- **Team Lead:** Contextual permissions held by a `PART` who owns a specific team; not a separate global account role. A Participant can lead a team for one event and be a regular member elsewhere.
+- **Visitor:** An unauthenticated actor who can browse public events and anonymized team previews; not a stored account role.
 
----
+Hackathon Organizers and campus clubs are external stakeholders and possible future self-service users. Course professors/evaluators are academic stakeholders. Neither group receives an MVP account role through stakeholder status.
 
-## System Actors & Roles Matrix
+## Event Verification Workflow
 
-```
-+-------------------------------------------------------------------------------+
-|                                  GUEST                                        |
-|             (Public Event Discovery, Teaser Listings, Conversion)             |
-+-------------------------------------------------------------------------------+
-                                      |
-                               (Registers & Verifies)
-                                      v
-+-------------------------------------------------------------------------------+
-|                                   DEV                                         |
-|    (Participant: Profile Management, Event Availability, Team Applications)   |
-+-------------------------------------------------------------------------------+
-                                      |
-                           (Creates Team Listing)
-                                      v
-+-------------------------------------------------------------------------------+
-|                                   CAPT                                        |
-|   (Team Captain: Recruiter, Vacancy Management, Invitations, Roster Locking)  |
-+-------------------------------------------------------------------------------+
-                                      |
-        +-----------------------------+-----------------------------+
-        |                                                           |
-        v                                                           v
-+-------------------------------+           +-------------------------------+
-|              ORG              |           |             ADMIN             |
-|   (Event Submissions & Info)  |           | (Content Moderation & Trust)  |
-+-------------------------------+           +-------------------------------+
-```
+**Verified PART submits → Private pending review → ADMIN approval → Public verified event → Team formation enabled**
 
----
+Pending submissions are visible only to their submitter and ADMIN. Approval checks official event information and rules; duplicate submissions are handled against the shared event record. Verification supports recruitment and does not establish organizer endorsement or attendee admission. Ticketing, payments, judging, attendee registration, and full event management are outside HackMatch's core purpose.
 
-## Repository Structure
+## Documentation
 
-```text
-Team-1-COMP313/
-├── README.md                                         <- Master project overview
-└── docs/
-    ├── 00_starter_pack/
-    │   └── HackMatch_Project_Proposal.md             <- Core concept & boundaries
-    ├── 01_roles_and_personas/
-    │   ├── README.md                                 <- Module guide
-    │   ├── roles_and_personas_template.md            <- Standard template
-    │   └── roles_and_personas.md                     <- Completed specification
-    ├── 02_user_stories/
-    │   ├── README.md                                 <- Module guide
-    │   ├── user_stories_template.md                  <- Standard template
-    │   └── user_stories.md                           <- 17 User Stories (US-001 to US-017)
-    ├── 03_mvp/
-    │   ├── README.md                                 <- Module guide
-    │   ├── mvp_definition_template.md                <- Standard template
-    │   └── mvp_definition.md                         <- MoSCoW & 12-step plan
-    └── 04_requirements/
-        ├── README.md                                 <- Module guide
-        ├── functional_nonfunctional_requirements_template.md
-        └── functional_nonfunctional_requirements.md  <- 24 FRs & 21 NFRs
-```
+These Markdown documents define the current product specification:
+
+- [Project Proposal](docs/00_starter_pack/HackMatch_Project_Proposal.md) — problem, solution, scope, research, and competitive positioning.
+- [Roles and Personas](docs/01_roles_and_personas/roles_and_personas.md) — account roles, contextual permissions, stakeholders, and illustrative personas.
+- [User Stories](docs/02_user_stories/user_stories.md) — canonical backlog and acceptance criteria.
+- [MVP Definition](docs/03_mvp/mvp_definition.md) — delivery categories, implementation dependencies, and milestones.
+- [Functional and Non-Functional Requirements](docs/04_requirements/functional_nonfunctional_requirements.md) — detailed behaviour, quality criteria, traceability, and proposed policy decisions.
+
+## Current Specification Summary
+
+| Specification | Count |
+|---|---:|
+| Total user stories | 29 |
+| Must-Have / MVP stories | 20 |
+| Should-Have / post-MVP stories | 7 |
+| May-Have / uncommitted stories | 2 |
+| Functional requirements | 85 |
+| Non-functional requirements | 24 |
+| Total requirements | 109 |
+
+Requirement totals cover the full documented scope, including deferred features. **MVP means Must-Haves only.**
+
+## Project Milestones
+
+- **October 25, 2026:** Sprint / Iteration 1.
+- **November 29, 2026:** Sprint / Iteration 2 and planned MVP implementation target.
+- **December 13, 2026:** Final Project Report.
+- **December 18, 2026:** Final Project & Presentation.
+
+The implementation timeline focuses on the Must-Have MVP. Subsequent course work covers validation, fixes, reporting, and presentation; Should-Haves and May-Haves do not drive required semester delivery.
+
+## Project Status
+
+The Markdown documentation provides the stabilized baseline for implementation planning. This repository currently contains documentation and a license; application source code is not yet present. The capabilities above describe the specification, not completed functionality. Proposed policy parameters and deployment targets still requiring confirmation are identified in the requirements document.
+
+## Team
+
+- Po-Kai Chao
+- Joel Israel Alon Gonzalez
+- Sahil Gupta
+- Edgar Soto Hernandez
+- Mohmedjuber Jangda
+- Wei Tong
