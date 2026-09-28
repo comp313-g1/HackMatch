@@ -49,14 +49,15 @@ These stories govern account creation, federated single sign-on, multi-factor cr
 
 **Story Statement:** As an unauthenticated visitor, I want to create an account with my email and password and verify my email address, so that I can establish a verified Participant profile.
 
-**Description:** Standard email/password registration creates a `PART` account in an `Unverified` state. Full access to interactive team formation is gated behind cryptographic email verification to prevent mailbox spoofing. Public registration never grants `ADMIN` privileges.
+**Description:** Standard email/password registration through Firebase Authentication creates a `PART` account in an `Unverified` state. Full access to interactive team formation is gated behind email verification handled by Firebase Authentication, to prevent mailbox spoofing. Public registration never grants `ADMIN` privileges.
+
 
 **Acceptance Criteria:**
-1. A visitor can submit full name, email, and a password with at least 8 characters, mixed case, a digit, and a special character. An academic domain is not required.
-2. Email format and uniqueness are checked; a cryptographically random 256-bit verification link expires after 24 hours.
-3. A valid unused link marks the PART account Verified; expired, consumed, or tampered links fail without granting access. A replacement may be requested.
-4. Unverified accounts cannot declare availability, create teams, apply, or accept invitations. Public registration never grants ADMIN; administrator provisioning is restricted to an authorized deployment operator.
-5. Email ownership verification does not create a full login session: US-004 must succeed first.
+1. A visitor can submit full name, email, and a password that meets the configured Firebase password policy (at least 8 characters, mixed case, a digit, and a special character). An academic domain is not required.
+2. Email format and uniqueness are checked by Firebase Authentication, which sends a verification link to the address. Link expiry is managed by Firebase.
+3. A valid unused link marks the email as verified in Firebase and the PART account as Verified; expired, consumed, or tampered links fail without granting access. A replacement may be requested.
+4. Unverified accounts cannot declare availability, create teams, apply, or accept invitations. Public registration never grants ADMIN; administrator provisioning is restricted to an authorized deployment operator, who sets the ADMIN role as a Firebase custom claim.
+5. Email ownership verification does not create a full login session: Firebase MFA (US-004) must succeed first.
 
 **Priority:** High
 
@@ -103,14 +104,15 @@ These stories govern account creation, federated single sign-on, multi-factor cr
 
 **Story Statement:** As a Participant or Administrator, I want to sign in, maintain an authorized session, and sign out, so that I can safely use my authorized functions.
 
-**Description:** Validates credentials for existing `PART` and `ADMIN` accounts and coordinates the transition into the mandatory Login Multi-Factor Authentication workflow (US-004) before issuing a cryptographically signed session token.
+**Description:** Firebase Authentication validates credentials for existing `PART` and `ADMIN` accounts and coordinates the transition into the mandatory Login Multi-Factor Authentication workflow (US-004) before the backend accepts a session. The backend authorizes each request by verifying the signed Firebase ID token and the user's role custom claim.
+
 
 **Acceptance Criteria:**
-1. Verify primary credentials using a salted adaptive password hash and generic failure messages.
-2. Valid primary authentication creates only a restricted pre-authentication state until US-004 succeeds. Suspended accounts cannot start or renew sessions.
-3. Five consecutive incorrect passwords against an account lock primary authentication for 15 minutes. This separate account-based password counter cannot be bypassed by changing IP address.
-4. After email OTP, access credentials expire after 15 minutes and renewal credentials after 7 days. Protect session secrets from client scripts, require HTTPS, and protect cookie-authenticated mutations against request forgery.
-5. Logout immediately revokes the current session; replaying its access or renewal credentials fails. Expired/revoked sessions cannot invoke protected endpoints.
+1. Primary credentials are validated by Firebase Authentication (passwords are salted and hashed by Firebase), and the UI shows generic failure messages that do not reveal whether an account exists.
+2. Valid primary authentication grants no usable session until Firebase MFA (US-004) succeeds; the backend rejects any token without a second-factor claim. Suspended accounts cannot start or renew sessions.
+3. Repeated incorrect passwords are throttled by Firebase Authentication (limits are Firebase-managed), and the UI shows retry guidance. This password throttling is separate from MFA attempt throttling in US-004.
+4. After MFA, the backend verifies the Firebase ID token on every protected request. ID tokens expire after 1 hour and refresh automatically; if a shorter access lifetime or a fixed 7-day renewal limit is required, the backend issues session cookies through the Firebase Admin SDK. Tokens are sent over HTTPS only. Because the Firebase web SDK keeps tokens where scripts can read them, XSS protection is mandatory; any cookie-based session is HttpOnly, Secure, and protected against request forgery.
+5. Logout signs the user out and revokes their Firebase refresh tokens; replaying the old credentials fails on protected endpoints, where the backend checks token revocation. Expired or revoked sessions cannot invoke protected endpoints.
 
 **Priority:** High
 
@@ -158,13 +160,13 @@ These stories govern account creation, federated single sign-on, multi-factor cr
 
 **Story Statement:** As a user, I want to request a secure password reset link via my registered email, so that I can regain access if I forget my password.
 
-**Description:** Self-service password recovery issuing single-use, time-limited cryptographic reset tokens. Resetting credentials terminates all existing active sessions.
+**Description:** Self-service password recovery using Firebase-managed reset emails with single-use, time-limited links. Resetting credentials terminates all existing active sessions.
 
 **Acceptance Criteria:**
-1. For credential accounts, send a single-use reset link expiring in 60 minutes. Known OAuth-only accounts use their provider recovery flow without publicly revealing account type.
-2. Return the same generic confirmation for known and unknown addresses. Expired, tampered, or consumed tokens cannot change a password.
-3. A valid token allows a password satisfying registration policy; success consumes the token.
-4. Revoke existing sessions across devices after reset. Reset does not sign the user in or clear an active OTP lock; the next login requires US-004.
+1. For credential accounts, Firebase sends a single-use reset link (expiry is Firebase-managed). Known OAuth-only accounts use their provider recovery flow without publicly revealing account type.
+2. Return the same generic confirmation for known and unknown addresses (enable Firebase email enumeration protection). Expired, invalid, or already-used links cannot change a password.
+3. A valid link allows a password satisfying the registration policy; success consumes the link.
+4. After reset, the backend revokes existing Firebase refresh tokens across devices. Reset does not sign the user in or bypass MFA; the next login requires US-004.
 
 **Priority:** High
 
