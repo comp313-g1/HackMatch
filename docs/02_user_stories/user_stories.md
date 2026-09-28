@@ -49,14 +49,15 @@ These stories govern account creation, federated single sign-on, multi-factor cr
 
 **Story Statement:** As an unauthenticated visitor, I want to create an account with my email and password and verify my email address, so that I can establish a verified Participant profile.
 
-**Description:** Standard email/password registration creates a `PART` account in an `Unverified` state. Full access to interactive team formation is gated behind cryptographic email verification to prevent mailbox spoofing. Public registration never grants `ADMIN` privileges.
+**Description:** Standard email/password registration through Firebase Authentication creates a `PART` account in an `Unverified` state. Full access to interactive team formation is gated behind email verification handled by Firebase Authentication, to prevent mailbox spoofing. Public registration never grants `ADMIN` privileges.
+
 
 **Acceptance Criteria:**
-1. A visitor can submit full name, email, and a password with at least 8 characters, mixed case, a digit, and a special character. An academic domain is not required.
-2. Email format and uniqueness are checked; a cryptographically random 256-bit verification link expires after 24 hours.
-3. A valid unused link marks the PART account Verified; expired, consumed, or tampered links fail without granting access. A replacement may be requested.
-4. Unverified accounts cannot declare availability, create teams, apply, or accept invitations. Public registration never grants ADMIN; administrator provisioning is restricted to an authorized deployment operator.
-5. Email ownership verification does not create a full login session: US-004 must succeed first.
+1. A visitor can submit full name, email, and a password that meets the configured Firebase password policy (at least 8 characters, mixed case, a digit, and a special character). An academic domain is not required.
+2. Email format and uniqueness are checked by Firebase Authentication, which sends a verification link to the address. Link expiry is managed by Firebase.
+3. A valid unused link marks the email as verified in Firebase and the PART account as Verified; expired, consumed, or tampered links fail without granting access. A replacement may be requested.
+4. Unverified accounts cannot declare availability, create teams, apply, or accept invitations. Public registration never grants ADMIN; administrator provisioning is restricted to an authorized deployment operator, who sets the ADMIN role as a Firebase custom claim.
+5. Email ownership verification does not create a full login session: Firebase MFA (US-004) must succeed first.
 
 **Priority:** High
 
