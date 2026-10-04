@@ -1,19 +1,19 @@
 # Sprint 1 Task Disaggregation
 
-#### US-001
+#### [US-001](../02_user_stories/user_stories.md#us-001)
 
 **As an unauthenticated visitor, I want to create an account with my email and password and verify my email address, so that I can establish a verified Participant profile.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create Firebase Auth registration form for full name, email, and password | TBD |  | |
-| Connect Firebase Auth email/password registration and password-policy validation | TBD |  | |
-| Create PostgreSQL participant profile record with PART role and Unverified state | TBD |  | |
-| Send and process Firebase email verification links | TBD |  | |
-| Block unverified team, availability, application, and invitation actions | TBD |  | |
-| Protect ADMIN provisioning from public registration | TBD |  | |
-| Add React verification, replacement-link, and invalid-link states | TBD |  | |
-| Add Vitest unit tests and integration tests for registration and verification | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create Firebase Auth registration form for full name, email, and password | Complete the task "Create Firebase Auth registration form for full name, email, and password" for US-001. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Connect Firebase Auth email/password registration and password-policy validation | Complete the task "Connect Firebase Auth email/password registration and password-policy validation" for US-001. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Create PostgreSQL participant profile record with PART role and Unverified state | Complete the task "Create PostgreSQL participant profile record with PART role and Unverified state" for US-001. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Send and process Firebase email verification links | Complete the task "Send and process Firebase email verification links" for US-001. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Block unverified team, availability, application, and invitation actions | Complete the task "Block unverified team, availability, application, and invitation actions" for US-001. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Protect ADMIN provisioning from public registration | Complete the task "Protect ADMIN provisioning from public registration" for US-001. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add React verification, replacement-link, and invalid-link states | Complete the task "Add React verification, replacement-link, and invalid-link states" for US-001. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Vitest unit tests and integration tests for registration and verification | Complete the task "Add Vitest unit tests and integration tests for registration and verification" for US-001. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 1: US-001 (disaggregated tasks)
 
@@ -28,20 +28,20 @@ Table 1: US-001 (disaggregated tasks)
 
 Table 2: US-001 (user acceptance tests)
 
-#### US-002
+#### [US-002](../02_user_stories/user_stories.md#us-002)
 
 **As a visitor or Participant, I want to register and sign in using my Google or GitHub account, so that I can access the platform quickly without creating separate credentials.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Configure Firebase Google and GitHub OAuth providers | TBD |  | |
-| Add React provider sign-in buttons and callback handling | TBD |  | |
-| Create provider identity link records for PART accounts | TBD |  | |
-| Require verified provider email before provisioning a PART profile | TBD |  | |
-| Add reauthentication before linking a provider to an existing account | TBD |  | |
-| Route every provider sign-in into the email OTP flow | TBD |  | |
-| Add provider cancellation, failure, and unverified-email states | TBD |  | |
-| Add Vitest and integration tests for OAuth registration and linking | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Configure Firebase Google and GitHub OAuth providers | Complete the task "Configure Firebase Google and GitHub OAuth providers" for US-002. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add React provider sign-in buttons and callback handling | Complete the task "Add React provider sign-in buttons and callback handling" for US-002. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Create provider identity link records for PART accounts | Complete the task "Create provider identity link records for PART accounts" for US-002. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Require verified provider email before provisioning a PART profile | Complete the task "Require verified provider email before provisioning a PART profile" for US-002. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add reauthentication before linking a provider to an existing account | Complete the task "Add reauthentication before linking a provider to an existing account" for US-002. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Route every provider sign-in into the email OTP flow | Complete the task "Route every provider sign-in into the email OTP flow" for US-002. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add provider cancellation, failure, and unverified-email states | Complete the task "Add provider cancellation, failure, and unverified-email states" for US-002. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add Vitest and integration tests for OAuth registration and linking | Complete the task "Add Vitest and integration tests for OAuth registration and linking" for US-002. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 3: US-002 (disaggregated tasks)
 
@@ -56,20 +56,20 @@ Table 3: US-002 (disaggregated tasks)
 
 Table 4: US-002 (user acceptance tests)
 
-#### US-003
+#### [US-003](../02_user_stories/user_stories.md#us-003)
 
 **As a Participant or Administrator, I want to sign in, maintain an authorized session, and sign out, so that I can safely use my authorized functions.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Build Firebase email/password login form | TBD |  | |
-| Add Firebase ID-token verification middleware in Express | TBD |  | |
-| Enforce PART and ADMIN custom-claim authorization | TBD |  | |
-| Require the US-004 MFA claim before protected access | TBD |  | |
-| Add token refresh, expiry, HTTPS, and cookie security configuration | TBD |  | |
-| Add logout with Firebase refresh-token revocation | TBD |  | |
-| Add suspended-account checks and generic login errors | TBD |  | |
-| Add Vitest middleware tests and login integration tests | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Build Firebase email/password login form | Complete the task "Build Firebase email/password login form" for US-003. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Firebase ID-token verification middleware in Express | Complete the task "Add Firebase ID-token verification middleware in Express" for US-003. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Enforce PART and ADMIN custom-claim authorization | Complete the task "Enforce PART and ADMIN custom-claim authorization" for US-003. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Require the US-004 MFA claim before protected access | Complete the task "Require the US-004 MFA claim before protected access" for US-003. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add token refresh, expiry, HTTPS, and cookie security configuration | Complete the task "Add token refresh, expiry, HTTPS, and cookie security configuration" for US-003. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add logout with Firebase refresh-token revocation | Complete the task "Add logout with Firebase refresh-token revocation" for US-003. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add suspended-account checks and generic login errors | Complete the task "Add suspended-account checks and generic login errors" for US-003. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add Vitest middleware tests and login integration tests | Complete the task "Add Vitest middleware tests and login integration tests" for US-003. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 5: US-003 (disaggregated tasks)
 
@@ -83,20 +83,20 @@ Table 5: US-003 (disaggregated tasks)
 
 Table 6: US-003 (user acceptance tests)
 
-#### US-004
+#### [US-004](../02_user_stories/user_stories.md#us-004)
 
 **As a Participant or Platform Administrator, I want to verify my identity via a one-time code sent to my email during login, so that a compromised password alone does not grant account access.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create PostgreSQL MFA challenge and attempt records | TBD |  | |
-| Generate and email cryptographically random six-digit OTPs | TBD |  | |
-| Add React OTP entry, resend, expiry, and error states | TBD |  | |
-| Validate and atomically consume the current OTP | TBD |  | |
-| Implement five-attempt counter and 15-minute account lock | TBD |  | |
-| Invalidate predecessor challenges on resend and lock | TBD |  | |
-| Add email delivery failure and retry handling | TBD |  | |
-| Add Vitest and integration tests for OTP lifecycle and locking | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create PostgreSQL MFA challenge and attempt records | Complete the task "Create PostgreSQL MFA challenge and attempt records" for US-004. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Generate and email cryptographically random six-digit OTPs | Complete the task "Generate and email cryptographically random six-digit OTPs" for US-004. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add React OTP entry, resend, expiry, and error states | Complete the task "Add React OTP entry, resend, expiry, and error states" for US-004. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Validate and atomically consume the current OTP | Complete the task "Validate and atomically consume the current OTP" for US-004. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Implement five-attempt counter and 15-minute account lock | Complete the task "Implement five-attempt counter and 15-minute account lock" for US-004. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Invalidate predecessor challenges on resend and lock | Complete the task "Invalidate predecessor challenges on resend and lock" for US-004. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add email delivery failure and retry handling | Complete the task "Add email delivery failure and retry handling" for US-004. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add Vitest and integration tests for OTP lifecycle and locking | Complete the task "Add Vitest and integration tests for OTP lifecycle and locking" for US-004. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 7: US-004 (disaggregated tasks)
 
@@ -111,19 +111,19 @@ Table 7: US-004 (disaggregated tasks)
 
 Table 8: US-004 (user acceptance tests)
 
-#### US-005
+#### [US-005](../02_user_stories/user_stories.md#us-005)
 
 **As a user, I want to request a secure password reset link via my registered email, so that I can regain access if I forget my password.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Add password-recovery request page with generic confirmation | TBD |  | |
-| Connect Firebase password-reset email service | TBD |  | |
-| Add reset-link validation and password-policy form | TBD |  | |
-| Revoke Firebase refresh tokens after a successful reset | TBD |  | |
-| Route the next login through MFA without auto-login | TBD |  | |
-| Add expired, invalid, used-link, and OAuth recovery states | TBD |  | |
-| Add Vitest and integration tests for password recovery | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Add password-recovery request page with generic confirmation | Complete the task "Add password-recovery request page with generic confirmation" for US-005. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Connect Firebase password-reset email service | Complete the task "Connect Firebase password-reset email service" for US-005. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add reset-link validation and password-policy form | Complete the task "Add reset-link validation and password-policy form" for US-005. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Revoke Firebase refresh tokens after a successful reset | Complete the task "Revoke Firebase refresh tokens after a successful reset" for US-005. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Route the next login through MFA without auto-login | Complete the task "Route the next login through MFA without auto-login" for US-005. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add expired, invalid, used-link, and OAuth recovery states | Complete the task "Add expired, invalid, used-link, and OAuth recovery states" for US-005. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Vitest and integration tests for password recovery | Complete the task "Add Vitest and integration tests for password recovery" for US-005. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 9: US-005 (disaggregated tasks)
 
@@ -137,20 +137,20 @@ Table 9: US-005 (disaggregated tasks)
 
 Table 10: US-005 (user acceptance tests)
 
-#### US-006
+#### [US-006](../02_user_stories/user_stories.md#us-006)
 
 **As a Participant, I want to maintain my technical profile with my role, skill tags, academic institution, and portfolio links, so that prospective teammates can assess my capabilities.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create Supabase PostgreSQL participant profile, skill, and portfolio tables | TBD |  | |
-| Create Express profile read and update endpoints | TBD |  | |
-| Add validation for roles, skills, institution, and HTTPS portfolio URLs | TBD |  | |
-| Build React profile edit and candidate-card components | TBD |  | |
-| Apply profile privacy rules for visitors, PART users, and confirmed teammates | TBD |  | |
-| Show self-declared portfolio labels and field-specific errors | TBD |  | |
-| Revoke shared contact visibility after team removal | TBD |  | |
-| Add Vitest and integration tests for profile permissions and validation | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create Supabase PostgreSQL participant profile, skill, and portfolio tables | Complete the task "Create Supabase PostgreSQL participant profile, skill, and portfolio tables" for US-006. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Create Express profile read and update endpoints | Complete the task "Create Express profile read and update endpoints" for US-006. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add validation for roles, skills, institution, and HTTPS portfolio URLs | Complete the task "Add validation for roles, skills, institution, and HTTPS portfolio URLs" for US-006. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build React profile edit and candidate-card components | Complete the task "Build React profile edit and candidate-card components" for US-006. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Apply profile privacy rules for visitors, PART users, and confirmed teammates | Complete the task "Apply profile privacy rules for visitors, PART users, and confirmed teammates" for US-006. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Show self-declared portfolio labels and field-specific errors | Complete the task "Show self-declared portfolio labels and field-specific errors" for US-006. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Revoke shared contact visibility after team removal | Complete the task "Revoke shared contact visibility after team removal" for US-006. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Vitest and integration tests for profile permissions and validation | Complete the task "Add Vitest and integration tests for profile permissions and validation" for US-006. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 11: US-006 (disaggregated tasks)
 
@@ -165,19 +165,19 @@ Table 11: US-006 (disaggregated tasks)
 
 Table 12: US-006 (user acceptance tests)
 
-#### US-007
+#### [US-007](../02_user_stories/user_stories.md#us-007)
 
 **As a Participant, I want to record past hackathons and project links, so that Team Leads can review my self-declared experience.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create PostgreSQL hackathon-history records for participant profiles | TBD |  | |
-| Add Express history create, edit, list, and delete endpoints | TBD |  | |
-| Validate event name, date, role, project title, and HTTPS URL | TBD |  | |
-| Compute Beginner, Competitor, and Veteran badges | TBD |  | |
-| Build React history editor and profile display | TBD |  | |
-| Apply authenticated viewing and owner-only edit permissions | TBD |  | |
-| Add Vitest and integration tests for history and badge recalculation | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create PostgreSQL hackathon-history records for participant profiles | Complete the task "Create PostgreSQL hackathon-history records for participant profiles" for US-007. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Express history create, edit, list, and delete endpoints | Complete the task "Add Express history create, edit, list, and delete endpoints" for US-007. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Validate event name, date, role, project title, and HTTPS URL | Complete the task "Validate event name, date, role, project title, and HTTPS URL" for US-007. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Compute Beginner, Competitor, and Veteran badges | Complete the task "Compute Beginner, Competitor, and Veteran badges" for US-007. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build React history editor and profile display | Complete the task "Build React history editor and profile display" for US-007. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Apply authenticated viewing and owner-only edit permissions | Complete the task "Apply authenticated viewing and owner-only edit permissions" for US-007. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add Vitest and integration tests for history and badge recalculation | Complete the task "Add Vitest and integration tests for history and badge recalculation" for US-007. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 13: US-007 (disaggregated tasks)
 
@@ -192,19 +192,19 @@ Table 13: US-007 (disaggregated tasks)
 
 Table 14: US-007 (user acceptance tests)
 
-#### US-029
+#### [US-029](../02_user_stories/user_stories.md#us-029)
 
 **As a Participant or Platform Administrator, I want to link a standard authenticator app (such as Google Authenticator or Microsoft Authenticator) to my account, so that I can generate instant 6-digit verification codes on my mobile device without waiting for email delivery.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Define the approved future authenticator enrollment and fallback design | TBD |  | |
-| Add protected TOTP secret enrollment storage | TBD |  | |
-| Build QR enrollment and confirmation-code screens | TBD |  | |
-| Add reauthentication and recovery-code controls | TBD |  | |
-| Protect secrets from logs and other accounts | TBD |  | |
-| Preserve email OTP and the five-attempt/15-minute lock policy | TBD |  | |
-| Add Vitest and integration tests for setup failure and activation | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Define the approved future authenticator enrollment and fallback design | Complete the task "Define the approved future authenticator enrollment and fallback design" for US-029. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add protected TOTP secret enrollment storage | Complete the task "Add protected TOTP secret enrollment storage" for US-029. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build QR enrollment and confirmation-code screens | Complete the task "Build QR enrollment and confirmation-code screens" for US-029. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add reauthentication and recovery-code controls | Complete the task "Add reauthentication and recovery-code controls" for US-029. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Protect secrets from logs and other accounts | Complete the task "Protect secrets from logs and other accounts" for US-029. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Preserve email OTP and the five-attempt/15-minute lock policy | Complete the task "Preserve email OTP and the five-attempt/15-minute lock policy" for US-029. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add Vitest and integration tests for setup failure and activation | Complete the task "Add Vitest and integration tests for setup failure and activation" for US-029. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 15: US-029 (disaggregated tasks)
 
@@ -219,20 +219,20 @@ Table 15: US-029 (disaggregated tasks)
 
 Table 16: US-029 (user acceptance tests)
 
-#### US-008
+#### [US-008](../02_user_stories/user_stories.md#us-008)
 
 **As a visitor or Participant, I want to browse and filter upcoming hackathons, so that I can identify events I want to attend and inspect available teams.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create PostgreSQL verified hackathon event model and indexes | TBD |  | |
-| Create public Express event list and detail endpoints | TBD |  | |
-| Add keyword, format, and time-state filters | TBD |  | |
-| Build React event directory, filter controls, and empty state | TBD |  | |
-| Show verified event metadata and safe official links | TBD |  | |
-| Hide pending/rejected events and disable unsafe links | TBD |  | |
-| Connect event details to the team vacancy board | TBD |  | |
-| Add Vitest and integration tests for filters and visibility | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create PostgreSQL verified hackathon event model and indexes | Complete the task "Create PostgreSQL verified hackathon event model and indexes" for US-008. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Create public Express event list and detail endpoints | Complete the task "Create public Express event list and detail endpoints" for US-008. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add keyword, format, and time-state filters | Complete the task "Add keyword, format, and time-state filters" for US-008. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build React event directory, filter controls, and empty state | Complete the task "Build React event directory, filter controls, and empty state" for US-008. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Show verified event metadata and safe official links | Complete the task "Show verified event metadata and safe official links" for US-008. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Hide pending/rejected events and disable unsafe links | Complete the task "Hide pending/rejected events and disable unsafe links" for US-008. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Connect event details to the team vacancy board | Complete the task "Connect event details to the team vacancy board" for US-008. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Vitest and integration tests for filters and visibility | Complete the task "Add Vitest and integration tests for filters and visibility" for US-008. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 17: US-008 (disaggregated tasks)
 
@@ -247,20 +247,20 @@ Table 17: US-008 (disaggregated tasks)
 
 Table 18: US-008 (user acceptance tests)
 
-#### US-009
+#### [US-009](../02_user_stories/user_stories.md#us-009)
 
 **As a Participant, I want to submit an unlisted hackathon for verification, so that users can form teams around one trusted event record.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create PostgreSQL pending event-submission model and status fields | TBD |  | |
-| Build React event submission form with official event fields | TBD |  | |
-| Add server-side HTTPS, date, format, location, and team-limit validation | TBD |  | |
-| Add normalized URL and edition/start-date duplicate checks | TBD |  | |
-| Show similar candidate events without automatic merging | TBD |  | |
-| Create Express submitter status and resubmission endpoints | TBD |  | |
-| Block recruitment until ADMIN approval and show feedback | TBD |  | |
-| Add Vitest and integration tests for duplicate and status workflows | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create PostgreSQL pending event-submission model and status fields | Complete the task "Create PostgreSQL pending event-submission model and status fields" for US-009. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build React event submission form with official event fields | Complete the task "Build React event submission form with official event fields" for US-009. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add server-side HTTPS, date, format, location, and team-limit validation | Complete the task "Add server-side HTTPS, date, format, location, and team-limit validation" for US-009. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add normalized URL and edition/start-date duplicate checks | Complete the task "Add normalized URL and edition/start-date duplicate checks" for US-009. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Show similar candidate events without automatic merging | Complete the task "Show similar candidate events without automatic merging" for US-009. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Create Express submitter status and resubmission endpoints | Complete the task "Create Express submitter status and resubmission endpoints" for US-009. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Block recruitment until ADMIN approval and show feedback | Complete the task "Block recruitment until ADMIN approval and show feedback" for US-009. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add Vitest and integration tests for duplicate and status workflows | Complete the task "Add Vitest and integration tests for duplicate and status workflows" for US-009. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 19: US-009 (disaggregated tasks)
 
@@ -275,21 +275,21 @@ Table 19: US-009 (disaggregated tasks)
 
 Table 20: US-009 (user acceptance tests)
 
-#### US-010
+#### [US-010](../02_user_stories/user_stories.md#us-010)
 
 **As a Platform Administrator, I want to review, correct, and verify crowdsourced hackathon submissions and manage published listings, so that the platform maintains an accurate single source of truth.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create ADMIN event-verification queue and detail endpoints | TBD |  | |
-| Add RBAC middleware for ADMIN event operations | TBD |  | |
-| Build organizer-source, dates, URL, and team-limit review form | TBD |  | |
-| Implement approve, reject, correct, merge, and archive services | TBD |  | |
-| Create append-only event action records with actor, reason, outcome, and time | TBD |  | |
-| Add transactional duplicate merge and invariant-conflict checks | TBD |  | |
-| Disable unsafe links and recruitment while preserving memberships | TBD |  | |
-| Build React queue, feedback, status, and affected-team views | TBD |  | |
-| Add Vitest and integration tests for ADMIN lifecycle operations | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create ADMIN event-verification queue and detail endpoints | Complete the task "Create ADMIN event-verification queue and detail endpoints" for US-010. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add RBAC middleware for ADMIN event operations | Complete the task "Add RBAC middleware for ADMIN event operations" for US-010. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build organizer-source, dates, URL, and team-limit review form | Complete the task "Build organizer-source, dates, URL, and team-limit review form" for US-010. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Implement approve, reject, correct, merge, and archive services | Complete the task "Implement approve, reject, correct, merge, and archive services" for US-010. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Create append-only event action records with actor, reason, outcome, and time | Complete the task "Create append-only event action records with actor, reason, outcome, and time" for US-010. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add transactional duplicate merge and invariant-conflict checks | Complete the task "Add transactional duplicate merge and invariant-conflict checks" for US-010. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Disable unsafe links and recruitment while preserving memberships | Complete the task "Disable unsafe links and recruitment while preserving memberships" for US-010. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build React queue, feedback, status, and affected-team views | Complete the task "Build React queue, feedback, status, and affected-team views" for US-010. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Vitest and integration tests for ADMIN lifecycle operations | Complete the task "Add Vitest and integration tests for ADMIN lifecycle operations" for US-010. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 21: US-010 (disaggregated tasks)
 
@@ -304,20 +304,20 @@ Table 21: US-010 (disaggregated tasks)
 
 Table 22: US-010 (user acceptance tests)
 
-#### US-011
+#### [US-011](../02_user_stories/user_stories.md#us-011)
 
 **As a Participant, I want to declare my availability for a specific hackathon and state my desired role and commitment level, so that Team Leads can discover me as an available candidate.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create PostgreSQL event availability model scoped to participant and event | TBD |  | |
-| Build Express availability read and toggle endpoints | TBD |  | |
-| Validate desired role, non-negative commitment hours, and goal labels | TBD |  | |
-| Build React availability form and status display | TBD |  | |
-| Restrict availability to verified PART users on Verified recruiting events | TBD |  | |
-| Clear availability atomically on confirmed team membership | TBD |  | |
-| Add candidate visibility and empty-state handling | TBD |  | |
-| Add Vitest and integration tests for availability lifecycle | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create PostgreSQL event availability model scoped to participant and event | Complete the task "Create PostgreSQL event availability model scoped to participant and event" for US-011. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build Express availability read and toggle endpoints | Complete the task "Build Express availability read and toggle endpoints" for US-011. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Validate desired role, non-negative commitment hours, and goal labels | Complete the task "Validate desired role, non-negative commitment hours, and goal labels" for US-011. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Build React availability form and status display | Complete the task "Build React availability form and status display" for US-011. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Restrict availability to verified PART users on Verified recruiting events | Complete the task "Restrict availability to verified PART users on Verified recruiting events" for US-011. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Clear availability atomically on confirmed team membership | Complete the task "Clear availability atomically on confirmed team membership" for US-011. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add candidate visibility and empty-state handling | Complete the task "Add candidate visibility and empty-state handling" for US-011. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add Vitest and integration tests for availability lifecycle | Complete the task "Add Vitest and integration tests for availability lifecycle" for US-011. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 23: US-011 (disaggregated tasks)
 
@@ -331,21 +331,21 @@ Table 23: US-011 (disaggregated tasks)
 
 Table 24: US-011 (user acceptance tests)
 
-#### US-012
+#### [US-012](../02_user_stories/user_stories.md#us-012)
 
 **As a Team Lead, I want to create a structured recruitment listing with discrete skill vacancy slots and edit it as our needs evolve, so that I can attract targeted teammates.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create PostgreSQL team, membership, vacancy, and recruitment-status models | TBD |  | |
-| Build atomic team-creation service that confirms the owner | TBD |  | |
-| Create Express team listing and vacancy CRUD endpoints | TBD |  | |
-| Add validation for pitch length, goals, hours, links, slots, and event limits | TBD |  | |
-| Protect team operations with LEAD ownership checks | TBD |  | |
-| Cancel pending requests when slots are removed or teams disband | TBD |  | |
-| Implement member removal, availability restore, and lifecycle lock checks | TBD |  | |
-| Build React team listing editor, roster, vacancy, and error states | TBD |  | |
-| Add Vitest and integration tests for team lifecycle and concurrency rules | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create PostgreSQL team, membership, vacancy, and recruitment-status models | Complete the task "Create PostgreSQL team, membership, vacancy, and recruitment-status models" for US-012. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build atomic team-creation service that confirms the owner | Complete the task "Build atomic team-creation service that confirms the owner" for US-012. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Create Express team listing and vacancy CRUD endpoints | Complete the task "Create Express team listing and vacancy CRUD endpoints" for US-012. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add validation for pitch length, goals, hours, links, slots, and event limits | Complete the task "Add validation for pitch length, goals, hours, links, slots, and event limits" for US-012. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Protect team operations with LEAD ownership checks | Complete the task "Protect team operations with LEAD ownership checks" for US-012. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Cancel pending requests when slots are removed or teams disband | Complete the task "Cancel pending requests when slots are removed or teams disband" for US-012. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Implement member removal, availability restore, and lifecycle lock checks | Complete the task "Implement member removal, availability restore, and lifecycle lock checks" for US-012. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Build React team listing editor, roster, vacancy, and error states | Complete the task "Build React team listing editor, roster, vacancy, and error states" for US-012. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add Vitest and integration tests for team lifecycle and concurrency rules | Complete the task "Add Vitest and integration tests for team lifecycle and concurrency rules" for US-012. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 25: US-012 (disaggregated tasks)
 
@@ -360,19 +360,19 @@ Table 25: US-012 (disaggregated tasks)
 
 Table 26: US-012 (user acceptance tests)
 
-#### US-013
+#### [US-013](../02_user_stories/user_stories.md#us-013)
 
 **As a Participant, I want to browse and filter open team vacancy slots for a hackathon, so that I can identify teams matching my technical stack and project goals.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create Express vacancy-board list endpoint with active-team filters | TBD |  | |
-| Add skill, role, goal, and slot-count query handling | TBD |  | |
-| Build React vacancy board and filter controls | TBD |  | |
-| Show full PART details and anonymized visitor previews | TBD |  | |
-| Add no-results state with filter reset | TBD |  | |
-| Link Apply actions to the US-018 application flow | TBD |  | |
-| Add Vitest and integration tests for visibility and filters | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create Express vacancy-board list endpoint with active-team filters | Complete the task "Create Express vacancy-board list endpoint with active-team filters" for US-013. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add skill, role, goal, and slot-count query handling | Complete the task "Add skill, role, goal, and slot-count query handling" for US-013. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build React vacancy board and filter controls | Complete the task "Build React vacancy board and filter controls" for US-013. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Show full PART details and anonymized visitor previews | Complete the task "Show full PART details and anonymized visitor previews" for US-013. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add no-results state with filter reset | Complete the task "Add no-results state with filter reset" for US-013. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Link Apply actions to the US-018 application flow | Complete the task "Link Apply actions to the US-018 application flow" for US-013. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Vitest and integration tests for visibility and filters | Complete the task "Add Vitest and integration tests for visibility and filters" for US-013. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 27: US-013 (disaggregated tasks)
 
@@ -387,19 +387,19 @@ Table 27: US-013 (disaggregated tasks)
 
 Table 28: US-013 (user acceptance tests)
 
-#### US-014
+#### [US-014](../02_user_stories/user_stories.md#us-014)
 
 **As a Team Lead, I want to search and filter the event candidate pool using specific skill combinations and experience tiers, so that I can manually discover candidates who fit our vacancy needs.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create candidate-directory query service for active team owners | TBD |  | |
-| Add AND/OR skills, role, hours, badge, and availability filters | TBD |  | |
-| Exclude all confirmed event participants from results | TBD |  | |
-| Build React candidate directory and filter controls | TBD |  | |
-| Apply US-006 privacy fields and link profile inspection | TBD |  | |
-| Connect candidate cards to US-017 invitations | TBD |  | |
-| Add Vitest and integration tests for LEAD access and filters | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create candidate-directory query service for active team owners | Complete the task "Create candidate-directory query service for active team owners" for US-014. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add AND/OR skills, role, hours, badge, and availability filters | Complete the task "Add AND/OR skills, role, hours, badge, and availability filters" for US-014. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Exclude all confirmed event participants from results | Complete the task "Exclude all confirmed event participants from results" for US-014. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build React candidate directory and filter controls | Complete the task "Build React candidate directory and filter controls" for US-014. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Apply US-006 privacy fields and link profile inspection | Complete the task "Apply US-006 privacy fields and link profile inspection" for US-014. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Connect candidate cards to US-017 invitations | Complete the task "Connect candidate cards to US-017 invitations" for US-014. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Vitest and integration tests for LEAD access and filters | Complete the task "Add Vitest and integration tests for LEAD access and filters" for US-014. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 29: US-014 (disaggregated tasks)
 
@@ -413,20 +413,20 @@ Table 29: US-014 (disaggregated tasks)
 
 Table 30: US-014 (user acceptance tests)
 
-#### US-015
+#### [US-015](../02_user_stories/user_stories.md#us-015)
 
 **As a Team Lead, I want to view a ranked list of compatible candidates for my team's open vacancy slots, so that I can invite teammates with complementary skills and matching commitments.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Define deterministic FR-043–045 scoring rules and missing-input handling | TBD |  | |
-| Create recommendation service for an owner and open slot | TBD |  | |
-| Exclude inactive, unavailable, and confirmed event participants | TBD |  | |
-| Implement bounded 0–100 scores and tie-breaking | TBD |  | |
-| Return explainable score contributions without internal identifiers | TBD |  | |
-| Build React recommendation list, empty state, and fallback state | TBD |  | |
-| Connect eligible candidates to US-017 invitation flow | TBD |  | |
-| Add Vitest and integration tests for scoring, permissions, and exclusions | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Define deterministic FR-043–045 scoring rules and missing-input handling | Complete the task "Define deterministic FR-043–045 scoring rules and missing-input handling" for US-015. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Create recommendation service for an owner and open slot | Complete the task "Create recommendation service for an owner and open slot" for US-015. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Exclude inactive, unavailable, and confirmed event participants | Complete the task "Exclude inactive, unavailable, and confirmed event participants" for US-015. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Implement bounded 0–100 scores and tie-breaking | Complete the task "Implement bounded 0–100 scores and tie-breaking" for US-015. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Return explainable score contributions without internal identifiers | Complete the task "Return explainable score contributions without internal identifiers" for US-015. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build React recommendation list, empty state, and fallback state | Complete the task "Build React recommendation list, empty state, and fallback state" for US-015. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Connect eligible candidates to US-017 invitation flow | Complete the task "Connect eligible candidates to US-017 invitation flow" for US-015. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Vitest and integration tests for scoring, permissions, and exclusions | Complete the task "Add Vitest and integration tests for scoring, permissions, and exclusions" for US-015. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 31: US-015 (disaggregated tasks)
 
@@ -441,19 +441,19 @@ Table 31: US-015 (disaggregated tasks)
 
 Table 32: US-015 (user acceptance tests)
 
-#### US-016
+#### [US-016](../02_user_stories/user_stories.md#us-016)
 
 **As a Participant, I want to receive proactive recommendations of open teams matching my profile, so that I can discover compatible projects without manual filtering.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Define reverse matching inputs and team eligibility rules | TBD |  | |
-| Create recommendation query for a selected event and PART profile | TBD |  | |
-| Calculate match percentage and matched skill tags | TBD |  | |
-| Build React recommended-teams page and empty state | TBD |  | |
-| Connect suggestions to the US-018 application form | TBD |  | |
-| Add permission checks for the participant's own profile | TBD |  | |
-| Add Vitest and integration tests for recommendations | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Define reverse matching inputs and team eligibility rules | Complete the task "Define reverse matching inputs and team eligibility rules" for US-016. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Create recommendation query for a selected event and PART profile | Complete the task "Create recommendation query for a selected event and PART profile" for US-016. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Calculate match percentage and matched skill tags | Complete the task "Calculate match percentage and matched skill tags" for US-016. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build React recommended-teams page and empty state | Complete the task "Build React recommended-teams page and empty state" for US-016. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Connect suggestions to the US-018 application form | Complete the task "Connect suggestions to the US-018 application form" for US-016. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add permission checks for the participant's own profile | Complete the task "Add permission checks for the participant's own profile" for US-016. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add Vitest and integration tests for recommendations | Complete the task "Add Vitest and integration tests for recommendations" for US-016. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 33: US-016 (disaggregated tasks)
 
@@ -467,20 +467,20 @@ Table 33: US-016 (disaggregated tasks)
 
 Table 34: US-016 (user acceptance tests)
 
-#### US-017
+#### [US-017](../02_user_stories/user_stories.md#us-017)
 
 **As a Team Lead, I want to issue a direct invitation to an available candidate, so that they can review my team and decide whether to join.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create PostgreSQL invitation model with pending, expiry, and status fields | TBD |  | |
-| Build owner-only Express invitation endpoint | TBD |  | |
-| Validate candidate availability, team state, event, and open slot | TBD |  | |
-| Enforce one pending invitation per slot and invitee/team | TBD |  | |
-| Implement 48-hour expiry and acceptance-time revalidation | TBD |  | |
-| Add invitation cancel endpoint and basic status alerts | TBD |  | |
-| Build React invite form and invitation view | TBD |  | |
-| Add Vitest and integration tests for invitations and permissions | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create PostgreSQL invitation model with pending, expiry, and status fields | Complete the task "Create PostgreSQL invitation model with pending, expiry, and status fields" for US-017. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build owner-only Express invitation endpoint | Complete the task "Build owner-only Express invitation endpoint" for US-017. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Validate candidate availability, team state, event, and open slot | Complete the task "Validate candidate availability, team state, event, and open slot" for US-017. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Enforce one pending invitation per slot and invitee/team | Complete the task "Enforce one pending invitation per slot and invitee/team" for US-017. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Implement 48-hour expiry and acceptance-time revalidation | Complete the task "Implement 48-hour expiry and acceptance-time revalidation" for US-017. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add invitation cancel endpoint and basic status alerts | Complete the task "Add invitation cancel endpoint and basic status alerts" for US-017. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build React invite form and invitation view | Complete the task "Build React invite form and invitation view" for US-017. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Vitest and integration tests for invitations and permissions | Complete the task "Add Vitest and integration tests for invitations and permissions" for US-017. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 35: US-017 (disaggregated tasks)
 
@@ -495,20 +495,20 @@ Table 35: US-017 (disaggregated tasks)
 
 Table 36: US-017 (user acceptance tests)
 
-#### US-018
+#### [US-018](../02_user_stories/user_stories.md#us-018)
 
 **As a Participant, I want to submit an application to an open team vacancy slot, so that the Team Lead can review my profile and consider me for membership.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create PostgreSQL application model with status and slot relation | TBD |  | |
-| Build React application form with optional 250-character message | TBD |  | |
-| Create Express application endpoint with atomic count validation | TBD |  | |
-| Enforce verified PART, active unlocked team, open slot, and one-team rules | TBD |  | |
-| Enforce three pending applications per PART per event | TBD |  | |
-| Add applicant status, withdrawal, and owner alert handling | TBD |  | |
-| Add duplicate pending-application and rate-limit errors | TBD |  | |
-| Add Vitest and integration tests for application limits and permissions | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create PostgreSQL application model with status and slot relation | Complete the task "Create PostgreSQL application model with status and slot relation" for US-018. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build React application form with optional 250-character message | Complete the task "Build React application form with optional 250-character message" for US-018. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Create Express application endpoint with atomic count validation | Complete the task "Create Express application endpoint with atomic count validation" for US-018. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Enforce verified PART, active unlocked team, open slot, and one-team rules | Complete the task "Enforce verified PART, active unlocked team, open slot, and one-team rules" for US-018. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Enforce three pending applications per PART per event | Complete the task "Enforce three pending applications per PART per event" for US-018. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add applicant status, withdrawal, and owner alert handling | Complete the task "Add applicant status, withdrawal, and owner alert handling" for US-018. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add duplicate pending-application and rate-limit errors | Complete the task "Add duplicate pending-application and rate-limit errors" for US-018. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add Vitest and integration tests for application limits and permissions | Complete the task "Add Vitest and integration tests for application limits and permissions" for US-018. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 37: US-018 (disaggregated tasks)
 
@@ -523,20 +523,20 @@ Table 37: US-018 (disaggregated tasks)
 
 Table 38: US-018 (user acceptance tests)
 
-#### US-019
+#### [US-019](../02_user_stories/user_stories.md#us-019)
 
 **As an invited Participant, I want to accept or decline a team invitation, so that I can confirm my team placement or keep looking.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Build invitation detail and response endpoints for the addressed PART | TBD |  | |
-| Implement atomic acceptance revalidation and membership creation | TBD |  | |
-| Cancel competing invitations, applications, and filled-slot requests | TBD |  | |
-| Implement decline and owner alert behavior | TBD |  | |
-| Implement pre-lock member leave and availability restoration | TBD |  | |
-| Handle concurrent acceptance with clear conflict responses | TBD |  | |
-| Build React invitation response and roster status views | TBD |  | |
-| Add Vitest and integration tests for response transactions | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Build invitation detail and response endpoints for the addressed PART | Complete the task "Build invitation detail and response endpoints for the addressed PART" for US-019. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Implement atomic acceptance revalidation and membership creation | Complete the task "Implement atomic acceptance revalidation and membership creation" for US-019. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Cancel competing invitations, applications, and filled-slot requests | Complete the task "Cancel competing invitations, applications, and filled-slot requests" for US-019. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Implement decline and owner alert behavior | Complete the task "Implement decline and owner alert behavior" for US-019. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Implement pre-lock member leave and availability restoration | Complete the task "Implement pre-lock member leave and availability restoration" for US-019. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Handle concurrent acceptance with clear conflict responses | Complete the task "Handle concurrent acceptance with clear conflict responses" for US-019. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Build React invitation response and roster status views | Complete the task "Build React invitation response and roster status views" for US-019. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Vitest and integration tests for response transactions | Complete the task "Add Vitest and integration tests for response transactions" for US-019. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 39: US-019 (disaggregated tasks)
 
@@ -551,20 +551,20 @@ Table 39: US-019 (disaggregated tasks)
 
 Table 40: US-019 (user acceptance tests)
 
-#### US-020
+#### [US-020](../02_user_stories/user_stories.md#us-020)
 
 **As a Team Lead, I want to review incoming applications and approve or decline candidates, so that I can select the best teammates for our vacancies.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Build owner-only application review endpoint | TBD |  | |
-| Display permitted profile fields and application notes | TBD |  | |
-| Implement atomic approval with capacity and membership checks | TBD |  | |
-| Cancel competing requests after approval | TBD |  | |
-| Implement decline outcome and basic alerts | TBD |  | |
-| Handle stale and repeated decisions idempotently | TBD |  | |
-| Build React application review list and decision controls | TBD |  | |
-| Add Vitest and integration tests for approval conflicts and permissions | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Build owner-only application review endpoint | Complete the task "Build owner-only application review endpoint" for US-020. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Display permitted profile fields and application notes | Complete the task "Display permitted profile fields and application notes" for US-020. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Implement atomic approval with capacity and membership checks | Complete the task "Implement atomic approval with capacity and membership checks" for US-020. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Cancel competing requests after approval | Complete the task "Cancel competing requests after approval" for US-020. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Implement decline outcome and basic alerts | Complete the task "Implement decline outcome and basic alerts" for US-020. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Handle stale and repeated decisions idempotently | Complete the task "Handle stale and repeated decisions idempotently" for US-020. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build React application review list and decision controls | Complete the task "Build React application review list and decision controls" for US-020. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Vitest and integration tests for approval conflicts and permissions | Complete the task "Add Vitest and integration tests for approval conflicts and permissions" for US-020. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 41: US-020 (disaggregated tasks)
 
@@ -579,20 +579,20 @@ Table 41: US-020 (disaggregated tasks)
 
 Table 42: US-020 (user acceptance tests)
 
-#### US-021
+#### [US-021](../02_user_stories/user_stories.md#us-021)
 
 **As an active user, I want an in-app notification center that alerts me to invitations, applications, and event verification updates, so that I can take timely action.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create PostgreSQL notification model and unread indexes | TBD |  | |
-| Create notification service for recruitment and event events | TBD |  | |
-| Add Express notification list, read, and mark-all endpoints | TBD |  | |
-| Build React navigation bell, unread badge, and dropdown | TBD |  | |
-| Add notification type labels and deep links to action views | TBD |  | |
-| Add real-time refresh or polling for new alerts | TBD |  | |
-| Add empty, read, and permission states | TBD |  | |
-| Add Vitest and integration tests for notification creation and reading | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create PostgreSQL notification model and unread indexes | Complete the task "Create PostgreSQL notification model and unread indexes" for US-021. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Create notification service for recruitment and event events | Complete the task "Create notification service for recruitment and event events" for US-021. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Express notification list, read, and mark-all endpoints | Complete the task "Add Express notification list, read, and mark-all endpoints" for US-021. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build React navigation bell, unread badge, and dropdown | Complete the task "Build React navigation bell, unread badge, and dropdown" for US-021. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add notification type labels and deep links to action views | Complete the task "Add notification type labels and deep links to action views" for US-021. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add real-time refresh or polling for new alerts | Complete the task "Add real-time refresh or polling for new alerts" for US-021. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add empty, read, and permission states | Complete the task "Add empty, read, and permission states" for US-021. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add Vitest and integration tests for notification creation and reading | Complete the task "Add Vitest and integration tests for notification creation and reading" for US-021. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 43: US-021 (disaggregated tasks)
 
@@ -607,19 +607,19 @@ Table 43: US-021 (disaggregated tasks)
 
 Table 44: US-021 (user acceptance tests)
 
-#### US-022
+#### [US-022](../02_user_stories/user_stories.md#us-022)
 
 **As a Team Lead, I want to confirm and lock my team's roster, so that our membership is finalized and membership mutations are frozen.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Add team roster lock fields and server lock timestamp | TBD |  | |
-| Build owner-only roster validation endpoint | TBD |  | |
-| Implement atomic lock transaction with join and leave operations | TBD |  | |
-| Cancel pending invitations and applications on lock | TBD |  | |
-| Reject post-lock exits, removals, slot edits, and disbanding | TBD |  | |
-| Build React roster review, lock confirmation, and status views | TBD |  | |
-| Add Vitest and integration tests for minimum, maximum, and concurrency rules | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Add team roster lock fields and server lock timestamp | Complete the task "Add team roster lock fields and server lock timestamp" for US-022. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Build owner-only roster validation endpoint | Complete the task "Build owner-only roster validation endpoint" for US-022. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Implement atomic lock transaction with join and leave operations | Complete the task "Implement atomic lock transaction with join and leave operations" for US-022. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Cancel pending invitations and applications on lock | Complete the task "Cancel pending invitations and applications on lock" for US-022. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Reject post-lock exits, removals, slot edits, and disbanding | Complete the task "Reject post-lock exits, removals, slot edits, and disbanding" for US-022. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Build React roster review, lock confirmation, and status views | Complete the task "Build React roster review, lock confirmation, and status views" for US-022. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add Vitest and integration tests for minimum, maximum, and concurrency rules | Complete the task "Add Vitest and integration tests for minimum, maximum, and concurrency rules" for US-022. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 45: US-022 (disaggregated tasks)
 
@@ -634,20 +634,20 @@ Table 45: US-022 (disaggregated tasks)
 
 Table 46: US-022 (user acceptance tests)
 
-#### US-023
+#### [US-023](../02_user_stories/user_stories.md#us-023)
 
 **As a confirmed team member, I want to access a private team workspace with shared communication links, project concept notes, and teammate contacts, so that we can coordinate before the hackathon begins.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create PostgreSQL locked-team workspace, link, note, and revision models | TBD |  | |
-| Add member-only workspace authorization for active locked teams | TBD |  | |
-| Create owner-only HTTPS external-link endpoints | TBD |  | |
-| Create shared markdown note and revision endpoints | TBD |  | |
-| Add stale-save conflict handling using revision versions | TBD |  | |
-| Build React workspace, member contacts, links, note editor, and revisions | TBD |  | |
-| Apply privacy rules and deletion handling for shared data | TBD |  | |
-| Add Vitest and integration tests for workspace access and concurrent saves | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create PostgreSQL locked-team workspace, link, note, and revision models | Complete the task "Create PostgreSQL locked-team workspace, link, note, and revision models" for US-023. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add member-only workspace authorization for active locked teams | Complete the task "Add member-only workspace authorization for active locked teams" for US-023. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Create owner-only HTTPS external-link endpoints | Complete the task "Create owner-only HTTPS external-link endpoints" for US-023. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Create shared markdown note and revision endpoints | Complete the task "Create shared markdown note and revision endpoints" for US-023. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add stale-save conflict handling using revision versions | Complete the task "Add stale-save conflict handling using revision versions" for US-023. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Build React workspace, member contacts, links, note editor, and revisions | Complete the task "Build React workspace, member contacts, links, note editor, and revisions" for US-023. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Apply privacy rules and deletion handling for shared data | Complete the task "Apply privacy rules and deletion handling for shared data" for US-023. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add Vitest and integration tests for workspace access and concurrent saves | Complete the task "Add Vitest and integration tests for workspace access and concurrent saves" for US-023. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 47: US-023 (disaggregated tasks)
 
@@ -662,19 +662,19 @@ Table 47: US-023 (disaggregated tasks)
 
 Table 48: US-023 (user acceptance tests)
 
-#### US-024
+#### [US-024](../02_user_stories/user_stories.md#us-024)
 
 **As a confirmed member of a locked team, I want to export our roster record, so that we can share consistent team information if an event accepts it.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Define canonical roster snapshot serialization | TBD |  | |
-| Create export service for HTML, PDF, and JSON formats | TBD |  | |
-| Add checksum generation and included-field change detection | TBD |  | |
-| Build React export controls and download states | TBD |  | |
-| Exclude email and private contact fields from exports | TBD |  | |
-| Add locked-member authorization and historical snapshot handling | TBD |  | |
-| Add Vitest and integration tests for export content and checksums | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Define canonical roster snapshot serialization | Complete the task "Define canonical roster snapshot serialization" for US-024. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Create export service for HTML, PDF, and JSON formats | Complete the task "Create export service for HTML, PDF, and JSON formats" for US-024. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add checksum generation and included-field change detection | Complete the task "Add checksum generation and included-field change detection" for US-024. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build React export controls and download states | Complete the task "Build React export controls and download states" for US-024. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Exclude email and private contact fields from exports | Complete the task "Exclude email and private contact fields from exports" for US-024. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add locked-member authorization and historical snapshot handling | Complete the task "Add locked-member authorization and historical snapshot handling" for US-024. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add Vitest and integration tests for export content and checksums | Complete the task "Add Vitest and integration tests for export content and checksums" for US-024. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 49: US-024 (disaggregated tasks)
 
@@ -689,19 +689,19 @@ Table 49: US-024 (disaggregated tasks)
 
 Table 50: US-024 (user acceptance tests)
 
-#### US-025
+#### [US-025](../02_user_stories/user_stories.md#us-025)
 
 **As a Participant, I want to report an abusive profile, offensive team listing, or suspicious external URL, so that Administrators can investigate misconduct.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create PostgreSQL moderation-report model and target references | TBD |  | |
-| Build report modal for profiles, teams, and event listings | TBD |  | |
-| Add category and optional explanation validation | TBD |  | |
-| Enforce five reports per account per rolling hour | TBD |  | |
-| Create US-026 moderation cases and receipt confirmation | TBD |  | |
-| Protect reports from other participants and apply PART authentication | TBD |  | |
-| Add Vitest and integration tests for report limits and targets | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create PostgreSQL moderation-report model and target references | Complete the task "Create PostgreSQL moderation-report model and target references" for US-025. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build report modal for profiles, teams, and event listings | Complete the task "Build report modal for profiles, teams, and event listings" for US-025. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add category and optional explanation validation | Complete the task "Add category and optional explanation validation" for US-025. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Enforce five reports per account per rolling hour | Complete the task "Enforce five reports per account per rolling hour" for US-025. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Create US-026 moderation cases and receipt confirmation | Complete the task "Create US-026 moderation cases and receipt confirmation" for US-025. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Protect reports from other participants and apply PART authentication | Complete the task "Protect reports from other participants and apply PART authentication" for US-025. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Vitest and integration tests for report limits and targets | Complete the task "Add Vitest and integration tests for report limits and targets" for US-025. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 51: US-025 (disaggregated tasks)
 
@@ -715,20 +715,20 @@ Table 51: US-025 (disaggregated tasks)
 
 Table 52: US-025 (user acceptance tests)
 
-#### US-026
+#### [US-026](../02_user_stories/user_stories.md#us-026)
 
 **As a Platform Administrator, I want to review flagged team content and malicious links in a moderation queue, so that the platform remains safe, compliant, and free of phishing threats.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create moderation-case queue and target-detail Express endpoints | TBD |  | |
-| Protect moderation routes with ADMIN RBAC middleware | TBD |  | |
-| Build newest-first React safety queue and case view | TBD |  | |
-| Add dismiss, redact, warn, hide, and URL-disable actions | TBD |  | |
-| Require a reason and create safe action records for each decision | TBD |  | |
-| Remove hidden content from discovery and preserve historical memberships | TBD |  | |
-| Hide credentials, private contacts, and private workspace data from cases | TBD |  | |
-| Add Vitest and integration tests for moderation actions and access | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create moderation-case queue and target-detail Express endpoints | Complete the task "Create moderation-case queue and target-detail Express endpoints" for US-026. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Protect moderation routes with ADMIN RBAC middleware | Complete the task "Protect moderation routes with ADMIN RBAC middleware" for US-026. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build newest-first React safety queue and case view | Complete the task "Build newest-first React safety queue and case view" for US-026. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add dismiss, redact, warn, hide, and URL-disable actions | Complete the task "Add dismiss, redact, warn, hide, and URL-disable actions" for US-026. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Require a reason and create safe action records for each decision | Complete the task "Require a reason and create safe action records for each decision" for US-026. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Remove hidden content from discovery and preserve historical memberships | Complete the task "Remove hidden content from discovery and preserve historical memberships" for US-026. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Hide credentials, private contacts, and private workspace data from cases | Complete the task "Hide credentials, private contacts, and private workspace data from cases" for US-026. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Vitest and integration tests for moderation actions and access | Complete the task "Add Vitest and integration tests for moderation actions and access" for US-026. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 53: US-026 (disaggregated tasks)
 
@@ -743,21 +743,21 @@ Table 53: US-026 (disaggregated tasks)
 
 Table 54: US-026 (user acceptance tests)
 
-#### US-027
+#### [US-027](../02_user_stories/user_stories.md#us-027)
 
 **As a Platform Administrator, I want to suspend or deactivate non-compliant accounts, so that bad actors cannot harass students or disrupt team formation.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create ADMIN account-management list and detail endpoints | TBD |  | |
-| Add suspension, deactivation, and deletion-request data models | TBD |  | |
-| Implement session revocation and sign-in blocking on suspension | TBD |  | |
-| Cancel pending requests, hide profiles, and pause owned recruitment | TBD |  | |
-| Implement ownership-verified deletion and 30-day target workflow | TBD |  | |
-| Pseudonymize historical membership fields while preserving locked rosters | TBD |  | |
-| Protect credentials, OTPs, notes, and public ADMIN self-promotion | TBD |  | |
-| Build React account enforcement views and reason forms | TBD |  | |
-| Add Vitest and integration tests for suspension and deletion rules | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create ADMIN account-management list and detail endpoints | Complete the task "Create ADMIN account-management list and detail endpoints" for US-027. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add suspension, deactivation, and deletion-request data models | Complete the task "Add suspension, deactivation, and deletion-request data models" for US-027. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Implement session revocation and sign-in blocking on suspension | Complete the task "Implement session revocation and sign-in blocking on suspension" for US-027. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Cancel pending requests, hide profiles, and pause owned recruitment | Complete the task "Cancel pending requests, hide profiles, and pause owned recruitment" for US-027. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Implement ownership-verified deletion and 30-day target workflow | Complete the task "Implement ownership-verified deletion and 30-day target workflow" for US-027. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Pseudonymize historical membership fields while preserving locked rosters | Complete the task "Pseudonymize historical membership fields while preserving locked rosters" for US-027. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Protect credentials, OTPs, notes, and public ADMIN self-promotion | Complete the task "Protect credentials, OTPs, notes, and public ADMIN self-promotion" for US-027. Implement the Node.js/Express API or Firebase Auth integration with server-side validation, authorization, and explicit failure responses. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Build React account enforcement views and reason forms | Complete the task "Build React account enforcement views and reason forms" for US-027. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Vitest and integration tests for suspension and deletion rules | Complete the task "Add Vitest and integration tests for suspension and deletion rules" for US-027. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 55: US-027 (disaggregated tasks)
 
@@ -772,19 +772,19 @@ Table 55: US-027 (disaggregated tasks)
 
 Table 56: US-027 (user acceptance tests)
 
-#### US-028
+#### [US-028](../02_user_stories/user_stories.md#us-028)
 
 **As an Administrator, I want to review and filter administrative action records, so that I can investigate past decisions.**
 
-| Task | Who | Estimate (h) | Actual (h) |
-|---|---|---:|---:|
-| Create append-only audit-record query endpoint | TBD |  | |
-| Build React audit table with record ID, actor, action, target, reason, outcome, and UTC time | TBD |  | |
-| Add actor, action-type, and date filters | TBD |  | |
-| Add empty state and pagination for no or many results | TBD |  | |
-| Apply read-only ADMIN permissions and deny record mutations | TBD |  | |
-| Apply retention and pseudonymization display rules | TBD |  | |
-| Add Vitest and integration tests for filters and access | TBD |  | |
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create append-only audit-record query endpoint | Complete the task "Create append-only audit-record query endpoint" for US-028. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Build React audit table with record ID, actor, action, target, reason, outcome, and UTC time | Complete the task "Build React audit table with record ID, actor, action, target, reason, outcome, and UTC time" for US-028. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Add actor, action-type, and date filters | Complete the task "Add actor, action-type, and date filters" for US-028. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add empty state and pagination for no or many results | Complete the task "Add empty state and pagination for no or many results" for US-028. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Apply read-only ADMIN permissions and deny record mutations | Complete the task "Apply read-only ADMIN permissions and deny record mutations" for US-028. Implement the Supabase PostgreSQL model or data operation with the required keys, constraints, indexes, and transaction behavior. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
+| Apply retention and pseudonymization display rules | Complete the task "Apply retention and pseudonymization display rules" for US-028. Implement the React (Vite) frontend behavior and its loading, success, validation, empty, and error states. Include the fields and rules from the linked story, preserve existing data on validation errors, and cover the user-visible success and failure outcomes. | TBD |  |  |
+| Add Vitest and integration tests for filters and access | Complete the task "Add Vitest and integration tests for filters and access" for US-028. Implement the supporting application behavior across the React, Node.js/Express, PostgreSQL/Supabase, and Firebase Auth layers as applicable. Verify the happy path, invalid input, unauthorized access, boundary conditions, and failure handling with repeatable evidence. | TBD |  |  |
 
 Table 57: US-028 (disaggregated tasks)
 
@@ -803,33 +803,33 @@ Table 58: US-028 (user acceptance tests)
 
 | Story ID | Number of tasks | Total estimated hours | Number of acceptance tests |
 |---|---:|---:|---:|
-| US-001 | 8 |  | 6 |
-| US-002 | 8 |  | 6 |
-| US-003 | 8 |  | 5 |
-| US-004 | 8 |  | 6 |
-| US-005 | 7 |  | 5 |
-| US-006 | 8 |  | 6 |
-| US-007 | 7 |  | 6 |
-| US-029 | 7 |  | 6 |
-| US-008 | 8 |  | 6 |
-| US-009 | 8 |  | 6 |
-| US-010 | 9 |  | 6 |
-| US-011 | 8 |  | 5 |
-| US-012 | 9 |  | 6 |
-| US-013 | 7 |  | 6 |
-| US-014 | 7 |  | 5 |
-| US-015 | 8 |  | 6 |
-| US-016 | 7 |  | 5 |
-| US-017 | 8 |  | 6 |
-| US-018 | 8 |  | 6 |
-| US-019 | 8 |  | 6 |
-| US-020 | 8 |  | 6 |
-| US-021 | 8 |  | 6 |
-| US-022 | 7 |  | 6 |
-| US-023 | 8 |  | 6 |
-| US-024 | 7 |  | 6 |
-| US-025 | 7 |  | 5 |
-| US-026 | 8 |  | 6 |
-| US-027 | 9 |  | 6 |
-| US-028 | 7 |  | 6 |
+| [US-001](../02_user_stories/user_stories.md#us-001) | 8 |  | 6 |
+| [US-002](../02_user_stories/user_stories.md#us-002) | 8 |  | 6 |
+| [US-003](../02_user_stories/user_stories.md#us-003) | 8 |  | 5 |
+| [US-004](../02_user_stories/user_stories.md#us-004) | 8 |  | 6 |
+| [US-005](../02_user_stories/user_stories.md#us-005) | 7 |  | 5 |
+| [US-006](../02_user_stories/user_stories.md#us-006) | 8 |  | 6 |
+| [US-007](../02_user_stories/user_stories.md#us-007) | 7 |  | 6 |
+| [US-029](../02_user_stories/user_stories.md#us-029) | 7 |  | 6 |
+| [US-008](../02_user_stories/user_stories.md#us-008) | 8 |  | 6 |
+| [US-009](../02_user_stories/user_stories.md#us-009) | 8 |  | 6 |
+| [US-010](../02_user_stories/user_stories.md#us-010) | 9 |  | 6 |
+| [US-011](../02_user_stories/user_stories.md#us-011) | 8 |  | 5 |
+| [US-012](../02_user_stories/user_stories.md#us-012) | 9 |  | 6 |
+| [US-013](../02_user_stories/user_stories.md#us-013) | 7 |  | 6 |
+| [US-014](../02_user_stories/user_stories.md#us-014) | 7 |  | 5 |
+| [US-015](../02_user_stories/user_stories.md#us-015) | 8 |  | 6 |
+| [US-016](../02_user_stories/user_stories.md#us-016) | 7 |  | 5 |
+| [US-017](../02_user_stories/user_stories.md#us-017) | 8 |  | 6 |
+| [US-018](../02_user_stories/user_stories.md#us-018) | 8 |  | 6 |
+| [US-019](../02_user_stories/user_stories.md#us-019) | 8 |  | 6 |
+| [US-020](../02_user_stories/user_stories.md#us-020) | 8 |  | 6 |
+| [US-021](../02_user_stories/user_stories.md#us-021) | 8 |  | 6 |
+| [US-022](../02_user_stories/user_stories.md#us-022) | 7 |  | 6 |
+| [US-023](../02_user_stories/user_stories.md#us-023) | 8 |  | 6 |
+| [US-024](../02_user_stories/user_stories.md#us-024) | 7 |  | 6 |
+| [US-025](../02_user_stories/user_stories.md#us-025) | 7 |  | 5 |
+| [US-026](../02_user_stories/user_stories.md#us-026) | 8 |  | 6 |
+| [US-027](../02_user_stories/user_stories.md#us-027) | 9 |  | 6 |
+| [US-028](../02_user_stories/user_stories.md#us-028) | 7 |  | 6 |
 | **Total** | **225** |  | **168** |
