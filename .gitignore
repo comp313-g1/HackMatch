@@ -141,3 +141,10 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Project artifacts
+site_screenshot/
+site_screenshots/
+*.docx
+*.zip
+*.xlsx
