@@ -84,3 +84,63 @@ The Markdown documentation provides the stabilized baseline for implementation p
 - Edgar Soto Hernandez
 - Mohmedjuber Jangda
 - Wei Tong
+
+---
+
+## Local Development & Getting Started
+
+### 1. Prerequisites
+- **Node.js:** `22.x LTS` (pin via `.nvmrc`)
+- **npm:** `10.x` or higher
+
+### 2. Initial Setup
+Clone the repository and install dependencies across all monorepo workspaces:
+```bash
+# Clone the repository
+git clone <repo-url>
+cd Team-1-COMP313
+
+# Install dependencies (root, client, and server)
+npm install
+```
+
+### 3. Environment Configuration
+Copy the template files to create local `.env` files:
+```bash
+# Server configuration (Express API)
+cp server/.env.example server/.env
+
+# Client configuration (React + Vite)
+cp client/.env.example client/.env
+```
+> **Note:** Acquire real team Firebase and Supabase development secrets out-of-band. Never commit `.env` files to git.
+
+### 4. Running the Application
+Start both the client and server concurrently in development mode:
+```bash
+# Run both client and server dev servers
+npm run dev
+
+# Or run separately:
+npm run dev --workspace=client   # Runs Vite on http://localhost:5173
+npm run dev --workspace=server   # Runs Express API on http://localhost:3001
+```
+
+### 5. Running Quality Checks & Tests
+```bash
+# Run ESLint across all workspaces
+npm run lint
+
+# Run TypeScript typechecks across all workspaces
+npm run typecheck
+
+# Run test suites completely offline
+npm run test
+
+# Run tests with coverage reporting
+npm run test:coverage
+
+# Build client and server bundles
+npm run build
+```
+
