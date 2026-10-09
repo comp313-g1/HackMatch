@@ -43,7 +43,14 @@ export const config: ServerConfig = {
  */
 export function validateEnv(): void {
   if (config.nodeEnv === 'production') {
-    const requiredInProd = ['SESSION_SECRET', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
+    const requiredInProd = [
+      'SESSION_SECRET',
+      'SUPABASE_URL',
+      'SUPABASE_SERVICE_ROLE_KEY',
+      'FIREBASE_PROJECT_ID',
+      'FIREBASE_CLIENT_EMAIL',
+      'FIREBASE_PRIVATE_KEY',
+    ];
     const missing = requiredInProd.filter((key) => !process.env[key]);
     if (missing.length > 0) {
       throw new Error(`[CRITICAL] Missing required production environment variables: ${missing.join(', ')}`);

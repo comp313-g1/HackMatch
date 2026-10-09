@@ -148,3 +148,6 @@ site_screenshots/
 *.docx
 *.zip
 *.xlsx
+
+# Developer scratchpad and local tasks
+brian_tasks/
