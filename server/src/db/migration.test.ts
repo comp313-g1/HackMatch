@@ -112,3 +112,56 @@ describe('0003_create_mfa_records.sql Migration DDL', () => {
   });
 });
 
+describe('0004_create_profile_tables.sql Migration DDL', () => {
+  const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0004_create_profile_tables.sql');
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('enforces Row Level Security explicitly on participant_profiles, participant_skills, and participant_portfolios', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+participant_profiles\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+participant_skills\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+participant_portfolios\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+  });
+
+  it('enforces foreign key cascading delete to participants across all profile tables', () => {
+    expect(sql).toMatch(/participant_profiles[\s\S]*?REFERENCES\s+participants\s*\(\s*id\s*\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(sql).toMatch(/participant_skills[\s\S]*?REFERENCES\s+participants\s*\(\s*id\s*\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(sql).toMatch(/participant_portfolios[\s\S]*?REFERENCES\s+participants\s*\(\s*id\s*\)\s+ON\s+DELETE\s+CASCADE/i);
+  });
+
+  it('enforces primary_role check constraint restricting to canonical roles', () => {
+    expect(sql).toMatch(/CHECK\s*\(\s*primary_role\s+IN\s*\(\s*'Frontend'\s*,\s*'Backend'\s*,\s*'Mobile'\s*,\s*'AI\/ML'\s*,\s*'UI\/UX'\s*,\s*'Pitch'\s*\)\s*\)/i);
+  });
+
+  it('enforces HTTPS and minimum length check constraint on portfolio url', () => {
+    expect(sql).toMatch(/CHECK\s*\(\s*url\s+LIKE\s+'https:\/\/%'\s+AND\s+LENGTH\s*\(\s*url\s*\)\s*>\s*8\s*\)/i);
+  });
+
+  it('creates case-insensitive unique index on handle', () => {
+    expect(sql).toMatch(/CREATE\s+UNIQUE\s+INDEX.*ON\s+participant_profiles\s*\(\s*LOWER\s*\(\s*handle\s*\)\s*\)\s+WHERE\s+handle\s+IS\s+NOT\s+NULL/i);
+  });
+
+  it('creates unique index on participant_id and skill_name, and search index on skill_name', () => {
+    expect(sql).toMatch(/CREATE\s+UNIQUE\s+INDEX.*ON\s+participant_skills\s*\(\s*participant_id\s*,\s*LOWER\s*\(\s*skill_name\s*\)\s*\)/i);
+    expect(sql).toMatch(/CREATE\s+INDEX.*ON\s+participant_skills\s*\(\s*LOWER\s*\(\s*skill_name\s*\)\s*\)/i);
+  });
+
+  it('creates index on participant_portfolios for participant_id lookup', () => {
+    expect(sql).toMatch(/CREATE\s+INDEX.*ON\s+participant_portfolios\s*\(\s*participant_id\s*\)/i);
+  });
+
+  it('attaches automatic updated_at trigger on participant_profiles and participant_portfolios', () => {
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_participant_profiles_updated_at/i);
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_participant_portfolios_updated_at/i);
+  });
+
+  it('attaches ADMIN role restriction trigger on participant_profiles', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+check_participant_profile_role/i);
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_check_participant_profile_role/i);
+  });
+});
+

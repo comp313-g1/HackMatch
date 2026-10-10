@@ -82,3 +82,57 @@ export interface CreateMfaAttemptDTO {
   ip_address?: string | null;
 }
 
+export type ParticipantPrimaryRole = 'Frontend' | 'Backend' | 'Mobile' | 'AI/ML' | 'UI/UX' | 'Pitch';
+
+export interface ParticipantProfile {
+  participant_id: string;
+  handle: string | null;
+  primary_role: ParticipantPrimaryRole | null;
+  institution: string | null;
+  shared_contact_handle: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateParticipantProfileDTO {
+  participant_id: string;
+  handle?: string | null;
+  primary_role?: ParticipantPrimaryRole | null;
+  institution?: string | null;
+  shared_contact_handle?: string | null;
+}
+
+export interface UpdateParticipantProfileDTO {
+  handle?: string | null;
+  primary_role?: ParticipantPrimaryRole | null;
+  institution?: string | null;
+  shared_contact_handle?: string | null;
+}
+
+export interface ParticipantSkill {
+  id: string;
+  participant_id: string;
+  skill_name: string;
+  created_at: string;
+}
+
+export interface CreateParticipantSkillDTO {
+  participant_id: string;
+  skill_name: string;
+}
+
+export interface ParticipantPortfolio {
+  id: string;
+  participant_id: string;
+  url: string;
+  label: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateParticipantPortfolioDTO {
+  participant_id: string;
+  url: string;
+  label?: string | null;
+}
+
