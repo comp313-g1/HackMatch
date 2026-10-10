@@ -210,3 +210,53 @@ export interface CreateEventActionRecordDTO {
   safe_state_summary: Record<string, unknown>;
 }
 
+export type EventStatus = 'Published' | 'Archived' | 'Disabled';
+
+export interface Event {
+  id: string;
+  title: string;
+  official_url: string;
+  normalized_url: string;
+  event_edition: string | null;
+  start_date: string;
+  end_date: string;
+  format: string;
+  location: string | null;
+  min_team_size: number | null;
+  max_team_size: number | null;
+  is_link_disabled: boolean;
+  status: EventStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateEventDTO {
+  title: string;
+  official_url: string;
+  normalized_url: string;
+  event_edition?: string | null;
+  start_date: string;
+  end_date: string;
+  format: string;
+  location?: string | null;
+  min_team_size?: number | null;
+  max_team_size?: number | null;
+  is_link_disabled?: boolean;
+  status?: EventStatus;
+}
+
+export interface UpdateEventDTO {
+  title?: string;
+  official_url?: string;
+  normalized_url?: string;
+  event_edition?: string | null;
+  start_date?: string;
+  end_date?: string;
+  format?: string;
+  location?: string | null;
+  min_team_size?: number | null;
+  max_team_size?: number | null;
+  is_link_disabled?: boolean;
+  status?: EventStatus;
+}
+

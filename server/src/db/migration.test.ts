@@ -273,3 +273,65 @@ describe('0006_create_event_action_records.sql Migration DDL', () => {
   });
 });
 
+describe('0007_create_events_table.sql Migration DDL', () => {
+  const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0007_create_events_table.sql');
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('enforces Row Level Security explicitly on events table', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+events\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+  });
+
+  it('defines required columns with correct types including is_link_disabled', () => {
+    expect(sql).toMatch(/title\s+VARCHAR\(150\)\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/official_url\s+VARCHAR\(2048\)\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/normalized_url\s+VARCHAR\(2048\)\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/start_date\s+TIMESTAMPTZ\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/end_date\s+TIMESTAMPTZ\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/format\s+VARCHAR\(50\)\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/is_link_disabled\s+BOOLEAN\s+NOT\s+NULL\s+DEFAULT\s+FALSE/i);
+    expect(sql).toMatch(/status\s+VARCHAR\(20\)\s+NOT\s+NULL\s+DEFAULT\s+'Published'/i);
+  });
+
+  it('enforces HTTPS check constraint on official_url', () => {
+    expect(sql).toMatch(/CHECK\s*\(\s*official_url\s+LIKE\s+'https:\/\/%'/i);
+  });
+
+  it('enforces date chronology check constraint (end_date >= start_date)', () => {
+    expect(sql).toMatch(/CHECK\s*\(\s*end_date\s*>=\s*start_date\s*\)/i);
+  });
+
+  it('enforces null-safe positive team size check constraints', () => {
+    expect(sql).toMatch(/CHECK\s*\(\s*min_team_size\s+IS\s+NULL\s+OR\s+min_team_size\s*>\s*0\s*\)/i);
+    expect(sql).toMatch(/CHECK\s*\(\s*max_team_size\s+IS\s+NULL\s+OR\s+max_team_size\s*>\s*0\s*\)/i);
+    expect(sql).toMatch(/CHECK\s*\(\s*min_team_size\s+IS\s+NULL\s+OR\s+max_team_size\s+IS\s+NULL\s+OR\s+max_team_size\s*>=\s*min_team_size\s*\)/i);
+  });
+
+  it('enforces status check constraint restricting to valid states', () => {
+    expect(sql).toMatch(/CHECK\s*\(\s*status\s+IN\s*\(\s*'Published'\s*,\s*'Archived'\s*,\s*'Disabled'\s*\)\s*\)/i);
+  });
+
+  it('creates unique index on normalized_url and start_date for deduplication', () => {
+    expect(sql).toMatch(/CREATE\s+UNIQUE\s+INDEX[\s\S]*?ON\s+events\s*\(\s*normalized_url\s*,\s*start_date\s*\)/i);
+  });
+
+  it('creates query indexes on status, start_date, end_date, and format', () => {
+    expect(sql).toMatch(/CREATE\s+INDEX[\s\S]*?ON\s+events\s*\(\s*status\s*\)/i);
+    expect(sql).toMatch(/CREATE\s+INDEX[\s\S]*?ON\s+events\s*\(\s*start_date\s*\)/i);
+    expect(sql).toMatch(/CREATE\s+INDEX[\s\S]*?ON\s+events\s*\(\s*end_date\s*\)/i);
+    expect(sql).toMatch(/CREATE\s+INDEX[\s\S]*?ON\s+events\s*\(\s*format\s*\)/i);
+  });
+
+  it('attaches automatic updated_at trigger on events', () => {
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_events_updated_at/i);
+  });
+
+  it('adds foreign key constraint on pending_event_submissions referencing events', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+pending_event_submissions[\s\S]*?ADD\s+CONSTRAINT\s+fk_canonical_event[\s\S]*?FOREIGN\s+KEY\s*\(\s*canonical_event_id\s*\)\s+REFERENCES\s+events\s*\(\s*id\s*\)\s+ON\s+DELETE\s+SET\s+NULL/i);
+  });
+});
+
