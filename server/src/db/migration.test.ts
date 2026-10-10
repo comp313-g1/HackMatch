@@ -165,3 +165,60 @@ describe('0004_create_profile_tables.sql Migration DDL', () => {
   });
 });
 
+describe('0005_create_pending_event_submissions.sql Migration DDL', () => {
+  const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0005_create_pending_event_submissions.sql');
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('enforces Row Level Security explicitly on pending_event_submissions', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+pending_event_submissions\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+  });
+
+  it('enforces foreign key cascading delete to participants on submitter_id', () => {
+    expect(sql).toMatch(/submitter_id[\s\S]*?REFERENCES\s+participants\s*\(\s*id\s*\)\s+ON\s+DELETE\s+CASCADE/i);
+  });
+
+  it('defines canonical_event_id column as UUID without blocking on unmerged events table', () => {
+    expect(sql).toMatch(/canonical_event_id\s+UUID/i);
+  });
+
+  it('defines event_edition column', () => {
+    expect(sql).toMatch(/event_edition\s+VARCHAR\(\d+\)/i);
+  });
+
+  it('enforces HTTPS check constraint on official_url', () => {
+    expect(sql).toMatch(/CHECK\s*\(\s*official_url\s+LIKE\s+'https:\/\/%'/i);
+  });
+
+  it('enforces date chronology check constraint (end_date >= start_date)', () => {
+    expect(sql).toMatch(/CHECK\s*\(\s*end_date\s*>=\s*start_date\s*\)/i);
+  });
+
+  it('enforces null-safe positive team size check constraints', () => {
+    expect(sql).toMatch(/CHECK\s*\(\s*min_team_size\s+IS\s+NULL\s+OR\s+min_team_size\s*>\s*0\s*\)/i);
+    expect(sql).toMatch(/CHECK\s*\(\s*max_team_size\s+IS\s+NULL\s+OR\s+max_team_size\s*>\s*0\s*\)/i);
+    expect(sql).toMatch(/CHECK\s*\(\s*min_team_size\s+IS\s+NULL\s+OR\s+max_team_size\s+IS\s+NULL\s+OR\s+max_team_size\s*>=\s*min_team_size\s*\)/i);
+  });
+
+  it('enforces status check constraint restricting to valid states', () => {
+    expect(sql).toMatch(/CHECK\s*\(\s*status\s+IN\s*\(\s*'Pending'\s*,\s*'Approved'\s*,\s*'Rejected'\s*,\s*'Merged'\s*\)\s*\)/i);
+  });
+
+  it('creates partial unique index for active pending submissions to block simultaneous duplicates while allowing resubmission', () => {
+    expect(sql).toMatch(/CREATE\s+UNIQUE\s+INDEX[\s\S]*?ON\s+pending_event_submissions\s*\(\s*normalized_url\s*,\s*start_date\s*\)[\s\S]*?WHERE\s+status\s*=\s*'Pending'/i);
+  });
+
+  it('creates indexes on submitter_id and status', () => {
+    expect(sql).toMatch(/CREATE\s+INDEX[\s\S]*?ON\s+pending_event_submissions\s*\(\s*submitter_id\s*\)/i);
+    expect(sql).toMatch(/CREATE\s+INDEX[\s\S]*?ON\s+pending_event_submissions\s*\(\s*status\s*\)/i);
+  });
+
+  it('attaches automatic updated_at trigger on pending_event_submissions', () => {
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_pending_event_submissions_updated_at/i);
+  });
+});
+

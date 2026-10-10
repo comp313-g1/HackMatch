@@ -136,3 +136,55 @@ export interface CreateParticipantPortfolioDTO {
   label?: string | null;
 }
 
+export type PendingEventSubmissionStatus = 'Pending' | 'Approved' | 'Rejected' | 'Merged';
+
+export interface PendingEventSubmission {
+  id: string;
+  submitter_id: string;
+  title: string;
+  official_url: string;
+  normalized_url: string;
+  event_edition: string | null;
+  start_date: string;
+  end_date: string;
+  format: string;
+  location: string | null;
+  min_team_size: number | null;
+  max_team_size: number | null;
+  status: PendingEventSubmissionStatus;
+  admin_feedback: string | null;
+  canonical_event_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreatePendingEventSubmissionDTO {
+  submitter_id: string;
+  title: string;
+  official_url: string;
+  normalized_url: string;
+  event_edition?: string | null;
+  start_date: string;
+  end_date: string;
+  format: string;
+  location?: string | null;
+  min_team_size?: number | null;
+  max_team_size?: number | null;
+}
+
+export interface UpdatePendingEventSubmissionDTO {
+  title?: string;
+  official_url?: string;
+  normalized_url?: string;
+  event_edition?: string | null;
+  start_date?: string;
+  end_date?: string;
+  format?: string;
+  location?: string | null;
+  min_team_size?: number | null;
+  max_team_size?: number | null;
+  status?: PendingEventSubmissionStatus;
+  admin_feedback?: string | null;
+  canonical_event_id?: string | null;
+}
+
