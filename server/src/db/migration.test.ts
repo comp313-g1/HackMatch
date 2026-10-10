@@ -74,3 +74,41 @@ describe('0002_create_provider_identities_table.sql Migration DDL', () => {
   });
 });
 
+describe('0003_create_mfa_records.sql Migration DDL', () => {
+  const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0003_create_mfa_records.sql');
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('enforces Row Level Security explicitly on mfa_challenges and mfa_attempts', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+mfa_challenges\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+mfa_attempts\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+  });
+
+  it('enforces foreign key cascading delete to participants', () => {
+    expect(sql).toMatch(/mfa_challenges[\s\S]*?REFERENCES\s+participants\s*\(\s*id\s*\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(sql).toMatch(/mfa_attempts[\s\S]*?REFERENCES\s+participants\s*\(\s*id\s*\)\s+ON\s+DELETE\s+CASCADE/i);
+  });
+
+  it('enforces foreign key on challenge_id with ON DELETE SET NULL in mfa_attempts', () => {
+    expect(sql).toMatch(/REFERENCES\s+mfa_challenges\s*\(\s*id\s*\)\s+ON\s+DELETE\s+SET\s+NULL/i);
+  });
+
+  it('enforces check constraint on mfa_challenges lifecycle state', () => {
+    expect(sql).toMatch(/CONSTRAINT\s+chk_mfa_challenges_state\s+CHECK\s*\(\s*consumed_at\s+IS\s+NULL\s+OR\s+invalidated_at\s+IS\s+NULL\s*\)/i);
+  });
+
+  it('creates composite indexes on mfa_challenges and mfa_attempts', () => {
+    expect(sql).toMatch(/CREATE\s+INDEX.*ON\s+mfa_challenges\s*\(\s*participant_id\s*,\s*created_at\s+DESC\s*\)/i);
+    expect(sql).toMatch(/CREATE\s+INDEX.*ON\s+mfa_challenges\s*\(\s*participant_id\s*,\s*expires_at\s*\)/i);
+    expect(sql).toMatch(/CREATE\s+INDEX.*ON\s+mfa_attempts\s*\(\s*participant_id\s*,\s*created_at\s+DESC\s*\)/i);
+  });
+
+  it('attaches automatic updated_at trigger on mfa_challenges', () => {
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_mfa_challenges_updated_at/i);
+  });
+});
+

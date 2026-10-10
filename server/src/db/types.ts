@@ -49,3 +49,36 @@ export interface CreateProviderIdentityDTO {
   avatar_url?: string | null;
 }
 
+export interface MfaChallenge {
+  id: string;
+  participant_id: string;
+  otp_hash: string;
+  expires_at: string;
+  consumed_at?: string | null;
+  invalidated_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateMfaChallengeDTO {
+  participant_id: string;
+  otp_hash: string;
+  expires_at: string;
+}
+
+export interface MfaAttempt {
+  id: string;
+  participant_id: string;
+  challenge_id?: string | null;
+  success: boolean;
+  ip_address?: string | null;
+  created_at: string;
+}
+
+export interface CreateMfaAttemptDTO {
+  participant_id: string;
+  challenge_id?: string | null;
+  success: boolean;
+  ip_address?: string | null;
+}
+
