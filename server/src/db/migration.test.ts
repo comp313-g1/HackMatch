@@ -222,3 +222,54 @@ describe('0005_create_pending_event_submissions.sql Migration DDL', () => {
   });
 });
 
+describe('0006_create_event_action_records.sql Migration DDL', () => {
+  const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0006_create_event_action_records.sql');
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('enforces Row Level Security explicitly on event_action_records', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+event_action_records\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+  });
+
+  it('enforces foreign key with ON DELETE RESTRICT on actor_id referencing participants', () => {
+    expect(sql).toMatch(/actor_id[\s\S]*?REFERENCES\s+participants\s*\(\s*id\s*\)\s+ON\s+DELETE\s+RESTRICT/i);
+  });
+
+  it('defines target_id as UUID without hard-coupling to unmerged tables', () => {
+    expect(sql).toMatch(/target_id\s+UUID\s+NOT\s+NULL/i);
+  });
+
+  it('defines safe_state_summary as JSONB NOT NULL', () => {
+    expect(sql).toMatch(/safe_state_summary\s+JSONB\s+NOT\s+NULL/i);
+  });
+
+  it('enforces non-empty check constraints on mandatory text fields', () => {
+    expect(sql).toMatch(/target_type\s+VARCHAR\(\d+\)\s+NOT\s+NULL\s+CHECK\s*\(\s*LENGTH\s*\(\s*TRIM\s*\(\s*target_type\s*\)\s*\)\s*>\s*0\s*\)/i);
+    expect(sql).toMatch(/action_type\s+VARCHAR\(\d+\)\s+NOT\s+NULL\s+CHECK\s*\(\s*LENGTH\s*\(\s*TRIM\s*\(\s*action_type\s*\)\s*\)\s*>\s*0\s*\)/i);
+    expect(sql).toMatch(/reason\s+TEXT\s+NOT\s+NULL\s+CHECK\s*\(\s*LENGTH\s*\(\s*TRIM\s*\(\s*reason\s*\)\s*\)\s*>\s*0\s*\)/i);
+    expect(sql).toMatch(/outcome\s+VARCHAR\(\d+\)\s+NOT\s+NULL\s+CHECK\s*\(\s*LENGTH\s*\(\s*TRIM\s*\(\s*outcome\s*\)\s*\)\s*>\s*0\s*\)/i);
+  });
+
+  it('creates performance indexes on target_id, actor_id, created_at, and action_type', () => {
+    expect(sql).toMatch(/CREATE\s+INDEX[\s\S]*?ON\s+event_action_records\s*\(\s*target_id\s*\)/i);
+    expect(sql).toMatch(/CREATE\s+INDEX[\s\S]*?ON\s+event_action_records\s*\(\s*actor_id\s*\)/i);
+    expect(sql).toMatch(/CREATE\s+INDEX[\s\S]*?ON\s+event_action_records\s*\(\s*created_at\s+DESC\s*\)/i);
+    expect(sql).toMatch(/CREATE\s+INDEX[\s\S]*?ON\s+event_action_records\s*\(\s*action_type\s*\)/i);
+  });
+
+  it('attaches ADMIN role enforcement trigger on actor_id', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+check_event_action_actor_role/i);
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_check_event_action_actor_role\s+BEFORE\s+INSERT\s+ON\s+event_action_records/i);
+  });
+
+  it('attaches append-only triggers preventing UPDATE, DELETE, and TRUNCATE', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+prevent_event_action_modification/i);
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_event_action_records_prevent_modification\s+BEFORE\s+UPDATE\s+OR\s+DELETE\s+ON\s+event_action_records/i);
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_event_action_records_prevent_truncate\s+BEFORE\s+TRUNCATE\s+ON\s+event_action_records/i);
+  });
+});
+

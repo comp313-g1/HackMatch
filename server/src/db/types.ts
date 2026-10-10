@@ -188,3 +188,25 @@ export interface UpdatePendingEventSubmissionDTO {
   canonical_event_id?: string | null;
 }
 
+export interface EventActionRecord {
+  id: string;
+  actor_id: string;
+  target_type: string;
+  target_id: string;
+  action_type: string;
+  reason: string;
+  outcome: string;
+  safe_state_summary: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface CreateEventActionRecordDTO {
+  actor_id: string;
+  target_type: string;
+  target_id: string;
+  action_type: string;
+  reason: string;
+  outcome: string;
+  safe_state_summary: Record<string, unknown>;
+}
+
