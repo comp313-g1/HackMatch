@@ -37,3 +37,40 @@ describe('0001_create_participants_table.sql Migration DDL', () => {
     expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_participants_updated_at/i);
   });
 });
+
+describe('0002_create_provider_identities_table.sql Migration DDL', () => {
+  const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0002_create_provider_identities_table.sql');
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('enforces Row Level Security explicitly on provider_identities table', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+provider_identities\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+  });
+
+  it('enforces foreign key cascading delete to participants', () => {
+    expect(sql).toMatch(/REFERENCES\s+participants\s*\(\s*id\s*\)\s+ON\s+DELETE\s+CASCADE/i);
+  });
+
+  it('enforces provider CHECK constraint restricting to allowed OAuth providers', () => {
+    expect(sql).toMatch(/CHECK\s*\(\s*provider\s+IN\s*\(\s*'google'\s*,\s*'github'\s*,\s*'google\.com'\s*,\s*'github\.com'\s*\)\s*\)/i);
+  });
+
+  it('enforces unique constraints on (provider, provider_uid) and (participant_id, provider)', () => {
+    expect(sql).toMatch(/CREATE\s+UNIQUE\s+INDEX.*ON\s+provider_identities\s*\(\s*provider\s*,\s*provider_uid\s*\)/i);
+    expect(sql).toMatch(/CREATE\s+UNIQUE\s+INDEX.*ON\s+provider_identities\s*\(\s*participant_id\s*,\s*provider\s*\)/i);
+  });
+
+  it('attaches automatic updated_at trigger', () => {
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_provider_identities_updated_at/i);
+  });
+
+  it('attaches ADMIN role restriction trigger', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+check_provider_identity_participant_role/i);
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_check_provider_identity_role/i);
+  });
+});
+

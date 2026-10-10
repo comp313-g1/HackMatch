@@ -2,6 +2,7 @@ import { getSupabaseClient } from './client.js';
 import type { Participant, CreateParticipantDTO, UpdateParticipantDTO } from './types.js';
 
 export interface IParticipantRepository {
+  findById(id: string): Promise<Participant | null>;
   findByFirebaseUid(firebaseUid: string): Promise<Participant | null>;
   findByEmail(email: string): Promise<Participant | null>;
   createParticipant(data: CreateParticipantDTO): Promise<Participant>;
@@ -9,7 +10,20 @@ export interface IParticipantRepository {
   updateVerificationStatus(id: string, isVerified: boolean): Promise<Participant>;
 }
 
+
 export const participantsRepository: IParticipantRepository = {
+  async findById(id: string): Promise<Participant | null> {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('participants')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data as Participant | null;
+  },
+
   async findByFirebaseUid(firebaseUid: string): Promise<Participant | null> {
     const client = getSupabaseClient();
     const { data, error } = await client
@@ -64,8 +78,10 @@ export const participantsRepository: IParticipantRepository = {
   },
 };
 
+export const findById = participantsRepository.findById.bind(participantsRepository);
 export const findByFirebaseUid = participantsRepository.findByFirebaseUid.bind(participantsRepository);
 export const findByEmail = participantsRepository.findByEmail.bind(participantsRepository);
 export const createParticipant = participantsRepository.createParticipant.bind(participantsRepository);
 export const updateParticipant = participantsRepository.updateParticipant.bind(participantsRepository);
 export const updateVerificationStatus = participantsRepository.updateVerificationStatus.bind(participantsRepository);
+
