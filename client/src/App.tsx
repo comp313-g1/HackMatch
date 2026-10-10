@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { RegistrationForm } from './components/auth/RegistrationForm';
 
 export function App(): React.JSX.Element {
   const [healthStatus, setHealthStatus] = useState<string | null>(null);
@@ -86,6 +87,14 @@ export function App(): React.JSX.Element {
             )}
           </div>
         </div>
+
+        {/* US-001: Participant Registration Form */}
+        <section aria-labelledby="registration-heading" className="mt-8">
+          <h2 id="registration-heading" className="sr-only">
+            Participant Registration
+          </h2>
+          <RegistrationForm />
+        </section>
       </main>
 
       {/* Semantic Footer Landmark */}

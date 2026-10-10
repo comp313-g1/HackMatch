@@ -49,6 +49,14 @@ export function translateAuthError(error: unknown): string {
       return 'Network error. Please check your internet connection.';
     case 'auth/invalid-credential':
       return 'Invalid credentials provided.';
+    case 'auth/email-already-in-use':
+      return 'An account with this email already exists.';
+    case 'auth/invalid-email':
+      return 'Please provide a valid email address.';
+    case 'auth/weak-password':
+      return 'Password does not meet security requirements.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please try again later.';
     default:
       return 'Authentication failed. Please try again.';
   }

@@ -58,6 +58,18 @@ describe('Firebase Client Configuration', () => {
       expect(translateAuthError({ code: 'auth/invalid-credential' })).toBe(
         'Invalid credentials provided.'
       );
+      expect(translateAuthError({ code: 'auth/email-already-in-use' })).toBe(
+        'An account with this email already exists.'
+      );
+      expect(translateAuthError({ code: 'auth/invalid-email' })).toBe(
+        'Please provide a valid email address.'
+      );
+      expect(translateAuthError({ code: 'auth/weak-password' })).toBe(
+        'Password does not meet security requirements.'
+      );
+      expect(translateAuthError({ code: 'auth/too-many-requests' })).toBe(
+        'Too many attempts. Please try again later.'
+      );
     });
 
     it('falls back to generic error message for unknown or malformed error objects', () => {
