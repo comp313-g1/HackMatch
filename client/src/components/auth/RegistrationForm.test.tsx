@@ -3,18 +3,6 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RegistrationForm } from './RegistrationForm';
 import { validateRegistrationInput } from './validation';
-import * as firebaseAuth from 'firebase/auth';
-
-vi.mock('firebase/auth', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('firebase/auth')>();
-  return {
-    ...actual,
-    createUserWithEmailAndPassword: vi.fn(),
-    updateProfile: vi.fn(),
-    sendEmailVerification: vi.fn(),
-    signOut: vi.fn(),
-  };
-});
 
 describe('validateRegistrationInput helper', () => {
   it('detects missing or whitespace-only full name', () => {
@@ -90,17 +78,12 @@ describe('validateRegistrationInput helper', () => {
   });
 });
 
-describe('RegistrationForm Component', () => {
-  const mockUser = { uid: 'user-123', email: 'alice@example.com' };
+describe('RegistrationForm Component (Backend Integration)', () => {
+  const mockFetch = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(firebaseAuth.createUserWithEmailAndPassword).mockResolvedValue({
-      user: mockUser,
-    } as unknown as firebaseAuth.UserCredential);
-    vi.mocked(firebaseAuth.updateProfile).mockResolvedValue();
-    vi.mocked(firebaseAuth.sendEmailVerification).mockResolvedValue();
-    vi.mocked(firebaseAuth.signOut).mockResolvedValue();
+    vi.stubGlobal('fetch', mockFetch);
   });
 
   it('renders initial empty form with labels, placeholders, hint, and button', () => {
@@ -114,7 +97,7 @@ describe('RegistrationForm Component', () => {
     expect(screen.getByRole('button', { name: /create account/i })).toBeInTheDocument();
   });
 
-  it('validates empty submission without calling Firebase and displays field errors', async () => {
+  it('validates empty submission without calling backend API and displays field errors', async () => {
     render(<RegistrationForm />);
 
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
@@ -123,10 +106,10 @@ describe('RegistrationForm Component', () => {
     expect(screen.getByText('Email address is required.')).toBeInTheDocument();
     expect(screen.getByText('Password is required.')).toBeInTheDocument();
 
-    expect(firebaseAuth.createUserWithEmailAndPassword).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it('validates password policy and displays field error', async () => {
+  it('validates password policy on client and displays field error without calling backend', async () => {
     render(<RegistrationForm />);
 
     fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Jane Doe' } });
@@ -140,7 +123,7 @@ describe('RegistrationForm Component', () => {
         'Password must be at least 8 characters long and include uppercase, lowercase, a number, and a special character.'
       )
     ).toBeInTheDocument();
-    expect(firebaseAuth.createUserWithEmailAndPassword).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('preserves valid entered inputs when validation fails (NR-017)', async () => {
@@ -158,10 +141,14 @@ describe('RegistrationForm Component', () => {
     expect(screen.getByLabelText(/email address/i)).toHaveValue('preserved@example.com');
   });
 
-  it('handles auth/email-already-in-use by setting field error on email input while preserving inputs', async () => {
-    vi.mocked(firebaseAuth.createUserWithEmailAndPassword).mockRejectedValueOnce({
-      code: 'auth/email-already-in-use',
-      message: 'The email address is already in use by another account.',
+  it('handles HTTP 409 EMAIL_ALREADY_IN_USE by setting field error on email while preserving inputs', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        error: 'An account with this email already exists.',
+        code: 'EMAIL_ALREADY_IN_USE',
+      }),
     });
 
     render(<RegistrationForm />);
@@ -181,11 +168,8 @@ describe('RegistrationForm Component', () => {
     expect(screen.getByLabelText(/email address/i)).toHaveValue('taken@example.com');
   });
 
-  it('handles auth/network-request-failed with a form-level error alert', async () => {
-    vi.mocked(firebaseAuth.createUserWithEmailAndPassword).mockRejectedValueOnce({
-      code: 'auth/network-request-failed',
-      message: 'Network error.',
-    });
+  it('handles network failure with a form-level error alert', async () => {
+    mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
 
     render(<RegistrationForm />);
 
@@ -202,8 +186,23 @@ describe('RegistrationForm Component', () => {
     expect(screen.getByLabelText(/email address/i)).toHaveValue('alice@example.com');
   });
 
-  it('completes the full registration lifecycle, calls signOut, and renders the success view', async () => {
+  it('completes the full registration lifecycle via POST /api/auth/register and renders success view', async () => {
     const onSuccess = vi.fn();
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        message: 'User registered successfully',
+        user: {
+          id: 'user-123',
+          email: 'alice@example.com',
+          fullName: 'Alice Smith',
+          role: 'PART',
+          isVerified: false,
+        },
+      }),
+    });
+
     render(<RegistrationForm onSuccess={onSuccess} />);
 
     fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Alice Smith' } });
@@ -213,21 +212,18 @@ describe('RegistrationForm Component', () => {
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
     await waitFor(() => {
-      expect(firebaseAuth.createUserWithEmailAndPassword).toHaveBeenCalledWith(
-        expect.anything(),
-        'alice@example.com',
-        'Valid1@Password'
-      );
+      expect(mockFetch).toHaveBeenCalledWith('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fullName: 'Alice Smith',
+          email: 'alice@example.com',
+          password: 'Valid1@Password',
+        }),
+      });
     });
-
-    expect(firebaseAuth.updateProfile).toHaveBeenCalledWith(mockUser, {
-      displayName: 'Alice Smith',
-    });
-
-    expect(firebaseAuth.sendEmailVerification).toHaveBeenCalledWith(mockUser);
-
-    // Verifies pre-auth session security invariant: unverified session must be terminated immediately
-    expect(firebaseAuth.signOut).toHaveBeenCalled();
 
     // Success screen rendered
     expect(await screen.findByRole('status')).toBeInTheDocument();
@@ -237,10 +233,16 @@ describe('RegistrationForm Component', () => {
     expect(onSuccess).toHaveBeenCalledWith('alice@example.com');
   });
 
-  it('handles auth/invalid-email by setting field error on email input while preserving inputs', async () => {
-    vi.mocked(firebaseAuth.createUserWithEmailAndPassword).mockRejectedValueOnce({
-      code: 'auth/invalid-email',
-      message: 'The email address is badly formatted.',
+  it('handles backend validation errors (HTTP 400 with field errors map)', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        error: 'Validation failed',
+        errors: {
+          email: 'Please provide a valid email address.',
+        },
+      }),
     });
 
     render(<RegistrationForm />);
@@ -259,32 +261,14 @@ describe('RegistrationForm Component', () => {
     expect(screen.getByLabelText(/email address/i)).toHaveValue('alice@rejected.com');
   });
 
-  it('handles auth/weak-password by setting field error on password input while preserving inputs', async () => {
-    vi.mocked(firebaseAuth.createUserWithEmailAndPassword).mockRejectedValueOnce({
-      code: 'auth/weak-password',
-      message: 'Password should be at least 6 characters.',
+  it('handles HTTP 403 Forbidden with administrative privilege error alert', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      json: async () => ({
+        error: 'Public registration cannot grant administrative privileges.',
+      }),
     });
-
-    render(<RegistrationForm />);
-
-    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Alice Smith' } });
-    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'alice@example.com' } });
-    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Weak123!' } });
-
-    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
-
-    expect(
-      await screen.findByText('Password does not meet security requirements.')
-    ).toBeInTheDocument();
-
-    expect(screen.getByLabelText(/full name/i)).toHaveValue('Alice Smith');
-    expect(screen.getByLabelText(/email address/i)).toHaveValue('alice@example.com');
-  });
-
-  it('guarantees signOut is called even when post-creation sendEmailVerification fails (FR-007, US-001 AC 5)', async () => {
-    vi.mocked(firebaseAuth.sendEmailVerification).mockRejectedValueOnce(
-      new Error('Failed to dispatch verification email.')
-    );
 
     render(<RegistrationForm />);
 
@@ -295,23 +279,37 @@ describe('RegistrationForm Component', () => {
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent(
-      'Account created, but failed to send verification email. Please try signing in or requesting a replacement verification link.'
-    );
+    expect(alert).toHaveTextContent('Public registration cannot grant administrative privileges.');
+  });
 
-    // Critical security check: signOut must have been called despite the failure
-    expect(firebaseAuth.signOut).toHaveBeenCalled();
+  it('handles HTTP 500 server error with form-level failure alert', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => ({
+        error: 'Internal Server Error',
+      }),
+    });
+
+    render(<RegistrationForm />);
+
+    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Alice Smith' } });
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'alice@example.com' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Valid1@Password' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Internal Server Error');
   });
 
   it('disables submit button and reflects loading state during submission', async () => {
-    let resolveAuth: (value: unknown) => void;
-    const authPromise = new Promise((resolve) => {
-      resolveAuth = resolve;
+    let resolveResponse: (value: unknown) => void;
+    const fetchPromise = new Promise((resolve) => {
+      resolveResponse = resolve;
     });
 
-    vi.mocked(firebaseAuth.createUserWithEmailAndPassword).mockImplementationOnce(
-      () => authPromise as unknown as Promise<firebaseAuth.UserCredential>
-    );
+    mockFetch.mockReturnValueOnce(fetchPromise);
 
     render(<RegistrationForm />);
 
@@ -326,7 +324,15 @@ describe('RegistrationForm Component', () => {
     expect(submitBtn).toHaveTextContent('Creating Account...');
     expect(submitBtn).toHaveAttribute('aria-busy', 'true');
 
-    resolveAuth!({ user: mockUser });
+    resolveResponse!({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        message: 'User registered successfully',
+        user: { id: 'u1' },
+      }),
+    });
+
     await waitFor(() => {
       expect(screen.getByRole('status')).toBeInTheDocument();
     });
@@ -341,6 +347,12 @@ describe('RegistrationForm Component', () => {
   });
 
   it('allows registering another account after success reset', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => ({ message: 'User registered successfully' }),
+    });
+
     render(<RegistrationForm />);
 
     fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Alice Smith' } });

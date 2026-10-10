@@ -1,11 +1,4 @@
 import React, { useState } from 'react';
-import {
-  createUserWithEmailAndPassword,
-  updateProfile,
-  sendEmailVerification,
-  signOut,
-} from 'firebase/auth';
-import { auth, translateAuthError } from '../../config/firebase';
 import { validateRegistrationInput, type ValidationErrors } from './validation';
 
 export interface RegistrationFormProps {
@@ -37,66 +30,64 @@ export function RegistrationForm({ onSuccess }: RegistrationFormProps): React.JS
     setFieldErrors({});
     setLoading(true);
 
-    let userCreated = false;
+    const normalizedEmail = email.trim().toLowerCase();
+    const trimmedFullName = fullName.trim();
+
     try {
-      // 2. Create user with Firebase Auth Client SDK
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        email.trim().toLowerCase(),
-        password
-      );
-      userCreated = true;
+      // 2. Call backend registration endpoint (POST /api/auth/register)
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fullName: trimmedFullName,
+          email: normalizedEmail,
+          password,
+        }),
+      });
 
-      try {
-        // 3. Update profile with full name as display name
-        await updateProfile(userCredential.user, {
-          displayName: fullName.trim(),
-        });
+      const data = await response.json().catch(() => null);
 
-        // 4. Send email verification link
-        await sendEmailVerification(userCredential.user);
-
-        setRegisteredEmail(email.trim().toLowerCase());
+      if (response.ok) {
+        setRegisteredEmail(normalizedEmail);
         setIsSuccess(true);
         if (onSuccess) {
-          onSuccess(email.trim().toLowerCase());
+          onSuccess(normalizedEmail);
         }
-      } finally {
-        // 5. Enforce security invariant: Guaranteed immediate signout
-        // so no unverified, non-OTP session lingers in browser storage (FR-007, US-001 AC 5)
-        await signOut(auth);
-      }
-    } catch (err: unknown) {
-      if (userCreated) {
-        setFormError(
-          'Account created, but failed to send verification email. Please try signing in or requesting a replacement verification link.'
-        );
-      } else {
-        const errorCode = (err && typeof err === 'object' && 'code' in err)
-          ? String((err as { code: unknown }).code)
-          : '';
-
-        // Field-specific error mappings
-        if (errorCode === 'auth/email-already-in-use') {
+      } else if (response.status === 409 || data?.code === 'EMAIL_ALREADY_IN_USE') {
+        setFieldErrors((prev) => ({
+          ...prev,
+          email: data?.error || 'An account with this email already exists.',
+        }));
+      } else if (response.status === 400 && data?.errors) {
+        setFieldErrors(data.errors);
+      } else if (
+        response.status === 400 &&
+        (data?.code === 'INVALID_EMAIL' || data?.code === 'WEAK_PASSWORD')
+      ) {
+        if (data.code === 'INVALID_EMAIL') {
           setFieldErrors((prev) => ({
             ...prev,
-            email: 'An account with this email already exists.',
-          }));
-        } else if (errorCode === 'auth/invalid-email') {
-          setFieldErrors((prev) => ({
-            ...prev,
-            email: 'Please provide a valid email address.',
-          }));
-        } else if (errorCode === 'auth/weak-password') {
-          setFieldErrors((prev) => ({
-            ...prev,
-            password: 'Password does not meet security requirements.',
+            email: data.error || 'Please provide a valid email address.',
           }));
         } else {
-          setFormError(translateAuthError(err));
+          setFieldErrors((prev) => ({
+            ...prev,
+            password: data.error || 'Password does not meet security requirements.',
+          }));
         }
+      } else if (response.status === 403) {
+        setFormError(
+          data?.error || 'Public registration cannot grant administrative privileges.'
+        );
+      } else {
+        setFormError(
+          data?.error || 'Registration failed. Please try again later.'
+        );
       }
-      // Note: fullName and email are preserved in state per NR-017
+    } catch {
+      setFormError('Network error. Please check your internet connection.');
     } finally {
       setLoading(false);
     }
