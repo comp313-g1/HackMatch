@@ -7,6 +7,7 @@ import { requestIdMiddleware } from './middleware/requestId.js';
 import { requestLoggerMiddleware } from './middleware/requestLogger.js';
 import { healthRouter } from './routes/health.routes.js';
 import { authRouter } from './routes/auth.routes.js';
+import { actionsRouter } from './routes/actions.routes.js';
 
 export const app: Express = express();
 
@@ -33,6 +34,7 @@ app.use(requestLoggerMiddleware);
 // API Routes
 app.use('/api', healthRouter);
 app.use('/api/auth', authRouter);
+app.use('/api', actionsRouter);
 
 // Fallback 404 handler
 app.use((_req: Request, res: Response) => {

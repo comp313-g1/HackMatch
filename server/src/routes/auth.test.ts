@@ -8,15 +8,18 @@ import type { Participant } from '../db/types.js';
 // and avoid the throwing offline proxy in server/src/config/firebase.ts
 const mockCreateUser = vi.fn();
 const mockDeleteUser = vi.fn();
+const mockVerifyIdToken = vi.fn();
 
 vi.mock('../config/firebase.js', () => ({
   firebaseAuth: {
     createUser: (...args: unknown[]) => mockCreateUser(...args),
     deleteUser: (...args: unknown[]) => mockDeleteUser(...args),
+    verifyIdToken: (...args: unknown[]) => mockVerifyIdToken(...args),
   },
   auth: {
     createUser: (...args: unknown[]) => mockCreateUser(...args),
     deleteUser: (...args: unknown[]) => mockDeleteUser(...args),
+    verifyIdToken: (...args: unknown[]) => mockVerifyIdToken(...args),
   },
   getFirebaseAdminAuth: vi.fn(),
   _resetFirebaseInstances: vi.fn(),
@@ -553,9 +556,40 @@ describe('Auth Routes (POST /api/auth/register)', () => {
     it.todo(
       'AC 3 / FR-081: Replacement verification link request is rate-limited and returns safe guidance without leaking account existence (S1-P1-03)'
     );
-    it.todo(
-      'T5 / AC 4: Unverified accounts are blocked with 403 and verification message on team creation, availability declaration, application, and invitation acceptance (S1-P2-01)'
-    );
+    it('T5 / AC 4: Unverified accounts are blocked with 403 and verification message on team creation, availability declaration, application, and invitation acceptance (S1-P2-01)', async () => {
+      mockVerifyIdToken.mockResolvedValue({ uid: 'unverified-fb-uid' });
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue({
+        id: '22222222-2222-4222-8222-222222222222',
+        firebase_uid: 'unverified-fb-uid',
+        email: 'unverified@example.com',
+        full_name: 'Unverified Candidate',
+        role: 'PART',
+        is_verified: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const endpoints = [
+        '/api/teams',
+        '/api/availability',
+        '/api/applications',
+        '/api/invitations/inv-123/accept',
+      ];
+
+      for (const endpoint of endpoints) {
+        const response = await request(app)
+          .post(endpoint)
+          .set('Authorization', 'Bearer token-unverified')
+          .send({});
+
+        expect(response.status).toBe(403);
+        expect(response.body).toEqual({
+          error:
+            'Email verification required. Unverified accounts cannot declare availability, create teams, apply, or accept invitations.',
+          code: 'EMAIL_NOT_VERIFIED',
+        });
+      }
+    });
     it.todo(
       'Client success view indicates verification link sent only when confirmed by backend dispatch (S1-P2-03)'
     );

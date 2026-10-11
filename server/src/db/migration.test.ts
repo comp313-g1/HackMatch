@@ -335,3 +335,27 @@ describe('0007_create_events_table.sql Migration DDL', () => {
   });
 });
 
+describe('0008_create_verification_guard_helpers.sql Migration DDL', () => {
+  const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0008_create_verification_guard_helpers.sql');
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('defines is_participant_verified function accepting UUID parameter and returning BOOLEAN', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+is_participant_verified\s*\(\s*p_participant_id\s+UUID\s*\)\s+RETURNS\s+BOOLEAN/i);
+  });
+
+  it('declares function as STABLE and SECURITY DEFINER', () => {
+    expect(sql).toMatch(/LANGUAGE\s+sql/i);
+    expect(sql).toMatch(/STABLE/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+  });
+
+  it('coalesces participant verification state with fallback to FALSE', () => {
+    expect(sql).toMatch(/SELECT\s+COALESCE\s*\(\s*\(\s*SELECT\s+is_verified\s+FROM\s+participants\s+WHERE\s+id\s*=\s*p_participant_id\s*\)\s*,\s*FALSE\s*\)/i);
+  });
+});
+
