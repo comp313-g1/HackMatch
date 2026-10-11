@@ -226,6 +226,8 @@ describe('RegistrationForm Component (Backend Integration)', () => {
     });
 
     // Success screen rendered
+    // Note on R1: The UI informs the user that a verification link was sent,
+    // which reflects the target design; actual email dispatch is pending S1-P1-03.
     expect(await screen.findByRole('status')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 3, name: /verify your email/i })).toBeInTheDocument();
     expect(screen.getByText(/alice@example.com/i)).toBeInTheDocument();
@@ -371,5 +373,191 @@ describe('RegistrationForm Component (Backend Integration)', () => {
     expect(screen.getByLabelText(/full name/i)).toHaveValue('');
     expect(screen.getByLabelText(/email address/i)).toHaveValue('');
     expect(screen.getByLabelText(/^password/i)).toHaveValue('');
+  });
+
+  it('handles backend 400 INVALID_EMAIL error and maps to email field while preserving inputs', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        error: 'Invalid email address.',
+        code: 'INVALID_EMAIL',
+      }),
+    });
+
+    render(<RegistrationForm />);
+
+    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Alice Smith' } });
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'alice@domain.com' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Valid1@Password' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    expect(await screen.findByText('Invalid email address.')).toBeInTheDocument();
+    expect(screen.getByLabelText(/full name/i)).toHaveValue('Alice Smith');
+    expect(screen.getByLabelText(/email address/i)).toHaveValue('alice@domain.com');
+    expect(screen.getByLabelText(/^password/i)).toHaveValue('Valid1@Password');
+  });
+
+  it('handles backend 400 WEAK_PASSWORD error and maps to password field while preserving inputs', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        error: 'Password does not meet security requirements.',
+        code: 'WEAK_PASSWORD',
+      }),
+    });
+
+    render(<RegistrationForm />);
+
+    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Alice Smith' } });
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'alice@example.com' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Valid1@Password' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    expect(
+      await screen.findByText('Password does not meet security requirements.')
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/full name/i)).toHaveValue('Alice Smith');
+    expect(screen.getByLabelText(/email address/i)).toHaveValue('alice@example.com');
+  });
+
+  it('handles non-JSON error response (e.g. 502 Bad Gateway) with fallback error alert', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 502,
+      json: () => Promise.reject(new SyntaxError('Unexpected token < in JSON at position 0')),
+    });
+
+    render(<RegistrationForm />);
+
+    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Alice Smith' } });
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'alice@example.com' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Valid1@Password' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Registration failed. Please try again later.');
+  });
+
+  it('normalizes email to lowercase and trims full name when dispatching request', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => ({ message: 'User registered successfully' }),
+    });
+
+    render(<RegistrationForm />);
+
+    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: '  Alice Smith  ' } });
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: '  Alice@Example.COM  ' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Valid1@Password' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: 'Alice Smith',
+          email: 'alice@example.com',
+          password: 'Valid1@Password',
+        }),
+      });
+    });
+  });
+
+  it('updates aria-invalid and aria-describedby on error, and clears error when user edits field', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        error: 'Validation failed',
+        errors: { email: 'Please provide a valid email address.' },
+      }),
+    });
+
+    render(<RegistrationForm />);
+
+    const emailInput = screen.getByLabelText(/email address/i);
+    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Alice Smith' } });
+    fireEvent.change(emailInput, { target: { value: 'alice@example.com' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Valid1@Password' } });
+
+    expect(emailInput).toHaveAttribute('aria-invalid', 'false');
+    expect(emailInput).not.toHaveAttribute('aria-describedby');
+
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    expect(await screen.findByText('Please provide a valid email address.')).toBeInTheDocument();
+    expect(emailInput).toHaveAttribute('aria-invalid', 'true');
+    expect(emailInput).toHaveAttribute('aria-describedby', 'email-error');
+
+    // Editing the field clears the error and resets aria-invalid to false
+    fireEvent.change(emailInput, { target: { value: 'alice.updated@example.com' } });
+    expect(screen.queryByText('Please provide a valid email address.')).not.toBeInTheDocument();
+    expect(emailInput).toHaveAttribute('aria-invalid', 'false');
+    expect(emailInput).not.toHaveAttribute('aria-describedby');
+  });
+
+  it('blocks duplicate submissions while a request is pending', async () => {
+    let resolveResponse: (value: unknown) => void;
+    mockFetch.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveResponse = resolve;
+      })
+    );
+
+    render(<RegistrationForm />);
+
+    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Alice Smith' } });
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'alice@example.com' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Valid1@Password' } });
+
+    const submitBtn = screen.getByRole('button', { name: /create account/i });
+    fireEvent.click(submitBtn);
+    fireEvent.click(submitBtn);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    resolveResponse!({
+      ok: true,
+      status: 201,
+      json: async () => ({ message: 'User registered successfully' }),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toBeInTheDocument();
+    });
+  });
+
+  it('displays server-side validation error when fullName exceeds 100 characters', async () => {
+    const longName = 'a'.repeat(101);
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        error: 'Validation failed',
+        errors: { fullName: 'Full name must not exceed 100 characters.' },
+      }),
+    });
+
+    render(<RegistrationForm />);
+
+    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: longName } });
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'alice@example.com' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Valid1@Password' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    expect(
+      await screen.findByText('Full name must not exceed 100 characters.')
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/full name/i)).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText(/full name/i)).toHaveAttribute('aria-describedby', 'fullName-error');
   });
 });

@@ -20,6 +20,22 @@ describe('Sanitized Logging Middleware (NR-021)', () => {
     expect(sanitized.token).toBe('[REDACTED]');
   });
 
+  it('redacts email verification secrets per Invariant L41 (oobCode, actionCode, verificationToken)', () => {
+    const verificationPayload = {
+      email: 'user@example.com',
+      oobCode: 'secret-action-code-xyz',
+      actionCode: 'action-code-12345',
+      verificationToken: 'token-secret-789',
+    };
+
+    const sanitized = sanitizePayload(verificationPayload) as Record<string, unknown>;
+
+    expect(sanitized.email).toBe('user@example.com');
+    expect(sanitized.oobCode).toBe('[REDACTED]');
+    expect(sanitized.actionCode).toBe('[REDACTED]');
+    expect(sanitized.verificationToken).toBe('[REDACTED]');
+  });
+
   it('redacts nested objects and arrays with sensitive keys', () => {
     const nestedPayload = {
       user: {

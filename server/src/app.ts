@@ -41,10 +41,13 @@ app.use((_req: Request, res: Response) => {
 
 // Centralized error handler
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  // Never leak internal stack trace to client
+  const errWithStatus = err as Error & { status?: number; statusCode?: number };
+  const status = errWithStatus.status || errWithStatus.statusCode || 500;
   const isDev = config.nodeEnv === 'development';
-  res.status(500).json({
-    error: 'Internal Server Error',
+  const defaultError = status === 400 ? 'Bad Request' : 'Internal Server Error';
+
+  res.status(status).json({
+    error: defaultError,
     ...(isDev ? { message: err.message } : {}),
   });
 });

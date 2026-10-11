@@ -351,6 +351,39 @@ describe('Auth Routes (POST /api/auth/register)', () => {
         code: 'WEAK_PASSWORD',
       });
     });
+
+    it('translates auth/weak-password to HTTP 400 Bad Request with WEAK_PASSWORD', async () => {
+      mockCreateUser.mockRejectedValueOnce({
+        code: 'auth/weak-password',
+        message: 'Password does not meet requirements.',
+      });
+
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send(validPayload);
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({
+        error: 'Password does not meet requirements.',
+        code: 'WEAK_PASSWORD',
+      });
+    });
+
+    it('propagates unknown Firebase errors to 500 without leaking message in non-dev', async () => {
+      mockCreateUser.mockRejectedValueOnce({
+        code: 'auth/internal-error',
+        message: 'Internal Firebase failure details that must not leak',
+      });
+
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send(validPayload);
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal Server Error' });
+      expect(response.body.message).toBeUndefined();
+      expect(participantsRepository.createParticipant).not.toHaveBeenCalled();
+    });
   });
 
   describe('Compensatory rollback on database persistence failure', () => {
@@ -392,7 +425,25 @@ describe('Auth Routes (POST /api/auth/register)', () => {
       });
     });
 
+    it('translates database error containing "duplicate" without error code to HTTP 409', async () => {
+      vi.spyOn(participantsRepository, 'createParticipant').mockRejectedValueOnce(
+        new Error('Key (email)=(jane.doe@example.com) already exists - duplicate entry')
+      );
+
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send(validPayload);
+
+      expect(mockDeleteUser).toHaveBeenCalledWith('fb-uid-12345');
+      expect(response.status).toBe(409);
+      expect(response.body).toEqual({
+        error: 'An account with this email already exists.',
+        code: 'EMAIL_ALREADY_IN_USE',
+      });
+    });
+
     it('gracefully handles failure inside compensatory deleteUser without masking initial error', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       vi.spyOn(participantsRepository, 'createParticipant').mockRejectedValueOnce(
         new Error('Database failure')
       );
@@ -405,6 +456,108 @@ describe('Auth Routes (POST /api/auth/register)', () => {
       expect(mockDeleteUser).toHaveBeenCalledWith('fb-uid-12345');
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('Internal Server Error');
+      consoleErrorSpy.mockRestore();
     });
+  });
+
+  describe('Routing and parser boundaries', () => {
+    it('returns HTTP 400 Bad Request on malformed JSON body', async () => {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .set('Content-Type', 'application/json')
+        .send('{ malformed: json');
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('Bad Request');
+    });
+
+    it('returns HTTP 404 Not Found on unsupported GET method', async () => {
+      const response = await request(app).get('/api/auth/register');
+
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({ error: 'Not Found' });
+    });
+
+    it('enforces role 403 precedence before field validation when both are invalid', async () => {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({
+          role: 'ADMIN',
+          email: 'invalid-email',
+          fullName: '',
+          password: 'short',
+        });
+
+      expect(response.status).toBe(403);
+      expect(response.body).toEqual({
+        error: 'Public registration cannot grant administrative privileges.',
+      });
+    });
+  });
+
+  describe('Security and leak prevention (Invariant L41 / FR-007 / US-001 AC 5)', () => {
+    it('never leaks password or issues session cookies across 201, 400, 403, 409, and 500 responses', async () => {
+      // 201
+      const res201 = await request(app).post('/api/auth/register').send(validPayload);
+      expect(res201.status).toBe(201);
+      expect(JSON.stringify(res201.body)).not.toContain(validPayload.password);
+      expect(res201.headers['set-cookie']).toBeUndefined();
+
+      // 400 validation
+      const res400 = await request(app).post('/api/auth/register').send({
+        ...validPayload,
+        fullName: '',
+      });
+      expect(res400.status).toBe(400);
+      expect(JSON.stringify(res400.body)).not.toContain(validPayload.password);
+      expect(res400.headers['set-cookie']).toBeUndefined();
+
+      // 403 role escalation
+      const res403 = await request(app).post('/api/auth/register').send({
+        ...validPayload,
+        role: 'ADMIN',
+      });
+      expect(res403.status).toBe(403);
+      expect(JSON.stringify(res403.body)).not.toContain(validPayload.password);
+      expect(res403.headers['set-cookie']).toBeUndefined();
+
+      // 409 conflict
+      mockCreateUser.mockRejectedValueOnce({ code: 'auth/email-already-exists' });
+      const res409 = await request(app).post('/api/auth/register').send(validPayload);
+      expect(res409.status).toBe(409);
+      expect(JSON.stringify(res409.body)).not.toContain(validPayload.password);
+      expect(res409.headers['set-cookie']).toBeUndefined();
+
+      // 500 internal error
+      mockCreateUser.mockRejectedValueOnce(new Error('Internal failure'));
+      const res500 = await request(app).post('/api/auth/register').send(validPayload);
+      expect(res500.status).toBe(500);
+      expect(JSON.stringify(res500.body)).not.toContain(validPayload.password);
+      expect(res500.headers['set-cookie']).toBeUndefined();
+    });
+  });
+
+  describe('US-001 verification (pending S1-P1-03 / S1-P2-01 / S1-P2-03 integration)', () => {
+    it.todo(
+      'T1 / AC 2: Verification link is dispatched after a successful registration; send failure never verifies the account (FR-084) (S1-P1-03)'
+    );
+    it.todo(
+      'T3 / AC 3: Valid action code sets emailVerified in Firebase, calls updateVerificationStatus(id, true), directs user to sign in, and issues no session cookie (AC 5 / FR-007) (S1-P1-03)'
+    );
+    it.todo(
+      'T4 / AC 3: Expired action code (auth/expired-action-code) fails, keeps is_verified false, and offers replacement link option (S1-P1-03 / S1-P2-03)'
+    );
+    it.todo(
+      'T4 / AC 3: Invalid or consumed action code (auth/invalid-action-code) fails without access (S1-P1-03 / S1-P2-03)'
+    );
+    it.todo(
+      'AC 3 / FR-081: Replacement verification link request is rate-limited and returns safe guidance without leaking account existence (S1-P1-03)'
+    );
+    it.todo(
+      'T5 / AC 4: Unverified accounts are blocked with 403 and verification message on team creation, availability declaration, application, and invitation acceptance (S1-P2-01)'
+    );
+    it.todo(
+      'Client success view indicates verification link sent only when confirmed by backend dispatch (S1-P2-03)'
+    );
   });
 });
