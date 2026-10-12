@@ -126,3 +126,99 @@ export function validateRegisterPayload(
 
   next();
 }
+
+export interface ResendVerificationFieldErrors {
+  email?: string;
+}
+
+export interface VerifyEmailFieldErrors {
+  oobCode?: string;
+}
+
+/**
+ * Express middleware validating payload for POST /api/auth/resend-verification.
+ * Enforces email presence, syntax, and maximum length.
+ */
+export function validateResendVerificationPayload(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const body = req.body;
+  if (!body || typeof body !== 'object') {
+    res.status(400).json({
+      error: 'Validation failed',
+      errors: {
+        email: 'Email address is required.',
+      },
+    });
+    return;
+  }
+
+  const rawEmail = body.email;
+  if (typeof rawEmail !== 'string' || rawEmail.trim().length === 0) {
+    res.status(400).json({
+      error: 'Validation failed',
+      errors: {
+        email: 'Email address is required.',
+      },
+    });
+    return;
+  }
+
+  const trimmedEmail = rawEmail.trim();
+  if (trimmedEmail.length > 255 || !EMAIL_REGEX.test(trimmedEmail)) {
+    res.status(400).json({
+      error: 'Validation failed',
+      errors: {
+        email: 'Please provide a valid email address.',
+      },
+    });
+    return;
+  }
+
+  req.body = {
+    email: trimmedEmail.toLowerCase(),
+  };
+
+  next();
+}
+
+/**
+ * Express middleware validating payload for POST /api/auth/verify-email.
+ * Enforces presence of non-empty oobCode string.
+ */
+export function validateVerifyEmailPayload(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const body = req.body;
+  if (!body || typeof body !== 'object') {
+    res.status(400).json({
+      error: 'Validation failed',
+      errors: {
+        oobCode: 'Action code is required.',
+      },
+    });
+    return;
+  }
+
+  const rawCode = body.oobCode;
+  if (typeof rawCode !== 'string' || rawCode.trim().length === 0) {
+    res.status(400).json({
+      error: 'Validation failed',
+      errors: {
+        oobCode: 'Action code is required.',
+      },
+    });
+    return;
+  }
+
+  req.body = {
+    oobCode: rawCode.trim(),
+  };
+
+  next();
+}
+

@@ -3,6 +3,7 @@ import request from 'supertest';
 import { app } from '../app.js';
 import { participantsRepository } from '../db/participants.repository.js';
 import type { Participant } from '../db/types.js';
+import { _resetRateLimiter } from '../utils/rateLimiter.js';
 
 // Mock Firebase Admin module to operate 100% offline without live Google Cloud credentials
 // and avoid the throwing offline proxy in server/src/config/firebase.ts
@@ -10,6 +11,8 @@ const mockCreateUser = vi.fn();
 const mockDeleteUser = vi.fn();
 const mockVerifyIdToken = vi.fn();
 const mockSetCustomUserClaims = vi.fn();
+const mockGenerateEmailVerificationLink = vi.fn();
+const mockVerifyEmailActionCode = vi.fn();
 
 vi.mock('../config/firebase.js', () => ({
   firebaseAuth: {
@@ -17,13 +20,18 @@ vi.mock('../config/firebase.js', () => ({
     deleteUser: (...args: unknown[]) => mockDeleteUser(...args),
     verifyIdToken: (...args: unknown[]) => mockVerifyIdToken(...args),
     setCustomUserClaims: (...args: unknown[]) => mockSetCustomUserClaims(...args),
+    generateEmailVerificationLink: (...args: unknown[]) => mockGenerateEmailVerificationLink(...args),
+    verifyEmailActionCode: (...args: unknown[]) => mockVerifyEmailActionCode(...args),
   },
   auth: {
     createUser: (...args: unknown[]) => mockCreateUser(...args),
     deleteUser: (...args: unknown[]) => mockDeleteUser(...args),
     verifyIdToken: (...args: unknown[]) => mockVerifyIdToken(...args),
     setCustomUserClaims: (...args: unknown[]) => mockSetCustomUserClaims(...args),
+    generateEmailVerificationLink: (...args: unknown[]) => mockGenerateEmailVerificationLink(...args),
+    verifyEmailActionCode: (...args: unknown[]) => mockVerifyEmailActionCode(...args),
   },
+  verifyEmailActionCode: (...args: unknown[]) => mockVerifyEmailActionCode(...args),
   getFirebaseAdminAuth: vi.fn(),
   _resetFirebaseInstances: vi.fn(),
 }));
@@ -54,8 +62,10 @@ describe('Auth Routes (POST /api/auth/register)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetRateLimiter();
     mockCreateUser.mockResolvedValue(mockCreatedFirebaseUser);
     mockDeleteUser.mockResolvedValue(undefined);
+    mockGenerateEmailVerificationLink.mockResolvedValue('https://example.com/verify');
     vi.spyOn(participantsRepository, 'createParticipant').mockResolvedValue(mockCreatedParticipant);
   });
 
@@ -76,6 +86,7 @@ describe('Auth Routes (POST /api/auth/register)', () => {
           role: 'PART',
           isVerified: false,
         },
+        verificationEmailSent: true,
       });
 
       expect(mockCreateUser).toHaveBeenCalledWith({
@@ -92,6 +103,25 @@ describe('Auth Routes (POST /api/auth/register)', () => {
         role: 'PART',
         is_verified: false,
       });
+
+      expect(mockGenerateEmailVerificationLink).toHaveBeenCalledWith('jane.doe@example.com', {
+        url: expect.stringContaining('/?mode=verifyEmail'),
+      });
+    });
+
+    it('handles email verification link generation failure gracefully by returning 201 with verificationEmailSent: false (FR-084)', async () => {
+      mockGenerateEmailVerificationLink.mockRejectedValueOnce(new Error('Network transport timeout'));
+
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send(validPayload);
+
+      expect(response.status).toBe(201);
+      expect(response.body.verificationEmailSent).toBe(false);
+      expect(response.body.user.isVerified).toBe(false);
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(participantsRepository.createParticipant).toHaveBeenCalled();
+      expect(mockDeleteUser).not.toHaveBeenCalled();
     });
 
     it('enforces pre-auth session invariant (FR-007 / US-001 AC 5): sets zero cookies or tokens', async () => {
@@ -584,21 +614,147 @@ describe('Auth Routes (POST /api/auth/register)', () => {
   });
 
   describe('US-001 verification (pending S1-P1-03 / S1-P2-01 / S1-P2-03 integration)', () => {
-    it.todo(
-      'T1 / AC 2: Verification link is dispatched after a successful registration; send failure never verifies the account (FR-084) (S1-P1-03)'
-    );
-    it.todo(
-      'T3 / AC 3: Valid action code sets emailVerified in Firebase, calls updateVerificationStatus(id, true), directs user to sign in, and issues no session cookie (AC 5 / FR-007) (S1-P1-03)'
-    );
-    it.todo(
-      'T4 / AC 3: Expired action code (auth/expired-action-code) fails, keeps is_verified false, and offers replacement link option (S1-P1-03 / S1-P2-03)'
-    );
-    it.todo(
-      'T4 / AC 3: Invalid or consumed action code (auth/invalid-action-code) fails without access (S1-P1-03 / S1-P2-03)'
-    );
-    it.todo(
-      'AC 3 / FR-081: Replacement verification link request is rate-limited and returns safe guidance without leaking account existence (S1-P1-03)'
-    );
+    it('T1 / AC 2: Verification link is dispatched after a successful registration; send failure never verifies the account (FR-084) (S1-P1-03)', async () => {
+      // 1. Success dispatch case
+      mockGenerateEmailVerificationLink.mockResolvedValueOnce('https://example.com/verify?oobCode=123');
+      const resSuccess = await request(app)
+        .post('/api/auth/register')
+        .send(validPayload);
+
+      expect(resSuccess.status).toBe(201);
+      expect(resSuccess.body.verificationEmailSent).toBe(true);
+      expect(resSuccess.body.user.isVerified).toBe(false);
+      expect(mockGenerateEmailVerificationLink).toHaveBeenCalledWith(
+        'jane.doe@example.com',
+        { url: expect.stringContaining('/?mode=verifyEmail') }
+      );
+
+      // 2. Transport failure simulation (FR-084)
+      _resetRateLimiter();
+      mockGenerateEmailVerificationLink.mockRejectedValueOnce(
+        new Error('SMTP/Firebase transport failure')
+      );
+      const resFailure = await request(app)
+        .post('/api/auth/register')
+        .send({
+          ...validPayload,
+          email: 'jane.retry@example.com',
+        });
+
+      expect(resFailure.status).toBe(201);
+      expect(resFailure.body.verificationEmailSent).toBe(false);
+      expect(resFailure.body.user.isVerified).toBe(false);
+      expect(resFailure.headers['set-cookie']).toBeUndefined();
+      expect(resFailure.body.token).toBeUndefined();
+      expect(mockDeleteUser).not.toHaveBeenCalled();
+    });
+
+    it('T3 / AC 3: Valid action code sets emailVerified in Firebase, calls updateVerificationStatus(id, true), directs user to sign in, and issues no session cookie (AC 5 / FR-007) (S1-P1-03)', async () => {
+      mockVerifyEmailActionCode.mockResolvedValueOnce({
+        email: 'jane.doe@example.com',
+        uid: 'fb-uid-12345',
+      });
+      vi.spyOn(participantsRepository, 'findByEmail').mockResolvedValueOnce(mockCreatedParticipant);
+      const updateSpy = vi.spyOn(participantsRepository, 'updateVerificationStatus').mockResolvedValueOnce({
+        ...mockCreatedParticipant,
+        is_verified: true,
+      });
+
+      const response = await request(app)
+        .post('/api/auth/verify-email')
+        .send({ oobCode: 'valid-test-action-code' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        message: 'Email verified successfully. Please proceed to sign in.',
+        isVerified: true,
+      });
+      expect(updateSpy).toHaveBeenCalledWith('part-uuid-999', true);
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(response.body.token).toBeUndefined();
+      expect(response.body.accessToken).toBeUndefined();
+      expect(response.body.refreshToken).toBeUndefined();
+    });
+
+    it('T4 / AC 3: Expired action code (auth/expired-action-code) fails, keeps is_verified false, and offers replacement link option (S1-P1-03 / S1-P2-03)', async () => {
+      mockVerifyEmailActionCode.mockRejectedValueOnce({
+        code: 'auth/expired-action-code',
+        message: 'The action code has expired.',
+      });
+      const updateSpy = vi.spyOn(participantsRepository, 'updateVerificationStatus');
+
+      const response = await request(app)
+        .post('/api/auth/verify-email')
+        .send({ oobCode: 'expired-action-code' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({
+        error: 'Verification link has expired. Please request a replacement link.',
+        code: 'EXPIRED_ACTION_CODE',
+      });
+      expect(updateSpy).not.toHaveBeenCalled();
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('T4 / AC 3: Invalid or consumed action code (auth/invalid-action-code) fails without access (S1-P1-03 / S1-P2-03)', async () => {
+      mockVerifyEmailActionCode.mockRejectedValueOnce({
+        code: 'auth/invalid-action-code',
+        message: 'The action code is invalid.',
+      });
+      const updateSpy = vi.spyOn(participantsRepository, 'updateVerificationStatus');
+
+      const response = await request(app)
+        .post('/api/auth/verify-email')
+        .send({ oobCode: 'consumed-or-tampered-code' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({
+        error: 'Verification link is invalid or has already been used.',
+        code: 'INVALID_ACTION_CODE',
+      });
+      expect(updateSpy).not.toHaveBeenCalled();
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('AC 3 / FR-081: Replacement verification link request is rate-limited and returns safe guidance without leaking account existence (S1-P1-03)', async () => {
+      vi.spyOn(participantsRepository, 'findByEmail').mockImplementation(async (email) => {
+        if (email === 'unverified@example.com') return mockCreatedParticipant;
+        return null;
+      });
+
+      // 1. Initial valid request receives HTTP 200
+      const firstRes = await request(app)
+        .post('/api/auth/resend-verification')
+        .send({ email: 'unverified@example.com' });
+
+      expect(firstRes.status).toBe(200);
+      expect(firstRes.body).toEqual({
+        message: 'If an account exists for this address, a verification link has been sent.',
+      });
+
+      // 2. Immediate second request within 60s is rate-limited (HTTP 429)
+      const secondRes = await request(app)
+        .post('/api/auth/resend-verification')
+        .send({ email: 'unverified@example.com' });
+
+      expect(secondRes.status).toBe(429);
+      expect(secondRes.headers['retry-after']).toBeDefined();
+      expect(secondRes.body).toEqual({
+        error: 'Too many requests. Please wait before requesting another verification email.',
+        code: 'RATE_LIMITED',
+        retryAfter: expect.any(Number),
+      });
+
+      // 3. Request for non-existent email receives identical HTTP 200 (anti-enumeration)
+      const nonExistentRes = await request(app)
+        .post('/api/auth/resend-verification')
+        .send({ email: 'nonexistent-user@example.com' });
+
+      expect(nonExistentRes.status).toBe(200);
+      expect(nonExistentRes.body).toEqual({
+        message: 'If an account exists for this address, a verification link has been sent.',
+      });
+    });
     it('T5 / AC 4: Unverified accounts are blocked with 403 and verification message on team creation, availability declaration, application, and invitation acceptance (S1-P2-01)', async () => {
       mockVerifyIdToken.mockResolvedValue({ uid: 'unverified-fb-uid' });
       vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue({
@@ -638,3 +794,313 @@ describe('Auth Routes (POST /api/auth/register)', () => {
     );
   });
 });
+
+describe('Auth Routes (POST /api/auth/resend-verification)', () => {
+  const unverifiedParticipant: Participant = {
+    id: 'part-uuid-unverified',
+    firebase_uid: 'fb-uid-unverified',
+    email: 'unverified@example.com',
+    full_name: 'Unverified User',
+    role: 'PART',
+    is_verified: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const verifiedParticipant: Participant = {
+    id: 'part-uuid-verified',
+    firebase_uid: 'fb-uid-verified',
+    email: 'verified@example.com',
+    full_name: 'Verified User',
+    role: 'PART',
+    is_verified: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetRateLimiter();
+    mockGenerateEmailVerificationLink.mockResolvedValue('https://example.com/verify');
+    vi.spyOn(participantsRepository, 'findByEmail').mockImplementation(async (email) => {
+      if (email === 'unverified@example.com') return unverifiedParticipant;
+      if (email === 'verified@example.com') return verifiedParticipant;
+      return null;
+    });
+  });
+
+  describe('Happy path and anti-enumeration', () => {
+    it('dispatches link and returns uniform 200 for existing unverified user (zero session cookies)', async () => {
+      const response = await request(app)
+        .post('/api/auth/resend-verification')
+        .send({ email: 'unverified@example.com' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        message: 'If an account exists for this address, a verification link has been sent.',
+      });
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(response.body.token).toBeUndefined();
+      expect(mockGenerateEmailVerificationLink).toHaveBeenCalledWith(
+        'unverified@example.com',
+        { url: expect.stringContaining('/?mode=verifyEmail') }
+      );
+    });
+
+    it('returns identical uniform 200 and suppresses send for already-verified account', async () => {
+      const response = await request(app)
+        .post('/api/auth/resend-verification')
+        .send({ email: 'verified@example.com' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        message: 'If an account exists for this address, a verification link has been sent.',
+      });
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(mockGenerateEmailVerificationLink).not.toHaveBeenCalled();
+    });
+
+    it('returns identical uniform 200 and suppresses send for non-existent account', async () => {
+      const response = await request(app)
+        .post('/api/auth/resend-verification')
+        .send({ email: 'nonexistent@example.com' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        message: 'If an account exists for this address, a verification link has been sent.',
+      });
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(mockGenerateEmailVerificationLink).not.toHaveBeenCalled();
+    });
+
+    it('normalizes email input by trimming whitespace and converting to lowercase', async () => {
+      const response = await request(app)
+        .post('/api/auth/resend-verification')
+        .send({ email: '  UNVERIFIED@Example.COM  ' });
+
+      expect(response.status).toBe(200);
+      expect(mockGenerateEmailVerificationLink).toHaveBeenCalledWith(
+        'unverified@example.com',
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe('Dual-tier rate limiting enforcement (FR-081)', () => {
+    it('enforces 60-second cooldown on consecutive requests with HTTP 429 and Retry-After header', async () => {
+      const first = await request(app)
+        .post('/api/auth/resend-verification')
+        .send({ email: 'unverified@example.com' });
+      expect(first.status).toBe(200);
+
+      const second = await request(app)
+        .post('/api/auth/resend-verification')
+        .send({ email: 'unverified@example.com' });
+
+      expect(second.status).toBe(429);
+      expect(second.headers['retry-after']).toBeDefined();
+      expect(second.body).toEqual({
+        error: 'Too many requests. Please wait before requesting another verification email.',
+        code: 'RATE_LIMITED',
+        retryAfter: expect.any(Number),
+      });
+      expect(second.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('rate limits non-existent accounts identically to prevent enumeration oracles', async () => {
+      const first = await request(app)
+        .post('/api/auth/resend-verification')
+        .send({ email: 'ghost@example.com' });
+      expect(first.status).toBe(200);
+
+      const second = await request(app)
+        .post('/api/auth/resend-verification')
+        .send({ email: 'ghost@example.com' });
+
+      expect(second.status).toBe(429);
+      expect(second.headers['retry-after']).toBeDefined();
+      expect(second.body.code).toBe('RATE_LIMITED');
+    });
+  });
+
+  describe('Delivery failure and payload validation', () => {
+    it('handles email generation failure gracefully without leaking errors (FR-084)', async () => {
+      mockGenerateEmailVerificationLink.mockRejectedValueOnce(new Error('Firebase service unavailable'));
+
+      const response = await request(app)
+        .post('/api/auth/resend-verification')
+        .send({ email: 'unverified@example.com' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        message: 'If an account exists for this address, a verification link has been sent.',
+      });
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('rejects missing or empty email payload with HTTP 400', async () => {
+      const response = await request(app)
+        .post('/api/auth/resend-verification')
+        .send({});
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({
+        error: 'Validation failed',
+        errors: {
+          email: 'Email address is required.',
+        },
+      });
+    });
+
+    it('rejects invalid email syntax with HTTP 400', async () => {
+      const response = await request(app)
+        .post('/api/auth/resend-verification')
+        .send({ email: 'not-an-email' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({
+        error: 'Validation failed',
+        errors: {
+          email: 'Please provide a valid email address.',
+        },
+      });
+    });
+  });
+});
+
+describe('Auth Routes (POST /api/auth/verify-email)', () => {
+  const unverifiedParticipant: Participant = {
+    id: 'part-uuid-unverified',
+    firebase_uid: 'fb-uid-unverified',
+    email: 'unverified@example.com',
+    full_name: 'Unverified User',
+    role: 'PART',
+    is_verified: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetRateLimiter();
+    mockVerifyEmailActionCode.mockResolvedValue({
+      email: 'unverified@example.com',
+      uid: 'fb-uid-unverified',
+    });
+    vi.spyOn(participantsRepository, 'findByEmail').mockResolvedValue(unverifiedParticipant);
+    vi.spyOn(participantsRepository, 'updateVerificationStatus').mockResolvedValue({
+      ...unverifiedParticipant,
+      is_verified: true,
+    });
+  });
+
+  describe('Happy path action code processing', () => {
+    it('verifies action code, marks participant verified, and responds with 200 (zero session cookies)', async () => {
+      const response = await request(app)
+        .post('/api/auth/verify-email')
+        .send({ oobCode: 'valid-action-code-xyz' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        message: 'Email verified successfully. Please proceed to sign in.',
+        isVerified: true,
+      });
+
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(response.body.token).toBeUndefined();
+      expect(response.body.accessToken).toBeUndefined();
+
+      expect(mockVerifyEmailActionCode).toHaveBeenCalledWith('valid-action-code-xyz');
+      expect(participantsRepository.findByEmail).toHaveBeenCalledWith('unverified@example.com');
+      expect(participantsRepository.updateVerificationStatus).toHaveBeenCalledWith(
+        'part-uuid-unverified',
+        true
+      );
+    });
+  });
+
+  describe('Error handling and edge cases', () => {
+    it('returns 404 when participant record does not exist for verified email', async () => {
+      vi.spyOn(participantsRepository, 'findByEmail').mockResolvedValueOnce(null);
+
+      const response = await request(app)
+        .post('/api/auth/verify-email')
+        .send({ oobCode: 'valid-action-code-xyz' });
+
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({
+        error: 'Participant record not found.',
+        code: 'PARTICIPANT_NOT_FOUND',
+      });
+      expect(participantsRepository.updateVerificationStatus).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 EXPIRED_ACTION_CODE on auth/expired-action-code', async () => {
+      mockVerifyEmailActionCode.mockRejectedValueOnce({
+        code: 'auth/expired-action-code',
+        message: 'The action code has expired.',
+      });
+
+      const response = await request(app)
+        .post('/api/auth/verify-email')
+        .send({ oobCode: 'expired-code-123' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({
+        error: 'Verification link has expired. Please request a replacement link.',
+        code: 'EXPIRED_ACTION_CODE',
+      });
+      expect(participantsRepository.updateVerificationStatus).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 INVALID_ACTION_CODE on auth/invalid-action-code', async () => {
+      mockVerifyEmailActionCode.mockRejectedValueOnce({
+        code: 'auth/invalid-action-code',
+        message: 'The action code is invalid.',
+      });
+
+      const response = await request(app)
+        .post('/api/auth/verify-email')
+        .send({ oobCode: 'invalid-or-consumed-code' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({
+        error: 'Verification link is invalid or has already been used.',
+        code: 'INVALID_ACTION_CODE',
+      });
+      expect(participantsRepository.updateVerificationStatus).not.toHaveBeenCalled();
+    });
+
+    it('rejects missing oobCode with HTTP 400', async () => {
+      const response = await request(app)
+        .post('/api/auth/verify-email')
+        .send({});
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({
+        error: 'Validation failed',
+        errors: {
+          oobCode: 'Action code is required.',
+        },
+      });
+      expect(mockVerifyEmailActionCode).not.toHaveBeenCalled();
+    });
+
+    it('rejects whitespace-only oobCode with HTTP 400', async () => {
+      const response = await request(app)
+        .post('/api/auth/verify-email')
+        .send({ oobCode: '   ' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({
+        error: 'Validation failed',
+        errors: {
+          oobCode: 'Action code is required.',
+        },
+      });
+      expect(mockVerifyEmailActionCode).not.toHaveBeenCalled();
+    });
+  });
+});
+
+

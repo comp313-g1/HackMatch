@@ -3,6 +3,8 @@ import type { Request, Response, NextFunction } from 'express';
 import {
   isPasswordPolicyCompliant,
   validateRegisterPayload,
+  validateResendVerificationPayload,
+  validateVerifyEmailPayload,
   PRIVILEGE_ESCALATION_KEYS,
 } from './auth.validator.js';
 
@@ -437,6 +439,161 @@ describe('auth.validator unit tests (US-001 AC 1 / T2 / AC 4 / T6)', () => {
           expect(errors.email).toBe('Email address is required.');
           expect(errors.password).toBe('Password is required.');
         }
+      });
+    });
+  });
+
+  describe('validateResendVerificationPayload unit tests (FR-081 / NR-010)', () => {
+    it('calls next() and normalizes valid email to lowercase trimmed string', () => {
+      const req = {
+        body: { email: '  Alice.Smith@Example.COM  ' },
+      } as unknown as Request;
+      const res = createMockResponse();
+      const next = vi.fn() as unknown as NextFunction;
+
+      validateResendVerificationPayload(req, res as unknown as Response, next);
+
+      expect(next).toHaveBeenCalledOnce();
+      expect(res.statusCode).toBe(200);
+      expect((req.body as { email: string }).email).toBe('alice.smith@example.com');
+    });
+
+    it('returns 400 when body is null, undefined, or not an object', () => {
+      for (const invalidBody of [null, undefined, 'not-object']) {
+        const req = { body: invalidBody } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateResendVerificationPayload(req, res as unknown as Response, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({
+          error: 'Validation failed',
+          errors: { email: 'Email address is required.' },
+        });
+      }
+    });
+
+    it('returns 400 when email is empty string or whitespace only', () => {
+      for (const emptyEmail of ['', '   ']) {
+        const req = { body: { email: emptyEmail } } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateResendVerificationPayload(req, res as unknown as Response, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({
+          error: 'Validation failed',
+          errors: { email: 'Email address is required.' },
+        });
+      }
+    });
+
+    it('returns 400 when email is not a string', () => {
+      const req = { body: { email: 12345 } } as unknown as Request;
+      const res = createMockResponse();
+      const next = vi.fn() as unknown as NextFunction;
+
+      validateResendVerificationPayload(req, res as unknown as Response, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({
+        error: 'Validation failed',
+        errors: { email: 'Email address is required.' },
+      });
+    });
+
+    it('returns 400 when email fails format regex or exceeds 255 chars', () => {
+      const invalidEmails = [
+        'plainaddress',
+        '@missingusername.com',
+        'username@.com',
+        'username@domain',
+        'a'.repeat(250) + '@example.com', // > 255 chars
+      ];
+
+      for (const email of invalidEmails) {
+        const req = { body: { email } } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateResendVerificationPayload(req, res as unknown as Response, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({
+          error: 'Validation failed',
+          errors: { email: 'Please provide a valid email address.' },
+        });
+      }
+    });
+  });
+
+  describe('validateVerifyEmailPayload unit tests (US-001 AC 3 / NR-010)', () => {
+    it('calls next() and trims valid oobCode', () => {
+      const req = {
+        body: { oobCode: '   action-code-12345   ' },
+      } as unknown as Request;
+      const res = createMockResponse();
+      const next = vi.fn() as unknown as NextFunction;
+
+      validateVerifyEmailPayload(req, res as unknown as Response, next);
+
+      expect(next).toHaveBeenCalledOnce();
+      expect(res.statusCode).toBe(200);
+      expect((req.body as { oobCode: string }).oobCode).toBe('action-code-12345');
+    });
+
+    it('returns 400 when body is null, undefined, or not an object', () => {
+      for (const invalidBody of [null, undefined, 'not-object']) {
+        const req = { body: invalidBody } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateVerifyEmailPayload(req, res as unknown as Response, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({
+          error: 'Validation failed',
+          errors: { oobCode: 'Action code is required.' },
+        });
+      }
+    });
+
+    it('returns 400 when oobCode is missing, empty, or whitespace only', () => {
+      for (const emptyCode of ['', '   ', undefined, null]) {
+        const req = { body: { oobCode: emptyCode } } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateVerifyEmailPayload(req, res as unknown as Response, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({
+          error: 'Validation failed',
+          errors: { oobCode: 'Action code is required.' },
+        });
+      }
+    });
+
+    it('returns 400 when oobCode is not a string', () => {
+      const req = { body: { oobCode: 123456 } } as unknown as Request;
+      const res = createMockResponse();
+      const next = vi.fn() as unknown as NextFunction;
+
+      validateVerifyEmailPayload(req, res as unknown as Response, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({
+        error: 'Validation failed',
+        errors: { oobCode: 'Action code is required.' },
       });
     });
   });
