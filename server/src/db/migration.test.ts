@@ -359,3 +359,35 @@ describe('0008_create_verification_guard_helpers.sql Migration DDL', () => {
   });
 });
 
+describe('0009_protect_admin_role_provisioning.sql Migration DDL', () => {
+  const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0009_protect_admin_role_provisioning.sql');
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('defines provision_admin_participant function returning SETOF participants', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+provision_admin_participant\s*\(\s*p_firebase_uid\s+VARCHAR\(\d+\)\s*,\s*p_email\s+VARCHAR\(\d+\)\s*,\s*p_full_name\s+VARCHAR\(\d+\)\s*\)\s+RETURNS\s+SETOF\s+participants/i);
+  });
+
+  it('declares function with SECURITY DEFINER and plpgsql language', () => {
+    expect(sql).toMatch(/LANGUAGE\s+plpgsql/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+  });
+
+  it('upserts participant with role ADMIN and is_verified TRUE', () => {
+    expect(sql).toMatch(/INSERT\s+INTO\s+participants\s*\(\s*firebase_uid,\s*email,\s*full_name,\s*role,\s*is_verified\s*\)\s*VALUES\s*\(\s*p_firebase_uid,\s*p_email,\s*p_full_name,\s*'ADMIN',\s*TRUE\s*\)/i);
+    expect(sql).toMatch(/ON\s+CONFLICT\s*\(\s*firebase_uid\s*\)\s*DO\s+UPDATE/i);
+    expect(sql).toMatch(/SET\s+role\s*=\s*'ADMIN'/i);
+    expect(sql).toMatch(/is_verified\s*=\s*TRUE/i);
+    expect(sql).toMatch(/RETURNING\s+\*;/i);
+  });
+
+  it('adds descriptive operator documentation comment on the function', () => {
+    expect(sql).toMatch(/COMMENT\s+ON\s+FUNCTION\s+provision_admin_participant/i);
+    expect(sql).toMatch(/authorized\s+deployment\s+operator/i);
+  });
+});
+

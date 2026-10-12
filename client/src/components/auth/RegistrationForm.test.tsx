@@ -2,7 +2,32 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RegistrationForm } from './RegistrationForm';
-import { validateRegistrationInput } from './validation';
+import {
+  validateRegistrationInput,
+  assertNoPrivilegeEscalation,
+  PROHIBITED_PRIVILEGE_KEYS,
+} from './validation';
+
+describe('assertNoPrivilegeEscalation helper', () => {
+  it('returns true for clean payloads without privilege properties', () => {
+    expect(
+      assertNoPrivilegeEscalation({
+        fullName: 'Alice',
+        email: 'alice@example.com',
+        password: 'SecretPassword1!',
+      })
+    ).toBe(true);
+    expect(assertNoPrivilegeEscalation({})).toBe(true);
+  });
+
+  it('returns false when any prohibited privilege key is present', () => {
+    for (const key of PROHIBITED_PRIVILEGE_KEYS) {
+      expect(assertNoPrivilegeEscalation({ [key]: 'ADMIN' })).toBe(false);
+      expect(assertNoPrivilegeEscalation({ [key]: true })).toBe(false);
+      expect(assertNoPrivilegeEscalation({ [key]: {} })).toBe(false);
+    }
+  });
+});
 
 describe('validateRegistrationInput helper', () => {
   it('detects missing or whitespace-only full name', () => {
@@ -282,6 +307,42 @@ describe('RegistrationForm Component (Backend Integration)', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Public registration cannot grant administrative privileges.');
+    // NR-017: preserve valid field inputs on error
+    expect(screen.getByLabelText(/full name/i)).toHaveValue('Alice Smith');
+    expect(screen.getByLabelText(/email address/i)).toHaveValue('alice@example.com');
+  });
+
+  it('submits strictly { fullName, email, password } without role or escalation properties', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        participant: {
+          id: 'part-123',
+          email: 'alice@example.com',
+          role: 'PART',
+        },
+      }),
+    });
+
+    render(<RegistrationForm />);
+
+    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Alice Smith' } });
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'alice@example.com' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Valid1@Password' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+
+    const dispatchedBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(dispatchedBody).toEqual({
+      fullName: 'Alice Smith',
+      email: 'alice@example.com',
+      password: 'Valid1@Password',
+    });
+    expect(dispatchedBody.role).toBeUndefined();
+    expect(dispatchedBody.isAdmin).toBeUndefined();
   });
 
   it('handles HTTP 500 server error with form-level failure alert', async () => {

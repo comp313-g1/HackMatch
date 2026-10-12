@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from 'express';
 import {
   isPasswordPolicyCompliant,
   validateRegisterPayload,
+  PRIVILEGE_ESCALATION_KEYS,
 } from './auth.validator.js';
 
 interface MockResponse {
@@ -297,6 +298,72 @@ describe('auth.validator unit tests (US-001 AC 1 / T2 / AC 4 / T6)', () => {
         expect((res.body as { error: string }).error).toBe(
           'Public registration cannot grant administrative privileges.'
         );
+      });
+
+      it('exports expected PRIVILEGE_ESCALATION_KEYS list', () => {
+        expect(PRIVILEGE_ESCALATION_KEYS).toEqual([
+          'isAdmin',
+          'is_admin',
+          'claims',
+          'customClaims',
+          'roles',
+        ]);
+      });
+
+      it('rejects privilege escalation parameters (isAdmin, is_admin, claims, customClaims, roles) with 403', () => {
+        const escalationPayloads = [
+          { isAdmin: true },
+          { isAdmin: false },
+          { is_admin: true },
+          { claims: { admin: true } },
+          { customClaims: { role: 'ADMIN' } },
+          { roles: ['ADMIN'] },
+        ];
+
+        for (const extra of escalationPayloads) {
+          const req = {
+            body: {
+              fullName: 'Valid User',
+              email: 'valid@example.com',
+              password: 'Password123!',
+              ...extra,
+            },
+          } as unknown as Request;
+          const res = createMockResponse();
+          const next = vi.fn() as unknown as NextFunction;
+
+          validateRegisterPayload(req, res as unknown as Response, next);
+          expect(next).not.toHaveBeenCalled();
+          expect(res.statusCode).toBe(403);
+          expect((res.body as { error: string }).error).toBe(
+            'Public registration cannot grant administrative privileges.'
+          );
+        }
+      });
+
+      it('sanitizes and whitelists req.body to only fullName, email, and password', () => {
+        const req = {
+          body: {
+            fullName: '  Jane Doe  ',
+            email: '  Jane.Doe@Example.com  ',
+            password: 'Password123!',
+            role: 'PART',
+            extraneousField: 'should_be_stripped',
+            anotherMeta: 12345,
+          },
+        } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateRegisterPayload(req, res as unknown as Response, next);
+        expect(next).toHaveBeenCalledOnce();
+        expect(req.body).toEqual({
+          fullName: 'Jane Doe',
+          email: 'jane.doe@example.com',
+          password: 'Password123!',
+        });
+        expect((req.body as Record<string, unknown>).role).toBeUndefined();
+        expect((req.body as Record<string, unknown>).extraneousField).toBeUndefined();
       });
     });
 

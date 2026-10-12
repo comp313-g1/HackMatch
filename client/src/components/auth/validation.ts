@@ -48,3 +48,31 @@ export function validateRegistrationInput(
 
   return errors;
 }
+
+export const PROHIBITED_PRIVILEGE_KEYS = [
+  'role',
+  'isAdmin',
+  'is_admin',
+  'claims',
+  'customClaims',
+  'roles',
+] as const;
+
+/**
+ * Validates that a registration payload contains no administrative
+ * privilege or role parameters (US-001 AC 4 / FR-001).
+ * Returns true if clean, false if privilege escalation attributes are present.
+ */
+export function assertNoPrivilegeEscalation(
+  payload: Record<string, unknown>
+): boolean {
+  if (!payload || typeof payload !== 'object') {
+    return true;
+  }
+  for (const key of PROHIBITED_PRIVILEGE_KEYS) {
+    if (payload[key] !== undefined && payload[key] !== null) {
+      return false;
+    }
+  }
+  return true;
+}

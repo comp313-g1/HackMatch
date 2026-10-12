@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
-import { validateRegistrationInput, type ValidationErrors } from './validation';
+import {
+  validateRegistrationInput,
+  assertNoPrivilegeEscalation,
+  type ValidationErrors,
+} from './validation';
 
 export interface RegistrationFormProps {
   onSuccess?: (email: string) => void;
@@ -34,17 +38,25 @@ export function RegistrationForm({ onSuccess }: RegistrationFormProps): React.JS
     const trimmedFullName = fullName.trim();
 
     try {
+      const payload: Record<string, unknown> = {
+        fullName: trimmedFullName,
+        email: normalizedEmail,
+        password,
+      };
+
+      if (!assertNoPrivilegeEscalation(payload)) {
+        setFormError('Public registration cannot grant administrative privileges.');
+        setLoading(false);
+        return;
+      }
+
       // 2. Call backend registration endpoint (POST /api/auth/register)
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          fullName: trimmedFullName,
-          email: normalizedEmail,
-          password,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json().catch(() => null);

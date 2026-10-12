@@ -8,6 +8,7 @@ export interface IParticipantRepository {
   createParticipant(data: CreateParticipantDTO): Promise<Participant>;
   updateParticipant(id: string, data: UpdateParticipantDTO): Promise<Participant>;
   updateVerificationStatus(id: string, isVerified: boolean): Promise<Participant>;
+  provisionAdminParticipant(data: { firebase_uid: string; email: string; full_name: string }): Promise<Participant>;
 }
 
 
@@ -49,6 +50,9 @@ export const participantsRepository: IParticipantRepository = {
   },
 
   async createParticipant(data: CreateParticipantDTO): Promise<Participant> {
+    if (data.role && String(data.role).trim().toUpperCase() !== 'PART') {
+      throw new Error('UnauthorizedRoleError: Public participant creation cannot specify role ADMIN. Use operator provisioning.');
+    }
     const client = getSupabaseClient();
     const { data: record, error } = await client
       .from('participants')
@@ -76,6 +80,47 @@ export const participantsRepository: IParticipantRepository = {
   async updateVerificationStatus(id: string, isVerified: boolean): Promise<Participant> {
     return this.updateParticipant(id, { is_verified: isVerified });
   },
+
+  async provisionAdminParticipant(data: {
+    firebase_uid: string;
+    email: string;
+    full_name: string;
+  }): Promise<Participant> {
+    const client = getSupabaseClient();
+    if (typeof (client as unknown as { rpc?: unknown }).rpc === 'function') {
+      const { data: record, error } = await client.rpc('provision_admin_participant', {
+        p_firebase_uid: data.firebase_uid,
+        p_email: data.email,
+        p_full_name: data.full_name,
+      }).single();
+
+      if (!error && record) {
+        return record as Participant;
+      }
+      if (error && (error as { code?: string }).code !== 'PGRST202' && !(error as { message?: string }).message?.includes('function')) {
+        throw error;
+      }
+    }
+
+    const { data: record, error } = await client
+      .from('participants')
+      .upsert(
+        {
+          firebase_uid: data.firebase_uid,
+          email: data.email,
+          full_name: data.full_name,
+          role: 'ADMIN',
+          is_verified: true,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'firebase_uid' }
+      )
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return record as Participant;
+  },
 };
 
 export const findById = participantsRepository.findById.bind(participantsRepository);
@@ -84,4 +129,5 @@ export const findByEmail = participantsRepository.findByEmail.bind(participantsR
 export const createParticipant = participantsRepository.createParticipant.bind(participantsRepository);
 export const updateParticipant = participantsRepository.updateParticipant.bind(participantsRepository);
 export const updateVerificationStatus = participantsRepository.updateVerificationStatus.bind(participantsRepository);
+export const provisionAdminParticipant = participantsRepository.provisionAdminParticipant.bind(participantsRepository);
 

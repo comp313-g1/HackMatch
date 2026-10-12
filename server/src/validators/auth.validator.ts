@@ -24,6 +24,14 @@ export function isPasswordPolicyCompliant(password: string): boolean {
   return hasUpper && hasLower && hasDigit && hasSpecial;
 }
 
+export const PRIVILEGE_ESCALATION_KEYS = [
+  'isAdmin',
+  'is_admin',
+  'claims',
+  'customClaims',
+  'roles',
+] as const;
+
 /**
  * Express middleware validating registration payload for POST /api/auth/register.
  * Enforces role boundaries (HTTP 403 on role escalation attempts) and field
@@ -51,6 +59,18 @@ export function validateRegisterPayload(
   if (body.role !== undefined && body.role !== null) {
     const rawRole = String(body.role).trim().toUpperCase();
     if (rawRole !== 'PART') {
+      res.status(403).json({
+        error: 'Public registration cannot grant administrative privileges.',
+      });
+      return;
+    }
+  }
+
+  for (const key of PRIVILEGE_ESCALATION_KEYS) {
+    if (
+      (body as Record<string, unknown>)[key] !== undefined &&
+      (body as Record<string, unknown>)[key] !== null
+    ) {
       res.status(403).json({
         error: 'Public registration cannot grant administrative privileges.',
       });
@@ -97,9 +117,12 @@ export function validateRegisterPayload(
     return;
   }
 
-  // Sanitize valid inputs in request body
-  req.body.fullName = (rawFullName as string).trim();
-  req.body.email = (rawEmail as string).trim().toLowerCase();
+  // Whitelist and sanitize valid inputs in request body
+  req.body = {
+    fullName: (rawFullName as string).trim(),
+    email: (rawEmail as string).trim().toLowerCase(),
+    password: rawPassword as string,
+  };
 
   next();
 }

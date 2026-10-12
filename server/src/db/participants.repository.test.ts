@@ -7,6 +7,7 @@ import {
   updateVerificationStatus,
   findById,
   findByEmail,
+  provisionAdminParticipant,
 } from './participants.repository.js';
 import * as clientModule from './client.js';
 import type { Participant, CreateParticipantDTO } from './types.js';
@@ -87,6 +88,22 @@ describe('participantsRepository unit tests (US-001 T1 / AC 3)', () => {
 
       const result = await createParticipant(createDto);
       expect(result).toEqual(mockParticipant);
+    });
+
+    it('rejects attempt to specify ADMIN or non-PART role with UnauthorizedRoleError', async () => {
+      await expect(
+        participantsRepository.createParticipant({
+          ...createDto,
+          role: 'ADMIN',
+        })
+      ).rejects.toThrow(/UnauthorizedRoleError/);
+
+      await expect(
+        createParticipant({
+          ...createDto,
+          role: 'admin' as unknown as CreateParticipantDTO['role'],
+        })
+      ).rejects.toThrow(/UnauthorizedRoleError/);
     });
   });
 
@@ -215,6 +232,70 @@ describe('participantsRepository unit tests (US-001 T1 / AC 3)', () => {
       const result = await findByEmail('test@example.com');
       expect(mockIlike).toHaveBeenCalledWith('email', 'test@example.com');
       expect(result).toEqual(mockParticipant);
+    });
+  });
+
+  describe('provisionAdminParticipant', () => {
+    const adminParticipant: Participant = {
+      id: 'part-uuid-admin',
+      firebase_uid: 'fb-uid-admin',
+      email: 'admin@example.com',
+      full_name: 'Admin User',
+      role: 'ADMIN',
+      is_verified: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    it('provisions admin via RPC if rpc is available on client', async () => {
+      const mockSingle = vi.fn().mockResolvedValue({ data: adminParticipant, error: null });
+      const mockRpc = vi.fn().mockReturnValue({ single: mockSingle });
+
+      vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+        rpc: mockRpc,
+      } as unknown as SupabaseClient);
+
+      const result = await participantsRepository.provisionAdminParticipant({
+        firebase_uid: 'fb-uid-admin',
+        email: 'admin@example.com',
+        full_name: 'Admin User',
+      });
+
+      expect(mockRpc).toHaveBeenCalledWith('provision_admin_participant', {
+        p_firebase_uid: 'fb-uid-admin',
+        p_email: 'admin@example.com',
+        p_full_name: 'Admin User',
+      });
+      expect(result).toEqual(adminParticipant);
+    });
+
+    it('provisions admin via upsert fallback and works via bound export', async () => {
+      const mockSingle = vi.fn().mockResolvedValue({ data: adminParticipant, error: null });
+      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockUpsert = vi.fn().mockReturnValue({ select: mockSelect });
+      const mockFrom = vi.fn().mockReturnValue({ upsert: mockUpsert });
+
+      vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+        from: mockFrom,
+      } as unknown as SupabaseClient);
+
+      const result = await provisionAdminParticipant({
+        firebase_uid: 'fb-uid-admin',
+        email: 'admin@example.com',
+        full_name: 'Admin User',
+      });
+
+      expect(mockFrom).toHaveBeenCalledWith('participants');
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          firebase_uid: 'fb-uid-admin',
+          email: 'admin@example.com',
+          role: 'ADMIN',
+          is_verified: true,
+        }),
+        { onConflict: 'firebase_uid' }
+      );
+      expect(result).toEqual(adminParticipant);
     });
   });
 });

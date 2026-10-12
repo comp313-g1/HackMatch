@@ -9,17 +9,20 @@ import type { Participant } from '../db/types.js';
 const mockCreateUser = vi.fn();
 const mockDeleteUser = vi.fn();
 const mockVerifyIdToken = vi.fn();
+const mockSetCustomUserClaims = vi.fn();
 
 vi.mock('../config/firebase.js', () => ({
   firebaseAuth: {
     createUser: (...args: unknown[]) => mockCreateUser(...args),
     deleteUser: (...args: unknown[]) => mockDeleteUser(...args),
     verifyIdToken: (...args: unknown[]) => mockVerifyIdToken(...args),
+    setCustomUserClaims: (...args: unknown[]) => mockSetCustomUserClaims(...args),
   },
   auth: {
     createUser: (...args: unknown[]) => mockCreateUser(...args),
     deleteUser: (...args: unknown[]) => mockDeleteUser(...args),
     verifyIdToken: (...args: unknown[]) => mockVerifyIdToken(...args),
+    setCustomUserClaims: (...args: unknown[]) => mockSetCustomUserClaims(...args),
   },
   getFirebaseAdminAuth: vi.fn(),
   _resetFirebaseInstances: vi.fn(),
@@ -292,6 +295,45 @@ describe('Auth Routes (POST /api/auth/register)', () => {
       expect(mockCreateUser).not.toHaveBeenCalled();
     });
 
+    it('halts and returns HTTP 403 Forbidden when privilege escalation alias parameters are sent', async () => {
+      const aliasPayloads = [
+        { isAdmin: true },
+        { is_admin: true },
+        { claims: { admin: true } },
+        { customClaims: { role: 'ADMIN' } },
+        { roles: ['ADMIN'] },
+      ];
+
+      for (const alias of aliasPayloads) {
+        const response = await request(app)
+          .post('/api/auth/register')
+          .send({ ...validPayload, ...alias });
+
+        expect(response.status).toBe(403);
+        expect(response.body).toEqual({
+          error: 'Public registration cannot grant administrative privileges.',
+        });
+        expect(mockCreateUser).not.toHaveBeenCalled();
+        expect(participantsRepository.createParticipant).not.toHaveBeenCalled();
+      }
+    });
+
+    it('never invokes firebaseAuth.setCustomUserClaims across any registration requests', async () => {
+      await request(app)
+        .post('/api/auth/register')
+        .send({ ...validPayload, role: 'ADMIN' });
+
+      await request(app)
+        .post('/api/auth/register')
+        .send({ ...validPayload, isAdmin: true });
+
+      await request(app)
+        .post('/api/auth/register')
+        .send(validPayload);
+
+      expect(mockSetCustomUserClaims).not.toHaveBeenCalled();
+    });
+
     it('accepts explicit role: PART without issue', async () => {
       const response = await request(app)
         .post('/api/auth/register')
@@ -299,6 +341,7 @@ describe('Auth Routes (POST /api/auth/register)', () => {
 
       expect(response.status).toBe(201);
       expect(mockCreateUser).toHaveBeenCalled();
+      expect(mockSetCustomUserClaims).not.toHaveBeenCalled();
     });
   });
 
