@@ -7,9 +7,13 @@ import {
 
 export interface RegistrationFormProps {
   onSuccess?: (email: string) => void;
+  onNavigateToVerification?: (email?: string) => void;
 }
 
-export function RegistrationForm({ onSuccess }: RegistrationFormProps): React.JSX.Element {
+export function RegistrationForm({
+  onSuccess,
+  onNavigateToVerification,
+}: RegistrationFormProps): React.JSX.Element {
   const [fullName, setFullName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
@@ -139,6 +143,15 @@ export function RegistrationForm({ onSuccess }: RegistrationFormProps): React.JS
             Logging in also requires one-time passcode (OTP) verification sent to this address.
           </p>
         </div>
+        {onNavigateToVerification && (
+          <button
+            type="button"
+            onClick={() => onNavigateToVerification(registeredEmail)}
+            className="w-full mb-3 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Didn't receive the email? Request a replacement link
+          </button>
+        )}
         <button
           type="button"
           onClick={handleReset}

@@ -4,6 +4,23 @@ export interface ValidationErrors {
   password?: string;
 }
 
+export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Validates email format per US-001 / FR-001.
+ * Returns null if valid, error message string if invalid.
+ */
+export function validateEmail(email: string): string | null {
+  const trimmedEmail = email ? email.trim() : '';
+  if (!trimmedEmail) {
+    return 'Email address is required.';
+  }
+  if (!EMAIL_PATTERN.test(trimmedEmail)) {
+    return 'Please enter a valid email address.';
+  }
+  return null;
+}
+
 /**
  * Validates registration form inputs per US-001 acceptance criteria:
  * - Full name is required and non-empty.
@@ -21,14 +38,9 @@ export function validateRegistrationInput(
     errors.fullName = 'Full name is required.';
   }
 
-  const trimmedEmail = email ? email.trim() : '';
-  if (!trimmedEmail) {
-    errors.email = 'Email address is required.';
-  } else {
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailPattern.test(trimmedEmail)) {
-      errors.email = 'Please enter a valid email address.';
-    }
+  const emailError = validateEmail(email);
+  if (emailError) {
+    errors.email = emailError;
   }
 
   if (!password) {

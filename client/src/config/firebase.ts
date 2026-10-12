@@ -57,6 +57,14 @@ export function translateAuthError(error: unknown): string {
       return 'Password does not meet security requirements.';
     case 'auth/too-many-requests':
       return 'Too many attempts. Please try again later.';
+    case 'auth/expired-action-code':
+      return 'Your verification link has expired. Please request a new link below.';
+    case 'auth/invalid-action-code':
+      return 'This verification link is invalid or has already been used. Please request a new link below.';
+    case 'auth/user-disabled':
+      return 'This account has been disabled. Please contact support.';
+    case 'auth/user-not-found':
+      return 'No account was found for this verification link.';
     default:
       return 'Authentication failed. Please try again.';
   }

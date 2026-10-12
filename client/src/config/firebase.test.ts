@@ -70,6 +70,18 @@ describe('Firebase Client Configuration', () => {
       expect(translateAuthError({ code: 'auth/too-many-requests' })).toBe(
         'Too many attempts. Please try again later.'
       );
+      expect(translateAuthError({ code: 'auth/expired-action-code' })).toBe(
+        'Your verification link has expired. Please request a new link below.'
+      );
+      expect(translateAuthError({ code: 'auth/invalid-action-code' })).toBe(
+        'This verification link is invalid or has already been used. Please request a new link below.'
+      );
+      expect(translateAuthError({ code: 'auth/user-disabled' })).toBe(
+        'This account has been disabled. Please contact support.'
+      );
+      expect(translateAuthError({ code: 'auth/user-not-found' })).toBe(
+        'No account was found for this verification link.'
+      );
     });
 
     it('falls back to generic error message for unknown or malformed error objects', () => {

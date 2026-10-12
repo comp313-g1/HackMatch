@@ -1,7 +1,22 @@
 import React, { useState } from 'react';
 import { RegistrationForm } from './components/auth/RegistrationForm';
+import { EmailVerificationView } from './components/auth/EmailVerificationView';
+
+const getInitialView = (): 'register' | 'verify' => {
+  if (typeof window === 'undefined') return 'register';
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get('mode');
+  const view = params.get('view');
+  if (mode === 'verifyEmail' || view === 'verify' || view === 'resend-verification') {
+    return 'verify';
+  }
+  return 'register';
+};
 
 export function App(): React.JSX.Element {
+  const [currentView, setCurrentView] = useState<'register' | 'verify'>(getInitialView);
+  const [verificationEmail, setVerificationEmail] = useState<string>('');
+  const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [healthStatus, setHealthStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,13 +103,44 @@ export function App(): React.JSX.Element {
           </div>
         </div>
 
-        {/* US-001: Participant Registration Form */}
-        <section aria-labelledby="registration-heading" className="mt-8">
-          <h2 id="registration-heading" className="sr-only">
-            Participant Registration
-          </h2>
-          <RegistrationForm />
-        </section>
+        {statusNotice && (
+          <div role="status" aria-live="polite" className="mt-6 max-w-lg mx-auto p-4 bg-blue-50 border border-blue-200 text-blue-900 text-sm rounded-md">
+            {statusNotice}
+          </div>
+        )}
+
+        {/* View Routing: Registration vs. Email Verification */}
+        {currentView === 'verify' ? (
+          <section aria-labelledby="verification-heading" className="mt-8">
+            <h2 id="verification-heading" className="sr-only">
+              Account Verification
+            </h2>
+            <EmailVerificationView
+              initialEmail={verificationEmail}
+              onNavigateToSignIn={() => {
+                setCurrentView('register');
+                setStatusNotice('Participant account verified! Sign-in and MFA features will be available in Phase 2 (US-003 / US-004).');
+              }}
+              onNavigateToRegister={() => {
+                setStatusNotice(null);
+                setCurrentView('register');
+              }}
+            />
+          </section>
+        ) : (
+          <section aria-labelledby="registration-heading" className="mt-8">
+            <h2 id="registration-heading" className="sr-only">
+              Participant Registration
+            </h2>
+            <RegistrationForm
+              onNavigateToVerification={(email) => {
+                if (email) setVerificationEmail(email);
+                setStatusNotice(null);
+                setCurrentView('verify');
+              }}
+            />
+          </section>
+        )}
       </main>
 
       {/* Semantic Footer Landmark */}

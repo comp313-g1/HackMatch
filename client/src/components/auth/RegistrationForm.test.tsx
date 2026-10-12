@@ -621,4 +621,31 @@ describe('RegistrationForm Component (Backend Integration)', () => {
     expect(screen.getByLabelText(/full name/i)).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByLabelText(/full name/i)).toHaveAttribute('aria-describedby', 'fullName-error');
   });
+
+  it('invokes onNavigateToVerification callback with registeredEmail when replacement link button is clicked', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        message: 'User registered successfully',
+        user: { id: 'u-123', email: 'registered@example.com' },
+      }),
+    });
+
+    const onNavigateToVerification = vi.fn();
+    render(<RegistrationForm onNavigateToVerification={onNavigateToVerification} />);
+
+    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Alice Smith' } });
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'registered@example.com' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'StrongP@ssw0rd!' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    const replacementBtn = await screen.findByRole('button', {
+      name: /didn't receive the email\? request a replacement link/i,
+    });
+    fireEvent.click(replacementBtn);
+
+    expect(onNavigateToVerification).toHaveBeenCalledWith('registered@example.com');
+  });
 });
