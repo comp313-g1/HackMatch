@@ -158,4 +158,105 @@ describe('Firebase Admin Auth (Offline & Configuration)', () => {
       expect(typeof firebaseAuth.verifyEmailActionCode).toBe('function');
     });
   });
+
+  describe('sendVerificationEmail helper', () => {
+    it('throws auth/configuration-error when FIREBASE_WEB_API_KEY is missing', async () => {
+      const { sendVerificationEmail } = await import('./firebase.js');
+      delete process.env.FIREBASE_WEB_API_KEY;
+      delete process.env.VITE_FIREBASE_API_KEY;
+
+      await expect(sendVerificationEmail('test@example.com')).rejects.toMatchObject({
+        code: 'auth/configuration-error',
+      });
+    });
+
+    it('dispatches verification email via custom token exchange and sendOobCode', async () => {
+      const firebaseModule = await import('./firebase.js');
+      process.env.FIREBASE_WEB_API_KEY = 'test-web-api-key';
+
+      const mockGetUserByEmail = vi.fn().mockResolvedValue({ uid: 'mock-uid-123' });
+      const mockCreateCustomToken = vi.fn().mockResolvedValue('mock-custom-token');
+      const mockAuthClient = {
+        getUserByEmail: mockGetUserByEmail,
+        createCustomToken: mockCreateCustomToken,
+      } as unknown as import('firebase-admin/auth').Auth;
+
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ idToken: 'mock-id-token' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ email: 'test@example.com' }),
+        });
+      vi.stubGlobal('fetch', mockFetch);
+
+      await firebaseModule.sendVerificationEmail(
+        'test@example.com',
+        { url: 'http://localhost:5173/?mode=verifyEmail' },
+        mockAuthClient
+      );
+
+      expect(mockGetUserByEmail).toHaveBeenCalledWith('test@example.com');
+      expect(mockCreateCustomToken).toHaveBeenCalledWith('mock-uid-123');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      // Verify sign-in token exchange call
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        1,
+        'https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=test-web-api-key',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ token: 'mock-custom-token', returnSecureToken: true }),
+        })
+      );
+
+      // Verify sendOobCode dispatch call
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        2,
+        'https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=test-web-api-key',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            requestType: 'VERIFY_EMAIL',
+            idToken: 'mock-id-token',
+            continueUrl: 'http://localhost:5173/?mode=verifyEmail',
+          }),
+        })
+      );
+
+      vi.unstubAllGlobals();
+    });
+
+    it('maps dispatch errors to auth/network-request-failed', async () => {
+      const firebaseModule = await import('./firebase.js');
+      process.env.FIREBASE_WEB_API_KEY = 'test-web-api-key';
+
+      const mockAuthClient = {
+        getUserByEmail: vi.fn().mockResolvedValue({ uid: 'mock-uid-123' }),
+        createCustomToken: vi.fn().mockResolvedValue('mock-custom-token'),
+      } as unknown as import('firebase-admin/auth').Auth;
+
+      const mockFetch = vi.fn().mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: { message: 'TOKEN_EXCHANGE_ERROR' } }),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      await expect(
+        firebaseModule.sendVerificationEmail('test@example.com', undefined, mockAuthClient)
+      ).rejects.toMatchObject({
+        code: 'auth/network-request-failed',
+      });
+
+      vi.unstubAllGlobals();
+    });
+
+    it('is accessible via firebaseAuth.sendVerificationEmail proxy', async () => {
+      const { firebaseAuth } = await import('./firebase.js');
+      expect(typeof firebaseAuth.sendVerificationEmail).toBe('function');
+    });
+  });
 });

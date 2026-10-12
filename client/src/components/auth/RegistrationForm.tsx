@@ -68,6 +68,11 @@ export function RegistrationForm({
       if (response.ok) {
         setRegisteredEmail(normalizedEmail);
         setIsSuccess(true);
+        try {
+          sessionStorage.setItem('hackmatch_last_registered_email', normalizedEmail);
+        } catch {
+          // Ignore storage restrictions
+        }
         if (onSuccess) {
           onSuccess(normalizedEmail);
         }

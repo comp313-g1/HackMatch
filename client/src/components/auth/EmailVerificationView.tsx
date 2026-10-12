@@ -59,6 +59,13 @@ export function EmailVerificationView({
       ? new URLSearchParams(window.location.search).get('mode')
       : null;
 
+  const resolvedEmail =
+    initialEmail ||
+    (typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('email') ||
+        sessionStorage.getItem('hackmatch_last_registered_email')
+      : null);
+
   const handleVerify = useCallback(async (code: string) => {
     setStatus('loading');
     setErrorMessage(null);
@@ -134,9 +141,15 @@ export function EmailVerificationView({
       }
     }
 
-    // 1. Missing action code state
-    if (!resolvedCode) {
-      setStatus('empty_code');
+    // 1. If action code is present, verify code directly
+    if (resolvedCode) {
+      if (resolvedMode && resolvedMode !== 'verifyEmail') {
+        setStatus('invalid');
+        setErrorMessage('Invalid action mode for email verification.');
+        return;
+      }
+      hasExecutedRef.current = true;
+      void handleVerify(resolvedCode);
       return;
     }
 
@@ -147,10 +160,39 @@ export function EmailVerificationView({
       return;
     }
 
-    // 3. Execute verification with latch
-    hasExecutedRef.current = true;
-    void handleVerify(resolvedCode);
-  }, [resolvedCode, resolvedMode, handleVerify]);
+    // 3. If no action code, but mode === 'verifyEmail' and resolvedEmail is available:
+    // Reconcile with backend in case user was verified on Firebase-hosted page
+    if (resolvedMode === 'verifyEmail' && resolvedEmail) {
+      hasExecutedRef.current = true;
+      void (async () => {
+        setStatus('loading');
+        try {
+          const response = await fetch('/api/auth/verify-email', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email: resolvedEmail }),
+          });
+
+          const data = (await response.json().catch(() => null)) as { isVerified?: boolean } | null;
+          if (response.ok && data?.isVerified) {
+            setUserEmail(resolvedEmail);
+            setStatus('success');
+            return;
+          }
+        } catch {
+          // If network sync fails, fall back to empty_code
+        }
+        setUserEmail(resolvedEmail);
+        setStatus('empty_code');
+      })();
+      return;
+    }
+
+    // 4. Missing action code state
+    setStatus('empty_code');
+  }, [resolvedCode, resolvedMode, resolvedEmail, handleVerify]);
 
   const handleRetry = () => {
     if (resolvedCode) {

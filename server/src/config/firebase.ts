@@ -131,14 +131,98 @@ export async function verifyEmailActionCode(oobCode: string): Promise<VerifiedAc
 }
 
 /**
+ * Dispatches an email verification message directly to the recipient's inbox
+ * using Firebase Authentication's native Identity Toolkit mail service.
+ *
+ * Flow:
+ * 1. Resolves user record and generates a scoped custom token via Firebase Admin Auth.
+ * 2. Exchanges custom token for an ID token via Identity Toolkit signInWithCustomToken.
+ * 3. Triggers out-of-band email dispatch via Identity Toolkit sendOobCode (requestType: VERIFY_EMAIL).
+ *
+ * Guarantees zero passwords, tokens, or action codes in logs (NR-021).
+ */
+export async function sendVerificationEmail(
+  email: string,
+  actionCodeSettings?: { url?: string },
+  authClientOverride?: Auth
+): Promise<void> {
+  const apiKey = process.env.FIREBASE_WEB_API_KEY || process.env.VITE_FIREBASE_API_KEY;
+
+  if (!apiKey) {
+    throw createAuthError(
+      '[Firebase Error] FIREBASE_WEB_API_KEY is not configured to dispatch verification emails.',
+      'auth/configuration-error'
+    );
+  }
+
+  const authClient = authClientOverride || getFirebaseAdminAuth();
+  const user = await authClient.getUserByEmail(email);
+  const customToken = await authClient.createCustomToken(user.uid);
+
+  const signInUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${apiKey}`;
+  const signInRes = await fetch(signInUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ token: customToken, returnSecureToken: true }),
+  });
+
+  if (!signInRes.ok) {
+    const errorData = (await signInRes.json().catch(() => ({}))) as Record<string, unknown>;
+    const errMsg = (errorData.error && typeof errorData.error === 'object' && 'message' in (errorData.error as Record<string, unknown>))
+      ? String((errorData.error as Record<string, unknown>).message)
+      : 'Authentication token exchange failed';
+    throw createAuthError(`Firebase token exchange failed: ${errMsg}`, 'auth/network-request-failed');
+  }
+
+  const { idToken } = (await signInRes.json()) as { idToken: string };
+
+  const sendOobUrl = `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`;
+  const sendPayload: Record<string, unknown> = {
+    requestType: 'VERIFY_EMAIL',
+    idToken,
+  };
+
+  if (actionCodeSettings?.url) {
+    sendPayload.continueUrl = actionCodeSettings.url;
+  }
+
+  const sendRes = await fetch(sendOobUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(sendPayload),
+  });
+
+  if (!sendRes.ok) {
+    const errorData = (await sendRes.json().catch(() => ({}))) as Record<string, unknown>;
+    const errMsg = (errorData.error && typeof errorData.error === 'object' && 'message' in (errorData.error as Record<string, unknown>))
+      ? String((errorData.error as Record<string, unknown>).message)
+      : 'Email dispatch failed';
+    throw createAuthError(`Firebase email dispatch failed: ${errMsg}`, 'auth/network-request-failed');
+  }
+}
+
+/**
  * Singleton proxy to allow direct consumption without throwing on module import.
  */
-export const firebaseAuth: Auth & { verifyEmailActionCode?: typeof verifyEmailActionCode } = new Proxy(
-  {} as Auth & { verifyEmailActionCode?: typeof verifyEmailActionCode },
+export const firebaseAuth: Auth & {
+  verifyEmailActionCode?: typeof verifyEmailActionCode;
+  sendVerificationEmail?: typeof sendVerificationEmail;
+} = new Proxy(
+  {} as Auth & {
+    verifyEmailActionCode?: typeof verifyEmailActionCode;
+    sendVerificationEmail?: typeof sendVerificationEmail;
+  },
   {
     get(_target, prop) {
       if (prop === 'verifyEmailActionCode') {
         return verifyEmailActionCode;
+      }
+      if (prop === 'sendVerificationEmail') {
+        return sendVerificationEmail;
       }
       const authClient = getFirebaseAdminAuth();
       const value = (authClient as unknown as Record<string | symbol, unknown>)[prop];

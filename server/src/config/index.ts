@@ -1,6 +1,8 @@
 import dotenv from 'dotenv';
 
-dotenv.config();
+if (!process.env.VITEST) {
+  dotenv.config({ override: true });
+}
 
 export interface ServerConfig {
   port: number;

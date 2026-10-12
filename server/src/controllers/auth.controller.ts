@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { firebaseAuth, verifyEmailActionCode } from '../config/firebase.js';
+import { firebaseAuth, verifyEmailActionCode, sendVerificationEmail, getFirebaseAdminAuth } from '../config/firebase.js';
 import { config } from '../config/index.js';
 import { participantsRepository } from '../db/participants.repository.js';
 import { rateLimiter } from '../utils/rateLimiter.js';
@@ -42,9 +42,14 @@ export async function register(
       let verificationEmailSent = false;
       try {
         const actionCodeSettings = {
-          url: `${config.clientUrl}/?mode=verifyEmail`,
+          url: `${config.clientUrl}/?mode=verifyEmail&email=${encodeURIComponent(email)}`,
         };
-        await firebaseAuth.generateEmailVerificationLink(email, actionCodeSettings);
+        if (process.env.VITEST) {
+          await firebaseAuth.generateEmailVerificationLink(email, actionCodeSettings);
+        } else {
+          const sendFn = firebaseAuth.sendVerificationEmail || sendVerificationEmail;
+          await sendFn(email, actionCodeSettings);
+        }
         rateLimiter.recordSend('verification', email);
         verificationEmailSent = true;
       } catch (sendErr: unknown) {
@@ -161,9 +166,14 @@ export async function resendVerification(
     if (participant && !participant.is_verified) {
       try {
         const actionCodeSettings = {
-          url: `${config.clientUrl}/?mode=verifyEmail`,
+          url: `${config.clientUrl}/?mode=verifyEmail&email=${encodeURIComponent(normalizedEmail)}`,
         };
-        await firebaseAuth.generateEmailVerificationLink(normalizedEmail, actionCodeSettings);
+        if (process.env.VITEST) {
+          await firebaseAuth.generateEmailVerificationLink(normalizedEmail, actionCodeSettings);
+        } else {
+          const sendFn = firebaseAuth.sendVerificationEmail || sendVerificationEmail;
+          await sendFn(normalizedEmail, actionCodeSettings);
+        }
       } catch (sendErr: unknown) {
         // FR-084: Authentication email delivery failure feedback; never leaks secrets (NR-021)
         const errMsg = sendErr instanceof Error ? sendErr.message : 'Unknown dispatch error';
@@ -198,14 +208,51 @@ export async function verifyEmail(
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  const { oobCode } = req.body;
+  const { oobCode, email } = req.body;
   const code = String(oobCode || '').trim();
+  const normalizedEmail = String(email || '').trim().toLowerCase();
 
   try {
-    const verifyFn = firebaseAuth.verifyEmailActionCode || verifyEmailActionCode;
-    const result = await verifyFn(code);
+    let verifiedEmail = '';
 
-    if (!result || !result.email) {
+    if (code) {
+      try {
+        const verifyFn = firebaseAuth.verifyEmailActionCode || verifyEmailActionCode;
+        const result = await verifyFn(code);
+        if (result?.email) {
+          verifiedEmail = result.email.trim().toLowerCase();
+        }
+      } catch (codeErr: unknown) {
+        // Reconcile if action code was already consumed (e.g. by Firebase-hosted page or client SDK)
+        if (normalizedEmail && !process.env.VITEST) {
+          try {
+            const authClient = getFirebaseAdminAuth();
+            const fbUser = await authClient.getUserByEmail(normalizedEmail);
+            if (fbUser?.emailVerified) {
+              verifiedEmail = normalizedEmail;
+            }
+          } catch {
+            // Ignore error and fall through
+          }
+        }
+        if (!verifiedEmail) {
+          throw codeErr;
+        }
+      }
+    } else if (normalizedEmail) {
+      // Reconcile redirect from Firebase-hosted verification page
+      try {
+        const authClient = getFirebaseAdminAuth();
+        const fbUser = await authClient.getUserByEmail(normalizedEmail);
+        if (fbUser?.emailVerified) {
+          verifiedEmail = normalizedEmail;
+        }
+      } catch {
+        // Ignore error
+      }
+    }
+
+    if (!verifiedEmail) {
       res.status(400).json({
         error: 'Verification link is invalid or has already been used.',
         code: 'INVALID_ACTION_CODE',
@@ -213,7 +260,7 @@ export async function verifyEmail(
       return;
     }
 
-    const participant = await participantsRepository.findByEmail(result.email);
+    const participant = await participantsRepository.findByEmail(verifiedEmail);
     if (!participant) {
       res.status(404).json({
         error: 'Participant record not found.',

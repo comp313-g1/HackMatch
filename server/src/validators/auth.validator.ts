@@ -205,7 +205,12 @@ export function validateVerifyEmailPayload(
   }
 
   const rawCode = body.oobCode;
-  if (typeof rawCode !== 'string' || rawCode.trim().length === 0) {
+  const rawEmail = body.email;
+
+  const hasCode = typeof rawCode === 'string' && rawCode.trim().length > 0;
+  const hasEmail = typeof rawEmail === 'string' && rawEmail.trim().length > 0;
+
+  if (!hasCode && !hasEmail) {
     res.status(400).json({
       error: 'Validation failed',
       errors: {
@@ -216,7 +221,8 @@ export function validateVerifyEmailPayload(
   }
 
   req.body = {
-    oobCode: rawCode.trim(),
+    ...(hasCode ? { oobCode: (rawCode as string).trim() } : {}),
+    ...(hasEmail ? { email: (rawEmail as string).trim().toLowerCase() } : {}),
   };
 
   next();
