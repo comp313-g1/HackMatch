@@ -6,6 +6,8 @@ import { config } from './config/index.js';
 import { requestIdMiddleware } from './middleware/requestId.js';
 import { requestLoggerMiddleware } from './middleware/requestLogger.js';
 import { healthRouter } from './routes/health.routes.js';
+import { authRouter } from './routes/auth.routes.js';
+import { actionsRouter } from './routes/actions.routes.js';
 
 export const app: Express = express();
 
@@ -31,6 +33,8 @@ app.use(requestLoggerMiddleware);
 
 // API Routes
 app.use('/api', healthRouter);
+app.use('/api/auth', authRouter);
+app.use('/api', actionsRouter);
 
 // Fallback 404 handler
 app.use((_req: Request, res: Response) => {
@@ -39,10 +43,13 @@ app.use((_req: Request, res: Response) => {
 
 // Centralized error handler
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  // Never leak internal stack trace to client
+  const errWithStatus = err as Error & { status?: number; statusCode?: number };
+  const status = errWithStatus.status || errWithStatus.statusCode || 500;
   const isDev = config.nodeEnv === 'development';
-  res.status(500).json({
-    error: 'Internal Server Error',
+  const defaultError = status === 400 ? 'Bad Request' : 'Internal Server Error';
+
+  res.status(status).json({
+    error: defaultError,
     ...(isDev ? { message: err.message } : {}),
   });
 });

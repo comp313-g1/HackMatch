@@ -1,9 +1,27 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { applyActionCode } from 'firebase/auth';
 import App from './App';
 
-describe('App Component', () => {
+vi.mock('firebase/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('firebase/auth')>();
+  return {
+    ...actual,
+    applyActionCode: vi.fn(),
+    checkActionCode: vi.fn(),
+  };
+});
+
+describe('App Component (View Routing and Integration)', () => {
+  const mockApplyActionCode = vi.mocked(applyActionCode);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionStorage.clear();
+    window.history.pushState({}, '', '/');
+  });
+
   it('renders the header with HackMatch branding', () => {
     render(<App />);
     const heading = screen.getByRole('heading', { level: 1 });
@@ -22,5 +40,96 @@ describe('App Component', () => {
     render(<App />);
     expect(screen.getByRole('main')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /probe \/api\/health/i })).toBeInTheDocument();
+  });
+
+  it('renders RegistrationForm by default when URL has no verification parameters', () => {
+    render(<App />);
+    expect(screen.getByRole('heading', { level: 2, name: /create an account/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 2, name: /email verification/i })).not.toBeInTheDocument();
+  });
+
+  it('renders EmailVerificationView when URL contains mode=verifyEmail', async () => {
+    window.history.pushState({}, '', '/?mode=verifyEmail&oobCode=url-test-code');
+    mockApplyActionCode.mockResolvedValueOnce(undefined);
+
+    render(<App />);
+
+    expect(screen.queryByRole('heading', { level: 2, name: /create an account/i })).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 2, name: /email verified successfully/i })
+    ).toBeInTheDocument();
+  });
+
+  it('renders EmailVerificationView when URL contains view=verify', () => {
+    window.history.pushState({}, '', '/?view=verify');
+
+    render(<App />);
+
+    expect(
+      screen.getByRole('heading', { level: 2, name: /email verification/i })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 2, name: /create an account/i })).not.toBeInTheDocument();
+  });
+
+  it('switches to verification view when RegistrationForm requests replacement link', async () => {
+    const mockFetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        message: 'User registered successfully',
+        user: { id: 'test-id', email: 'registered@example.com' },
+      }),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    render(<App />);
+
+    // Fill and submit registration form
+    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Test User' } });
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'registered@example.com' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Valid1@password' } });
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    // Wait for registration success view
+    const replacementBtn = await screen.findByRole('button', {
+      name: /didn't receive the email\? request a replacement link/i,
+    });
+    expect(replacementBtn).toBeInTheDocument();
+
+    // Click replacement button
+    fireEvent.click(replacementBtn);
+
+    // Verify view transitioned to verification view and email is prefilled
+    expect(
+      await screen.findByRole('heading', { level: 2, name: /email verification/i })
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/email address/i)).toHaveValue('registered@example.com');
+  });
+
+  it('navigates from EmailVerificationView back to registration view with status notice on sign in', async () => {
+    window.history.pushState({}, '', '/?mode=verifyEmail&oobCode=sign-in-code');
+    mockApplyActionCode.mockResolvedValueOnce(undefined);
+
+    render(<App />);
+
+    const signInBtn = await screen.findByRole('button', { name: /proceed to sign in/i });
+    fireEvent.click(signInBtn);
+
+    // Should switch back to registration and show phase notice
+    expect(await screen.findByRole('heading', { level: 2, name: /create an account/i })).toBeInTheDocument();
+    expect(
+      screen.getByText(/participant account verified! sign-in and mfa features will be available in phase 2/i)
+    ).toBeInTheDocument();
+  });
+
+  it('navigates from empty code verification view back to registration view when clicking back button', () => {
+    window.history.pushState({}, '', '/?view=verify');
+
+    render(<App />);
+
+    const backBtn = screen.getByRole('button', { name: /back to registration/i });
+    fireEvent.click(backBtn);
+
+    expect(screen.getByRole('heading', { level: 2, name: /create an account/i })).toBeInTheDocument();
   });
 });

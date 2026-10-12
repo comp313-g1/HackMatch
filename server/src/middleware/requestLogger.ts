@@ -10,6 +10,9 @@ const SENSITIVE_KEYS = new Set([
   'authorization',
   'cookie',
   'set-cookie',
+  'oobcode',
+  'actioncode',
+  'verificationtoken',
 ]);
 
 export function sanitizePayload(data: unknown): unknown {

@@ -119,6 +119,10 @@ dist
 # Firebase cache directory
 .firebase/
 
+# Supabase local CLI cache directory
+server/supabase/
+
+
 # TernJS port file
 .tern-port
 
@@ -148,3 +152,6 @@ site_screenshots/
 *.docx
 *.zip
 *.xlsx
+
+# Developer scratchpad and local tasks
+brian_tasks/
