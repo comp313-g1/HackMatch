@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import { ProviderSignIn } from './auth/ProviderSignIn';
+import type { PendingOtp } from './auth/providerAuthService';
 
 export function App(): React.JSX.Element {
   const [healthStatus, setHealthStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-
+  const [pendingOtp, setPendingOtp] = useState<PendingOtp | null>(null);
   const checkApiHealth = async () => {
     setLoading(true);
     setError(null);
@@ -52,6 +54,24 @@ export function App(): React.JSX.Element {
 
       {/* Semantic Main Content Landmark */}
       <main id="main-content" className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8" role="main">
+        <ProviderSignIn onOtpRequired={setPendingOtp} />
+
+              {pendingOtp && (
+                <section className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-6">
+                  <h2 className="text-xl font-semibold">
+                    Email verification required
+                  </h2>
+
+                  <p>
+                    Check {pendingOtp.maskedEmail} for your verification code.
+                  </p>
+
+                  <p className="mt-2">
+                    Code entry is not available on this page yet.
+                    Sign-in is not complete.
+                  </p>
+                </section>
+              )}
         <div className="bg-white rounded-lg border border-gray-200 p-6 md:p-8 shadow-sm">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
             Pre-Hackathon Team Formation Platform
