@@ -32,8 +32,12 @@ jobs:
         with:
           node-version: 22
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+            server/package-lock.json
 
-      - name: Install dependencies
+      - name: Install dependencies (root tooling, client, and server)
         run: npm ci
 
       - name: Verify commit message formatting (PR only)

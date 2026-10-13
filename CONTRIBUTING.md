@@ -18,6 +18,15 @@ Install the committed dependencies with:
 npm ci
 ```
 
+This installs the root git-hook tooling and then runs `npm ci` inside `client/` and `server/`. Each app has its own `package.json`, `package-lock.json`, and `node_modules`; there are no npm workspaces.
+
+When adding a dependency, install it in the app that uses it and commit that app's updated `package-lock.json`:
+
+```bash
+npm install <package> --prefix client
+npm install -D <package> --prefix server
+```
+
 ---
 
 ## 2. Branching Workflow — One Shared Branch per User Story
