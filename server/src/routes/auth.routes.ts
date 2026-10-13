@@ -3,13 +3,11 @@ import {
   validateRegisterPayload,
   validateResendVerificationPayload,
   validateVerifyEmailPayload,
-  validateOAuthSignInPayload,
 } from '../validators/auth.validator.js';
 import {
   register,
   resendVerification,
   verifyEmail,
-  oauthSignIn,
 } from '../controllers/auth.controller.js';
 
 export const authRouter = Router();
@@ -32,13 +30,5 @@ authRouter.post('/resend-verification', validateResendVerificationPayload, resen
  * Verifies code, updates participant status, and ensures zero session creation.
  */
 authRouter.post('/verify-email', validateVerifyEmailPayload, verifyEmail);
-
-/**
- * Public federated OAuth sign-in and registration endpoint (US-002 / FR-003 / FR-004).
- * Verifies Firebase ID token, resolves or provisions participant record,
- * enforces account linking security (US-002 AC 4), and routes into US-004 email OTP flow.
- * Strictly issues zero cookies or session tokens (FR-007 / US-002 AC 5).
- */
-authRouter.post('/oauth/sign-in', validateOAuthSignInPayload, oauthSignIn);
 
 
