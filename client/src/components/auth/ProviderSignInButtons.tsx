@@ -28,6 +28,10 @@ export interface ProviderSignInButtonsProps {
   onEmptyEmail?: () => void;
   /** Optional: any error outcome, with a retryability hint. */
   onError?: (message: string, retryable: boolean) => void;
+  /** Optional variant: 'card' (standalone with border/shadow) or 'embedded' (flat inside a form). Defaults to 'card'. */
+  variant?: 'card' | 'embedded';
+  /** Optional callback fired when the loading state changes. */
+  onLoadingChange?: (loading: boolean) => void;
 }
 
 type Status = 'idle' | 'loading' | 'success' | 'validation' | 'empty' | 'error';
@@ -45,6 +49,8 @@ export function ProviderSignInButtons({
   onUnverifiedEmail,
   onEmptyEmail,
   onError,
+  variant = 'card',
+  onLoadingChange,
 }: ProviderSignInButtonsProps): React.JSX.Element {
   // Preserved across every non-fatal outcome (validation/error) — never reset here.
   const [consentHandleAvatar, setConsentHandleAvatar] = useState<boolean>(false);
@@ -64,8 +70,10 @@ export function ProviderSignInButtons({
     setStatus('loading');
     setMessage(null);
     setRetryable(true);
+    if (onLoadingChange) onLoadingChange(true);
 
     const outcome = await signInWithProvider(provider, { consentHandleAvatar });
+    if (onLoadingChange) onLoadingChange(false);
 
     switch (outcome.status) {
       case 'requires_otp':
@@ -107,15 +115,27 @@ export function ProviderSignInButtons({
     }
   };
 
+  const isEmbedded = variant === 'embedded';
+
   return (
-    <div className="max-w-md w-full mx-auto p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
-      <h2 id="provider-signin-heading" className="text-xl font-bold text-gray-900 mb-1">
-        Continue with a provider
-      </h2>
-      <p className="text-sm text-gray-600 mb-6">
-        Use your Google or GitHub account. Email verification is still required before you get
-        access.
-      </p>
+    <div
+      className={
+        isEmbedded
+          ? 'w-full'
+          : 'max-w-md w-full mx-auto p-6 bg-white rounded-lg border border-gray-200 shadow-sm'
+      }
+    >
+      {!isEmbedded && (
+        <>
+          <h2 id="provider-signin-heading" className="text-xl font-bold text-gray-900 mb-1">
+            Continue with a provider
+          </h2>
+          <p className="text-sm text-gray-600 mb-6">
+            Use your Google or GitHub account. Email verification is still required before you get
+            access.
+          </p>
+        </>
+      )}
 
       <div className="flex items-start mb-4">
         <input
@@ -135,7 +155,8 @@ export function ProviderSignInButtons({
       <div
         id={GROUP_ID}
         role="group"
-        aria-labelledby="provider-signin-heading"
+        aria-labelledby={isEmbedded ? undefined : 'provider-signin-heading'}
+        aria-label={isEmbedded ? 'Continue with a provider' : undefined}
         aria-busy={loading}
         aria-invalid={status === 'validation' ? true : undefined}
         aria-describedby={message ? MESSAGE_ID : undefined}

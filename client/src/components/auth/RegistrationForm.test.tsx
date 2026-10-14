@@ -1,12 +1,24 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { signInWithPopup } from 'firebase/auth';
 import { RegistrationForm } from './RegistrationForm';
 import {
   validateRegistrationInput,
   assertNoPrivilegeEscalation,
   PROHIBITED_PRIVILEGE_KEYS,
 } from './validation';
+
+vi.mock('firebase/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('firebase/auth')>();
+  return {
+    ...actual,
+    signInWithPopup: vi.fn(),
+  };
+});
+
+const mockSignInWithPopup = vi.mocked(signInWithPopup);
+const mockFetch = vi.fn();
 
 describe('assertNoPrivilegeEscalation helper', () => {
   it('returns true for clean payloads without privilege properties', () => {
@@ -104,10 +116,10 @@ describe('validateRegistrationInput helper', () => {
 });
 
 describe('RegistrationForm Component (Backend Integration)', () => {
-  const mockFetch = vi.fn();
-
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
     vi.stubGlobal('fetch', mockFetch);
   });
 
@@ -649,3 +661,200 @@ describe('RegistrationForm Component (Backend Integration)', () => {
     expect(onNavigateToVerification).toHaveBeenCalledWith('registered@example.com');
   });
 });
+
+describe('RegistrationForm · Federated OAuth Integration (US-002 AC 1, AC 2, AC 5)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+    vi.stubGlobal('fetch', mockFetch);
+  });
+
+  it('case 1: user types fullName, cancels provider popup -> fullName is preserved, alert is rendered, and no session is created (US-002 AC 1 / US-002-T2)', async () => {
+    mockSignInWithPopup.mockRejectedValueOnce({ code: 'auth/popup-closed-by-user' });
+
+    render(<RegistrationForm />);
+
+    const nameInput = screen.getByLabelText(/full name/i);
+    fireEvent.change(nameInput, { target: { value: 'Bob Builder' } });
+    expect(nameInput).toHaveValue('Bob Builder');
+
+    fireEvent.click(screen.getByRole('button', { name: /continue with google/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/cancelled/i);
+
+    // Full name input value is strictly preserved across provider cancellation (NR-010)
+    expect(nameInput).toHaveValue('Bob Builder');
+
+    // Zero-session invariant: storage and cookies remain completely empty
+    expect(Object.keys(localStorage)).toHaveLength(0);
+    expect(Object.keys(sessionStorage)).toHaveLength(0);
+  });
+
+  it('case 2: provider with unverified email diverts to manual registration, pre-fills email, preserves fullName, and focuses password (US-002 AC 2 / US-002-T3)', async () => {
+    mockSignInWithPopup.mockResolvedValueOnce({
+      user: {
+        email: 'unverified@github.com',
+        emailVerified: false,
+        getIdToken: vi.fn(),
+      },
+    } as never);
+
+    render(<RegistrationForm />);
+
+    const nameInput = screen.getByLabelText(/full name/i);
+    fireEvent.change(nameInput, { target: { value: 'Alice Wonder' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /continue with github/i }));
+
+    const diversionBanner = await screen.findByText(/your provider account email is unverified/i);
+    expect(diversionBanner).toBeInTheDocument();
+    expect(diversionBanner).toHaveTextContent(/create a password below/i);
+
+    // Email field is pre-filled with provider email
+    expect(screen.getByLabelText(/email address/i)).toHaveValue('unverified@github.com');
+    // Full name is preserved
+    expect(nameInput).toHaveValue('Alice Wonder');
+    // Password input receives focus for immediate completion
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^password/i)).toHaveFocus();
+    });
+
+    // Zero-session invariant
+    expect(Object.keys(localStorage)).toHaveLength(0);
+    expect(Object.keys(sessionStorage)).toHaveLength(0);
+  });
+
+  it('case 3: provider with null email renders instructional notice, keeps email editable, and focuses email (US-002 AC 2)', async () => {
+    mockSignInWithPopup.mockResolvedValueOnce({
+      user: {
+        email: null,
+        emailVerified: false,
+        getIdToken: vi.fn(),
+      },
+    } as never);
+
+    render(<RegistrationForm />);
+
+    fireEvent.click(screen.getByRole('button', { name: /continue with google/i }));
+
+    const diversionBanner = await screen.findByText(/your provider account did not share an email address/i);
+    expect(diversionBanner).toBeInTheDocument();
+
+    const emailInput = screen.getByLabelText(/email address/i);
+    await waitFor(() => {
+      expect(emailInput).toHaveFocus();
+    });
+    expect(emailInput).not.toBeDisabled();
+
+    // Zero-session invariant
+    expect(Object.keys(localStorage)).toHaveLength(0);
+    expect(Object.keys(sessionStorage)).toHaveLength(0);
+  });
+
+  it('case 4: server returns 409 LINKING_REAUTHENTICATION_REQUIRED -> actionable guidance appears without retry button (US-002 AC 4 / US-002-T5)', async () => {
+    mockSignInWithPopup.mockResolvedValueOnce({
+      user: {
+        email: 'existing@example.com',
+        emailVerified: true,
+        getIdToken: vi.fn().mockResolvedValue('token-123'),
+      },
+    } as never);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        error: 'An account with this email already exists. Please sign in with your password to link your provider.',
+        code: 'LINKING_REAUTHENTICATION_REQUIRED',
+      }),
+    });
+
+    render(<RegistrationForm />);
+
+    fireEvent.click(screen.getByRole('button', { name: /continue with google/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/password/i);
+    // Non-retryable policy rejection suppresses the retry button
+    expect(screen.queryByRole('button', { name: /try again with google/i })).toBeNull();
+
+    // Zero-session invariant
+    expect(Object.keys(localStorage)).toHaveLength(0);
+    expect(Object.keys(sessionStorage)).toHaveLength(0);
+  });
+
+  it('case 5: provider sign-in success calls onRequiresOtp without creating local session (US-002 AC 5)', async () => {
+    mockSignInWithPopup.mockResolvedValueOnce({
+      user: {
+        email: 'verified@example.com',
+        emailVerified: true,
+        getIdToken: vi.fn().mockResolvedValue('token-verified'),
+      },
+    } as never);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        requiresOtp: true,
+        challengeId: 'challenge-xyz',
+        email: 'v***@example.com',
+        expiresInSeconds: 600,
+        message: 'A 6-digit verification code has been sent to your email.',
+      }),
+    });
+
+    const onRequiresOtp = vi.fn();
+    render(<RegistrationForm onRequiresOtp={onRequiresOtp} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /continue with google/i }));
+
+    await waitFor(() => {
+      expect(onRequiresOtp).toHaveBeenCalledWith({
+        challengeId: 'challenge-xyz',
+        email: 'v***@example.com',
+        expiresInSeconds: 600,
+        message: 'A 6-digit verification code has been sent to your email.',
+      });
+    });
+
+    // Zero-session invariant
+    expect(Object.keys(localStorage)).toHaveLength(0);
+    expect(Object.keys(sessionStorage)).toHaveLength(0);
+  });
+
+  it('case 6: manual inputs and submit button are disabled while OAuth is loading', async () => {
+    let resolvePopup!: (val: unknown) => void;
+    const pendingPromise = new Promise((resolve) => {
+      resolvePopup = resolve;
+    });
+    mockSignInWithPopup.mockReturnValueOnce(pendingPromise as never);
+
+    render(<RegistrationForm />);
+
+    fireEvent.click(screen.getByRole('button', { name: /continue with google/i }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/full name/i)).toBeDisabled();
+    });
+    expect(screen.getByLabelText(/email address/i)).toBeDisabled();
+    expect(screen.getByLabelText(/^password/i)).toBeDisabled();
+    expect(screen.getByRole('button', { name: /create account/i })).toBeDisabled();
+
+    // Clean up pending promise to avoid unhandled async hang
+    resolvePopup({
+      user: {
+        email: null,
+        emailVerified: false,
+        getIdToken: vi.fn(),
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /create account/i })).not.toBeDisabled();
+    });
+  });
+});
+
