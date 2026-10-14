@@ -154,4 +154,5 @@ site_screenshots/
 *.xlsx
 
 # Developer scratchpad and local tasks
-brian_tasks/
+brian_tasks/
+.workbuddy/*
