@@ -759,6 +759,25 @@ describe('auth.validator unit tests (US-001 AC 1 / T2 / AC 4 / T6)', () => {
       expect(next).toHaveBeenCalled();
       expect(req.body.consentHandleAvatar).toBe(false);
     });
+
+    it('evaluates consentHandleAvatar to false when passed string "false", 0, or non-boolean values (D-A)', () => {
+      for (const nonBoolean of ['false', '0', 0, null, {}, []]) {
+        const req = {
+          body: {
+            idToken: 'valid-token',
+            provider: 'google',
+            consentHandleAvatar: nonBoolean,
+          },
+        } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateOAuthSignInPayload(req, res as unknown as Response, next);
+
+        expect(next).toHaveBeenCalled();
+        expect(req.body.consentHandleAvatar).toBe(false);
+      }
+    });
   });
 });
 

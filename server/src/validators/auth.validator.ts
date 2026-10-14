@@ -283,7 +283,7 @@ export function validateOAuthSignInPayload(
   req.body = {
     idToken: (rawToken as string).trim(),
     provider: (rawProvider as string).trim().toLowerCase(),
-    consentHandleAvatar: Boolean(body.consentHandleAvatar),
+    consentHandleAvatar: body.consentHandleAvatar === true,
   };
 
   next();

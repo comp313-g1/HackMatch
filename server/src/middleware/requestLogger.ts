@@ -13,6 +13,7 @@ const SENSITIVE_KEYS = new Set([
   'oobcode',
   'actioncode',
   'verificationtoken',
+  'idtoken',
 ]);
 
 export function sanitizePayload(data: unknown): unknown {
