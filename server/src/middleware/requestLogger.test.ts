@@ -65,4 +65,16 @@ describe('Sanitized Logging Middleware (NR-021)', () => {
     expect(sanitizePayload(42)).toBe(42);
     expect(sanitizePayload('hello')).toBe('hello');
   });
+
+  it('redacts idToken per NR-021 (D-B)', () => {
+    const rawPayload = {
+      idToken: 'firebase-id-token-secret-12345',
+      provider: 'google',
+    };
+
+    const sanitized = sanitizePayload(rawPayload) as Record<string, unknown>;
+
+    expect(sanitized.idToken).toBe('[REDACTED]');
+    expect(sanitized.provider).toBe('google');
+  });
 });

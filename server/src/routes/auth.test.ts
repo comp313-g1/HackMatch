@@ -7,6 +7,7 @@ import { mfaRepository } from '../db/mfa.repository.js';
 import type { Participant, ProviderIdentity, MfaChallenge, MfaAttempt } from '../db/types.js';
 import { _resetRateLimiter } from '../utils/rateLimiter.js';
 import { _setMfaOtpEmailSender, _resetMfaOtpEmailSender } from '../controllers/auth.controller.js';
+import { hashOtp } from '../utils/otp.js';
 
 // Mock Firebase Admin module to operate 100% offline without live Google Cloud credentials
 // and avoid the throwing offline proxy in server/src/config/firebase.ts
@@ -1285,9 +1286,204 @@ describe('Auth Routes (POST /api/auth/oauth/sign-in)', () => {
     });
   });
 
+  describe('Zero-session and response-secrecy protections (US-002 AC 5 / NR-021 / G1)', () => {
+    it('dispatches 6-digit OTP, omits plain OTP and session tokens from HTTP response, and stores matching hash verifier', async () => {
+      let capturedEmail = '';
+      let capturedOtp = '';
+      _setMfaOtpEmailSender(async (email: string, otp: string) => {
+        capturedEmail = email;
+        capturedOtp = otp;
+      });
+
+      mockVerifyIdToken.mockResolvedValueOnce(mockGoogleDecodedToken);
+
+      const response = await request(app)
+        .post('/api/auth/oauth/sign-in')
+        .send({
+          idToken: 'valid-google-id-token',
+          provider: 'google',
+        });
+
+      expect(response.status).toBe(200);
+      expect(capturedOtp).toMatch(/^\d{6}$/);
+      expect(capturedEmail).toBe('newuser@example.com');
+
+      // Assert plain OTP code and session tokens are strictly omitted from response
+      const rawResponseBody = JSON.stringify(response.body);
+      expect(rawResponseBody).not.toContain(capturedOtp);
+      expect(response.body.otp).toBeUndefined();
+      expect(response.body.token).toBeUndefined();
+      expect(response.body.accessToken).toBeUndefined();
+      expect(response.body.idToken).toBeUndefined();
+      expect(response.headers['set-cookie']).toBeUndefined();
+
+      // Assert dispatched OTP hashes strictly to stored challenge verifier
+      const createChallengeCall = vi.mocked(mfaRepository.createChallenge).mock.calls[0]?.[0];
+      expect(createChallengeCall).toBeDefined();
+      expect(createChallengeCall?.otp_hash).toBe(hashOtp(capturedOtp));
+    });
+  });
+
+  describe('Rejection boundaries and zero-write invariant table (US-002 AC 1, AC 2 / G2, G8)', () => {
+    interface RejectionTestCase {
+      name: string;
+      payload?: unknown;
+      rawBody?: string;
+      setup?: () => void;
+      expectedStatus: number;
+      expectedCode?: string;
+      expectedError?: string;
+      fieldErrorKey?: string;
+    }
+
+    const rejectionCases: RejectionTestCase[] = [
+      {
+        name: 'malformed JSON body',
+        rawBody: '{"idToken": "unclosed-json',
+        expectedStatus: 400,
+        expectedError: 'Bad Request',
+      },
+      {
+        name: 'missing idToken',
+        payload: { provider: 'google' },
+        expectedStatus: 400,
+        fieldErrorKey: 'idToken',
+      },
+      {
+        name: 'empty whitespace idToken',
+        payload: { idToken: '   ', provider: 'google' },
+        expectedStatus: 400,
+        fieldErrorKey: 'idToken',
+      },
+      {
+        name: 'non-string idToken (number)',
+        payload: { idToken: 99999, provider: 'google' },
+        expectedStatus: 400,
+        fieldErrorKey: 'idToken',
+      },
+      {
+        name: 'oversized (10KB) invalid idToken',
+        payload: { idToken: 'x'.repeat(10240), provider: 'google' },
+        setup: () => {
+          mockVerifyIdToken.mockRejectedValueOnce(new Error('Decoding Firebase ID token failed'));
+        },
+        expectedStatus: 401,
+        expectedCode: 'INVALID_TOKEN',
+      },
+      {
+        name: 'unsupported provider string',
+        payload: { idToken: 'valid-token', provider: 'facebook' },
+        expectedStatus: 400,
+        fieldErrorKey: 'provider',
+      },
+      {
+        name: 'non-string provider (number)',
+        payload: { idToken: 'valid-token', provider: 123 },
+        expectedStatus: 400,
+        fieldErrorKey: 'provider',
+      },
+      {
+        name: 'token/provider mismatch (request google, token github.com)',
+        payload: { idToken: 'valid-token', provider: 'google' },
+        setup: () => {
+          mockVerifyIdToken.mockResolvedValueOnce(mockGitHubDecodedToken);
+        },
+        expectedStatus: 400,
+        expectedCode: 'PROVIDER_MISMATCH',
+      },
+      {
+        name: 'token/provider mismatch (request github, token google.com)',
+        payload: { idToken: 'valid-token', provider: 'github' },
+        setup: () => {
+          mockVerifyIdToken.mockResolvedValueOnce(mockGoogleDecodedToken);
+        },
+        expectedStatus: 400,
+        expectedCode: 'PROVIDER_MISMATCH',
+      },
+      {
+        name: 'expired or invalid Firebase ID token',
+        payload: { idToken: 'expired-token', provider: 'google' },
+        setup: () => {
+          mockVerifyIdToken.mockRejectedValueOnce(new Error('Firebase ID token has expired or is invalid.'));
+        },
+        expectedStatus: 401,
+        expectedCode: 'INVALID_TOKEN',
+      },
+      {
+        name: 'unverified provider email (email_verified: false)',
+        payload: { idToken: 'valid-token', provider: 'google' },
+        setup: () => {
+          mockVerifyIdToken.mockResolvedValueOnce({
+            ...mockGoogleDecodedToken,
+            email_verified: false,
+          });
+        },
+        expectedStatus: 403,
+        expectedCode: 'UNVERIFIED_PROVIDER_EMAIL',
+      },
+      {
+        name: 'token missing email field',
+        payload: { idToken: 'valid-token', provider: 'google' },
+        setup: () => {
+          mockVerifyIdToken.mockResolvedValueOnce({
+            ...mockGoogleDecodedToken,
+            email: undefined,
+          });
+        },
+        expectedStatus: 403,
+        expectedCode: 'UNVERIFIED_PROVIDER_EMAIL',
+      },
+    ];
+
+    it.each(rejectionCases)(
+      'rejects $name with HTTP $expectedStatus, issues no cookies, and performs zero DB writes',
+      async ({ payload, rawBody, setup, expectedStatus, expectedCode, expectedError, fieldErrorKey }) => {
+        if (setup) {
+          setup();
+        }
+
+        const req = request(app).post('/api/auth/oauth/sign-in');
+        const response = rawBody !== undefined
+          ? await req.set('Content-Type', 'application/json').send(rawBody)
+          : await req.send(payload as object);
+
+        expect(response.status).toBe(expectedStatus);
+
+        if (expectedCode) {
+          expect(response.body.code).toBe(expectedCode);
+        }
+        if (expectedError) {
+          expect(response.body.error).toBe(expectedError);
+        }
+        if (fieldErrorKey) {
+          expect(response.body.errors?.[fieldErrorKey]).toBeDefined();
+        }
+
+        // Assert zero session issuance across all rejection branches (AC 1 / AC 5 / FR-007)
+        expect(response.headers['set-cookie']).toBeUndefined();
+        expect(response.body.token).toBeUndefined();
+        expect(response.body.accessToken).toBeUndefined();
+        expect(response.body.idToken).toBeUndefined();
+
+        // Assert zero-write invariant across database and challenge stores
+        expect(participantsRepository.createParticipant).not.toHaveBeenCalled();
+        expect(providerIdentitiesRepository.createProviderIdentity).not.toHaveBeenCalled();
+        expect(mfaRepository.createChallenge).not.toHaveBeenCalled();
+      }
+    );
+  });
+
   describe('Account linking protection (US-002 AC 4 / US-002-T5)', () => {
     it('returns HTTP 409 LINKING_REAUTHENTICATION_REQUIRED when email matches existing participant but provider is not linked', async () => {
-      mockVerifyIdToken.mockResolvedValueOnce(mockGoogleDecodedToken);
+      let emailDispatched = false;
+      _setMfaOtpEmailSender(async () => {
+        emailDispatched = true;
+      });
+
+      mockVerifyIdToken.mockResolvedValueOnce({
+        ...mockGoogleDecodedToken,
+        email: 'ExistingUser@Example.COM',
+      });
       vi.spyOn(providerIdentitiesRepository, 'findByProviderUid').mockResolvedValueOnce(null);
       vi.spyOn(participantsRepository, 'findByEmail').mockResolvedValueOnce(mockPartParticipant);
 
@@ -1304,8 +1500,163 @@ describe('Auth Routes (POST /api/auth/oauth/sign-in)', () => {
         code: 'LINKING_REAUTHENTICATION_REQUIRED',
       });
 
+      expect(participantsRepository.findByEmail).toHaveBeenCalledWith('existinguser@example.com');
+      expect(participantsRepository.createParticipant).not.toHaveBeenCalled();
       expect(providerIdentitiesRepository.createProviderIdentity).not.toHaveBeenCalled();
       expect(mfaRepository.createChallenge).not.toHaveBeenCalled();
+      expect(emailDispatched).toBe(false);
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+  });
+
+  describe('Provisioning boundaries, provider aliases, and handle fallbacks (US-002 AC 3 / G3, G4)', () => {
+    it('accepts google.com provider alias in request payload', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce(mockGoogleDecodedToken);
+      vi.spyOn(providerIdentitiesRepository, 'findByProviderUid').mockResolvedValueOnce(null);
+      vi.spyOn(participantsRepository, 'findByEmail').mockResolvedValueOnce(null);
+
+      const response = await request(app)
+        .post('/api/auth/oauth/sign-in')
+        .send({
+          idToken: 'valid-google-id-token',
+          provider: 'google.com',
+        });
+
+      expect(response.status).toBe(200);
+      expect(providerIdentitiesRepository.createProviderIdentity).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: 'google' })
+      );
+    });
+
+    it('accepts github.com provider alias in request payload', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce(mockGitHubDecodedToken);
+      vi.spyOn(providerIdentitiesRepository, 'findByProviderUid').mockResolvedValueOnce(null);
+      vi.spyOn(participantsRepository, 'findByEmail').mockResolvedValueOnce(null);
+      vi.spyOn(participantsRepository, 'createParticipant').mockResolvedValueOnce({
+        ...mockPartParticipant,
+        email: 'gituser@example.com',
+      });
+
+      const response = await request(app)
+        .post('/api/auth/oauth/sign-in')
+        .send({
+          idToken: 'valid-github-id-token',
+          provider: 'github.com',
+        });
+
+      expect(response.status).toBe(200);
+      expect(providerIdentitiesRepository.createProviderIdentity).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: 'github' })
+      );
+    });
+
+    it('resolves existing participant when provider identity is stored under alternate provider domain string', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce(mockGoogleDecodedToken);
+      vi.spyOn(providerIdentitiesRepository, 'findByProviderUid')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          ...mockProviderIdentity,
+          provider: 'google.com',
+          provider_uid: 'google-uid-100',
+        });
+      vi.spyOn(participantsRepository, 'findById').mockResolvedValueOnce(mockPartParticipant);
+
+      const response = await request(app)
+        .post('/api/auth/oauth/sign-in')
+        .send({
+          idToken: 'valid-google-id-token',
+          provider: 'google',
+        });
+
+      expect(response.status).toBe(200);
+      expect(providerIdentitiesRepository.findByProviderUid).toHaveBeenCalledWith('google', 'google-uid-100');
+      expect(providerIdentitiesRepository.findByProviderUid).toHaveBeenCalledWith('google.com', 'google-uid-100');
+      expect(participantsRepository.findById).toHaveBeenCalledWith(mockProviderIdentity.participant_id);
+      expect(participantsRepository.createParticipant).not.toHaveBeenCalled();
+      expect(providerIdentitiesRepository.createProviderIdentity).not.toHaveBeenCalled();
+    });
+
+    it('falls back full_name to email local-part when token name is absent', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce({
+        ...mockGoogleDecodedToken,
+        name: undefined,
+        email: 'localpartuser@example.com',
+      });
+      vi.spyOn(providerIdentitiesRepository, 'findByProviderUid').mockResolvedValueOnce(null);
+      vi.spyOn(participantsRepository, 'findByEmail').mockResolvedValueOnce(null);
+
+      const response = await request(app)
+        .post('/api/auth/oauth/sign-in')
+        .send({
+          idToken: 'valid-google-id-token',
+          provider: 'google',
+        });
+
+      expect(response.status).toBe(200);
+      expect(participantsRepository.createParticipant).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'localpartuser@example.com',
+          full_name: 'localpartuser',
+        })
+      );
+    });
+
+    it('truncates full_name and provider_handle to exactly 100 characters when input exceeds boundary', async () => {
+      const longName = 'A'.repeat(150);
+      const longHandle = 'H'.repeat(150);
+
+      mockVerifyIdToken.mockResolvedValueOnce({
+        ...mockGoogleDecodedToken,
+        name: longName,
+        screen_name: longHandle,
+      });
+      vi.spyOn(providerIdentitiesRepository, 'findByProviderUid').mockResolvedValueOnce(null);
+      vi.spyOn(participantsRepository, 'findByEmail').mockResolvedValueOnce(null);
+
+      const response = await request(app)
+        .post('/api/auth/oauth/sign-in')
+        .send({
+          idToken: 'valid-google-id-token',
+          provider: 'google',
+          consentHandleAvatar: true,
+        });
+
+      expect(response.status).toBe(200);
+      expect(participantsRepository.createParticipant).toHaveBeenCalledWith(
+        expect.objectContaining({
+          full_name: 'A'.repeat(100),
+        })
+      );
+      expect(providerIdentitiesRepository.createProviderIdentity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider_handle: 'H'.repeat(100),
+        })
+      );
+    });
+
+    it('falls back provider_handle to name when screen_name is absent or non-string with consent', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce({
+        ...mockGoogleDecodedToken,
+        name: 'Google Profile Name',
+        screen_name: undefined,
+      });
+      vi.spyOn(providerIdentitiesRepository, 'findByProviderUid').mockResolvedValueOnce(null);
+      vi.spyOn(participantsRepository, 'findByEmail').mockResolvedValueOnce(null);
+
+      const response = await request(app)
+        .post('/api/auth/oauth/sign-in')
+        .send({
+          idToken: 'valid-google-id-token',
+          provider: 'google',
+          consentHandleAvatar: true,
+        });
+
+      expect(response.status).toBe(200);
+      expect(providerIdentitiesRepository.createProviderIdentity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider_handle: 'Google Profile Name',
+        })
+      );
     });
   });
 
@@ -1487,6 +1838,44 @@ describe('Auth Routes (POST /api/auth/oauth/sign-in)', () => {
       });
       expect(secondRes.headers['retry-after']).toBeDefined();
     });
+
+    it('enforces FR-081 hourly rate limit: 6th send within rolling hour returns HTTP 429 RATE_LIMITED', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        mockVerifyIdToken.mockResolvedValue(mockGitHubDecodedToken);
+        vi.spyOn(providerIdentitiesRepository, 'findByProviderUid').mockResolvedValue(mockProviderIdentity);
+        vi.spyOn(participantsRepository, 'findById').mockResolvedValue(mockExistingLinkedParticipant);
+
+        const baseTime = 1700000000000;
+        vi.setSystemTime(baseTime);
+
+        // Make 5 successful sends spaced 61 seconds apart (bypassing 60s cooldown, but counting toward 5/hr)
+        for (let i = 0; i < 5; i++) {
+          vi.setSystemTime(baseTime + i * 61000);
+          const res = await request(app)
+            .post('/api/auth/oauth/sign-in')
+            .send({ idToken: `token-${i}`, provider: 'github' });
+          expect(res.status).toBe(200);
+        }
+
+        // 6th attempt within the same rolling hour (5 minutes in)
+        vi.setSystemTime(baseTime + 5 * 61000);
+        const sixthRes = await request(app)
+          .post('/api/auth/oauth/sign-in')
+          .send({ idToken: 'token-6', provider: 'github' });
+
+        expect(sixthRes.status).toBe(429);
+        expect(sixthRes.body).toEqual({
+          error: 'Too many OTP requests. Please wait before requesting another code.',
+          code: 'RATE_LIMITED',
+          retryAfter: expect.any(Number),
+        });
+        expect(sixthRes.headers['retry-after']).toBeDefined();
+        expect(Number(sixthRes.headers['retry-after'])).toBeGreaterThan(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe('Email dispatch failure handling (FR-084)', () => {
@@ -1513,6 +1902,93 @@ describe('Auth Routes (POST /api/auth/oauth/sign-in)', () => {
       });
 
       expect(mfaRepository.invalidatePendingChallenges).toHaveBeenCalledWith(mockExistingLinkedParticipant.id);
+    });
+  });
+
+  describe('Persistence failure handling (G7)', () => {
+    it('propagates createParticipant database rejection to HTTP 500 without leaking error details', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce(mockGoogleDecodedToken);
+      vi.spyOn(providerIdentitiesRepository, 'findByProviderUid').mockResolvedValueOnce(null);
+      vi.spyOn(participantsRepository, 'findByEmail').mockResolvedValueOnce(null);
+      vi.spyOn(participantsRepository, 'createParticipant').mockRejectedValueOnce(
+        new Error('db-connection-failure: participants insert crashed')
+      );
+
+      const response = await request(app)
+        .post('/api/auth/oauth/sign-in')
+        .send({
+          idToken: 'valid-google-id-token',
+          provider: 'google',
+        });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal Server Error' });
+      expect(JSON.stringify(response.body)).not.toContain('db-connection-failure');
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('propagates createProviderIdentity database rejection to HTTP 500 without leaking error details', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce(mockGoogleDecodedToken);
+      vi.spyOn(providerIdentitiesRepository, 'findByProviderUid').mockResolvedValueOnce(null);
+      vi.spyOn(participantsRepository, 'findByEmail').mockResolvedValueOnce(null);
+      vi.spyOn(participantsRepository, 'createParticipant').mockResolvedValueOnce(mockPartParticipant);
+      vi.spyOn(providerIdentitiesRepository, 'createProviderIdentity').mockRejectedValueOnce(
+        new Error('db-connection-failure: provider_identities insert crashed')
+      );
+
+      const response = await request(app)
+        .post('/api/auth/oauth/sign-in')
+        .send({
+          idToken: 'valid-google-id-token',
+          provider: 'google',
+        });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal Server Error' });
+      expect(JSON.stringify(response.body)).not.toContain('db-connection-failure');
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('propagates evaluateAccountLockout/getRecentAttempts rejection to HTTP 500 without leaking details', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce(mockGoogleDecodedToken);
+      vi.spyOn(providerIdentitiesRepository, 'findByProviderUid').mockResolvedValueOnce(null);
+      vi.spyOn(participantsRepository, 'findByEmail').mockResolvedValueOnce(null);
+      vi.spyOn(mfaRepository, 'getRecentAttempts').mockRejectedValueOnce(
+        new Error('db-connection-failure: mfa_attempts query crashed')
+      );
+
+      const response = await request(app)
+        .post('/api/auth/oauth/sign-in')
+        .send({
+          idToken: 'valid-google-id-token',
+          provider: 'google',
+        });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal Server Error' });
+      expect(JSON.stringify(response.body)).not.toContain('db-connection-failure');
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('propagates createChallenge rejection to HTTP 500 without leaking error details', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce(mockGoogleDecodedToken);
+      vi.spyOn(providerIdentitiesRepository, 'findByProviderUid').mockResolvedValueOnce(null);
+      vi.spyOn(participantsRepository, 'findByEmail').mockResolvedValueOnce(null);
+      vi.spyOn(mfaRepository, 'createChallenge').mockRejectedValueOnce(
+        new Error('db-connection-failure: mfa_challenges insert crashed')
+      );
+
+      const response = await request(app)
+        .post('/api/auth/oauth/sign-in')
+        .send({
+          idToken: 'valid-google-id-token',
+          provider: 'google',
+        });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal Server Error' });
+      expect(JSON.stringify(response.body)).not.toContain('db-connection-failure');
+      expect(response.headers['set-cookie']).toBeUndefined();
     });
   });
 
