@@ -12,8 +12,10 @@ import {
   verifyEmail,
   oauthSignIn,
   oauthLink,
+  getCurrentUser,
 } from '../controllers/auth.controller.js';
 import { requireVerifiedParticipant } from '../middleware/requireVerifiedParticipant.js';
+import { requireFirebaseAuth } from '../middleware/requireFirebaseAuth.js';
 
 export const authRouter = Router();
 
@@ -55,6 +57,12 @@ authRouter.post(
   validateOAuthLinkPayload,
   oauthLink
 );
+
+/**
+ * Returns the signed-in user's identity after verifying the Firebase ID token,
+ * including revocation and disabled-account checks (US-003 AC 4 / AC 5).
+ */
+authRouter.get('/me', requireFirebaseAuth, getCurrentUser);
 
 
 

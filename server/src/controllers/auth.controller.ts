@@ -744,5 +744,37 @@ export async function oauthLink(
   }
 }
 
+/**
+ * Returns the identity behind a verified Firebase ID token (GET /api/auth/me, US-003 AC 4).
+ * Must be mounted after `requireFirebaseAuth`. Never echoes the token itself.
+ */
+export function getCurrentUser(req: Request, res: Response): void {
+  const decoded = req.firebaseUser;
+  if (!decoded) {
+    res.status(401).json({
+      error: 'Authentication required. Missing or malformed Authorization header.',
+      code: 'UNAUTHORIZED',
+    });
+    return;
+  }
+
+  const role = typeof decoded.role === 'string' ? decoded.role : null;
+
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({
+    user: {
+      uid: decoded.uid,
+      email: decoded.email ?? null,
+      emailVerified: decoded.email_verified === true,
+      role,
+      signInProvider: decoded.firebase?.sign_in_provider ?? null,
+    },
+    session: {
+      authTime: new Date(decoded.auth_time * 1000).toISOString(),
+      expiresAt: new Date(decoded.exp * 1000).toISOString(),
+    },
+  });
+}
+
 
 
