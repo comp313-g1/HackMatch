@@ -541,4 +541,208 @@ export async function oauthSignIn(
   }
 }
 
+export const REAUTH_MAX_AGE_SECONDS = 900; // 15 minutes window for reauthentication
+
+/**
+ * Handles account linking with reauthentication check (POST /api/auth/oauth/link).
+ * Enforces US-002 AC 4, US-002-T5, S1-P2-04, and FR-003:
+ * 1. Checks that caller is an authenticated, verified participant and not an ADMIN.
+ * 2. Enforces fresh reauthentication within 15 minutes (with clock-skew defense).
+ * 3. Verifies provider Firebase ID token, provider match, and verified provider email.
+ * 4. Strictly checks email equality between provider token and caller participant.
+ * 5. Rejects if provider UID or provider identity is already linked to another participant or already exists.
+ * 6. Persists new provider identity link idempotently.
+ */
+export async function oauthLink(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const participant = req.participant;
+  const firebaseUser = req.firebaseUser;
+  const { idToken, provider, consentHandleAvatar } = req.body;
+
+  try {
+    // 1. Guard authenticated participant context and role boundaries (US-002 AC 4 / FR-003)
+    if (!participant || !firebaseUser) {
+      res.status(401).json({
+        error: 'Authentication required. Missing participant session.',
+        code: 'UNAUTHORIZED',
+      });
+      return;
+    }
+
+    if (participant.role === 'ADMIN' || firebaseUser.role === 'ADMIN') {
+      res.status(403).json({
+        error: 'Public OAuth cannot be used to link an administrator account.',
+        code: 'ADMIN_OAUTH_PROHIBITED',
+      });
+      return;
+    }
+
+    // 2. Fresh reauthentication check with clock-skew defense (US-002 AC 4)
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const authTime = typeof firebaseUser.auth_time === 'number' ? firebaseUser.auth_time : 0;
+
+    // Reject missing auth_time, future-skewed tokens beyond 30s, or tokens older than 15m
+    if (authTime === 0 || authTime > nowSeconds + 30 || nowSeconds - authTime > REAUTH_MAX_AGE_SECONDS) {
+      res.status(401).json({
+        error: 'Recent reauthentication is required to link an external provider. Please sign in again.',
+        code: 'REAUTHENTICATION_REQUIRED',
+      });
+      return;
+    }
+
+    // 3. Verify provider Firebase ID token
+    let decodedProviderToken;
+    try {
+      decodedProviderToken = await firebaseAuth.verifyIdToken(idToken);
+    } catch {
+      res.status(401).json({
+        error: 'Invalid or expired provider token. Please try again.',
+        code: 'INVALID_TOKEN',
+      });
+      return;
+    }
+
+    // 4. Validate provider match
+    const tokenProvider = decodedProviderToken?.firebase?.sign_in_provider || '';
+    const isGoogle = (provider === 'google' || provider === 'google.com') && tokenProvider === 'google.com';
+    const isGithub = (provider === 'github' || provider === 'github.com') && tokenProvider === 'github.com';
+
+    if (!isGoogle && !isGithub) {
+      res.status(400).json({
+        error: 'Provider in request does not match the authentication credential.',
+        code: 'PROVIDER_MISMATCH',
+      });
+      return;
+    }
+
+    // 5. Provider email verification check (US-002 AC 2)
+    if (!decodedProviderToken.email || !decodedProviderToken.email_verified) {
+      res.status(403).json({
+        error: 'A verified provider email is required to link this account.',
+        code: 'UNVERIFIED_PROVIDER_EMAIL',
+      });
+      return;
+    }
+
+    // 6. ADMIN role check on provider token
+    if (decodedProviderToken.role === 'ADMIN') {
+      res.status(403).json({
+        error: 'Public OAuth cannot be used to link an administrator account.',
+        code: 'ADMIN_OAUTH_PROHIBITED',
+      });
+      return;
+    }
+
+    // 7. Ownership boundary: provider email must match participant email (normalized)
+    if (decodedProviderToken.email.trim().toLowerCase() !== participant.email.trim().toLowerCase()) {
+      res.status(409).json({
+        error: 'Provider email does not match your registered account email.',
+        code: 'EMAIL_MISMATCH',
+      });
+      return;
+    }
+
+    // 8. Conflict & Uniqueness checks across provider aliases
+    const normProvider: OAuthProvider = provider.startsWith('google') ? 'google' : 'github';
+
+    // Check if this provider UID is already linked to anyone
+    let existingIdentity = await providerIdentitiesRepository.findByProviderUid(normProvider, decodedProviderToken.uid);
+    if (!existingIdentity) {
+      const altProvider: OAuthProvider = normProvider === 'google' ? 'google.com' : 'github.com';
+      existingIdentity = await providerIdentitiesRepository.findByProviderUid(altProvider, decodedProviderToken.uid);
+    }
+
+    if (existingIdentity) {
+      if (existingIdentity.participant_id === participant.id) {
+        // Idempotent: already linked to this participant
+        res.status(200).json({
+          success: true,
+          message: 'Provider is already linked to your account.',
+          identity: {
+            id: existingIdentity.id,
+            provider: existingIdentity.provider,
+            email: existingIdentity.email,
+            provider_handle: existingIdentity.provider_handle,
+          },
+        });
+        return;
+      }
+
+      // Linked to a different participant
+      res.status(409).json({
+        error: 'This provider account is already linked to another user.',
+        code: 'PROVIDER_ALREADY_LINKED',
+      });
+      return;
+    }
+
+    // Check if participant already has a different UID linked for this provider
+    const userIdentities = await providerIdentitiesRepository.findByParticipantId(participant.id);
+    const existingForProvider = userIdentities.find(
+      (id) => id.provider === normProvider || id.provider === `${normProvider}.com`
+    );
+    if (existingForProvider) {
+      res.status(409).json({
+        error: `A ${normProvider === 'google' ? 'Google' : 'GitHub'} account is already linked to this profile.`,
+        code: 'PROVIDER_ALREADY_EXISTS',
+      });
+      return;
+    }
+
+    // 9. Persist provider identity link with defensive Postgres unique violation handling
+    const rawClaims = decodedProviderToken as Record<string, unknown>;
+    const handle = consentHandleAvatar
+      ? (typeof rawClaims.screen_name === 'string'
+          ? rawClaims.screen_name
+          : typeof rawClaims.name === 'string'
+            ? rawClaims.name
+            : null)
+      : null;
+    const avatarUrl = consentHandleAvatar
+      ? (typeof rawClaims.picture === 'string' ? rawClaims.picture : null)
+      : null;
+
+    let createdIdentity;
+    try {
+      createdIdentity = await providerIdentitiesRepository.createProviderIdentity({
+        participant_id: participant.id,
+        provider: normProvider,
+        provider_uid: decodedProviderToken.uid,
+        email: decodedProviderToken.email.trim().toLowerCase(),
+        provider_handle: handle ? handle.slice(0, 100) : null,
+        avatar_url: avatarUrl,
+      });
+    } catch (dbErr: unknown) {
+      // Catch race condition: Postgres unique constraint violation (code 23505)
+      const isUniqueViolation =
+        dbErr && typeof dbErr === 'object' && 'code' in dbErr && (dbErr as { code: string }).code === '23505';
+      if (isUniqueViolation) {
+        res.status(409).json({
+          error: 'This provider account is already linked to another user.',
+          code: 'PROVIDER_ALREADY_LINKED',
+        });
+        return;
+      }
+      throw dbErr;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Provider successfully linked to your account.',
+      identity: {
+        id: createdIdentity.id,
+        provider: createdIdentity.provider,
+        email: createdIdentity.email,
+        provider_handle: createdIdentity.provider_handle,
+      },
+    });
+  } catch (err: unknown) {
+    next(err);
+  }
+}
+
+
 

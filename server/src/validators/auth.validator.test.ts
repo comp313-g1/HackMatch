@@ -6,6 +6,7 @@ import {
   validateResendVerificationPayload,
   validateVerifyEmailPayload,
   validateOAuthSignInPayload,
+  validateOAuthLinkPayload,
   ALLOWED_OAUTH_PROVIDERS,
   PRIVILEGE_ESCALATION_KEYS,
 } from './auth.validator.js';
@@ -779,5 +780,207 @@ describe('auth.validator unit tests (US-001 AC 1 / T2 / AC 4 / T6)', () => {
       }
     });
   });
+
+  describe('validateOAuthLinkPayload (US-002 AC 4 / S1-P2-04)', () => {
+    it('rejects with 400 when body is null, undefined, or non-object', () => {
+      for (const invalidBody of [null, undefined, 'string', 123, []]) {
+        const req = { body: invalidBody } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateOAuthLinkPayload(req, res as unknown as Response, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({
+          error: 'Validation failed',
+          errors: {
+            idToken: 'Firebase ID token is required.',
+            provider: 'Provider is required.',
+          },
+        });
+      }
+    });
+
+    it('rejects with 400 when idToken is missing, empty, or whitespace', () => {
+      for (const token of [undefined, '', '   ']) {
+        const req = {
+          body: {
+            idToken: token,
+            provider: 'google',
+          },
+        } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateOAuthLinkPayload(req, res as unknown as Response, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({
+          error: 'Validation failed',
+          errors: {
+            idToken: 'Firebase ID token is required.',
+          },
+        });
+      }
+    });
+
+    it('rejects with 400 when idToken is a non-string type (number, boolean, object)', () => {
+      for (const token of [12345, true, {}, []]) {
+        const req = {
+          body: {
+            idToken: token,
+            provider: 'google',
+          },
+        } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateOAuthLinkPayload(req, res as unknown as Response, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({
+          error: 'Validation failed',
+          errors: {
+            idToken: 'Firebase ID token is required.',
+          },
+        });
+      }
+    });
+
+    it('rejects with 400 when provider is missing, empty, or unsupported', () => {
+      for (const provider of [undefined, '', '   ', 'apple', 'facebook', 'twitter', 'github.com.evil.com']) {
+        const req = {
+          body: {
+            idToken: 'valid-id-token',
+            provider,
+          },
+        } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateOAuthLinkPayload(req, res as unknown as Response, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({
+          error: 'Validation failed',
+          errors: {
+            provider: "Provider must be 'google' or 'github'.",
+          },
+        });
+      }
+    });
+
+    it('rejects with 400 and returns both field errors when both idToken and provider are invalid', () => {
+      const req = {
+        body: {
+          idToken: '',
+          provider: 'unsupported-provider',
+        },
+      } as unknown as Request;
+      const res = createMockResponse();
+      const next = vi.fn() as unknown as NextFunction;
+
+      validateOAuthLinkPayload(req, res as unknown as Response, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({
+        error: 'Validation failed',
+        errors: {
+          idToken: 'Firebase ID token is required.',
+          provider: "Provider must be 'google' or 'github'.",
+        },
+      });
+    });
+
+    it('accepts and normalizes valid Google provider aliases and calls next()', () => {
+      const googleAliases = ['google', 'google.com', '  google  ', 'GOOGLE', 'Google.Com'];
+      for (const provider of googleAliases) {
+        const req = {
+          body: {
+            idToken: '  valid-google-id-token  ',
+            provider,
+            consentHandleAvatar: true,
+          },
+        } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateOAuthLinkPayload(req, res as unknown as Response, next);
+
+        expect(next).toHaveBeenCalled();
+        expect(res.statusCode).toBe(200);
+        expect(req.body).toEqual({
+          idToken: 'valid-google-id-token',
+          provider: provider.trim().toLowerCase(),
+          consentHandleAvatar: true,
+        });
+      }
+    });
+
+    it('accepts and normalizes valid GitHub provider aliases and calls next()', () => {
+      const githubAliases = ['github', 'github.com', '  github  ', 'GITHUB', 'GitHub.Com'];
+      for (const provider of githubAliases) {
+        const req = {
+          body: {
+            idToken: 'valid-github-token',
+            provider,
+          },
+        } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateOAuthLinkPayload(req, res as unknown as Response, next);
+
+        expect(next).toHaveBeenCalled();
+        expect(res.statusCode).toBe(200);
+        expect(req.body).toEqual({
+          idToken: 'valid-github-token',
+          provider: provider.trim().toLowerCase(),
+          consentHandleAvatar: false,
+        });
+      }
+    });
+
+    it('defaults consentHandleAvatar to false when omitted or falsy', () => {
+      const req = {
+        body: {
+          idToken: 'valid-token',
+          provider: 'google',
+        },
+      } as unknown as Request;
+      const res = createMockResponse();
+      const next = vi.fn() as unknown as NextFunction;
+
+      validateOAuthLinkPayload(req, res as unknown as Response, next);
+
+      expect(next).toHaveBeenCalled();
+      expect(req.body.consentHandleAvatar).toBe(false);
+    });
+
+    it('evaluates consentHandleAvatar to false when passed non-boolean truthy/falsy values', () => {
+      for (const nonBoolean of ['true', 'false', '0', 1, 0, null, {}, []]) {
+        const req = {
+          body: {
+            idToken: 'valid-token',
+            provider: 'google',
+            consentHandleAvatar: nonBoolean,
+          },
+        } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateOAuthLinkPayload(req, res as unknown as Response, next);
+
+        expect(next).toHaveBeenCalled();
+        expect(req.body.consentHandleAvatar).toBe(false);
+      }
+    });
+  });
 });
+
 

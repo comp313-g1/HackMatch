@@ -4,13 +4,16 @@ import {
   validateResendVerificationPayload,
   validateVerifyEmailPayload,
   validateOAuthSignInPayload,
+  validateOAuthLinkPayload,
 } from '../validators/auth.validator.js';
 import {
   register,
   resendVerification,
   verifyEmail,
   oauthSignIn,
+  oauthLink,
 } from '../controllers/auth.controller.js';
+import { requireVerifiedParticipant } from '../middleware/requireVerifiedParticipant.js';
 
 export const authRouter = Router();
 
@@ -40,5 +43,18 @@ authRouter.post('/verify-email', validateVerifyEmailPayload, verifyEmail);
  * Strictly issues zero cookies or session tokens (FR-007 / US-002 AC 5).
  */
 authRouter.post('/oauth/sign-in', validateOAuthSignInPayload, oauthSignIn);
+
+/**
+ * Authenticated provider linking endpoint (US-002 AC 4 / S1-P2-04 / FR-003).
+ * Requires verified participant session and recent reauthentication.
+ * Links external Google/GitHub OAuth identity to existing participant profile.
+ */
+authRouter.post(
+  '/oauth/link',
+  requireVerifiedParticipant,
+  validateOAuthLinkPayload,
+  oauthLink
+);
+
 
 

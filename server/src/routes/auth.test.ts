@@ -2023,6 +2023,556 @@ describe('Auth Routes (POST /api/auth/oauth/sign-in)', () => {
       expect(mockVerifyIdToken).not.toHaveBeenCalled();
     });
   });
+
+  describe('Auth Routes (POST /api/auth/oauth/link) - US-002 AC 4 / S1-P2-04', () => {
+    const verifiedParticipant: Participant = {
+      id: 'part-link-1111',
+      firebase_uid: 'fb-participant-uid',
+      email: 'alex@example.com',
+      full_name: 'Alex Participant',
+      role: 'PART',
+      is_verified: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const adminParticipant: Participant = {
+      id: 'admin-link-9999',
+      firebase_uid: 'fb-admin-uid',
+      email: 'admin@example.com',
+      full_name: 'Admin User',
+      role: 'ADMIN',
+      is_verified: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('rejects with HTTP 401 UNAUTHORIZED when Authorization Bearer header is missing', async () => {
+      const res = await request(app)
+        .post('/api/auth/oauth/link')
+        .send({ idToken: 'some-token', provider: 'google' });
+
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe('UNAUTHORIZED');
+      expect(mockVerifyIdToken).not.toHaveBeenCalled();
+    });
+
+    it('rejects with HTTP 403 EMAIL_NOT_VERIFIED when caller participant is unverified in DB', async () => {
+      const unverified: Participant = {
+        ...verifiedParticipant,
+        id: 'unverified-part-222',
+        is_verified: false,
+      };
+      mockVerifyIdToken.mockResolvedValueOnce({
+        uid: unverified.firebase_uid,
+        auth_time: Math.floor(Date.now() / 1000) - 60,
+      });
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValueOnce(unverified);
+
+      const res = await request(app)
+        .post('/api/auth/oauth/link')
+        .set('Authorization', 'Bearer valid-user-token')
+        .send({ idToken: 'some-token', provider: 'google' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('EMAIL_NOT_VERIFIED');
+    });
+
+    it('rejects with HTTP 403 ADMIN_OAUTH_PROHIBITED when caller participant is an ADMIN', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce({
+        uid: adminParticipant.firebase_uid,
+        auth_time: Math.floor(Date.now() / 1000) - 60,
+        role: 'ADMIN',
+      });
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValueOnce(adminParticipant);
+
+      const res = await request(app)
+        .post('/api/auth/oauth/link')
+        .set('Authorization', 'Bearer admin-token')
+        .send({ idToken: 'provider-token', provider: 'google' });
+
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual({
+        error: 'Public OAuth cannot be used to link an administrator account.',
+        code: 'ADMIN_OAUTH_PROHIBITED',
+      });
+    });
+
+    it('rejects with HTTP 401 REAUTHENTICATION_REQUIRED when auth_time is older than 15 minutes', async () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      mockVerifyIdToken.mockResolvedValueOnce({
+        uid: verifiedParticipant.firebase_uid,
+        auth_time: nowSeconds - 1000, // 16.6 minutes ago (> 900s)
+      });
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValueOnce(verifiedParticipant);
+
+      const res = await request(app)
+        .post('/api/auth/oauth/link')
+        .set('Authorization', 'Bearer stale-auth-token')
+        .send({ idToken: 'valid-google-token', provider: 'google' });
+
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual({
+        error: 'Recent reauthentication is required to link an external provider. Please sign in again.',
+        code: 'REAUTHENTICATION_REQUIRED',
+      });
+    });
+
+    it('rejects with HTTP 401 REAUTHENTICATION_REQUIRED when auth_time is in the distant future (> 30s clock-skew)', async () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      mockVerifyIdToken.mockResolvedValueOnce({
+        uid: verifiedParticipant.firebase_uid,
+        auth_time: nowSeconds + 60, // 60s in the future (> 30s skew tolerance)
+      });
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValueOnce(verifiedParticipant);
+
+      const res = await request(app)
+        .post('/api/auth/oauth/link')
+        .set('Authorization', 'Bearer future-skew-token')
+        .send({ idToken: 'valid-google-token', provider: 'google' });
+
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual({
+        error: 'Recent reauthentication is required to link an external provider. Please sign in again.',
+        code: 'REAUTHENTICATION_REQUIRED',
+      });
+    });
+
+    it('rejects with HTTP 401 REAUTHENTICATION_REQUIRED when auth_time claim is missing or 0', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce({
+        uid: verifiedParticipant.firebase_uid,
+      });
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValueOnce(verifiedParticipant);
+
+      const res = await request(app)
+        .post('/api/auth/oauth/link')
+        .set('Authorization', 'Bearer missing-auth-time-token')
+        .send({ idToken: 'valid-google-token', provider: 'google' });
+
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual({
+        error: 'Recent reauthentication is required to link an external provider. Please sign in again.',
+        code: 'REAUTHENTICATION_REQUIRED',
+      });
+    });
+
+    it('rejects with HTTP 401 INVALID_TOKEN when provider idToken is invalid or expired', async () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      mockVerifyIdToken
+        .mockResolvedValueOnce({
+          uid: verifiedParticipant.firebase_uid,
+          auth_time: nowSeconds - 60,
+        })
+        .mockRejectedValueOnce(new Error('Firebase ID token has expired.'));
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValueOnce(verifiedParticipant);
+
+      const res = await request(app)
+        .post('/api/auth/oauth/link')
+        .set('Authorization', 'Bearer fresh-user-token')
+        .send({ idToken: 'expired-provider-token', provider: 'google' });
+
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual({
+        error: 'Invalid or expired provider token. Please try again.',
+        code: 'INVALID_TOKEN',
+      });
+    });
+
+    it('rejects with HTTP 400 PROVIDER_MISMATCH when provider does not match sign_in_provider', async () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      mockVerifyIdToken
+        .mockResolvedValueOnce({
+          uid: verifiedParticipant.firebase_uid,
+          auth_time: nowSeconds - 60,
+        })
+        .mockResolvedValueOnce({
+          uid: 'google-uid-123',
+          email: 'alex@example.com',
+          email_verified: true,
+          firebase: { sign_in_provider: 'google.com' },
+        });
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValueOnce(verifiedParticipant);
+
+      const res = await request(app)
+        .post('/api/auth/oauth/link')
+        .set('Authorization', 'Bearer fresh-user-token')
+        .send({ idToken: 'provider-token', provider: 'github' });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({
+        error: 'Provider in request does not match the authentication credential.',
+        code: 'PROVIDER_MISMATCH',
+      });
+    });
+
+    it('rejects with HTTP 403 UNVERIFIED_PROVIDER_EMAIL when provider email is unverified', async () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      mockVerifyIdToken
+        .mockResolvedValueOnce({
+          uid: verifiedParticipant.firebase_uid,
+          auth_time: nowSeconds - 60,
+        })
+        .mockResolvedValueOnce({
+          uid: 'github-uid-123',
+          email: 'alex@example.com',
+          email_verified: false,
+          firebase: { sign_in_provider: 'github.com' },
+        });
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValueOnce(verifiedParticipant);
+
+      const res = await request(app)
+        .post('/api/auth/oauth/link')
+        .set('Authorization', 'Bearer fresh-user-token')
+        .send({ idToken: 'provider-token', provider: 'github' });
+
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual({
+        error: 'A verified provider email is required to link this account.',
+        code: 'UNVERIFIED_PROVIDER_EMAIL',
+      });
+    });
+
+    it('rejects with HTTP 403 ADMIN_OAUTH_PROHIBITED when provider token has ADMIN role claim', async () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      mockVerifyIdToken
+        .mockResolvedValueOnce({
+          uid: verifiedParticipant.firebase_uid,
+          auth_time: nowSeconds - 60,
+        })
+        .mockResolvedValueOnce({
+          uid: 'google-uid-admin',
+          email: 'alex@example.com',
+          email_verified: true,
+          role: 'ADMIN',
+          firebase: { sign_in_provider: 'google.com' },
+        });
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValueOnce(verifiedParticipant);
+
+      const res = await request(app)
+        .post('/api/auth/oauth/link')
+        .set('Authorization', 'Bearer fresh-user-token')
+        .send({ idToken: 'admin-google-token', provider: 'google' });
+
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual({
+        error: 'Public OAuth cannot be used to link an administrator account.',
+        code: 'ADMIN_OAUTH_PROHIBITED',
+      });
+    });
+
+    it('rejects with HTTP 409 EMAIL_MISMATCH when provider email does not match participant email', async () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      mockVerifyIdToken
+        .mockResolvedValueOnce({
+          uid: verifiedParticipant.firebase_uid,
+          auth_time: nowSeconds - 60,
+        })
+        .mockResolvedValueOnce({
+          uid: 'google-uid-diff',
+          email: 'different.person@example.com',
+          email_verified: true,
+          firebase: { sign_in_provider: 'google.com' },
+        });
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValueOnce(verifiedParticipant);
+
+      const res = await request(app)
+        .post('/api/auth/oauth/link')
+        .set('Authorization', 'Bearer fresh-user-token')
+        .send({ idToken: 'provider-token', provider: 'google' });
+
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({
+        error: 'Provider email does not match your registered account email.',
+        code: 'EMAIL_MISMATCH',
+      });
+    });
+
+    it('rejects with HTTP 409 PROVIDER_ALREADY_LINKED when provider UID is already linked to another participant', async () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      mockVerifyIdToken
+        .mockResolvedValueOnce({
+          uid: verifiedParticipant.firebase_uid,
+          auth_time: nowSeconds - 60,
+        })
+        .mockResolvedValueOnce({
+          uid: 'google-uid-taken',
+          email: 'alex@example.com',
+          email_verified: true,
+          firebase: { sign_in_provider: 'google.com' },
+        });
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValueOnce(verifiedParticipant);
+      vi.spyOn(providerIdentitiesRepository, 'findByProviderUid').mockResolvedValueOnce({
+        id: 'identity-other',
+        participant_id: 'other-participant-uuid-777',
+        provider: 'google',
+        provider_uid: 'google-uid-taken',
+        email: 'alex@example.com',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const res = await request(app)
+        .post('/api/auth/oauth/link')
+        .set('Authorization', 'Bearer fresh-user-token')
+        .send({ idToken: 'provider-token', provider: 'google' });
+
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({
+        error: 'This provider account is already linked to another user.',
+        code: 'PROVIDER_ALREADY_LINKED',
+      });
+    });
+
+    it('returns HTTP 200 idempotently when provider is already linked to the caller participant', async () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      mockVerifyIdToken
+        .mockResolvedValueOnce({
+          uid: verifiedParticipant.firebase_uid,
+          auth_time: nowSeconds - 60,
+        })
+        .mockResolvedValueOnce({
+          uid: 'google-uid-mine',
+          email: 'alex@example.com',
+          email_verified: true,
+          firebase: { sign_in_provider: 'google.com' },
+        });
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValueOnce(verifiedParticipant);
+      vi.spyOn(providerIdentitiesRepository, 'findByProviderUid').mockResolvedValueOnce({
+        id: 'identity-existing-mine',
+        participant_id: verifiedParticipant.id,
+        provider: 'google',
+        provider_uid: 'google-uid-mine',
+        email: 'alex@example.com',
+        provider_handle: 'alexgh',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const res = await request(app)
+        .post('/api/auth/oauth/link')
+        .set('Authorization', 'Bearer fresh-user-token')
+        .send({ idToken: 'provider-token', provider: 'google' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        success: true,
+        message: 'Provider is already linked to your account.',
+        identity: {
+          id: 'identity-existing-mine',
+          provider: 'google',
+          email: 'alex@example.com',
+          provider_handle: 'alexgh',
+        },
+      });
+    });
+
+    it('rejects with HTTP 409 PROVIDER_ALREADY_EXISTS when participant already has a different UID linked for this provider', async () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      mockVerifyIdToken
+        .mockResolvedValueOnce({
+          uid: verifiedParticipant.firebase_uid,
+          auth_time: nowSeconds - 60,
+        })
+        .mockResolvedValueOnce({
+          uid: 'google-uid-second',
+          email: 'alex@example.com',
+          email_verified: true,
+          firebase: { sign_in_provider: 'google.com' },
+        });
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValueOnce(verifiedParticipant);
+      vi.spyOn(providerIdentitiesRepository, 'findByProviderUid')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+      vi.spyOn(providerIdentitiesRepository, 'findByParticipantId').mockResolvedValueOnce([
+        {
+          id: 'identity-google-first',
+          participant_id: verifiedParticipant.id,
+          provider: 'google',
+          provider_uid: 'google-uid-first',
+          email: 'alex@example.com',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ]);
+
+      const res = await request(app)
+        .post('/api/auth/oauth/link')
+        .set('Authorization', 'Bearer fresh-user-token')
+        .send({ idToken: 'provider-token', provider: 'google' });
+
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({
+        error: 'A Google account is already linked to this profile.',
+        code: 'PROVIDER_ALREADY_EXISTS',
+      });
+    });
+
+    it('successfully links provider and returns HTTP 200 with consentHandleAvatar applied', async () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      mockVerifyIdToken
+        .mockResolvedValueOnce({
+          uid: verifiedParticipant.firebase_uid,
+          auth_time: nowSeconds - 120, // 2 minutes ago (fresh)
+        })
+        .mockResolvedValueOnce({
+          uid: 'github-uid-new',
+          email: 'alex@example.com',
+          email_verified: true,
+          screen_name: 'alex-gh',
+          picture: 'https://avatars.githubusercontent.com/u/12345',
+          firebase: { sign_in_provider: 'github.com' },
+        });
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValueOnce(verifiedParticipant);
+      vi.spyOn(providerIdentitiesRepository, 'findByProviderUid')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+      vi.spyOn(providerIdentitiesRepository, 'findByParticipantId').mockResolvedValueOnce([]);
+
+      const mockCreatedIdentity: ProviderIdentity = {
+        id: 'new-identity-uuid',
+        participant_id: verifiedParticipant.id,
+        provider: 'github',
+        provider_uid: 'github-uid-new',
+        email: 'alex@example.com',
+        provider_handle: 'alex-gh',
+        avatar_url: 'https://avatars.githubusercontent.com/u/12345',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      const createSpy = vi
+        .spyOn(providerIdentitiesRepository, 'createProviderIdentity')
+        .mockResolvedValueOnce(mockCreatedIdentity);
+
+      const res = await request(app)
+        .post('/api/auth/oauth/link')
+        .set('Authorization', 'Bearer fresh-user-token')
+        .send({
+          idToken: 'valid-github-token',
+          provider: 'github',
+          consentHandleAvatar: true,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        success: true,
+        message: 'Provider successfully linked to your account.',
+        identity: {
+          id: 'new-identity-uuid',
+          provider: 'github',
+          email: 'alex@example.com',
+          provider_handle: 'alex-gh',
+        },
+      });
+      expect(createSpy).toHaveBeenCalledWith({
+        participant_id: verifiedParticipant.id,
+        provider: 'github',
+        provider_uid: 'github-uid-new',
+        email: 'alex@example.com',
+        provider_handle: 'alex-gh',
+        avatar_url: 'https://avatars.githubusercontent.com/u/12345',
+      });
+    });
+
+    it('omits avatar and handle when consentHandleAvatar is false', async () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      mockVerifyIdToken
+        .mockResolvedValueOnce({
+          uid: verifiedParticipant.firebase_uid,
+          auth_time: nowSeconds - 30,
+        })
+        .mockResolvedValueOnce({
+          uid: 'google-uid-new',
+          email: 'alex@example.com',
+          email_verified: true,
+          name: 'Alex Profile',
+          picture: 'https://lh3.googleusercontent.com/a/photo',
+          firebase: { sign_in_provider: 'google.com' },
+        });
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValueOnce(verifiedParticipant);
+      vi.spyOn(providerIdentitiesRepository, 'findByProviderUid')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+      vi.spyOn(providerIdentitiesRepository, 'findByParticipantId').mockResolvedValueOnce([]);
+
+      const mockCreatedIdentity: ProviderIdentity = {
+        id: 'new-google-identity',
+        participant_id: verifiedParticipant.id,
+        provider: 'google',
+        provider_uid: 'google-uid-new',
+        email: 'alex@example.com',
+        provider_handle: null,
+        avatar_url: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      const createSpy = vi
+        .spyOn(providerIdentitiesRepository, 'createProviderIdentity')
+        .mockResolvedValueOnce(mockCreatedIdentity);
+
+      const res = await request(app)
+        .post('/api/auth/oauth/link')
+        .set('Authorization', 'Bearer fresh-user-token')
+        .send({
+          idToken: 'valid-google-token',
+          provider: 'google',
+          consentHandleAvatar: false,
+        });
+
+      expect(res.status).toBe(200);
+      expect(createSpy).toHaveBeenCalledWith({
+        participant_id: verifiedParticipant.id,
+        provider: 'google',
+        provider_uid: 'google-uid-new',
+        email: 'alex@example.com',
+        provider_handle: null,
+        avatar_url: null,
+      });
+    });
+
+    it('handles Postgres unique constraint violation (code 23505) race condition as HTTP 409 PROVIDER_ALREADY_LINKED', async () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      mockVerifyIdToken
+        .mockResolvedValueOnce({
+          uid: verifiedParticipant.firebase_uid,
+          auth_time: nowSeconds - 30,
+        })
+        .mockResolvedValueOnce({
+          uid: 'google-uid-race',
+          email: 'alex@example.com',
+          email_verified: true,
+          firebase: { sign_in_provider: 'google.com' },
+        });
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValueOnce(verifiedParticipant);
+      vi.spyOn(providerIdentitiesRepository, 'findByProviderUid')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+      vi.spyOn(providerIdentitiesRepository, 'findByParticipantId').mockResolvedValueOnce([]);
+
+      const pgUniqueError = Object.assign(new Error('duplicate key value violates unique constraint'), {
+        code: '23505',
+      });
+      vi.spyOn(providerIdentitiesRepository, 'createProviderIdentity').mockRejectedValueOnce(pgUniqueError);
+
+      const res = await request(app)
+        .post('/api/auth/oauth/link')
+        .set('Authorization', 'Bearer fresh-user-token')
+        .send({
+          idToken: 'valid-google-token',
+          provider: 'google',
+        });
+
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({
+        error: 'This provider account is already linked to another user.',
+        code: 'PROVIDER_ALREADY_LINKED',
+      });
+    });
+  });
 });
+
 
 

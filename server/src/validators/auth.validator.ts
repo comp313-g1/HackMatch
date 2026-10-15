@@ -289,3 +289,62 @@ export function validateOAuthSignInPayload(
   next();
 }
 
+export interface OAuthLinkFieldErrors {
+  idToken?: string;
+  provider?: string;
+}
+
+/**
+ * Express middleware validating payload for POST /api/auth/oauth/link (US-002 AC 4 / S1-P2-04).
+ * Enforces presence of non-empty provider idToken and valid provider name ('google' or 'github').
+ */
+export function validateOAuthLinkPayload(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    res.status(400).json({
+      error: 'Validation failed',
+      errors: {
+        idToken: 'Firebase ID token is required.',
+        provider: 'Provider is required.',
+      },
+    });
+    return;
+  }
+
+  const fieldErrors: OAuthLinkFieldErrors = {};
+
+  const rawToken = body.idToken;
+  if (typeof rawToken !== 'string' || rawToken.trim().length === 0) {
+    fieldErrors.idToken = 'Firebase ID token is required.';
+  }
+
+  const rawProvider = body.provider;
+  if (
+    typeof rawProvider !== 'string' ||
+    !ALLOWED_OAUTH_PROVIDERS.includes(rawProvider.trim().toLowerCase() as AllowedOAuthProvider)
+  ) {
+    fieldErrors.provider = "Provider must be 'google' or 'github'.";
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    res.status(400).json({
+      error: 'Validation failed',
+      errors: fieldErrors,
+    });
+    return;
+  }
+
+  req.body = {
+    idToken: (rawToken as string).trim(),
+    provider: (rawProvider as string).trim().toLowerCase(),
+    consentHandleAvatar: body.consentHandleAvatar === true,
+  };
+
+  next();
+}
+
+

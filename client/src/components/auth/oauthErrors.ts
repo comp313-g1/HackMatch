@@ -19,6 +19,10 @@ export type OAuthServerCode =
   | 'UNVERIFIED_PROVIDER_EMAIL'
   | 'ADMIN_OAUTH_PROHIBITED'
   | 'LINKING_REAUTHENTICATION_REQUIRED'
+  | 'REAUTHENTICATION_REQUIRED'
+  | 'EMAIL_MISMATCH'
+  | 'PROVIDER_ALREADY_LINKED'
+  | 'PROVIDER_ALREADY_EXISTS'
   | 'ACCOUNT_LOCKED'
   | 'RATE_LIMITED'
   | 'EMAIL_DELIVERY_FAILED';
@@ -48,6 +52,14 @@ export function translateOAuthServerError(code?: string, retryAfter?: number): s
       return 'Public sign-in cannot be used for administrator accounts.';
     case 'LINKING_REAUTHENTICATION_REQUIRED':
       return 'This email is already registered. Please sign in with your password, then link this provider.';
+    case 'REAUTHENTICATION_REQUIRED':
+      return 'Recent reauthentication is required to link an external provider. Please sign in again.';
+    case 'EMAIL_MISMATCH':
+      return 'The provider account email does not match your registered account email.';
+    case 'PROVIDER_ALREADY_LINKED':
+      return 'This provider account is already linked to another user.';
+    case 'PROVIDER_ALREADY_EXISTS':
+      return 'An account of this provider type is already linked to your profile.';
     case 'ACCOUNT_LOCKED': {
       const minutes = Math.max(1, Math.ceil((retryAfter ?? 0) / 60));
       return `Your account is temporarily locked after too many failed attempts. Please try again in about ${minutes} minute${
