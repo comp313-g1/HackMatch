@@ -10,6 +10,10 @@ vi.mock('firebase/auth', async (importOriginal) => {
     ...actual,
     applyActionCode: vi.fn(),
     checkActionCode: vi.fn(),
+    onAuthStateChanged: vi.fn((_auth: unknown, cb: (user: null) => void) => {
+      cb(null);
+      return () => {};
+    }),
   };
 });
 
@@ -133,6 +137,18 @@ describe('App Component (View Routing and Integration)', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: /create account/i }));
     expect(screen.getByRole('heading', { level: 2, name: /create an account/i })).toBeInTheDocument();
+  });
+
+  it('does not show the account area to a signed-out visitor and links back to sign in', async () => {
+    window.history.pushState({}, '', '/?view=account');
+
+    render(<App />);
+
+    expect(await screen.findByText(/you are not signed in/i)).toBeInTheDocument();
+    expect(screen.queryByText(/you are signed in/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /go to sign in/i }));
+    expect(screen.getByRole('tab', { name: /sign in/i })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('opens the sign-in form directly when ?view=login is in the URL', () => {

@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { RegistrationForm } from './components/auth/RegistrationForm';
 import { EmailVerificationView } from './components/auth/EmailVerificationView';
 import { LoginForm } from './components/auth/LoginForm';
+import { MfaGate } from './components/auth/MfaGate';
 
-type View = 'register' | 'login' | 'verify';
+type View = 'register' | 'login' | 'verify' | 'account';
 
 const getInitialView = (): View => {
   if (typeof window === 'undefined') return 'register';
@@ -15,6 +16,9 @@ const getInitialView = (): View => {
   }
   if (view === 'login') {
     return 'login';
+  }
+  if (view === 'account') {
+    return 'account';
   }
   return 'register';
 };
@@ -115,8 +119,29 @@ export function App(): React.JSX.Element {
           </div>
         )}
 
-        {/* View Routing: Registration vs. Email Verification */}
-        {currentView === 'verify' ? (
+        {/* View Routing: Registration vs. Email Verification vs. Signed-in Account */}
+        {currentView === 'account' ? (
+          <section aria-labelledby="account-heading" className="mt-8">
+            <h2 id="account-heading" className="sr-only">
+              Your Account
+            </h2>
+            <MfaGate
+              onNavigateToSignIn={() => {
+                setStatusNotice(null);
+                setCurrentView('login');
+              }}
+            >
+              {(user) => (
+                <div className="max-w-md w-full mx-auto p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">You are signed in</h3>
+                  <p className="text-sm text-gray-600">
+                    Welcome back{user.email ? `, ${user.email}` : ''}. Your session is fully verified.
+                  </p>
+                </div>
+              )}
+            </MfaGate>
+          </section>
+        ) : currentView === 'verify' ? (
           <section aria-labelledby="verification-heading" className="mt-8">
             <h2 id="verification-heading" className="sr-only">
               Account Verification
@@ -166,7 +191,13 @@ export function App(): React.JSX.Element {
             <h2 id="login-heading" className="sr-only">
               Sign In
             </h2>
-            <LoginForm onNavigateToRegister={() => setCurrentView('register')} />
+            <LoginForm
+              onNavigateToRegister={() => setCurrentView('register')}
+              onPrimaryAuthSuccess={() => {
+                setStatusNotice(null);
+                setCurrentView('account');
+              }}
+            />
           </section>
           ) : (
           <section aria-labelledby="registration-heading" className="mt-6">

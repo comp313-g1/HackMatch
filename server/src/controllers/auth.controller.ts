@@ -7,6 +7,7 @@ import { mfaRepository } from '../db/mfa.repository.js';
 import type { Participant, OAuthProvider } from '../db/types.js';
 import { generateOtp, createMfaChallenge, evaluateAccountLockout } from '../utils/otp.js';
 import { rateLimiter } from '../utils/rateLimiter.js';
+import { hasCompletedMfa } from '../utils/mfaClaim.js';
 
 export type MfaOtpEmailSender = (email: string, otp: string) => Promise<void>;
 
@@ -772,6 +773,7 @@ export function getCurrentUser(req: Request, res: Response): void {
     session: {
       authTime: new Date(decoded.auth_time * 1000).toISOString(),
       expiresAt: new Date(decoded.exp * 1000).toISOString(),
+      mfaVerified: hasCompletedMfa(decoded),
     },
   });
 }

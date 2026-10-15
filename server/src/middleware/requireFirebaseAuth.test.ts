@@ -167,6 +167,7 @@ describe('requireFirebaseAuth middleware (GET /api/auth/me)', () => {
         session: {
           authTime: new Date(AUTH_TIME * 1000).toISOString(),
           expiresAt: new Date((AUTH_TIME + 3600) * 1000).toISOString(),
+          mfaVerified: false,
         },
       });
     });

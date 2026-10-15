@@ -31,6 +31,7 @@ const token = (claims: Record<string, unknown> = {}) => ({
   uid: 'fb-uid-1',
   email: 'user@example.com',
   auth_time: 1_792_000_000,
+  mfa_auth_time: 1_792_000_000,
   iat: 1_792_000_000,
   exp: 1_792_003_600,
   firebase: { sign_in_provider: 'password', identities: {} },
