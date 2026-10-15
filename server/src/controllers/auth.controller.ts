@@ -8,6 +8,14 @@ import type { Participant, OAuthProvider } from '../db/types.js';
 import { generateOtp, createMfaChallenge, evaluateAccountLockout } from '../utils/otp.js';
 import { rateLimiter } from '../utils/rateLimiter.js';
 import { hasCompletedMfa } from '../utils/mfaClaim.js';
+import { securityConfig } from '../config/security.js';
+import { extractBearerToken, mapFirebaseAuthError } from '../middleware/requireFirebaseAuth.js';
+import {
+  sessionCookieOptions,
+  csrfCookieOptions,
+  generateCsrfToken,
+  clearSessionCookies,
+} from '../utils/sessionCookies.js';
 
 export type MfaOtpEmailSender = (email: string, otp: string) => Promise<void>;
 
@@ -780,3 +788,71 @@ export function getCurrentUser(req: Request, res: Response): void {
 
 
 
+
+/**
+ * Exchanges a fresh, MFA-verified Firebase ID token for an HttpOnly session cookie
+ * (POST /api/auth/session, US-003 AC 4). Must be mounted after `requireFirebaseAuth`
+ * and `requireMfa`. The cookie lasts a fixed SESSION_COOKIE_MAX_AGE_SECONDS (7 days by
+ * default) and is not extended by later requests.
+ */
+export async function createSession(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  const decoded = req.firebaseUser;
+  const idToken = extractBearerToken(req.headers.authorization);
+  if (!decoded || !idToken) {
+    res.status(401).json({
+      error: 'Authentication required. Missing or malformed Authorization header.',
+      code: 'UNAUTHORIZED',
+    });
+    return;
+  }
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const signInAge = nowSeconds - decoded.auth_time;
+  if (!Number.isFinite(signInAge) || signInAge < -60 || signInAge > securityConfig.recentSignInSeconds) {
+    res.status(401).json({
+      error: 'Please sign in again to start a new session.',
+      code: 'RECENT_SIGN_IN_REQUIRED',
+    });
+    return;
+  }
+
+  const maxAgeSeconds = securityConfig.sessionCookie.maxAgeSeconds;
+  try {
+    const sessionCookie = await firebaseAuth.createSessionCookie(idToken, {
+      expiresIn: maxAgeSeconds * 1000,
+    });
+    const csrfToken = generateCsrfToken();
+
+    res.cookie(securityConfig.sessionCookie.name, sessionCookie, sessionCookieOptions());
+    res.cookie(securityConfig.sessionCookie.csrfName, csrfToken, csrfCookieOptions());
+    res.status(200).json({
+      session: {
+        expiresAt: new Date((nowSeconds + maxAgeSeconds) * 1000).toISOString(),
+        maxAgeSeconds,
+      },
+      csrfToken,
+    });
+  } catch (err: unknown) {
+    const failure = mapFirebaseAuthError(err);
+    if (failure) {
+      res.status(failure.status).json({ error: failure.error, code: failure.code });
+      return;
+    }
+    next(err);
+  }
+}
+
+/**
+ * Clears the session and CSRF cookies (DELETE /api/auth/session). Mount after `requireCsrf`.
+ * Refresh-token revocation on logout is handled by the US-003 logout task.
+ */
+export function clearSession(_req: Request, res: Response): void {
+  res.setHeader('Cache-Control', 'no-store');
+  clearSessionCookies(res);
+  res.status(204).end();
+}
