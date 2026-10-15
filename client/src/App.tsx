@@ -138,6 +138,11 @@ export function App(): React.JSX.Element {
                 setStatusNotice(null);
                 setCurrentView('verify');
               }}
+              onRequiresOtp={(challenge) => {
+                setStatusNotice(
+                  `A 6-digit verification code has been sent to ${challenge.email}. (US-004 MFA)`
+                );
+              }}
             />
           </section>
         )}

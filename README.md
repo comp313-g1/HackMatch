@@ -94,14 +94,21 @@ The Markdown documentation provides the stabilized baseline for implementation p
 - **npm:** `10.x` or higher
 
 ### 2. Initial Setup
-Clone the repository and install dependencies across all monorepo workspaces:
+The client and server are independent npm projects, each with its own `package-lock.json` and `node_modules`. The root only holds git-hook tooling (husky, commitlint, lint-staged) and convenience scripts.
+
 ```bash
 # Clone the repository
 git clone <repo-url>
 cd Team-1-COMP313
 
-# Install dependencies (root, client, and server)
-npm install
+# Install root tooling, then client/node_modules and server/node_modules
+npm ci
+```
+
+To add a dependency, install it inside the app that uses it so its own lockfile is updated:
+```bash
+npm install <package> --prefix client      # or: cd client && npm install <package>
+npm install -D <package> --prefix server   # dev dependency for the server
 ```
 
 ### 3. Environment Configuration
@@ -122,16 +129,16 @@ Start both the client and server concurrently in development mode:
 npm run dev
 
 # Or run separately:
-npm run dev --workspace=client   # Runs Vite on http://localhost:5173
-npm run dev --workspace=server   # Runs Express API on http://localhost:3001
+npm run dev --prefix client   # Runs Vite on http://localhost:5173
+npm run dev --prefix server   # Runs Express API on http://localhost:3001
 ```
 
 ### 5. Running Quality Checks & Tests
 ```bash
-# Run ESLint across all workspaces
+# Run ESLint in client and server
 npm run lint
 
-# Run TypeScript typechecks across all workspaces
+# Run TypeScript typechecks in client and server
 npm run typecheck
 
 # Run test suites completely offline

@@ -4,15 +4,19 @@ import {
   assertNoPrivilegeEscalation,
   type ValidationErrors,
 } from './validation';
+import { ProviderSignInButtons } from './ProviderSignInButtons';
+import type { OtpChallenge } from './providerSignIn';
 
 export interface RegistrationFormProps {
   onSuccess?: (email: string) => void;
   onNavigateToVerification?: (email?: string) => void;
+  onRequiresOtp?: (challenge: OtpChallenge) => void;
 }
 
 export function RegistrationForm({
   onSuccess,
   onNavigateToVerification,
+  onRequiresOtp,
 }: RegistrationFormProps): React.JSX.Element {
   const [fullName, setFullName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
@@ -22,6 +26,41 @@ export function RegistrationForm({
   const [loading, setLoading] = useState<boolean>(false);
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
   const [registeredEmail, setRegisteredEmail] = useState<string>('');
+  const [diversionNotice, setDiversionNotice] = useState<string | null>(null);
+  const [oauthLoading, setOauthLoading] = useState<boolean>(false);
+
+  const handleUnverifiedEmail = (providerEmail: string | null) => {
+    if (providerEmail) {
+      setEmail(providerEmail);
+    }
+    setFieldErrors({});
+    setFormError(null);
+    setDiversionNotice(
+      'Your provider account email is unverified. Please create a password below to register and verify your email.'
+    );
+    setTimeout(() => {
+      const passwordInput = document.getElementById('password');
+      if (passwordInput) passwordInput.focus();
+    }, 0);
+  };
+
+  const handleEmptyEmail = () => {
+    setFieldErrors({});
+    setFormError(null);
+    setDiversionNotice(
+      'Your provider account did not share an email address. Please enter your email below to register.'
+    );
+    setTimeout(() => {
+      const emailInput = document.getElementById('email');
+      if (emailInput) emailInput.focus();
+    }, 0);
+  };
+
+  const handleRequiresOtp = (challenge: OtpChallenge) => {
+    if (onRequiresOtp) {
+      onRequiresOtp(challenge);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -122,6 +161,7 @@ export function RegistrationForm({
     setFormError(null);
     setIsSuccess(false);
     setRegisteredEmail('');
+    setDiversionNotice(null);
   };
 
   if (isSuccess) {
@@ -184,6 +224,33 @@ export function RegistrationForm({
         </div>
       )}
 
+      {diversionNotice && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-900 text-sm rounded-md"
+        >
+          {diversionNotice}
+        </div>
+      )}
+
+      <ProviderSignInButtons
+        variant="embedded"
+        onRequiresOtp={handleRequiresOtp}
+        onUnverifiedEmail={handleUnverifiedEmail}
+        onEmptyEmail={handleEmptyEmail}
+        onLoadingChange={setOauthLoading}
+      />
+
+      <div className="relative my-6">
+        <div className="absolute inset-0 flex items-center" aria-hidden="true">
+          <div className="w-full border-t border-gray-200" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-white px-2 text-gray-500 font-medium">Or register with email</span>
+        </div>
+      </div>
+
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <div>
           <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">
@@ -201,7 +268,7 @@ export function RegistrationForm({
                 setFieldErrors((prev) => ({ ...prev, fullName: undefined }));
               }
             }}
-            disabled={loading}
+            disabled={loading || oauthLoading}
             aria-invalid={Boolean(fieldErrors.fullName)}
             aria-describedby={fieldErrors.fullName ? 'fullName-error' : undefined}
             className={`w-full px-3 py-2 border rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 ${
@@ -232,7 +299,7 @@ export function RegistrationForm({
                 setFieldErrors((prev) => ({ ...prev, email: undefined }));
               }
             }}
-            disabled={loading}
+            disabled={loading || oauthLoading}
             aria-invalid={Boolean(fieldErrors.email)}
             aria-describedby={fieldErrors.email ? 'email-error' : undefined}
             className={`w-full px-3 py-2 border rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 ${
@@ -263,7 +330,7 @@ export function RegistrationForm({
                 setFieldErrors((prev) => ({ ...prev, password: undefined }));
               }
             }}
-            disabled={loading}
+            disabled={loading || oauthLoading}
             aria-invalid={Boolean(fieldErrors.password)}
             aria-describedby={
               fieldErrors.password ? 'password-error password-hint' : 'password-hint'
@@ -285,7 +352,7 @@ export function RegistrationForm({
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || oauthLoading}
           aria-busy={loading}
           className="w-full mt-2 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
         >

@@ -119,6 +119,11 @@ dist
 # Firebase cache directory
 .firebase/
 
+# Firebase Admin service account keys (never commit)
+*firebase-adminsdk*.json
+*service-account*.json
+*serviceAccount*.json
+
 # Supabase local CLI cache directory
 server/supabase/
 
@@ -154,4 +159,5 @@ site_screenshots/
 *.xlsx
 
 # Developer scratchpad and local tasks
-brian_tasks/
+brian_tasks/
+.workbuddy/*
