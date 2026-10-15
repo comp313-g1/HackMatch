@@ -106,7 +106,7 @@ describe('App Component (View Routing and Integration)', () => {
     expect(screen.getByLabelText(/email address/i)).toHaveValue('registered@example.com');
   });
 
-  it('navigates from EmailVerificationView back to registration view with status notice on sign in', async () => {
+  it('navigates from EmailVerificationView to the sign-in form with status notice', async () => {
     window.history.pushState({}, '', '/?mode=verifyEmail&oobCode=sign-in-code');
     mockApplyActionCode.mockResolvedValueOnce(undefined);
 
@@ -115,11 +115,33 @@ describe('App Component (View Routing and Integration)', () => {
     const signInBtn = await screen.findByRole('button', { name: /proceed to sign in/i });
     fireEvent.click(signInBtn);
 
-    // Should switch back to registration and show phase notice
-    expect(await screen.findByRole('heading', { level: 2, name: /create an account/i })).toBeInTheDocument();
-    expect(
-      screen.getByText(/participant account verified! sign-in and mfa features will be available in phase 2/i)
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('tab', { name: /sign in/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByLabelText(/password/i)).toHaveAttribute('autocomplete', 'current-password');
+    expect(screen.getByText(/participant account verified! you can now sign in/i)).toBeInTheDocument();
+  });
+
+  it('switches between the create account and sign in tabs', () => {
+    render(<App />);
+
+    expect(screen.getByRole('tab', { name: /create account/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('heading', { level: 2, name: /create an account/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /sign in/i }));
+    expect(screen.getByRole('tab', { name: /sign in/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 2, name: /create an account/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /create account/i }));
+    expect(screen.getByRole('heading', { level: 2, name: /create an account/i })).toBeInTheDocument();
+  });
+
+  it('opens the sign-in form directly when ?view=login is in the URL', () => {
+    window.history.pushState({}, '', '/?view=login');
+
+    render(<App />);
+
+    expect(screen.getByRole('tab', { name: /sign in/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
   });
 
   it('navigates from empty code verification view back to registration view when clicking back button', () => {

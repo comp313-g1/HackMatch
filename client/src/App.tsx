@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import { RegistrationForm } from './components/auth/RegistrationForm';
 import { EmailVerificationView } from './components/auth/EmailVerificationView';
+import { LoginForm } from './components/auth/LoginForm';
 
-const getInitialView = (): 'register' | 'verify' => {
+type View = 'register' | 'login' | 'verify';
+
+const getInitialView = (): View => {
   if (typeof window === 'undefined') return 'register';
   const params = new URLSearchParams(window.location.search);
   const mode = params.get('mode');
@@ -10,11 +13,14 @@ const getInitialView = (): 'register' | 'verify' => {
   if (mode === 'verifyEmail' || view === 'verify' || view === 'resend-verification') {
     return 'verify';
   }
+  if (view === 'login') {
+    return 'login';
+  }
   return 'register';
 };
 
 export function App(): React.JSX.Element {
-  const [currentView, setCurrentView] = useState<'register' | 'verify'>(getInitialView);
+  const [currentView, setCurrentView] = useState<View>(getInitialView);
   const [verificationEmail, setVerificationEmail] = useState<string>('');
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [healthStatus, setHealthStatus] = useState<string | null>(null);
@@ -118,8 +124,8 @@ export function App(): React.JSX.Element {
             <EmailVerificationView
               initialEmail={verificationEmail}
               onNavigateToSignIn={() => {
-                setCurrentView('register');
-                setStatusNotice('Participant account verified! Sign-in and MFA features will be available in Phase 2 (US-003 / US-004).');
+                setStatusNotice('Participant account verified! You can now sign in.');
+                setCurrentView('login');
               }}
               onNavigateToRegister={() => {
                 setStatusNotice(null);
@@ -128,7 +134,42 @@ export function App(): React.JSX.Element {
             />
           </section>
         ) : (
-          <section aria-labelledby="registration-heading" className="mt-8">
+          <>
+          <div role="tablist" aria-label="Account access" className="mt-8 max-w-md mx-auto flex border-b border-gray-200">
+            {(
+              [
+                { id: 'register', label: 'Create account' },
+                { id: 'login', label: 'Sign in' },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={currentView === tab.id}
+                onClick={() => {
+                  setStatusNotice(null);
+                  setCurrentView(tab.id);
+                }}
+                className={`flex-1 py-2 text-sm font-medium border-b-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  currentView === tab.id
+                    ? 'border-blue-600 text-blue-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          {currentView === 'login' ? (
+          <section aria-labelledby="login-heading" className="mt-6">
+            <h2 id="login-heading" className="sr-only">
+              Sign In
+            </h2>
+            <LoginForm onNavigateToRegister={() => setCurrentView('register')} />
+          </section>
+          ) : (
+          <section aria-labelledby="registration-heading" className="mt-6">
             <h2 id="registration-heading" className="sr-only">
               Participant Registration
             </h2>
@@ -145,6 +186,8 @@ export function App(): React.JSX.Element {
               }}
             />
           </section>
+          )}
+          </>
         )}
       </main>
 
