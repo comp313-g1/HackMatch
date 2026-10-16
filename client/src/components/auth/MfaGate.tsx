@@ -3,6 +3,8 @@ import { onAuthStateChanged, getIdTokenResult, type User } from 'firebase/auth';
 import { auth } from '../../config/firebase';
 import { hasCompletedMfa, describeSessionError, type SessionError } from './mfaClaim';
 import { logout } from './logout';
+import { OtpEntryForm } from './OtpEntryForm';
+import type { OtpChallenge } from './providerSignIn';
 
 type GateStatus = 'loading' | 'signed-out' | 'mfa-required' | 'authorized' | 'error';
 
@@ -10,6 +12,8 @@ export interface MfaGateProps {
   /** Rendered only when the signed-in user's current session has passed the email code. */
   children: (user: User) => React.ReactNode;
   onNavigateToSignIn?: () => void;
+  /** Optional challenge from password/OAuth primary auth so resend is not forced immediately. */
+  initialChallenge?: OtpChallenge | null;
 }
 
 const cardClass =
@@ -19,12 +23,15 @@ const primaryButtonClass =
 const secondaryButtonClass =
   'w-full py-2 px-4 border border-cream-200 rounded-md shadow-sm text-sm font-medium text-ink bg-white hover:bg-cream-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest disabled:opacity-50';
 
-export function MfaGate({ children, onNavigateToSignIn }: MfaGateProps): React.JSX.Element {
+export function MfaGate({
+  children,
+  onNavigateToSignIn,
+  initialChallenge = null,
+}: MfaGateProps): React.JSX.Element {
   const [status, setStatus] = useState<GateStatus>('loading');
   const [user, setUser] = useState<User | null>(null);
   const [error, setError] = useState<SessionError | null>(null);
   const [rechecking, setRechecking] = useState<boolean>(false);
-  const [stillMissing, setStillMissing] = useState<boolean>(false);
   const [signingOut, setSigningOut] = useState<boolean>(false);
   const checkId = useRef(0);
 
@@ -48,7 +55,6 @@ export function MfaGate({ children, onNavigateToSignIn }: MfaGateProps): React.J
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
       setUser(nextUser);
-      setStillMissing(false);
       if (!nextUser) {
         checkId.current++;
         setError(null);
@@ -64,9 +70,7 @@ export function MfaGate({ children, onNavigateToSignIn }: MfaGateProps): React.J
   const handleRecheck = async () => {
     if (!user || rechecking) return;
     setRechecking(true);
-    setStillMissing(false);
-    const verified = await checkSession(user, true);
-    setStillMissing(!verified);
+    await checkSession(user, true);
     setRechecking(false);
   };
 
@@ -158,45 +162,31 @@ export function MfaGate({ children, onNavigateToSignIn }: MfaGateProps): React.J
     );
   }
 
+  // mfa-required — show OTP entry (S1-P1-10)
+  if (user) {
+    return (
+      <OtpEntryForm
+        user={user}
+        initialChallenge={initialChallenge}
+        onVerified={() => {
+          void checkSession(user, true);
+        }}
+        onSignedOut={() => {
+          onNavigateToSignIn?.();
+        }}
+      />
+    );
+  }
+
   return (
     <div className={cardClass}>
       <h3 className="font-display text-xl font-semibold text-forest-900 mb-2">Email code required</h3>
-      <p className="text-sm text-ink-muted mb-4">
-        {user?.email ? (
-          <>
-            Your password was accepted for{' '}
-            <span className="font-semibold text-ink">{user.email}</span>.{' '}
-          </>
-        ) : null}
-        For your security, enter the one-time code sent to your email before using HackMatch.
-      </p>
-      {stillMissing && (
-        <div
-          role="alert"
-          className="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-900 text-sm rounded-md"
-        >
-          Your email code has not been confirmed yet. Enter the code from your email, then try again.
-        </div>
+      <p className="text-sm text-ink-muted mb-6">Sign in again to receive a verification code.</p>
+      {onNavigateToSignIn && (
+        <button type="button" onClick={onNavigateToSignIn} className={primaryButtonClass}>
+          Go to sign in
+        </button>
       )}
-      <div className="space-y-3">
-        <button
-          type="button"
-          onClick={handleRecheck}
-          disabled={rechecking || signingOut}
-          aria-busy={rechecking}
-          className={primaryButtonClass}
-        >
-          {rechecking ? 'Checking...' : "I've entered my code"}
-        </button>
-        <button
-          type="button"
-          onClick={handleSignOut}
-          disabled={signingOut || rechecking}
-          className={secondaryButtonClass}
-        >
-          {signingOut ? 'Signing out...' : 'Sign out'}
-        </button>
-      </div>
     </div>
   );
 }

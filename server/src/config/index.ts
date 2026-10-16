@@ -19,6 +19,15 @@ export interface ServerConfig {
     clientEmail?: string;
     privateKey?: string;
   };
+  /** Optional SMTP for US-004 MFA OTP emails (FR-009 / FR-084). */
+  smtp: {
+    host?: string;
+    port: number;
+    secure: boolean;
+    user?: string;
+    pass?: string;
+    from?: string;
+  };
 }
 
 export const config: ServerConfig = {
@@ -35,6 +44,14 @@ export const config: ServerConfig = {
     projectId: process.env.FIREBASE_PROJECT_ID,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
     privateKey: process.env.FIREBASE_PRIVATE_KEY,
+  },
+  smtp: {
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT || '587', 10),
+    secure: process.env.SMTP_SECURE === 'true',
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+    from: process.env.SMTP_FROM,
   },
 };
 

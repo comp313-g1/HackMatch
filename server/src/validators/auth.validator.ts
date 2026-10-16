@@ -347,4 +347,103 @@ export function validateOAuthLinkPayload(
   next();
 }
 
+export interface MfaVerifyFieldErrors {
+  otp?: string;
+  code?: string;
+  challengeId?: string;
+}
+
+/**
+ * Express middleware validating payload for POST /api/auth/mfa/verify (US-004 AC 2 / S1-P1-10–11 / S1-P3-04).
+ * Enforces presence of 6-digit numeric OTP/code and normalizes challengeId.
+ * Supports both { otp, challengeId? } and { code, challengeId } formats.
+export interface MfaVerifyFieldErrors {
+  otp?: string;
+  challengeId?: string;
+  code?: string;
+}
+
+/**
+ * Express middleware validating payload for POST /api/auth/mfa/verify.
+ * Supports both { otp, challengeId? } (S1-P3-04 integration tests & validator unit tests)
+ * and { challengeId, code } (React frontend & S1-P1-11 route tests).
+ */
+export function validateMfaVerifyPayload(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    res.status(400).json({
+      error: 'Validation failed',
+      errors: {
+        otp: 'A 6-digit verification code is required.',
+      },
+    });
+    return;
+  }
+
+  // 1. S1-P3-04 contract: explicit 'otp' key in request body
+  if ('otp' in body) {
+    const rawOtp = body.otp;
+    if (typeof rawOtp !== 'string' || !/^\d{6}$/.test(rawOtp.trim())) {
+      res.status(400).json({
+        error: 'Validation failed',
+        errors: {
+          otp: 'A 6-digit verification code is required.',
+        },
+      });
+      return;
+    }
+
+    const candidate = rawOtp.trim();
+    const rawChallengeId = body.challengeId;
+    const normalizedChallengeId =
+      typeof rawChallengeId === 'string' && rawChallengeId.trim().length > 0
+        ? rawChallengeId.trim()
+        : undefined;
+
+    req.body = {
+      otp: candidate,
+      ...(normalizedChallengeId ? { challengeId: normalizedChallengeId } : {}),
+    };
+    next();
+    return;
+  }
+
+  // 2. S1-P1-10 / S1-P1-11 contract: { challengeId, code }
+  const fieldErrors: MfaVerifyFieldErrors = {};
+
+  const rawChallengeId = body.challengeId;
+  if (typeof rawChallengeId !== 'string' || rawChallengeId.trim().length === 0) {
+    fieldErrors.challengeId = 'Challenge id is required.';
+  }
+
+  const rawCode = body.code;
+  const code =
+    typeof rawCode === 'string'
+      ? rawCode.trim()
+      : typeof rawCode === 'number'
+        ? String(rawCode)
+        : '';
+  if (!/^\d{6}$/.test(code)) {
+    fieldErrors.code = 'Enter the 6-digit verification code.';
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    res.status(400).json({
+      error: 'Validation failed',
+      errors: fieldErrors,
+    });
+    return;
+  }
+
+  req.body = {
+    challengeId: (rawChallengeId as string).trim(),
+    code,
+  };
+  next();
+}
+
 

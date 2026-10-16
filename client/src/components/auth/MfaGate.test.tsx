@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import {
   onAuthStateChanged,
   getIdTokenResult,
@@ -23,6 +23,34 @@ vi.mock('firebase/auth', async (importOriginal) => {
 
 vi.mock('./logout', () => ({
   logout: vi.fn(),
+}));
+
+vi.mock('./OtpEntryForm', () => ({
+  OtpEntryForm: ({
+    user,
+    onVerified,
+    onSignedOut,
+  }: {
+    user: User;
+    onVerified: () => void;
+    onSignedOut?: () => void;
+  }) => (
+    <div>
+      <h3>Email code required</h3>
+      <p>{user.email}</p>
+      <button type="button" onClick={onVerified}>
+        {"I've entered my code"}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          void logout(user).then(() => onSignedOut?.());
+        }}
+      >
+        Sign out
+      </button>
+    </div>
+  ),
 }));
 
 const mockOnAuthStateChanged = vi.mocked(onAuthStateChanged);
@@ -92,7 +120,7 @@ describe('MfaGate', () => {
     expect(mockGetIdTokenResult).toHaveBeenCalledWith(user, false);
   });
 
-  it('blocks password-only sessions and asks for the email code', async () => {
+  it('blocks password-only sessions and shows the OTP entry hand-off', async () => {
     mockGetIdTokenResult.mockResolvedValueOnce(passwordOnlyToken);
     renderGate();
 
@@ -112,7 +140,7 @@ describe('MfaGate', () => {
     expect(await screen.findByText(/email code required/i)).toBeInTheDocument();
   });
 
-  it('force-refreshes the token on recheck and unlocks once the claim arrives', async () => {
+  it('force-refreshes the token after OTP verification and unlocks once the claim arrives', async () => {
     mockGetIdTokenResult.mockResolvedValueOnce(passwordOnlyToken).mockResolvedValueOnce(verifiedToken);
     renderGate();
     act(() => emitAuthState(user));
@@ -124,24 +152,15 @@ describe('MfaGate', () => {
     expect(mockGetIdTokenResult).toHaveBeenLastCalledWith(user, true);
   });
 
-  it('shows a loading label while rechecking and a warning if the code is still not confirmed', async () => {
-    let resolveRecheck: (value: IdTokenResult) => void = () => {};
-    mockGetIdTokenResult
-      .mockResolvedValueOnce(passwordOnlyToken)
-      .mockReturnValueOnce(new Promise<IdTokenResult>((resolve) => { resolveRecheck = resolve; }));
+  it('keeps the OTP gate when verification is claimed but the claim is still missing', async () => {
+    mockGetIdTokenResult.mockResolvedValueOnce(passwordOnlyToken).mockResolvedValueOnce(passwordOnlyToken);
     renderGate();
     act(() => emitAuthState(user));
     await screen.findByText(/email code required/i);
 
     fireEvent.click(screen.getByRole('button', { name: /i've entered my code/i }));
-    const busy = screen.getByRole('button', { name: /checking/i });
-    expect(busy).toBeDisabled();
-    fireEvent.click(busy);
-    expect(mockGetIdTokenResult).toHaveBeenCalledTimes(2);
 
-    await act(async () => resolveRecheck(passwordOnlyToken));
-
-    expect(screen.getByRole('alert')).toHaveTextContent(/has not been confirmed yet/i);
+    expect(await screen.findByText(/email code required/i)).toBeInTheDocument();
     expect(screen.queryByText(/protected content/i)).not.toBeInTheDocument();
   });
 
@@ -172,31 +191,13 @@ describe('MfaGate', () => {
 
   it('signs out from the MFA-required state', async () => {
     mockGetIdTokenResult.mockResolvedValueOnce(passwordOnlyToken);
-    renderGate();
+    const { onNavigateToSignIn } = renderGate();
     act(() => emitAuthState(user));
     await screen.findByText(/email code required/i);
 
     fireEvent.click(screen.getByRole('button', { name: /sign out/i }));
-    expect(mockLogout).toHaveBeenCalledTimes(1);
-
-    act(() => emitAuthState(null));
-    expect(await screen.findByText(/you are not signed in/i)).toBeInTheDocument();
-  });
-
-  it('shows an error if signing out fails', async () => {
-    mockGetIdTokenResult.mockResolvedValueOnce(passwordOnlyToken);
-    mockLogout.mockRejectedValueOnce(
-      Object.assign(new Error('Network error while signing out. Please check your connection and try again.'), {
-        kind: 'network',
-      })
-    );
-    renderGate();
-    act(() => emitAuthState(user));
-    await screen.findByText(/email code required/i);
-
-    fireEvent.click(screen.getByRole('button', { name: /sign out/i }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(/network error while signing out/i);
+    await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onNavigateToSignIn).toHaveBeenCalled());
   });
 
   it('locks protected content again when the user signs out elsewhere', async () => {

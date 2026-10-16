@@ -7,6 +7,7 @@ import {
   validateVerifyEmailPayload,
   validateOAuthSignInPayload,
   validateOAuthLinkPayload,
+  validateMfaVerifyPayload,
   ALLOWED_OAUTH_PROVIDERS,
   PRIVILEGE_ESCALATION_KEYS,
 } from './auth.validator.js';
@@ -978,6 +979,165 @@ describe('auth.validator unit tests (US-001 AC 1 / T2 / AC 4 / T6)', () => {
 
         expect(next).toHaveBeenCalled();
         expect(req.body.consentHandleAvatar).toBe(false);
+      }
+    });
+  });
+
+  describe('validateMfaVerifyPayload (US-004 AC 2 / S1-P3-04)', () => {
+    it('accepts a valid 6-digit OTP and calls next', () => {
+      const req = {
+        body: { otp: '123456' },
+      } as unknown as Request;
+      const res = createMockResponse();
+      const next = vi.fn() as unknown as NextFunction;
+
+      validateMfaVerifyPayload(req, res as unknown as Response, next);
+
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(res.statusCode).toBe(200);
+      expect(req.body).toEqual({ otp: '123456' });
+    });
+
+    it('trims whitespace from valid 6-digit OTP', () => {
+      const req = {
+        body: { otp: '  654321  ' },
+      } as unknown as Request;
+      const res = createMockResponse();
+      const next = vi.fn() as unknown as NextFunction;
+
+      validateMfaVerifyPayload(req, res as unknown as Response, next);
+
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(res.statusCode).toBe(200);
+      expect(req.body).toEqual({ otp: '654321' });
+    });
+
+    it('includes trimmed challengeId when provided as non-empty string', () => {
+      const req = {
+        body: {
+          otp: '123456',
+          challengeId: '  chal-uuid-999  ',
+        },
+      } as unknown as Request;
+      const res = createMockResponse();
+      const next = vi.fn() as unknown as NextFunction;
+
+      validateMfaVerifyPayload(req, res as unknown as Response, next);
+
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(res.statusCode).toBe(200);
+      expect(req.body).toEqual({
+        otp: '123456',
+        challengeId: 'chal-uuid-999',
+      });
+    });
+
+    it('omits challengeId when challengeId is whitespace-only, empty, or non-string', () => {
+      for (const invalidChallengeId of ['', '   ', null, 12345, true, {}]) {
+        const req = {
+          body: {
+            otp: '123456',
+            challengeId: invalidChallengeId,
+          },
+        } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateMfaVerifyPayload(req, res as unknown as Response, next);
+
+        expect(next).toHaveBeenCalled();
+        expect(res.statusCode).toBe(200);
+        expect(req.body).toEqual({ otp: '123456' });
+      }
+    });
+
+    it('strips unauthorized or unexpected fields from req.body', () => {
+      const req = {
+        body: {
+          otp: '123456',
+          challengeId: 'chal-1',
+          role: 'ADMIN',
+          is_suspended: false,
+          unknownField: 'malicious',
+        },
+      } as unknown as Request;
+      const res = createMockResponse();
+      const next = vi.fn() as unknown as NextFunction;
+
+      validateMfaVerifyPayload(req, res as unknown as Response, next);
+
+      expect(next).toHaveBeenCalled();
+      expect(req.body).toEqual({
+        otp: '123456',
+        challengeId: 'chal-1',
+      });
+    });
+
+    it('rejects missing, null, primitive, or array body with 400', () => {
+      for (const invalidBody of [undefined, null, 'string', 123, true, [], [{ otp: '123456' }]]) {
+        const req = { body: invalidBody } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateMfaVerifyPayload(req, res as unknown as Response, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({
+          error: 'Validation failed',
+          errors: {
+            otp: 'A 6-digit verification code is required.',
+          },
+        });
+      }
+    });
+
+    it('rejects missing, empty, or non-string otp with 400', () => {
+      for (const invalidOtp of [undefined, null, '', '   ', 123456, true, {}, []]) {
+        const req = { body: { otp: invalidOtp } } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateMfaVerifyPayload(req, res as unknown as Response, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({
+          error: 'Validation failed',
+          errors: {
+            otp: 'A 6-digit verification code is required.',
+          },
+        });
+      }
+    });
+
+    it('rejects otp with invalid length or non-numeric characters with 400', () => {
+      const invalidOtps = [
+        '12345',      // 5 digits
+        '1234567',    // 7 digits
+        '12345a',     // contains letter
+        'abcdef',     // all letters
+        '12 456',     // internal space
+        '-12345',     // negative
+        '12.345',     // float
+        '123-56',     // hyphen
+      ];
+
+      for (const invalidOtp of invalidOtps) {
+        const req = { body: { otp: invalidOtp } } as unknown as Request;
+        const res = createMockResponse();
+        const next = vi.fn() as unknown as NextFunction;
+
+        validateMfaVerifyPayload(req, res as unknown as Response, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({
+          error: 'Validation failed',
+          errors: {
+            otp: 'A 6-digit verification code is required.',
+          },
+        });
       }
     });
   });

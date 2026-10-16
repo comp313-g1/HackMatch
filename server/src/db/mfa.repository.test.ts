@@ -247,6 +247,56 @@ describe('mfaRepository', () => {
     });
   });
 
+  describe('tryConsumeChallenge (atomic consume)', () => {
+    it('throws when challengeId or otpHash is missing', async () => {
+      await expect(mfaRepository.tryConsumeChallenge('', 'hash')).rejects.toThrow(
+        'challengeId is required'
+      );
+      await expect(mfaRepository.tryConsumeChallenge('chal-uuid-1', '')).rejects.toThrow(
+        'otpHash is required'
+      );
+    });
+
+    it('updates only when hash matches and row is still active; returns null on miss', async () => {
+      const consumedChallenge = { ...mockChallenge, consumed_at: new Date().toISOString() };
+      const mockMaybeSingle = vi.fn().mockResolvedValue({ data: consumedChallenge, error: null });
+      const mockSelect = vi.fn().mockReturnValue({ maybeSingle: mockMaybeSingle });
+      const mockGt = vi.fn().mockReturnValue({ select: mockSelect });
+      const mockIs2 = vi.fn().mockReturnValue({ gt: mockGt });
+      const mockIs1 = vi.fn().mockReturnValue({ is: mockIs2 });
+      const mockEqHash = vi.fn().mockReturnValue({ is: mockIs1 });
+      const mockEqId = vi.fn().mockReturnValue({ eq: mockEqHash });
+      const mockUpdate = vi.fn().mockReturnValue({ eq: mockEqId });
+      const mockFrom = vi.fn().mockReturnValue({ update: mockUpdate });
+
+      vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+        from: mockFrom,
+      } as unknown as SupabaseClient);
+
+      const now = new Date('2026-01-01T00:00:00.000Z');
+      const result = await mfaRepository.tryConsumeChallenge(
+        'chal-uuid-1',
+        'hashed_otp_value_123',
+        now
+      );
+
+      expect(result).toEqual(consumedChallenge);
+      expect(mockEqId).toHaveBeenCalledWith('id', 'chal-uuid-1');
+      expect(mockEqHash).toHaveBeenCalledWith('otp_hash', 'hashed_otp_value_123');
+      expect(mockIs1).toHaveBeenCalledWith('consumed_at', null);
+      expect(mockIs2).toHaveBeenCalledWith('invalidated_at', null);
+      expect(mockGt).toHaveBeenCalledWith('expires_at', now.toISOString());
+
+      mockMaybeSingle.mockResolvedValueOnce({ data: null, error: null });
+      const miss = await mfaRepository.tryConsumeChallenge(
+        'chal-uuid-1',
+        'wrong-hash',
+        now
+      );
+      expect(miss).toBeNull();
+    });
+  });
+
   describe('createAttempt validation and execution', () => {
     it('throws when participant_id is missing', async () => {
       await expect(

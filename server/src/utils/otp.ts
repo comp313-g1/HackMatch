@@ -20,9 +20,47 @@ export function hashOtp(code: string): string {
   return crypto.createHash('sha256').update(code.trim()).digest('hex');
 }
 
+/**
+ * Verifies a plaintext OTP candidate against a stored SHA-256 hex verifier
+ * in constant time using crypto.timingSafeEqual (NR-008).
+ * Returns false for mismatched lengths, non-hex strings, or non-matching digests without throwing.
+ */
+export function verifyOtpHash(rawOtp: string, expectedHashHex: string): boolean {
+  if (
+    typeof rawOtp !== 'string' ||
+    typeof expectedHashHex !== 'string' ||
+    rawOtp.trim().length === 0 ||
+    expectedHashHex.trim().length === 0
+  ) {
+    return false;
+  }
+
+  const computedHashHex = hashOtp(rawOtp);
+  const normalizedExpected = expectedHashHex.trim().toLowerCase();
+
+  // SHA-256 hex digests must be exactly 64 valid hex characters (32 bytes)
+  if (computedHashHex.length !== 64 || !/^[0-9a-f]{64}$/.test(normalizedExpected)) {
+    return false;
+  }
+
+  try {
+    const computedBuffer = Buffer.from(computedHashHex, 'hex');
+    const expectedBuffer = Buffer.from(normalizedExpected, 'hex');
+
+    if (computedBuffer.length !== expectedBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(computedBuffer, expectedBuffer);
+  } catch {
+    return false;
+  }
+}
+
 export interface AccountLockoutStatus {
   locked: boolean;
   retryAfterSeconds?: number;
+  lastLockoutEndsAt?: number;
 }
 
 /**
@@ -60,6 +98,7 @@ export async function evaluateAccountLockout(
 
   let failureCount = 0;
   let lockoutEndsAt = 0;
+  let lastLockoutEndsAt = 0;
 
   for (const attempt of chronologicalFailures) {
     const attemptTime = new Date(attempt.created_at).getTime();
@@ -75,6 +114,7 @@ export async function evaluateAccountLockout(
 
     if (failureCount === MAX_CONSECUTIVE_FAILURES) {
       lockoutEndsAt = attemptTime + LOCKOUT_WINDOW_MS;
+      lastLockoutEndsAt = lockoutEndsAt;
     }
   }
 
@@ -86,12 +126,20 @@ export async function evaluateAccountLockout(
     };
   }
 
+  if (lastLockoutEndsAt > 0) {
+    return {
+      locked: false,
+      lastLockoutEndsAt,
+    };
+  }
+
   return { locked: false };
 }
 
 /**
  * Atomically invalidates existing pending challenges and creates a fresh 10-minute
- * MFA challenge storing a SHA-256 hashed verifier (FR-009 / US-004 AC 1).
+ * MFA challenge storing a SHA-256 hashed verifier (FR-009 / US-004 AC 1 / AC 5).
+ * Resend/reissue must invalidate predecessors without resetting OTP failure attempts.
  */
 export async function createMfaChallenge(
   participantId: string,
@@ -105,6 +153,7 @@ export async function createMfaChallenge(
     throw new Error('rawOtp is required');
   }
 
+  // Predecessor OTPs must never remain usable after a new code is issued (US-004 AC 5).
   await mfaRepository.invalidatePendingChallenges(participantId);
   const expiresAt = new Date(now + OTP_EXPIRY_SECONDS * 1000).toISOString();
   const otpHash = hashOtp(rawOtp);

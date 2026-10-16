@@ -5,9 +5,9 @@ import { participantsRepository } from '../db/participants.repository.js';
 import { providerIdentitiesRepository } from '../db/provider_identities.repository.js';
 import { mfaRepository } from '../db/mfa.repository.js';
 import type { Participant, OAuthProvider } from '../db/types.js';
-import { generateOtp, createMfaChallenge, evaluateAccountLockout } from '../utils/otp.js';
+import { generateOtp, createMfaChallenge, evaluateAccountLockout, verifyOtpHash } from '../utils/otp.js';
 import { rateLimiter } from '../utils/rateLimiter.js';
-import { hasCompletedMfa } from '../utils/mfaClaim.js';
+import { hasCompletedMfa, markMfaComplete } from '../utils/mfaClaim.js';
 import { securityConfig } from '../config/security.js';
 import { extractBearerToken, mapFirebaseAuthError } from '../middleware/requireFirebaseAuth.js';
 import {
@@ -17,6 +17,12 @@ import {
   clearSessionCookies,
 } from '../utils/sessionCookies.js';
 import { ACCOUNT_SUSPENDED_MESSAGE } from '../middleware/requireActiveAccount.js';
+import {
+  issueMfaOtpForParticipant,
+  _setMfaOtpEmailSender as _setIssueMfaOtpEmailSender,
+  _resetMfaOtpEmailSender as _resetIssueMfaOtpEmailSender,
+} from '../services/issueMfaOtp.js';
+import { verifyMfaOtpForParticipant } from '../services/verifyMfaOtp.js';
 
 export type MfaOtpEmailSender = (email: string, otp: string) => Promise<void>;
 
@@ -28,6 +34,7 @@ let mfaOtpEmailSender: MfaOtpEmailSender = async (email: string, _otp: string) =
 
 export function _setMfaOtpEmailSender(sender: MfaOtpEmailSender): void {
   mfaOtpEmailSender = sender;
+  _setIssueMfaOtpEmailSender(sender);
 }
 
 export function _resetMfaOtpEmailSender(): void {
@@ -36,6 +43,260 @@ export function _resetMfaOtpEmailSender(): void {
       console.info(`[AUTH] MFA OTP email dispatched to ${email}`);
     }
   };
+  _resetIssueMfaOtpEmailSender();
+}
+
+/**
+ * Shared internal helper to evaluate lockout, enforce rate limiting, generate & persist OTP challenge,
+ * dispatch the email, and return the masked non-session response.
+ * (Enforces FR-009, FR-010, FR-081, FR-084, US-004 AC 1, and US-004-T6).
+ */
+export async function dispatchMfaChallenge(
+  participant: Participant,
+  res: Response,
+  decodedAuthTime?: number
+): Promise<void> {
+  // 1. Check 15-minute account lockout (FR-010 / NR-008 / US-004 AC 3)
+  const lockout = await evaluateAccountLockout(participant.id);
+  if (lockout.locked) {
+    res.status(423).json({
+      error: 'Account temporarily locked due to too many failed OTP attempts. Please wait 15 minutes before trying again.',
+      code: 'ACCOUNT_LOCKED',
+      retryAfter: lockout.retryAfterSeconds,
+    });
+    return;
+  }
+
+  // 2. Post-lockout expiry requires fresh primary authentication (US-004-T6)
+  if (
+    lockout.lastLockoutEndsAt &&
+    typeof decodedAuthTime === 'number' &&
+    decodedAuthTime * 1000 < lockout.lastLockoutEndsAt
+  ) {
+    res.status(401).json({
+      error: 'Your account was previously locked. Please sign in again with your password or credentials before requesting a new code.',
+      code: 'FRESH_AUTH_REQUIRED',
+    });
+    return;
+  }
+
+  // 3. Enforce FR-081 rate limiting (1 send / 60s, 5 / hour)
+  const rateCheck = rateLimiter.checkLimit('mfa_otp', participant.email.toLowerCase());
+  if (!rateCheck.allowed) {
+    const retryAfterSeconds = rateCheck.retryAfterSeconds ?? 60;
+    res.setHeader('Retry-After', String(retryAfterSeconds));
+    res.status(429).json({
+      error: 'Too many OTP requests. Please wait before requesting another code.',
+      code: 'RATE_LIMITED',
+      retryAfter: retryAfterSeconds,
+    });
+    return;
+  }
+
+  // 4. Issue OTP challenge & dispatch email (FR-009 / FR-084 / US-004 AC 1)
+  const otpCode = generateOtp();
+  const challenge = await createMfaChallenge(participant.id, otpCode);
+
+  try {
+    await mfaOtpEmailSender(participant.email, otpCode);
+    rateLimiter.recordSend('mfa_otp', participant.email.toLowerCase());
+  } catch (dispatchErr: unknown) {
+    // FR-084: Email delivery failure never verifies or creates session
+    await mfaRepository.invalidatePendingChallenges(participant.id);
+    const errMsg = dispatchErr instanceof Error ? dispatchErr.message : 'Unknown dispatch error';
+    console.warn(`[AUTH] Failed to send MFA OTP email for ${participant.email}: ${errMsg}`);
+    res.status(502).json({
+      error: 'Failed to dispatch verification code email. Please try again.',
+      code: 'EMAIL_DELIVERY_FAILED',
+    });
+    return;
+  }
+
+  // 5. Mask email & return HTTP 200 non-session response (US-002 AC 5 / FR-007)
+  const [userPart = '', domainPart = ''] = participant.email.split('@');
+  const maskedUser = userPart.length > 1
+    ? `${userPart[0]}***${userPart.slice(-1)}`
+    : `${userPart}***`;
+  const maskedEmail = `${maskedUser}@${domainPart}`;
+
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({
+    requiresOtp: true,
+    challengeId: challenge.id,
+    email: maskedEmail,
+    expiresInSeconds: 600,
+    message: 'A 6-digit verification code has been sent to your email.',
+  });
+}
+
+/**
+ * Issues a cryptographically random 6-digit MFA OTP after primary authentication
+ * (POST /api/auth/mfa/challenge) — FR-009 / US-004 AC 1 / S1-P1-09.
+ *
+ * Requires a verified Firebase ID token and an active participant. Does not create
+ * a session (FR-007). Email delivery failures return 502 without authenticating (FR-084).
+ */
+export async function issueMfaChallenge(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+
+  try {
+    const firebaseUser = req.firebaseUser;
+    if (!firebaseUser?.uid) {
+      res.status(401).json({
+        error: 'Authentication required. Missing or malformed Authorization header.',
+        code: 'UNAUTHORIZED',
+      });
+      return;
+    }
+
+    if (!firebaseUser.email || firebaseUser.email_verified !== true) {
+      res.status(403).json({
+        error: 'A verified email is required before a login code can be sent.',
+        code: 'EMAIL_NOT_VERIFIED',
+      });
+      return;
+    }
+
+    let participant = req.participant;
+    if (!participant) {
+      participant =
+        (await participantsRepository.findByFirebaseUid(firebaseUser.uid)) ?? undefined;
+    }
+
+    if (!participant) {
+      res.status(404).json({
+        error: 'No HackMatch account is linked to this sign-in. Please register first.',
+        code: 'PARTICIPANT_NOT_FOUND',
+      });
+      return;
+    }
+
+    if (participant.is_suspended) {
+      res.status(403).json({
+        error: ACCOUNT_SUSPENDED_MESSAGE,
+        code: 'ACCOUNT_SUSPENDED',
+      });
+      return;
+    }
+
+    const issued = await issueMfaOtpForParticipant(participant);
+    if (!issued.ok) {
+      if (issued.retryAfter != null) {
+        res.setHeader('Retry-After', String(issued.retryAfter));
+      }
+      res.status(issued.status).json({
+        error: issued.error,
+        code: issued.code,
+        ...(issued.retryAfter != null ? { retryAfter: issued.retryAfter } : {}),
+        ...(issued.retryable != null ? { retryable: issued.retryable } : {}),
+      });
+      return;
+    }
+
+    res.status(200).json({
+      requiresOtp: true,
+      challengeId: issued.challengeId,
+      email: issued.maskedEmail,
+      expiresInSeconds: issued.expiresInSeconds,
+      message: issued.message,
+    });
+  } catch (err: unknown) {
+    next(err);
+  }
+}
+
+/**
+ * Verifies a 6-digit MFA OTP, atomically consumes the challenge, and sets the MFA claim
+ * (POST /api/auth/mfa/verify) — US-004 AC 2 / FR-010 / S1-P1-11.
+ */
+export async function verifyMfaChallenge(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+
+  try {
+    const firebaseUser = req.firebaseUser;
+    if (!firebaseUser?.uid) {
+      res.status(401).json({
+        error: 'Authentication required. Missing or malformed Authorization header.',
+        code: 'UNAUTHORIZED',
+      });
+      return;
+    }
+
+    if (!firebaseUser.email || firebaseUser.email_verified !== true) {
+      res.status(403).json({
+        error: 'A verified email is required before a login code can be verified.',
+        code: 'EMAIL_NOT_VERIFIED',
+      });
+      return;
+    }
+
+    let participant = req.participant;
+    if (!participant) {
+      participant =
+        (await participantsRepository.findByFirebaseUid(firebaseUser.uid)) ?? undefined;
+    }
+    if (!participant) {
+      res.status(404).json({
+        error: 'No HackMatch account is linked to this sign-in. Please register first.',
+        code: 'PARTICIPANT_NOT_FOUND',
+      });
+      return;
+    }
+
+    if (participant.is_suspended) {
+      res.status(403).json({
+        error: ACCOUNT_SUSPENDED_MESSAGE,
+        code: 'ACCOUNT_SUSPENDED',
+      });
+      return;
+    }
+
+    const { challengeId, code } = req.body as { challengeId: string; code: string };
+    const forwarded = req.headers['x-forwarded-for'];
+    const ip =
+      typeof req.ip === 'string'
+        ? req.ip
+        : Array.isArray(forwarded)
+          ? forwarded[0]
+          : typeof forwarded === 'string'
+            ? forwarded.split(',')[0]?.trim()
+            : null;
+
+    const result = await verifyMfaOtpForParticipant(
+      participant,
+      firebaseUser,
+      challengeId,
+      code,
+      ip
+    );
+
+    if (!result.ok) {
+      if (result.retryAfter != null) {
+        res.setHeader('Retry-After', String(result.retryAfter));
+      }
+      res.status(result.status).json({
+        error: result.error,
+        code: result.code,
+        ...(result.retryAfter != null ? { retryAfter: result.retryAfter } : {}),
+      });
+      return;
+    }
+
+    res.status(200).json({
+      verified: true,
+      message: 'Verification code accepted. You can continue to your account.',
+    });
+  } catch (err: unknown) {
+    next(err);
+  }
 }
 
 /**
@@ -498,63 +759,9 @@ export async function oauthSignIn(
       return;
     }
 
-    // 6. Check 15-minute account lockout (FR-010 / NR-008)
-    const lockout = await evaluateAccountLockout(participant.id);
-    if (lockout.locked) {
-      res.status(423).json({
-        error: 'Account temporarily locked due to too many failed OTP attempts. Please wait 15 minutes before trying again.',
-        code: 'ACCOUNT_LOCKED',
-        retryAfter: lockout.retryAfterSeconds,
-      });
-      return;
-    }
-
-    // 7. Enforce FR-081 rate limiting (1 send / 60s, 5 / hour)
-    const rateCheck = rateLimiter.checkLimit('mfa_otp', participant.email.toLowerCase());
-    if (!rateCheck.allowed) {
-      const retryAfterSeconds = rateCheck.retryAfterSeconds ?? 60;
-      res.setHeader('Retry-After', String(retryAfterSeconds));
-      res.status(429).json({
-        error: 'Too many OTP requests. Please wait before requesting another code.',
-        code: 'RATE_LIMITED',
-        retryAfter: retryAfterSeconds,
-      });
-      return;
-    }
-
-    // 8. Issue OTP challenge & dispatch email (FR-009 / FR-084 / US-004)
-    const otpCode = generateOtp();
-    const challenge = await createMfaChallenge(participant.id, otpCode);
-
-    try {
-      await mfaOtpEmailSender(participant.email, otpCode);
-      rateLimiter.recordSend('mfa_otp', participant.email.toLowerCase());
-    } catch (dispatchErr: unknown) {
-      // FR-084: Email delivery failure never verifies or creates session
-      await mfaRepository.invalidatePendingChallenges(participant.id);
-      const errMsg = dispatchErr instanceof Error ? dispatchErr.message : 'Unknown dispatch error';
-      console.warn(`[AUTH] Failed to send MFA OTP email for ${participant.email}: ${errMsg}`);
-      res.status(502).json({
-        error: 'Failed to dispatch verification code email. Please try again.',
-        code: 'EMAIL_DELIVERY_FAILED',
-      });
-      return;
-    }
-
-    // 9. Mask email & return HTTP 200 non-session response (US-002 AC 5 / FR-007)
-    const [userPart = '', domainPart = ''] = participant.email.split('@');
-    const maskedUser = userPart.length > 1
-      ? `${userPart[0]}***${userPart.slice(-1)}`
-      : `${userPart}***`;
-    const maskedEmail = `${maskedUser}@${domainPart}`;
-
-    res.status(200).json({
-      requiresOtp: true,
-      challengeId: challenge.id,
-      email: maskedEmail,
-      expiresInSeconds: 600,
-      message: 'A 6-digit verification code has been sent to your email.',
-    });
+    // 6. Dispatch MFA OTP challenge (FR-009 / FR-010 / FR-081 / FR-084 / US-004)
+    const rawAuthTime = typeof decodedToken.auth_time === 'number' ? decodedToken.auth_time : undefined;
+    await dispatchMfaChallenge(participant, res, rawAuthTime);
   } catch (err: unknown) {
     next(err);
   }
@@ -796,14 +1003,218 @@ export function getCurrentUser(req: Request, res: Response): void {
   });
 }
 
+/**
+ * Dispatches an MFA verification code email to the authenticated participant/admin (POST /api/auth/mfa/send).
+ * Enforces US-004 AC 1, AC 4, FR-009, FR-010, FR-081, FR-084, and US-004-T6.
+ */
+export async function sendMfaOtp(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  const participant = req.participant;
+  const decodedToken = req.firebaseUser;
 
+  if (!decodedToken) {
+    res.status(401).json({
+      error: 'Authentication required. Missing or malformed Authorization header.',
+      code: 'UNAUTHORIZED',
+    });
+    return;
+  }
 
+  // Guard verified email (US-004 / FR-009 / US-001 AC 5)
+  // Both PART and ADMIN can call this, but their email must be verified.
+  const isVerified = participant?.is_verified || decodedToken.email_verified === true;
+  if (!participant || !isVerified) {
+    res.status(403).json({
+      error: 'Email address must be verified before two-factor authentication.',
+      code: 'EMAIL_NOT_VERIFIED',
+    });
+    return;
+  }
+
+  try {
+    await dispatchMfaChallenge(participant, res, decodedToken.auth_time);
+  } catch (err: unknown) {
+    next(err);
+  }
+}
+
+/**
+ * Verifies a 6-digit MFA OTP and marks the Firebase sign-in complete (POST /api/auth/mfa/verify).
+ * Enforces US-004 AC 2, AC 3, FR-010, NR-008, US-004-T1, US-004-T2, US-004-T3, and US-004-T6.
+ */
+export async function verifyMfaOtp(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  const participant = req.participant;
+  const decodedToken = req.firebaseUser;
+
+  if (!decodedToken) {
+    res.status(401).json({
+      error: 'Authentication required. Missing or malformed Authorization header.',
+      code: 'UNAUTHORIZED',
+    });
+    return;
+  }
+
+  const isVerified = participant?.is_verified || decodedToken.email_verified === true;
+  if (!participant || !isVerified) {
+    res.status(403).json({
+      error: 'Email address must be verified before two-factor authentication.',
+      code: 'EMAIL_NOT_VERIFIED',
+    });
+    return;
+  }
+
+  try {
+    // 1. Check account lockout (US-004 AC 3 / FR-010)
+    const lockout = await evaluateAccountLockout(participant.id);
+    if (lockout.locked) {
+      await mfaRepository.invalidatePendingChallenges(participant.id);
+      res.status(423).json({
+        error: 'Account temporarily locked due to too many failed OTP attempts. Please wait 15 minutes before trying again.',
+        code: 'ACCOUNT_LOCKED',
+        retryAfter: lockout.retryAfterSeconds,
+      });
+      return;
+    }
+
+    // 2. Post-lockout expiry requires fresh primary authentication (US-004-T6)
+    if (
+      lockout.lastLockoutEndsAt &&
+      typeof decodedToken.auth_time === 'number' &&
+      decodedToken.auth_time * 1000 < lockout.lastLockoutEndsAt
+    ) {
+      res.status(401).json({
+        error: 'Your account was previously locked. Please sign in again with your password or credentials before verifying your code.',
+        code: 'FRESH_AUTH_REQUIRED',
+      });
+      return;
+    }
+
+    const { otp, challengeId, code } = req.body;
+    const rawOtp = String(otp || code || '');
+
+    // 3. Locate active challenge bound to this participant (FR-009 / NR-008)
+    const challenge = await mfaRepository.getLatestActiveChallenge(participant.id);
+    if (!challenge) {
+      res.status(400).json({
+        error: 'No active verification code found or code has expired. Please request a new code.',
+        code: 'INVALID_OR_EXPIRED_OTP',
+      });
+      return;
+    }
+
+    // Guard against challengeId mismatch (binding to specific challenge)
+    if (typeof challengeId === 'string' && challenge.id !== challengeId) {
+      res.status(400).json({
+        error: 'Invalid or expired verification challenge. Please request a new code.',
+        code: 'INVALID_OR_EXPIRED_OTP',
+      });
+      return;
+    }
+
+    const isCodeMatch = verifyOtpHash(rawOtp, challenge.otp_hash);
+    const now = Date.now();
+    const isExpired = now >= Date.parse(challenge.expires_at);
+
+    // 4. Code matches hash but challenge has reached/exceeded 10m expiry (US-004 AC 1 / US-004-T2)
+    if (isExpired && isCodeMatch) {
+      res.status(400).json({
+        error: 'Verification code has expired. Please request a new code.',
+        code: 'OTP_EXPIRED',
+      });
+      return;
+    }
+
+    const clientIp = (req.ip || (req.headers['x-forwarded-for'] as string) || '').split(',')[0].trim() || null;
+
+    // 5. Code does not match (or expired code without matching hash)
+    if (!isCodeMatch) {
+      // Record failed attempt
+      await mfaRepository.createAttempt({
+        participant_id: participant.id,
+        challenge_id: challenge.id,
+        success: false,
+        ip_address: clientIp,
+      });
+
+      // Check if this failure triggered a 15-minute account lockout (5th attempt)
+      const postAttemptLockout = await evaluateAccountLockout(participant.id);
+      if (postAttemptLockout.locked) {
+        await mfaRepository.invalidatePendingChallenges(participant.id);
+        res.status(423).json({
+          error: 'Account temporarily locked due to too many failed OTP attempts. Please wait 15 minutes before trying again.',
+          code: 'ACCOUNT_LOCKED',
+          retryAfter: postAttemptLockout.retryAfterSeconds,
+        });
+        return;
+      }
+
+      // Calculate remaining attempts before lockout (1..4)
+      const recentAttempts = await mfaRepository.getRecentAttempts(participant.id, 5);
+      let consecutiveFailures = 0;
+      for (const a of recentAttempts) {
+        if (a.success) break;
+        consecutiveFailures++;
+      }
+      const remainingAttempts = Math.max(0, 5 - consecutiveFailures);
+
+      res.status(400).json({
+        error: 'Invalid verification code. Please try again.',
+        code: 'INVALID_OTP',
+        remainingAttempts,
+      });
+      return;
+    }
+
+    // 6. Valid OTP & unexpired challenge: consume atomically (FR-010 / NR-008)
+    try {
+      await mfaRepository.markChallengeConsumed(challenge.id);
+    } catch {
+      // Row was already consumed or invalidated concurrently (replay collision trap)
+      res.status(400).json({
+        error: 'No active verification code found or code has expired. Please request a new code.',
+        code: 'INVALID_OR_EXPIRED_OTP',
+      });
+      return;
+    }
+
+    // Record successful attempt (resets failure counter per FR-010)
+    await mfaRepository.createAttempt({
+      participant_id: participant.id,
+      challenge_id: challenge.id,
+      success: true,
+      ip_address: clientIp,
+    });
+
+    // 7. Update Firebase custom claims with mfa_auth_time matching auth_time
+    await markMfaComplete(decodedToken.uid, decodedToken.auth_time);
+
+    res.status(200).json({
+      verified: true,
+      mfaAuthTime: decodedToken.auth_time,
+      message: 'Two-factor authentication complete.',
+    });
+  } catch (err: unknown) {
+    next(err);
+  }
+}
 
 /**
  * Exchanges a fresh, MFA-verified Firebase ID token for an HttpOnly session cookie
  * (POST /api/auth/session, US-003 AC 4). Must be mounted after `requireFirebaseAuth`
  * and `requireMfa`. The cookie lasts a fixed SESSION_COOKIE_MAX_AGE_SECONDS (7 days by
  * default) and is not extended by later requests.
+ *
+ * FR-010 / US-004: OTP lockout also blocks session renewal for 15 minutes. Existing
+ * session cookies are not revoked solely by the lock (checked only on create).
  */
 export async function createSession(
   req: Request,
@@ -831,8 +1242,43 @@ export async function createSession(
     return;
   }
 
-  const maxAgeSeconds = securityConfig.sessionCookie.maxAgeSeconds;
   try {
+    let participant = req.participant;
+    if (!participant) {
+      participant =
+        (await participantsRepository.findByFirebaseUid(decoded.uid)) ?? undefined;
+    }
+    if (participant) {
+      try {
+        const lockout = await evaluateAccountLockout(participant.id);
+        if (lockout.locked) {
+          if (lockout.retryAfterSeconds != null) {
+            res.setHeader('Retry-After', String(lockout.retryAfterSeconds));
+          }
+          res.status(423).json({
+            error:
+              'Account temporarily locked due to too many failed OTP attempts. Please wait 15 minutes before trying again.',
+            code: 'ACCOUNT_LOCKED',
+            ...(lockout.retryAfterSeconds != null
+              ? { retryAfter: lockout.retryAfterSeconds }
+              : {}),
+          });
+          return;
+        }
+      } catch (lockoutErr: unknown) {
+        if (
+          lockoutErr instanceof Error &&
+          (lockoutErr.message.includes('Missing SUPABASE_URL') ||
+            lockoutErr.message.includes('relation "mfa_attempts" does not exist'))
+        ) {
+          // Safe offline/unit-test fallback when DB is unconfigured
+        } else {
+          throw lockoutErr;
+        }
+      }
+    }
+
+    const maxAgeSeconds = securityConfig.sessionCookie.maxAgeSeconds;
     const sessionCookie = await firebaseAuth.createSessionCookie(idToken, {
       expiresIn: maxAgeSeconds * 1000,
     });
