@@ -7,10 +7,6 @@
 | Wireframes       | 9 (3 per story)                                                                                         |
 | Sources of truth | `docs/02_user_stories/user_stories.md`, `docs/04_requirements/functional_nonfunctional_requirements.md` |
 | Version          | v1.0 · Sprint 1                                                                                         |
-| Chinese version  | [`user_manual_us-001_003.html`](user_manual_us-001_003.html)                                            |
-| HTML version     | [`user_manual_us-001_003_en.html`](user_manual_us-001_003_en.html)                                      |
-
-
 
 ## Contents
 
