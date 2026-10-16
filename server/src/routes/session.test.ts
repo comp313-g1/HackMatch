@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import { app } from '../app.js';
 import { MFA_CLAIM } from '../utils/mfaClaim.js';
+import { participantsRepository } from '../db/participants.repository.js';
 
 const mockVerifyIdToken = vi.fn();
 const mockCreateSessionCookie = vi.fn();
@@ -61,6 +62,7 @@ describe('POST /api/auth/session (create session cookie)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreateSessionCookie.mockResolvedValue('firebase-session-cookie-value');
+    vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(null);
   });
 
   it('issues an HttpOnly, Secure, SameSite=Strict session cookie with a fixed 7-day lifetime', async () => {

@@ -16,6 +16,7 @@ import {
   generateCsrfToken,
   clearSessionCookies,
 } from '../utils/sessionCookies.js';
+import { ACCOUNT_SUSPENDED_MESSAGE } from '../middleware/requireActiveAccount.js';
 
 export type MfaOtpEmailSender = (email: string, otp: string) => Promise<void>;
 
@@ -484,6 +485,15 @@ export async function oauthSignIn(
       res.status(403).json({
         error: 'Public OAuth cannot be used to authenticate an administrator account.',
         code: 'ADMIN_OAUTH_PROHIBITED',
+      });
+      return;
+    }
+
+    // Suspended accounts cannot start a session (US-003 AC 2 / US-003-T4 / FR-005)
+    if (participant.is_suspended) {
+      res.status(403).json({
+        error: ACCOUNT_SUSPENDED_MESSAGE,
+        code: 'ACCOUNT_SUSPENDED',
       });
       return;
     }

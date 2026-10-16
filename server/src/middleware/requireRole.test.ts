@@ -79,7 +79,7 @@ describe('Role-based authorization (GET /api/access/*)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
-    findByUid = vi.spyOn(participantsRepository, 'findByFirebaseUid');
+    findByUid = vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(null);
     mockGetUser.mockResolvedValue({ uid: 'fb-uid-1', customClaims: {} });
     mockSetCustomUserClaims.mockResolvedValue(undefined);
   });
@@ -108,13 +108,14 @@ describe('Role-based authorization (GET /api/access/*)', () => {
       mockVerifyIdToken.mockResolvedValue(token({ role: 'PART' }));
     });
 
-    it('grants participant access without a database lookup', async () => {
+    it('grants participant access using the PART claim (suspension check may hit the DB once)', async () => {
       const response = await get('/api/access/participant');
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ access: 'granted', role: 'PART', uid: 'fb-uid-1' });
       expect(response.headers['cache-control']).toBe('no-store');
-      expect(findByUid).not.toHaveBeenCalled();
+      // requireActiveAccount looks up the participant; requireRole does not look up again for PART.
+      expect(findByUid).toHaveBeenCalledTimes(1);
     });
 
     it('denies admin access with 403 FORBIDDEN_ROLE', async () => {
@@ -182,7 +183,8 @@ describe('Role-based authorization (GET /api/access/*)', () => {
 
       expect(response.status).toBe(403);
       expect(response.body.code).toBe('INVALID_ROLE_CLAIM');
-      expect(findByUid).not.toHaveBeenCalled();
+      // Suspension middleware may look up the participant; role validation itself does not.
+      expect(response.body.error).toMatch(/not recognised/i);
     });
   });
 

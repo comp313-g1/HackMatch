@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { signInWithEmailAndPassword, type UserCredential } from 'firebase/auth';
 import { LoginForm } from './LoginForm';
-import { GENERIC_CREDENTIALS_ERROR } from './loginErrors';
+import { GENERIC_CREDENTIALS_ERROR, ACCOUNT_SUSPENDED_ERROR } from './loginErrors';
+import { assertAccountActive } from './accountStatus';
 
 vi.mock('firebase/auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('firebase/auth')>();
@@ -12,7 +13,12 @@ vi.mock('firebase/auth', async (importOriginal) => {
   };
 });
 
+vi.mock('./accountStatus', () => ({
+  assertAccountActive: vi.fn(),
+}));
+
 const mockSignIn = vi.mocked(signInWithEmailAndPassword);
+const mockAssertAccountActive = vi.mocked(assertAccountActive);
 
 const firebaseError = (code: string) => Object.assign(new Error(code), { code });
 
@@ -25,6 +31,7 @@ const fillAndSubmit = (email: string, password: string) => {
 describe('LoginForm', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAssertAccountActive.mockResolvedValue(undefined);
   });
 
   it('renders email and password fields with a sign in button', () => {
@@ -137,7 +144,6 @@ describe('LoginForm', () => {
 
   it.each([
     ['auth/too-many-requests', /too many unsuccessful sign-in attempts/i],
-    ['auth/user-disabled', /this account cannot sign in right now/i],
     ['auth/network-request-failed', /network error/i],
     ['auth/internal-error', /sign-in failed\. please try again/i],
   ])('shows a clear message for %s and keeps the entered values', async (code, message) => {
@@ -149,6 +155,17 @@ describe('LoginForm', () => {
     expect(await screen.findByText(message)).toBeInTheDocument();
     expect(screen.getByLabelText(/email address/i)).toHaveValue('jane@example.com');
     expect(screen.getByLabelText(/password/i)).toHaveValue('secret123');
+  });
+
+  it('shows a disabled-account message and clears the password', async () => {
+    mockSignIn.mockRejectedValueOnce(firebaseError('auth/user-disabled'));
+    render(<LoginForm />);
+
+    fillAndSubmit('jane@example.com', 'secret123');
+
+    expect(await screen.findByText(/this account cannot sign in right now/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/email address/i)).toHaveValue('jane@example.com');
+    expect(screen.getByLabelText(/password/i)).toHaveValue('');
   });
 
   it('clears the previous error when the user submits again', async () => {
@@ -171,5 +188,22 @@ describe('LoginForm', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /create an account/i }));
     expect(onNavigateToRegister).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks a suspended account after Firebase accepts the password (US-003-T4)', async () => {
+    const user = { uid: 'u1', email: 'jane@example.com' };
+    mockSignIn.mockResolvedValueOnce({ user } as UserCredential);
+    mockAssertAccountActive.mockRejectedValueOnce(
+      Object.assign(new Error('ACCOUNT_SUSPENDED'), { code: 'ACCOUNT_SUSPENDED' })
+    );
+    const onPrimaryAuthSuccess = vi.fn();
+    render(<LoginForm onPrimaryAuthSuccess={onPrimaryAuthSuccess} />);
+
+    fillAndSubmit('jane@example.com', 'secret123');
+
+    expect(await screen.findByText(ACCOUNT_SUSPENDED_ERROR)).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(onPrimaryAuthSuccess).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/password/i)).toHaveValue('');
   });
 });

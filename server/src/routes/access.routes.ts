@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { requireFirebaseAuth } from '../middleware/requireFirebaseAuth.js';
+import { requireActiveAccount } from '../middleware/requireActiveAccount.js';
 import { requireMfa } from '../middleware/requireMfa.js';
 import { requireParticipantRole, requireAdminRole } from '../middleware/requireRole.js';
 
@@ -19,6 +20,20 @@ function grant(req: Request, res: Response): void {
   });
 }
 
-accessRouter.get('/participant', requireFirebaseAuth, requireMfa, requireParticipantRole, grant);
+accessRouter.get(
+  '/participant',
+  requireFirebaseAuth,
+  requireMfa,
+  requireActiveAccount,
+  requireParticipantRole,
+  grant
+);
 
-accessRouter.get('/admin', requireFirebaseAuth, requireMfa, requireAdminRole, grant);
+accessRouter.get(
+  '/admin',
+  requireFirebaseAuth,
+  requireMfa,
+  requireActiveAccount,
+  requireAdminRole,
+  grant
+);

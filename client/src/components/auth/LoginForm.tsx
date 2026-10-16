@@ -7,6 +7,7 @@ import {
   type LoginError,
   type LoginValidationErrors,
 } from './loginErrors';
+import { assertAccountActive } from './accountStatus';
 
 export interface PrimaryAuthResult {
   email: string;
@@ -47,13 +48,15 @@ export function LoginForm({
 
     try {
       const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+      // Block suspended / Firebase-disabled accounts before any MFA or session step (US-003-T4).
+      await assertAccountActive(credential.user);
       setPassword('');
       setSignedInEmail(normalizedEmail);
       onPrimaryAuthSuccess?.({ email: normalizedEmail, user: credential.user });
     } catch (err: unknown) {
       const loginError = describeLoginError(err);
       setFormError(loginError);
-      if (loginError.kind === 'credentials') {
+      if (loginError.kind === 'credentials' || loginError.kind === 'suspended' || loginError.kind === 'disabled') {
         setPassword('');
       }
     } finally {

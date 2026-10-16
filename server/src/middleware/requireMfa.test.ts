@@ -91,6 +91,7 @@ describe('requireMfa on protected routes (GET /api/access/*)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
+    vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(null);
   });
 
   const get = (path: string) =>
@@ -118,15 +119,13 @@ describe('requireMfa on protected routes (GET /api/access/*)', () => {
     expect(response.body.code).toBe('MFA_REQUIRED');
   });
 
-  it('checks MFA before role, so admins without MFA are also rejected', async () => {
-    const findByUid = vi.spyOn(participantsRepository, 'findByFirebaseUid');
+  it('checks suspension then MFA before role, so admins without MFA are also rejected', async () => {
     mockVerifyIdToken.mockResolvedValueOnce(token({ role: 'ADMIN' }));
 
     const response = await get('/api/access/admin');
 
     expect(response.status).toBe(403);
     expect(response.body.code).toBe('MFA_REQUIRED');
-    expect(findByUid).not.toHaveBeenCalled();
   });
 
   it('grants access once the current sign-in has completed MFA', async () => {

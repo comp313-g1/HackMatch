@@ -23,15 +23,35 @@ export function validateLoginInput(email: string, password: string): LoginValida
 
 export const GENERIC_CREDENTIALS_ERROR = 'Incorrect email or password. Please try again.';
 
-export type LoginErrorKind = 'credentials' | 'throttled' | 'disabled' | 'network' | 'unknown';
+export const ACCOUNT_SUSPENDED_ERROR =
+  'This account has been suspended and cannot sign in. Please contact support.';
+
+export type LoginErrorKind =
+  | 'credentials'
+  | 'throttled'
+  | 'disabled'
+  | 'suspended'
+  | 'network'
+  | 'unknown';
 
 export interface LoginError {
   kind: LoginErrorKind;
   message: string;
 }
 
+/** Credential failures that must never reveal whether the email exists (US-003 AC 1 / T2). */
+const CREDENTIAL_ERROR_CODES = new Set([
+  'auth/invalid-credential',
+  'auth/invalid-login-credentials',
+  'auth/wrong-password',
+  'auth/user-not-found',
+  'auth/invalid-email',
+  'auth/missing-password',
+  'auth/invalid-password',
+]);
+
 /**
- * Maps Firebase sign-in errors to user-facing messages. Every credential failure
+ * Maps Firebase / server sign-in errors to user-facing messages. Every credential failure
  * returns the same text so the UI never reveals whether an account exists (US-003 AC 1).
  */
 export function describeLoginError(error: unknown): LoginError {
@@ -40,13 +60,11 @@ export function describeLoginError(error: unknown): LoginError {
       ? String((error as { code: unknown }).code)
       : '';
 
+  if (CREDENTIAL_ERROR_CODES.has(code)) {
+    return { kind: 'credentials', message: GENERIC_CREDENTIALS_ERROR };
+  }
+
   switch (code) {
-    case 'auth/invalid-credential':
-    case 'auth/invalid-login-credentials':
-    case 'auth/wrong-password':
-    case 'auth/user-not-found':
-    case 'auth/invalid-email':
-      return { kind: 'credentials', message: GENERIC_CREDENTIALS_ERROR };
     case 'auth/too-many-requests':
       return {
         kind: 'throttled',
@@ -54,10 +72,13 @@ export function describeLoginError(error: unknown): LoginError {
           'Too many unsuccessful sign-in attempts. Please wait a few minutes before trying again, or reset your password.',
       };
     case 'auth/user-disabled':
+    case 'ACCOUNT_DISABLED':
       return {
         kind: 'disabled',
         message: 'This account cannot sign in right now. Please contact support if you think this is a mistake.',
       };
+    case 'ACCOUNT_SUSPENDED':
+      return { kind: 'suspended', message: ACCOUNT_SUSPENDED_ERROR };
     case 'auth/network-request-failed':
       return {
         kind: 'network',
