@@ -165,6 +165,49 @@ describe('verifyMfaOtpForParticipant (US-004 AC 2 / FR-010 / S1-P1-11)', () => {
     expect(mfaRepository.tryConsumeChallenge).not.toHaveBeenCalled();
   });
 
+  it('predecessor invalidated on resend: rejects with OTP_EXPIRED and never consumes', async () => {
+    vi.spyOn(mfaRepository, 'getChallengeById').mockResolvedValueOnce({
+      ...activeChallenge,
+      invalidated_at: new Date().toISOString(),
+    });
+
+    const result = await verifyMfaOtpForParticipant(
+      participant,
+      firebaseUser,
+      activeChallenge.id,
+      otp
+    );
+
+    expect(result).toMatchObject({ ok: false, status: 400, code: 'OTP_EXPIRED' });
+    expect(mfaRepository.tryConsumeChallenge).not.toHaveBeenCalled();
+    expect(mfaClaim.markMfaComplete).not.toHaveBeenCalled();
+  });
+
+  it('already locked: invalidates outstanding challenges and returns ACCOUNT_LOCKED', async () => {
+    const now = Date.now();
+    vi.spyOn(mfaRepository, 'getRecentAttempts').mockResolvedValue(
+      Array.from({ length: 5 }, (_, i) => ({
+        id: `att-${i}`,
+        participant_id: participant.id,
+        challenge_id: activeChallenge.id,
+        success: false,
+        ip_address: null,
+        created_at: new Date(now - (5 - i) * 1000).toISOString(),
+      })) as MfaAttempt[]
+    );
+
+    const result = await verifyMfaOtpForParticipant(
+      participant,
+      firebaseUser,
+      activeChallenge.id,
+      otp
+    );
+
+    expect(result).toMatchObject({ ok: false, status: 423, code: 'ACCOUNT_LOCKED' });
+    expect(mfaRepository.invalidatePendingChallenges).toHaveBeenCalledWith(participant.id);
+    expect(mfaRepository.tryConsumeChallenge).not.toHaveBeenCalled();
+  });
+
   it('challenge owned by another participant: CHALLENGE_NOT_FOUND', async () => {
     vi.spyOn(mfaRepository, 'getChallengeById').mockResolvedValueOnce({
       ...activeChallenge,

@@ -107,6 +107,8 @@ describe('POST /api/auth/mfa/challenge (US-004 S1-P1-09)', () => {
 
     const createArg = vi.mocked(mfaRepository.createChallenge).mock.calls[0]?.[0];
     expect(createArg?.otp_hash).toBe(hashOtp(capturedOtp));
+    // Resend/reissue path: predecessors invalidated before the new challenge is stored (AC 5).
+    expect(mfaRepository.invalidatePendingChallenges).toHaveBeenCalledWith(participant.id);
   });
 
   it('unauthorized: missing Authorization header → 401', async () => {
@@ -255,5 +257,6 @@ describe('POST /api/auth/mfa/challenge (US-004 S1-P1-09)', () => {
     expect(response.body.retryAfter).toBeGreaterThan(0);
     expect(response.headers['retry-after']).toBeDefined();
     expect(mfaRepository.createChallenge).not.toHaveBeenCalled();
+    expect(mfaRepository.invalidatePendingChallenges).toHaveBeenCalledWith(participant.id);
   });
 });

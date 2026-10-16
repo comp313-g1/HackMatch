@@ -229,6 +229,29 @@ describe('OtpEntryForm (US-004 S1-P1-10)', () => {
     expect(screen.getByText(/code expires in/i)).toBeInTheDocument();
   });
 
+  it('resend: replaces predecessor challengeId so verify uses only the new challenge (AC 5)', async () => {
+    mockRequestMfaChallenge.mockResolvedValueOnce({
+      requiresOtp: true,
+      challengeId: 'challenge-resend',
+      email: 'j***e@example.com',
+      expiresInSeconds: 600,
+      message: 'A new code has been sent.',
+    });
+    mockVerifyMfaCode.mockResolvedValueOnce({ verified: true, message: 'ok' });
+    renderForm();
+
+    fireEvent.click(screen.getByRole('button', { name: /resend code/i }));
+    await waitFor(() => expect(mockRequestMfaChallenge).toHaveBeenCalled());
+
+    fireEvent.change(screen.getByLabelText(/6-digit code/i), { target: { value: '654321' } });
+    fireEvent.click(screen.getByRole('button', { name: /verify code/i }));
+
+    await waitFor(() =>
+      expect(mockVerifyMfaCode).toHaveBeenCalledWith(user, 'challenge-resend', '654321')
+    );
+    expect(mockVerifyMfaCode).not.toHaveBeenCalledWith(user, 'challenge-abc', expect.anything());
+  });
+
   it('resend failure: shows error and applies rate-limit cooldown', async () => {
     mockRequestMfaChallenge.mockRejectedValueOnce(
       Object.assign(new Error('Too many requests. Try again later.'), { code: 'RATE_LIMITED' })

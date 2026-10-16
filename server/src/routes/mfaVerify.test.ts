@@ -294,5 +294,24 @@ describe('POST /api/auth/mfa/verify (US-004 S1-P1-11)', () => {
     expect(response.headers['retry-after']).toBeDefined();
     expect(mfaRepository.tryConsumeChallenge).not.toHaveBeenCalled();
     expect(mockSetCustomUserClaims).not.toHaveBeenCalled();
+    expect(mfaRepository.invalidatePendingChallenges).toHaveBeenCalledWith(participant.id);
+  });
+
+  it('invalidated predecessor challenge cannot authenticate (AC 5)', async () => {
+    mockVerifyIdToken.mockResolvedValueOnce(decoded());
+    vi.spyOn(mfaRepository, 'getChallengeById').mockResolvedValueOnce({
+      ...activeChallenge,
+      invalidated_at: new Date().toISOString(),
+    });
+
+    const response = await request(app)
+      .post('/api/auth/mfa/verify')
+      .set('Authorization', 'Bearer valid.id.token')
+      .send({ challengeId: activeChallenge.id, code: otp });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('OTP_EXPIRED');
+    expect(mfaRepository.tryConsumeChallenge).not.toHaveBeenCalled();
+    expect(mockSetCustomUserClaims).not.toHaveBeenCalled();
   });
 });

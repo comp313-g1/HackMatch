@@ -85,6 +85,31 @@ describe('issueMfaOtpForParticipant (US-004 AC 1 / FR-009 / FR-081 / FR-084)', (
     const result = await issueMfaOtpForParticipant(participant);
     expect(result).toMatchObject({ ok: false, status: 423, code: 'ACCOUNT_LOCKED' });
     expect(mfaRepository.createChallenge).not.toHaveBeenCalled();
+    // Lock path invalidates outstanding challenges (US-004 AC 3 / AC 5).
+    expect(mfaRepository.invalidatePendingChallenges).toHaveBeenCalledWith(participant.id);
+  });
+
+  it('resend/reissue invalidates predecessor challenges without resetting failure attempts (AC 5)', async () => {
+    _setMfaOtpEmailSender(async () => undefined);
+    const priorFailures = Array.from({ length: 2 }, (_, i) => ({
+      id: `att-${i}`,
+      participant_id: participant.id,
+      challenge_id: 'old-challenge',
+      success: false,
+      ip_address: null,
+      created_at: new Date(Date.now() - (2 - i) * 1000).toISOString(),
+    }));
+    vi.spyOn(mfaRepository, 'getRecentAttempts').mockResolvedValue(priorFailures);
+    const createAttemptSpy = vi.spyOn(mfaRepository, 'createAttempt');
+
+    const result = await issueMfaOtpForParticipant(participant);
+
+    expect(result.ok).toBe(true);
+    expect(mfaRepository.invalidatePendingChallenges).toHaveBeenCalledWith(participant.id);
+    expect(mfaRepository.createChallenge).toHaveBeenCalled();
+    // Failure attempts are untouched by reissue (only challenges are invalidated).
+    expect(createAttemptSpy).not.toHaveBeenCalled();
+    expect(await mfaRepository.getRecentAttempts(participant.id)).toEqual(priorFailures);
   });
 
   it('returns RATE_LIMITED after a successful send within the 60s cooldown (FR-081)', async () => {

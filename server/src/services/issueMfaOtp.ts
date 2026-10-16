@@ -94,6 +94,8 @@ export async function issueMfaOtpForParticipant(
   try {
     const lockout = await evaluateAccountLockout(participant.id);
     if (lockout.locked) {
+      // US-004 AC 3/5: lock invalidates outstanding challenges; keep failure counter intact.
+      await mfaRepository.invalidatePendingChallenges(participant.id);
       return {
         ok: false,
         status: 423,

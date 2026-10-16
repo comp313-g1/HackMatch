@@ -91,7 +91,8 @@ export async function evaluateAccountLockout(
 
 /**
  * Atomically invalidates existing pending challenges and creates a fresh 10-minute
- * MFA challenge storing a SHA-256 hashed verifier (FR-009 / US-004 AC 1).
+ * MFA challenge storing a SHA-256 hashed verifier (FR-009 / US-004 AC 1 / AC 5).
+ * Resend/reissue must invalidate predecessors without resetting OTP failure attempts.
  */
 export async function createMfaChallenge(
   participantId: string,
@@ -105,6 +106,7 @@ export async function createMfaChallenge(
     throw new Error('rawOtp is required');
   }
 
+  // Predecessor OTPs must never remain usable after a new code is issued (US-004 AC 5).
   await mfaRepository.invalidatePendingChallenges(participantId);
   const expiresAt = new Date(now + OTP_EXPIRY_SECONDS * 1000).toISOString();
   const otpHash = hashOtp(rawOtp);

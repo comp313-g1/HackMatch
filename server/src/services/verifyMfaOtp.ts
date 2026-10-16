@@ -46,6 +46,8 @@ export async function verifyMfaOtpForParticipant(
   try {
     const lockout = await evaluateAccountLockout(participant.id);
     if (lockout.locked) {
+      // US-004 AC 3/5: ensure predecessor challenges cannot authenticate during lock.
+      await mfaRepository.invalidatePendingChallenges(participant.id);
       return {
         ok: false,
         status: 423,
