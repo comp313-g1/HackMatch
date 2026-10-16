@@ -2,11 +2,11 @@
 
 | Item             | Detail                                                                                                  |
 | ---------------- | ------------------------------------------------------------------------------------------------------- |
-| Scope            | US-001, US-002, US-003                                                                                  |
+| Scope            | US-001, US-002, US-003, US-004                                                                          |
 | Delivery         | Must-Have — MVP                                                                                         |
-| Wireframes       | 9 (3 per story)                                                                                         |
+| Visuals          | Wireframes for US-001–003; **screenshot placeholders** for US-004 (replace with captures when ready)    |
 | Sources of truth | `docs/02_user_stories/user_stories.md`, `docs/04_requirements/functional_nonfunctional_requirements.md` |
-| Version          | v1.0 · Sprint 1                                                                                         |
+| Version          | v1.1 · Sprint 1 (US-004 added)                                                                          |
 | Chinese version  | [`user_manual_us-001_003.html`](user_manual_us-001_003.html)                                            |
 | HTML version     | [`user_manual_us-001_003_en.html`](user_manual_us-001_003_en.html)                                      |
 
@@ -20,20 +20,21 @@
 4. [US-001 Participant registration and email verification (3 wireframes)](#4-us-001-participant-registration-and-email-verification)
 5. [US-002 Federated (OAuth) registration and sign-in (3 wireframes)](#5-us-002-federated-oauth-registration-and-sign-in)
 6. [US-003 Sign-in and session management (3 wireframes)](#6-us-003-sign-in-and-session-management)
-7. [Appendix A Requirement mapping](#appendix-a-requirement-mapping)
-8. [Appendix B Documentation conflicts awaiting a team decision](#appendix-b-documentation-conflicts-awaiting-a-team-decision)
-9. [Appendix C How to read the wireframes](#appendix-c-how-to-read-the-wireframes)
+7. [US-004 Email-based login two-factor authentication (OTP)](#7-us-004-email-based-login-two-factor-authentication-otp)
+8. [Appendix A Requirement mapping](#appendix-a-requirement-mapping)
+9. [Appendix B Documentation conflicts awaiting a team decision](#appendix-b-documentation-conflicts-awaiting-a-team-decision)
+10. [Appendix C How to read the wireframes](#appendix-c-how-to-read-the-wireframes)
 
 ## 1. Scope and exclusions
 
 This manual describes what a user can see, do, and be told by the system. It is not an implementation specification. Every threshold and rule below comes from the authoritative documents in this repository; no new constraints are introduced here.
 
-| Topic                       | Description                                                                                                                                                                                                                    |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| In scope                    | Email registration, email ownership verification, Google / GitHub federated registration and sign-in, primary credential validation, session establishment, and sign-out.                                                      |
-| Referenced but not expanded | **US-004 email login one-time code (OTP)** is a mandatory gate on all three stories. This manual only covers where it appears in the interface and what the user does there; its full rule set belongs to the US-004 document. |
-| Out of scope                | The complete password recovery flow (US-005), authenticator-based factors (US-029, May-Have), and everything from US-006 onward — participant profile management (role, skills, portfolio URL) and team formation features.    |
-| Interface language          | Wireframe labels are in English, matching the implementation. All explanatory prose in this version is in English as well.                                                                                                     |
+| Topic              | Description                                                                                                                                                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| In scope           | Email registration, email ownership verification, Google / GitHub federated registration and sign-in, primary credential validation, session establishment, sign-out, and **email login one-time code (US-004 OTP / 2FA)**.     |
+| Out of scope       | The complete password recovery flow (US-005), authenticator-based factors (US-029, May-Have), and everything from US-006 onward — participant profile management (role, skills, portfolio URL) and team formation features.     |
+| Interface language | Wireframe and UI labels are in English, matching the implementation. All explanatory prose in this version is in English as well.                                                                                               |
+| Screenshots        | US-004 figures use **placeholders**. Replace each `assets/us-004-screenshots/…` path with a real capture when available; do not invent UI that the product does not show.                                                        |
 
 ## 2. Roles and terminology
 
@@ -229,9 +230,11 @@ Scope note: **role, skills and portfolio URL are not part of this story.** They 
 
 **Figure 3.2** Login code page — the mandatory gate for every sign-in method.
 
+The full OTP behaviour (entry, resend, expiry, lockout, delivery failure) is documented in [§7 US-004](#7-us-004-email-based-login-two-factor-authentication-otp). Summary for sign-in context:
+
 1. **Single-use code** — bound to the account and to this challenge, invalidated on use; concurrent submissions yield at most one success.
-2. **Expiry** — 10 minutes. After that, the primary credential must be re-entered; the challenge cannot be extended in place.
-3. **Attempt exhaustion** — five incorrect codes lock sign-in for 15 minutes and invalidate the challenge; resending, changing IP or changing browser does not reset the counter.
+2. **Expiry** — 10 minutes. After that, request a new code (or sign in again); the challenge cannot be extended in place.
+3. **Attempt exhaustion** — five incorrect codes lock sign-in for 15 minutes and invalidate outstanding challenges; resending, changing IP or changing browser does not reset the counter.
 
 #### Figure 3.3 Session state and sign-out
 
@@ -262,6 +265,110 @@ Scope note: **role, skills and portfolio URL are not part of this story.** They 
 - **AC 4** — every protected request verifies the ID token; tokens are sent over HTTPS only; XSS protection is mandatory on the browser side, and any cookie-based session is HttpOnly, Secure and protected against request forgery.
 - **AC 5** — sign-out revokes refresh tokens and replaying the old credential fails; expired or revoked sessions cannot invoke protected endpoints.
 
+## 7. US-004 Email-based login two-factor authentication (OTP)
+
+**Delivery** Must-Have / MVP · **Priority** High · **Effort** Medium · **Role** `PART` / `ADMIN`
+
+> As a Participant or Platform Administrator, I want to verify my identity via a one-time code sent to my email during login, so that a compromised password alone does not grant account access.
+
+Email / password, Google, and GitHub sign-in all stop at this step. A provider’s own MFA does **not** replace the HackMatch email code. No usable account session is created until the correct code is accepted.
+
+### 7.1 What the user does
+
+1. Complete primary sign-in (email and password, or Google / GitHub). The password or provider consent alone is **not** enough.
+2. The system emails a **cryptographically random 6-digit code** to the verified address for this sign-in challenge.
+3. On the **Enter verification code** screen, type the code from the email and choose **Verify code**.
+4. A correct, unused, unexpired code unlocks the account for this sign-in. The code cannot be reused.
+5. If the email has not arrived, use **Resend code** (subject to a short cooldown and hourly limits). Requesting a new code **invalidates** the previous one; the failure counter is **not** reset by resend.
+6. After five incorrect codes, the account is locked for **15 minutes**. During the lock, verify and new codes are refused; changing browser, IP, or provider does not bypass it. Existing sessions already in use are not forced out solely by this lock.
+7. If the email cannot be sent, the UI shows a safe message and **Try sending again**. No session is created. Failed sends do not count against the resend cooldown the same way a successful send does, so a controlled retry is allowed.
+
+### 7.2 Screenshots (placeholders)
+
+> Replace each placeholder image under `docs/assets/us-004-screenshots/` with a real product screenshot. Keep the figure numbers and captions.
+
+#### Figure 4.1 Enter verification code
+
+> **[Screenshot placeholder]** OTP entry after successful primary sign-in: heading, masked email, 6-digit field, **Verify code**, **Resend code**, **Sign out**, and expiry countdown.
+
+![Figure 4.1 Enter verification code — screenshot placeholder](assets/us-004-screenshots/PLACEHOLDER-figure-4-1-otp-entry.png)
+
+**Figure 4.1** Enter verification code — mandatory gate after password or OAuth.
+
+1. **Masked destination** — the UI shows where the code was sent without exposing the full address unnecessarily.
+2. **6-digit field** — digits only; empty or incomplete values show a clear validation message before the server is called.
+3. **Expiry countdown** — the code is valid for **10 minutes** from issuance; when time runs out, verify is disabled until a new code is requested.
+
+#### Figure 4.2 Resend and predecessor invalidation
+
+> **[Screenshot placeholder]** Resend in progress or cooldown (`Resend code (Ns)`), plus optional note that a new email was sent.
+
+![Figure 4.2 Resend code — screenshot placeholder](assets/us-004-screenshots/PLACEHOLDER-figure-4-2-resend.png)
+
+**Figure 4.2** Resend — issues a new challenge and retires the old one.
+
+1. **Cooldown** — rapid repeated resends are limited (about one successful send per minute, and a small number per hour).
+2. **Predecessor invalid** — after a successful resend, the previous code never authenticates, even if it has not yet expired.
+3. **Failure counter unchanged** — resend does not wipe incorrect-attempt history for this lockout cycle.
+
+#### Figure 4.3 Incorrect, expired, or already-used code
+
+> **[Screenshot placeholder]** Error alert for wrong code, expired code, or already-used code; input may be cleared for wrong / expired / consumed cases.
+
+![Figure 4.3 OTP errors — screenshot placeholder](assets/us-004-screenshots/PLACEHOLDER-figure-4-3-otp-errors.png)
+
+**Figure 4.3** Failure states that do not grant access.
+
+1. **Incorrect code** — retry is allowed until the five-attempt limit; the message does not reveal account internals.
+2. **Expired or invalidated** — user is told to request a new code; the old challenge cannot be extended in place.
+3. **Already used** — a consumed code cannot complete login again.
+
+#### Figure 4.4 Five-attempt lockout (15 minutes)
+
+> **[Screenshot placeholder]** Lock banner with remaining wait time; Verify and Resend disabled.
+
+![Figure 4.4 Account locked — screenshot placeholder](assets/us-004-screenshots/PLACEHOLDER-figure-4-4-lockout.png)
+
+**Figure 4.4** Account temporarily locked after five incorrect OTP attempts.
+
+1. **15-minute lock** — sign-in completion and new session start stay blocked until the wait ends.
+2. **Outstanding codes cleared** — challenges issued before the lock stop working.
+3. **After unlock** — the user must complete primary authentication again and enter a **fresh** code; the failure cycle resets for the new cycle.
+
+#### Figure 4.5 Email delivery failure and retry
+
+> **[Screenshot placeholder]** Delivery-failure alert and **Try sending again** (no session created).
+
+![Figure 4.5 Email delivery failure — screenshot placeholder](assets/us-004-screenshots/PLACEHOLDER-figure-4-5-delivery-failure.png)
+
+**Figure 4.5** Safe feedback when the verification email cannot be sent.
+
+1. **No session** — a send failure never verifies the login or creates an account session.
+2. **Retry** — the user can try sending again; entered nonsensitive context (such as email on the sign-in form) is retained where applicable.
+3. **No secrets in the message** — the UI never displays the OTP itself; only the email message contains the code.
+
+### 7.3 Errors and prompts
+
+| Scenario                                      | What the user sees                                                                                          |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Empty or non–6-digit code                     | Field validation: enter the 6-digit verification code; submit stays blocked or is rejected client-side.     |
+| Incorrect code                                | Clear error; retry allowed until five failures in the current cycle.                                        |
+| Expired, invalidated, or already-used code    | Told the code is no longer valid; request a new one.                                                        |
+| Resend too quickly / too often                | Button disabled with wait time (rate limit guidance).                                                       |
+| Five incorrect codes                          | Account locked for about 15 minutes; verify and resend unavailable until the countdown ends.                |
+| Email send failure                            | Safe retry message; **Try sending again**; no session created.                                              |
+| Not signed in / unauthorized                  | Prompted to sign in again before a code can be sent or checked.                                             |
+| Suspended account                             | Cannot complete OTP or start a session.                                                                     |
+
+### 7.4 Acceptance checklist
+
+- **AC 1** — after successful primary authentication, a cryptographically random 6-digit OTP is sent to the verified email, bound to the account and challenge, and expires **10 minutes** after issuance; at or after expiry it is rejected.
+- **AC 2** — only the matching current unused OTP completes authentication; it is consumed so it cannot be reused; a successful verify resets the OTP failure cycle for the next login.
+- **AC 3** — the fifth incorrect OTP attempt locks the account for **15 minutes** and invalidates outstanding challenges; login completion and session renewal stay blocked during the lock; changing browser, IP, provider, or requesting another code does not reset the counter or bypass the lock.
+- **AC 4** — after lock expiry, primary authentication and a fresh OTP are required; the failure counter resets for the new cycle; existing sessions are not revoked solely by the OTP lockout.
+- **AC 5** — reissuing a code invalidates its predecessor without resetting failures; expired or consumed codes never authenticate; resend and email failure behaviour follow FR-081 and FR-084.
+- **AC 6** — OAuth and password recovery do not exempt an account from email OTP; provider MFA is not an alternative in the MVP.
+
 ## Appendix A Requirement mapping
 
 | Requirement | Stories                  | The rule the user experiences                                                                                                                                                                                                                                                                               |
@@ -275,11 +382,14 @@ Scope note: **role, skills and portfolio URL are not part of this story.** They 
 | `FR-007`    | US-003 / US-004          | Session issuance: usable only after primary authentication and the email code; access credential 15 minutes, renewal credential 7 days; expired credentials and client-supplied privilege changes are rejected.                                                                                             |
 | `FR-008`    | US-003                   | Sign-out revokes the current session and its renewal credential; replaying the old credential fails on protected operations; other sessions remain unless a global revocation applies.                                                                                                                      |
 | `NR-007`    | US-003 / US-004          | Session storage and request security: browser-side secrets are not script-readable and travel over HTTPS only; a cookie-based session requires HttpOnly, Secure, an appropriate SameSite policy and request-forgery protection; lockout and revocation cannot be bypassed via renewal.                      |
-
-Note: the US-004 rules (`FR-009`, `FR-010`, `NR-008`) are outside this manual's scope. This manual only describes where the login code appears and what the user does there.
+| `FR-009`    | US-004                   | Issue email login OTP: after valid primary authentication (including OAuth), generate a cryptographically random 6-digit code for the verified email; bind it to account/challenge; expire after 10 minutes; never grant a full session merely because email was sent or a provider used MFA.             |
+| `FR-010`    | US-004                   | Verify OTPs and lockouts: only a current matching unused code authenticates and is consumed; reject at/after 10 minutes; five incorrect attempts lock login and session renewal for 15 minutes and invalidate challenges; resend/IP/provider changes do not reset attempts; success or lock expiry resets the counter. |
+| `FR-081`    | US-001 / US-004 / US-005 | Authentication email rate limits: controlled resend (for example cooldown between sends and a rolling hourly cap) with clear retry guidance.                                                                                                                                                              |
+| `FR-084`    | US-001 / US-004 / US-005 | Authentication email delivery failure: a send failure never verifies an account or creates a session; show safe retry/help feedback; retain nonsensitive form data; allow controlled retry under FR-081; never expose OTP/reset tokens in diagnostics.                                                   |
+| `NR-008`    | US-004                   | Email login 2FA security: random single-use 6-digit OTP, 10-minute rejection, 15-minute lock after 5 incorrect attempts; counters persist across resend, IP, browser and OAuth; no full session before OTP; concurrent replay yields at most one success.                                                |
 
 ---
 
-HackMatch · COMP 313 Project 2 · Team 1 — User manual (US-001 to US-003).
+HackMatch · COMP 313 Project 2 · Team 1 — User manual (US-001 to US-004).
 
 Content is derived from `docs/02_user_stories/user_stories.md` and `docs/04_requirements/functional_nonfunctional_requirements.md`. Where this manual and a source document disagree, the source document wins.
