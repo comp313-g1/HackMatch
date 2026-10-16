@@ -9,6 +9,7 @@ import type {
 
 export interface IMfaRepository {
   createChallenge(data: CreateMfaChallengeDTO): Promise<MfaChallenge>;
+  getChallengeById(challengeId: string): Promise<MfaChallenge | null>;
   getLatestActiveChallenge(participantId: string): Promise<MfaChallenge | null>;
   invalidatePendingChallenges(participantId: string): Promise<number>;
   markChallengeConsumed(challengeId: string): Promise<MfaChallenge>;
@@ -47,6 +48,22 @@ export const mfaRepository: IMfaRepository = {
 
     if (error) throw error;
     return record as MfaChallenge;
+  },
+
+  async getChallengeById(challengeId: string): Promise<MfaChallenge | null> {
+    if (!challengeId || typeof challengeId !== 'string' || challengeId.trim() === '') {
+      throw new Error('challengeId is required');
+    }
+
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('mfa_challenges')
+      .select('*')
+      .eq('id', challengeId.trim())
+      .maybeSingle();
+
+    if (error) throw error;
+    return data as MfaChallenge | null;
   },
 
   async getLatestActiveChallenge(participantId: string): Promise<MfaChallenge | null> {
@@ -182,6 +199,7 @@ export const mfaRepository: IMfaRepository = {
 };
 
 export const createChallenge = mfaRepository.createChallenge.bind(mfaRepository);
+export const getChallengeById = mfaRepository.getChallengeById.bind(mfaRepository);
 export const getLatestActiveChallenge = mfaRepository.getLatestActiveChallenge.bind(mfaRepository);
 export const invalidatePendingChallenges = mfaRepository.invalidatePendingChallenges.bind(mfaRepository);
 export const markChallengeConsumed = mfaRepository.markChallengeConsumed.bind(mfaRepository);

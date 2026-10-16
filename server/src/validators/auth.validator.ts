@@ -349,11 +349,14 @@ export function validateOAuthLinkPayload(
 
 export interface MfaVerifyFieldErrors {
   otp?: string;
+  code?: string;
+  challengeId?: string;
 }
 
 /**
- * Express middleware validating payload for POST /api/auth/mfa/verify (US-004 AC 2 / S1-P3-04).
- * Enforces presence of 6-digit numeric OTP and sanitizes optional challengeId.
+ * Express middleware validating payload for POST /api/auth/mfa/verify (US-004 AC 2 / S1-P1-10–11 / S1-P3-04).
+ * Enforces presence of 6-digit numeric OTP/code and normalizes challengeId.
+ * Supports both { otp, challengeId? } and { code, challengeId } formats.
  */
 export function validateMfaVerifyPayload(
   req: Request,
@@ -372,7 +375,10 @@ export function validateMfaVerifyPayload(
   }
 
   const rawOtp = body.otp;
-  if (typeof rawOtp !== 'string' || !/^\d{6}$/.test(rawOtp.trim())) {
+  const rawCode = body.code;
+  const rawCodeOrOtp = rawOtp ?? rawCode;
+
+  if (typeof rawCodeOrOtp !== 'string' || !/^\d{6}$/.test(rawCodeOrOtp.trim())) {
     res.status(400).json({
       error: 'Validation failed',
       errors: {
@@ -382,15 +388,20 @@ export function validateMfaVerifyPayload(
     return;
   }
 
+  const candidate = rawCodeOrOtp.trim();
+
   const rawChallengeId = body.challengeId;
+  const normalizedChallengeId =
+    typeof rawChallengeId === 'string' && rawChallengeId.trim().length > 0
+      ? rawChallengeId.trim()
+      : undefined;
+
   req.body = {
-    otp: rawOtp.trim(),
-    ...(typeof rawChallengeId === 'string' && rawChallengeId.trim().length > 0
-      ? { challengeId: rawChallengeId.trim() }
-      : {}),
+    ...(rawOtp !== undefined ? { otp: candidate } : { otp: candidate, code: candidate }),
+    ...(rawCode !== undefined ? { code: candidate } : {}),
+    ...(normalizedChallengeId ? { challengeId: normalizedChallengeId } : {}),
   };
 
   next();
 }
-
 

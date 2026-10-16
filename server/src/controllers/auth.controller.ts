@@ -17,6 +17,12 @@ import {
   clearSessionCookies,
 } from '../utils/sessionCookies.js';
 import { ACCOUNT_SUSPENDED_MESSAGE } from '../middleware/requireActiveAccount.js';
+import {
+  issueMfaOtpForParticipant,
+  _setMfaOtpEmailSender as _setIssueMfaOtpEmailSender,
+  _resetMfaOtpEmailSender as _resetIssueMfaOtpEmailSender,
+} from '../services/issueMfaOtp.js';
+import { verifyMfaOtpForParticipant } from '../services/verifyMfaOtp.js';
 
 export type MfaOtpEmailSender = (email: string, otp: string) => Promise<void>;
 
@@ -28,6 +34,7 @@ let mfaOtpEmailSender: MfaOtpEmailSender = async (email: string, _otp: string) =
 
 export function _setMfaOtpEmailSender(sender: MfaOtpEmailSender): void {
   mfaOtpEmailSender = sender;
+  _setIssueMfaOtpEmailSender(sender);
 }
 
 export function _resetMfaOtpEmailSender(): void {
@@ -36,6 +43,7 @@ export function _resetMfaOtpEmailSender(): void {
       console.info(`[AUTH] MFA OTP email dispatched to ${email}`);
     }
   };
+  _resetIssueMfaOtpEmailSender();
 }
 
 /**
@@ -128,7 +136,151 @@ export async function dispatchMfaChallenge(
  * Requires a verified Firebase ID token and an active participant. Does not create
  * a session (FR-007). Email delivery failures return 502 without authenticating (FR-084).
  */
-export const issueMfaChallenge = sendMfaOtp;
+export async function issueMfaChallenge(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+
+  try {
+    const firebaseUser = req.firebaseUser;
+    if (!firebaseUser?.uid) {
+      res.status(401).json({
+        error: 'Authentication required. Missing or malformed Authorization header.',
+        code: 'UNAUTHORIZED',
+      });
+      return;
+    }
+
+    if (!firebaseUser.email || firebaseUser.email_verified !== true) {
+      res.status(403).json({
+        error: 'A verified email is required before a login code can be sent.',
+        code: 'EMAIL_NOT_VERIFIED',
+      });
+      return;
+    }
+
+    let participant = req.participant;
+    if (!participant) {
+      participant =
+        (await participantsRepository.findByFirebaseUid(firebaseUser.uid)) ?? undefined;
+    }
+
+    if (!participant) {
+      res.status(404).json({
+        error: 'No HackMatch account is linked to this sign-in. Please register first.',
+        code: 'PARTICIPANT_NOT_FOUND',
+      });
+      return;
+    }
+
+    if (participant.is_suspended) {
+      res.status(403).json({
+        error: ACCOUNT_SUSPENDED_MESSAGE,
+        code: 'ACCOUNT_SUSPENDED',
+      });
+      return;
+    }
+
+    const issued = await issueMfaOtpForParticipant(participant);
+    if (!issued.ok) {
+      if (issued.retryAfter != null) {
+        res.setHeader('Retry-After', String(issued.retryAfter));
+      }
+      res.status(issued.status).json({
+        error: issued.error,
+        code: issued.code,
+        ...(issued.retryAfter != null ? { retryAfter: issued.retryAfter } : {}),
+      });
+      return;
+    }
+
+    res.status(200).json({
+      requiresOtp: true,
+      challengeId: issued.challengeId,
+      email: issued.maskedEmail,
+      expiresInSeconds: issued.expiresInSeconds,
+      message: issued.message,
+    });
+  } catch (err: unknown) {
+    next(err);
+  }
+}
+
+/**
+ * Verifies a 6-digit MFA OTP and sets the MFA claim (POST /api/auth/mfa/verify).
+ * Used by the React OTP entry form (US-004 / S1-P1-10 / FR-010).
+ */
+export async function verifyMfaChallenge(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+
+  try {
+    const firebaseUser = req.firebaseUser;
+    if (!firebaseUser?.uid) {
+      res.status(401).json({
+        error: 'Authentication required. Missing or malformed Authorization header.',
+        code: 'UNAUTHORIZED',
+      });
+      return;
+    }
+
+    let participant = req.participant;
+    if (!participant) {
+      participant =
+        (await participantsRepository.findByFirebaseUid(firebaseUser.uid)) ?? undefined;
+    }
+    if (!participant) {
+      res.status(404).json({
+        error: 'No HackMatch account is linked to this sign-in. Please register first.',
+        code: 'PARTICIPANT_NOT_FOUND',
+      });
+      return;
+    }
+
+    const { challengeId, code } = req.body as { challengeId: string; code: string };
+    const forwarded = req.headers['x-forwarded-for'];
+    const ip =
+      typeof req.ip === 'string'
+        ? req.ip
+        : Array.isArray(forwarded)
+          ? forwarded[0]
+          : typeof forwarded === 'string'
+            ? forwarded.split(',')[0]?.trim()
+            : null;
+
+    const result = await verifyMfaOtpForParticipant(
+      participant,
+      firebaseUser,
+      challengeId,
+      code,
+      ip
+    );
+
+    if (!result.ok) {
+      if (result.retryAfter != null) {
+        res.setHeader('Retry-After', String(result.retryAfter));
+      }
+      res.status(result.status).json({
+        error: result.error,
+        code: result.code,
+        ...(result.retryAfter != null ? { retryAfter: result.retryAfter } : {}),
+      });
+      return;
+    }
+
+    res.status(200).json({
+      verified: true,
+      message: 'Verification code accepted. You can continue to your account.',
+    });
+  } catch (err: unknown) {
+    next(err);
+  }
+}
 
 /**
  * Handles user registration (POST /api/auth/register).
@@ -929,7 +1081,8 @@ export async function verifyMfaOtp(
       return;
     }
 
-    const { otp, challengeId } = req.body;
+    const { otp, challengeId, code } = req.body;
+    const rawOtp = String(otp || code || '');
 
     // 3. Locate active challenge bound to this participant (FR-009 / NR-008)
     const challenge = await mfaRepository.getLatestActiveChallenge(participant.id);
@@ -950,7 +1103,7 @@ export async function verifyMfaOtp(
       return;
     }
 
-    const isCodeMatch = verifyOtpHash(otp, challenge.otp_hash);
+    const isCodeMatch = verifyOtpHash(rawOtp, challenge.otp_hash);
     const now = Date.now();
     const isExpired = now >= Date.parse(challenge.expires_at);
 
