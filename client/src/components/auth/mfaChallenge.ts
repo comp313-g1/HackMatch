@@ -16,7 +16,8 @@ export interface MfaChallengeResponse {
 export async function requestMfaChallenge(user: User): Promise<MfaChallengeResponse> {
   const response = await authFetch('/api/auth/mfa/challenge', { method: 'POST' }, user);
 
-  let body: { code?: string; error?: string } & Partial<MfaChallengeResponse> = {};
+  let body: { code?: string; error?: string; retryAfter?: number } & Partial<MfaChallengeResponse> =
+    {};
   try {
     body = (await response.json()) as typeof body;
   } catch {
@@ -29,7 +30,10 @@ export async function requestMfaChallenge(user: User): Promise<MfaChallengeRespo
       typeof body.error === 'string' && body.error
         ? body.error
         : 'Failed to send verification code. Please try again.';
-    throw Object.assign(new Error(message), { code });
+    throw Object.assign(new Error(message), {
+      code,
+      retryAfter: typeof body.retryAfter === 'number' ? body.retryAfter : undefined,
+    });
   }
 
   if (!body.challengeId || typeof body.challengeId !== 'string') {

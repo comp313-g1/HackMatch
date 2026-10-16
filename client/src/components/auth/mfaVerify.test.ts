@@ -69,4 +69,20 @@ describe('verifyMfaCode (US-004 S1-P1-10)', () => {
       code: 'OTP_EXPIRED',
     });
   });
+
+  it('throws ACCOUNT_LOCKED with retryAfter for five-attempt lockout', async () => {
+    mockAuthFetch.mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({
+        code: 'ACCOUNT_LOCKED',
+        error: 'Account temporarily locked.',
+        retryAfter: 900,
+      }),
+    } as Response);
+
+    await expect(verifyMfaCode(user, 'challenge-1', '123456')).rejects.toMatchObject({
+      code: 'ACCOUNT_LOCKED',
+      retryAfter: 900,
+    });
+  });
 });

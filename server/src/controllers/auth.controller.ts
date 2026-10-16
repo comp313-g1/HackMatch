@@ -21,6 +21,7 @@ import {
   _resetMfaOtpEmailSender,
 } from '../services/issueMfaOtp.js';
 import { verifyMfaOtpForParticipant } from '../services/verifyMfaOtp.js';
+import { evaluateAccountLockout } from '../utils/otp.js';
 import type { MfaOtpEmailSender } from '../utils/mfaOtpEmail.js';
 
 export type { MfaOtpEmailSender };
@@ -926,6 +927,9 @@ export function getCurrentUser(req: Request, res: Response): void {
  * (POST /api/auth/session, US-003 AC 4). Must be mounted after `requireFirebaseAuth`
  * and `requireMfa`. The cookie lasts a fixed SESSION_COOKIE_MAX_AGE_SECONDS (7 days by
  * default) and is not extended by later requests.
+ *
+ * FR-010 / US-004: OTP lockout also blocks session renewal for 15 minutes. Existing
+ * session cookies are not revoked solely by the lock (checked only on create).
  */
 export async function createSession(
   req: Request,
@@ -953,8 +957,31 @@ export async function createSession(
     return;
   }
 
-  const maxAgeSeconds = securityConfig.sessionCookie.maxAgeSeconds;
   try {
+    let participant = req.participant;
+    if (!participant) {
+      participant =
+        (await participantsRepository.findByFirebaseUid(decoded.uid)) ?? undefined;
+    }
+    if (participant) {
+      const lockout = await evaluateAccountLockout(participant.id);
+      if (lockout.locked) {
+        if (lockout.retryAfterSeconds != null) {
+          res.setHeader('Retry-After', String(lockout.retryAfterSeconds));
+        }
+        res.status(423).json({
+          error:
+            'Account temporarily locked due to too many failed OTP attempts. Please wait 15 minutes before trying again.',
+          code: 'ACCOUNT_LOCKED',
+          ...(lockout.retryAfterSeconds != null
+            ? { retryAfter: lockout.retryAfterSeconds }
+            : {}),
+        });
+        return;
+      }
+    }
+
+    const maxAgeSeconds = securityConfig.sessionCookie.maxAgeSeconds;
     const sessionCookie = await firebaseAuth.createSessionCookie(idToken, {
       expiresIn: maxAgeSeconds * 1000,
     });

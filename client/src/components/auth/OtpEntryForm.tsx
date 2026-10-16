@@ -4,6 +4,7 @@ import type { OtpChallenge } from './providerSignIn';
 import { requestMfaChallenge } from './mfaChallenge';
 import { verifyMfaCode } from './mfaVerify';
 import { logout } from './logout';
+import { translateOAuthServerError } from './oauthErrors';
 
 export interface OtpEntryFormProps {
   user: User;
@@ -24,10 +25,29 @@ const secondaryBtnClass =
 const inputClass =
   'w-full px-3 py-2 border rounded-md shadow-sm text-sm tracking-[0.35em] text-center font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-forest focus:border-forest disabled:bg-cream-100 disabled:text-ink-muted';
 
+/** Default lock window (FR-010) when the API omits retryAfter. */
+const DEFAULT_LOCK_SECONDS = 15 * 60;
+
 function formatRemaining(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
   const s = totalSeconds % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function readErrorMeta(err: unknown): { code: string; message: string; retryAfter?: number } {
+  const code =
+    err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';
+  const retryAfter =
+    err && typeof err === 'object' && 'retryAfter' in err
+      ? Number((err as { retryAfter: unknown }).retryAfter)
+      : undefined;
+  const message =
+    err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+  return {
+    code,
+    message,
+    retryAfter: Number.isFinite(retryAfter) ? retryAfter : undefined,
+  };
 }
 
 export function OtpEntryForm({
@@ -43,7 +63,22 @@ export function OtpEntryForm({
   const [status, setStatus] = useState<FormStatus>(initialChallenge ? 'ready' : 'loading');
   const [secondsLeft, setSecondsLeft] = useState(initialChallenge?.expiresInSeconds ?? 0);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [lockSecondsLeft, setLockSecondsLeft] = useState(0);
   const [signingOut, setSigningOut] = useState(false);
+
+  const applyAccountLock = (retryAfter?: number, fallbackMessage?: string) => {
+    const seconds =
+      typeof retryAfter === 'number' && retryAfter > 0 ? Math.ceil(retryAfter) : DEFAULT_LOCK_SECONDS;
+    setLockSecondsLeft(seconds);
+    setCode('');
+    setFieldError(null);
+    setFormError(
+      fallbackMessage && fallbackMessage.trim()
+        ? fallbackMessage
+        : translateOAuthServerError('ACCOUNT_LOCKED', seconds)
+    );
+    setStatus('error');
+  };
 
   useEffect(() => {
     if (initialChallenge) {
@@ -70,9 +105,12 @@ export function OtpEntryForm({
         setStatus('ready');
       } catch (err: unknown) {
         if (cancelled) return;
-        const message =
-          err instanceof Error ? err.message : 'Failed to send verification code. Please try again.';
-        setFormError(message);
+        const meta = readErrorMeta(err);
+        if (meta.code === 'ACCOUNT_LOCKED') {
+          applyAccountLock(meta.retryAfter, meta.message);
+          return;
+        }
+        setFormError(meta.message);
         setStatus('error');
       }
     };
@@ -83,12 +121,12 @@ export function OtpEntryForm({
   }, [initialChallenge, user]);
 
   useEffect(() => {
-    if (secondsLeft <= 0 || status === 'success') return;
+    if (secondsLeft <= 0 || status === 'success' || lockSecondsLeft > 0) return;
     const timer = window.setInterval(() => {
       setSecondsLeft((prev) => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [secondsLeft, status]);
+  }, [secondsLeft, status, lockSecondsLeft]);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -98,11 +136,20 @@ export function OtpEntryForm({
     return () => window.clearInterval(timer);
   }, [resendCooldown]);
 
+  useEffect(() => {
+    if (lockSecondsLeft <= 0) return;
+    const timer = window.setInterval(() => {
+      setLockSecondsLeft((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [lockSecondsLeft]);
+
   const busy = status === 'loading' || status === 'submitting' || status === 'resending';
+  const locked = lockSecondsLeft > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (busy || !challenge) return;
+    if (busy || locked || !challenge) return;
     setFormError(null);
 
     const trimmed = code.trim();
@@ -123,14 +170,13 @@ export function OtpEntryForm({
       setStatus('success');
       onVerified();
     } catch (err: unknown) {
-      const codeName =
-        err && typeof err === 'object' && 'code' in err
-          ? String((err as { code: unknown }).code)
-          : '';
-      const message =
-        err instanceof Error ? err.message : 'Verification failed. Please try again.';
-      setFormError(message);
-      if (codeName === 'INVALID_OTP' || codeName === 'OTP_EXPIRED' || codeName === 'OTP_CONSUMED') {
+      const meta = readErrorMeta(err);
+      if (meta.code === 'ACCOUNT_LOCKED') {
+        applyAccountLock(meta.retryAfter, meta.message);
+        return;
+      }
+      setFormError(meta.message);
+      if (meta.code === 'INVALID_OTP' || meta.code === 'OTP_EXPIRED' || meta.code === 'OTP_CONSUMED') {
         setCode('');
       }
       setStatus('error');
@@ -138,7 +184,7 @@ export function OtpEntryForm({
   };
 
   const handleResend = async () => {
-    if (busy || resendCooldown > 0) return;
+    if (busy || locked || resendCooldown > 0) return;
     setFormError(null);
     setFieldError(null);
     setStatus('resending');
@@ -155,15 +201,14 @@ export function OtpEntryForm({
       setCode('');
       setStatus('ready');
     } catch (err: unknown) {
-      const codeName =
-        err && typeof err === 'object' && 'code' in err
-          ? String((err as { code: unknown }).code)
-          : '';
-      const message =
-        err instanceof Error ? err.message : 'Failed to resend verification code.';
-      setFormError(message);
-      if (codeName === 'RATE_LIMITED') {
-        setResendCooldown(60);
+      const meta = readErrorMeta(err);
+      if (meta.code === 'ACCOUNT_LOCKED') {
+        applyAccountLock(meta.retryAfter, meta.message);
+        return;
+      }
+      setFormError(meta.message);
+      if (meta.code === 'RATE_LIMITED') {
+        setResendCooldown(meta.retryAfter && meta.retryAfter > 0 ? Math.ceil(meta.retryAfter) : 60);
       }
       setStatus('error');
     }
@@ -211,6 +256,15 @@ export function OtpEntryForm({
         <h2 className="font-display text-xl font-semibold text-forest-900 mb-2">
           Enter verification code
         </h2>
+        {locked && (
+          <div
+            role="alert"
+            className="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-900 text-sm rounded-md"
+          >
+            Account locked. Try again in{' '}
+            <span className="font-semibold">{formatRemaining(lockSecondsLeft)}</span>.
+          </div>
+        )}
         {formError && (
           <div
             role="alert"
@@ -223,7 +277,7 @@ export function OtpEntryForm({
           <button
             type="button"
             onClick={handleResend}
-            disabled={busy || signingOut}
+            disabled={busy || locked || signingOut}
             aria-busy={status === 'resending'}
             className={primaryBtnClass}
           >
@@ -248,7 +302,7 @@ export function OtpEntryForm({
     <div className={cardClass}>
       <h2 className="font-display text-xl font-semibold text-forest-900 mb-2">Enter verification code</h2>
       <p className="text-sm text-ink-muted mb-4">
-        {challenge?.email ? (
+        {challenge.email ? (
           <>
             We sent a 6-digit code to <span className="font-semibold text-ink">{challenge.email}</span>.
           </>
@@ -258,7 +312,15 @@ export function OtpEntryForm({
         Enter it below to finish signing in.
       </p>
 
-      {expired ? (
+      {locked ? (
+        <div
+          role="alert"
+          className="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-900 text-sm rounded-md"
+        >
+          Too many incorrect codes. Account locked for{' '}
+          <span className="font-semibold">{formatRemaining(lockSecondsLeft)}</span>.
+        </div>
+      ) : expired ? (
         <div
           role="alert"
           className="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-900 text-sm rounded-md"
@@ -297,9 +359,9 @@ export function OtpEntryForm({
               const next = e.target.value.replace(/\D/g, '').slice(0, 6);
               setCode(next);
               if (fieldError) setFieldError(null);
-              if (status === 'error') setStatus('ready');
+              if (status === 'error' && !locked) setStatus('ready');
             }}
-            disabled={busy || expired}
+            disabled={busy || expired || locked}
             aria-invalid={Boolean(fieldError)}
             aria-describedby={fieldError ? 'mfa-otp-code-error' : undefined}
             className={`${inputClass} ${fieldError ? 'border-red-300 text-red-900' : 'border-cream-200'}`}
@@ -310,14 +372,14 @@ export function OtpEntryForm({
               {fieldError}
             </p>
           )}
-          {!code && !fieldError && (
+          {!code && !fieldError && !locked && (
             <p className="mt-1 text-xs text-ink-muted">Enter the code from your email.</p>
           )}
         </div>
 
         <button
           type="submit"
-          disabled={busy || expired || signingOut}
+          disabled={busy || expired || locked || signingOut}
           aria-busy={status === 'submitting'}
           className={primaryBtnClass}
         >
@@ -329,15 +391,17 @@ export function OtpEntryForm({
         <button
           type="button"
           onClick={handleResend}
-          disabled={busy || resendCooldown > 0 || signingOut}
+          disabled={busy || locked || resendCooldown > 0 || signingOut}
           aria-busy={status === 'resending'}
           className={secondaryBtnClass}
         >
           {status === 'resending'
             ? 'Sending new code...'
-            : resendCooldown > 0
-              ? `Resend code (${resendCooldown}s)`
-              : 'Resend code'}
+            : locked
+              ? `Locked (${formatRemaining(lockSecondsLeft)})`
+              : resendCooldown > 0
+                ? `Resend code (${resendCooldown}s)`
+                : 'Resend code'}
         </button>
         <button
           type="button"

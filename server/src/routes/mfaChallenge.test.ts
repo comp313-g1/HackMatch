@@ -231,4 +231,29 @@ describe('POST /api/auth/mfa/challenge (US-004 S1-P1-09)', () => {
     expect(response.status).toBe(503);
     expect(response.body.code).toBe('MFA_STORE_UNAVAILABLE');
   });
+
+  it('five-attempt lock: blocks new OTP challenge with ACCOUNT_LOCKED (FR-010)', async () => {
+    mockVerifyIdToken.mockResolvedValueOnce(decoded());
+    const fifthFailureTime = Date.now() - 120_000;
+    vi.spyOn(mfaRepository, 'getRecentAttempts').mockResolvedValue(
+      Array.from({ length: 5 }, (_, i) => ({
+        id: `att-${i}`,
+        participant_id: participant.id,
+        challenge_id: null,
+        success: false,
+        ip_address: null,
+        created_at: new Date(fifthFailureTime - i * 1000).toISOString(),
+      }))
+    );
+
+    const response = await request(app)
+      .post('/api/auth/mfa/challenge')
+      .set('Authorization', 'Bearer valid.id.token');
+
+    expect(response.status).toBe(423);
+    expect(response.body.code).toBe('ACCOUNT_LOCKED');
+    expect(response.body.retryAfter).toBeGreaterThan(0);
+    expect(response.headers['retry-after']).toBeDefined();
+    expect(mfaRepository.createChallenge).not.toHaveBeenCalled();
+  });
 });

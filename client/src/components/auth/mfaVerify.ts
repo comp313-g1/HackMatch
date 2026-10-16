@@ -25,7 +25,13 @@ export async function verifyMfaCode(
     user
   );
 
-  let body: { code?: string; error?: string; verified?: boolean; message?: string } = {};
+  let body: {
+    code?: string;
+    error?: string;
+    verified?: boolean;
+    message?: string;
+    retryAfter?: number;
+  } = {};
   try {
     body = (await response.json()) as typeof body;
   } catch {
@@ -38,7 +44,10 @@ export async function verifyMfaCode(
       typeof body.error === 'string' && body.error
         ? body.error
         : 'Verification failed. Please try again.';
-    throw Object.assign(new Error(message), { code: errCode });
+    throw Object.assign(new Error(message), {
+      code: errCode,
+      retryAfter: typeof body.retryAfter === 'number' ? body.retryAfter : undefined,
+    });
   }
 
   return {

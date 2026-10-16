@@ -3,6 +3,8 @@ import request from 'supertest';
 import { app } from '../app.js';
 import { MFA_CLAIM } from '../utils/mfaClaim.js';
 import { participantsRepository } from '../db/participants.repository.js';
+import { mfaRepository } from '../db/mfa.repository.js';
+import type { Participant, MfaAttempt } from '../db/types.js';
 
 const mockVerifyIdToken = vi.fn();
 const mockCreateSessionCookie = vi.fn();
@@ -103,6 +105,41 @@ describe('POST /api/auth/session (create session cookie)', () => {
     const second = await postSession();
 
     expect(first.body.csrfToken).not.toBe(second.body.csrfToken);
+  });
+
+  it('blocks session renewal with ACCOUNT_LOCKED during OTP lockout (FR-010)', async () => {
+    const participant: Participant = {
+      id: 'part-uuid-1',
+      firebase_uid: 'fb-uid-1',
+      email: 'jane@example.com',
+      full_name: 'Jane Doe',
+      role: 'PART',
+      is_verified: true,
+      is_suspended: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockVerifyIdToken.mockResolvedValueOnce(decoded());
+    vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(participant);
+    const fifthFailureTime = Date.now() - 30_000;
+    vi.spyOn(mfaRepository, 'getRecentAttempts').mockResolvedValue(
+      Array.from({ length: 5 }, (_, i) => ({
+        id: `att-${i}`,
+        participant_id: participant.id,
+        challenge_id: null,
+        success: false,
+        ip_address: null,
+        created_at: new Date(fifthFailureTime - i * 1000).toISOString(),
+      })) as MfaAttempt[]
+    );
+
+    const response = await postSession();
+
+    expect(response.status).toBe(423);
+    expect(response.body.code).toBe('ACCOUNT_LOCKED');
+    expect(response.body.retryAfter).toBeGreaterThan(0);
+    expect(response.headers['retry-after']).toBeDefined();
+    expect(mockCreateSessionCookie).not.toHaveBeenCalled();
   });
 
   it('returns 401 UNAUTHORIZED without an ID token', async () => {

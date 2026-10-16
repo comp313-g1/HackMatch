@@ -272,4 +272,37 @@ describe('OtpEntryForm (US-004 S1-P1-10)', () => {
     await waitFor(() => expect(mockLogout).toHaveBeenCalledWith(user));
     expect(onSignedOut).toHaveBeenCalledTimes(1);
   });
+
+  it('lockout: fifth failure disables verify/resend and shows countdown (FR-010)', async () => {
+    mockVerifyMfaCode.mockRejectedValueOnce(
+      Object.assign(new Error('Account temporarily locked.'), {
+        code: 'ACCOUNT_LOCKED',
+        retryAfter: 900,
+      })
+    );
+    renderForm();
+
+    fireEvent.change(screen.getByLabelText(/6-digit code/i), { target: { value: '000000' } });
+    fireEvent.click(screen.getByRole('button', { name: /verify code/i }));
+
+    expect(await screen.findByText(/account locked/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /verify code/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /locked/i })).toBeDisabled();
+    expect(screen.getByLabelText(/6-digit code/i)).toBeDisabled();
+  });
+
+  it('lockout: resend while locked surfaces ACCOUNT_LOCKED and blocks further sends', async () => {
+    mockRequestMfaChallenge.mockRejectedValueOnce(
+      Object.assign(new Error('Account temporarily locked.'), {
+        code: 'ACCOUNT_LOCKED',
+        retryAfter: 600,
+      })
+    );
+    renderForm();
+
+    fireEvent.click(screen.getByRole('button', { name: /resend code/i }));
+
+    expect(await screen.findByText(/account locked/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /locked/i })).toBeDisabled();
+  });
 });

@@ -268,4 +268,31 @@ describe('POST /api/auth/mfa/verify (US-004 S1-P1-11)', () => {
     expect(response.status).toBe(404);
     expect(response.body.code).toBe('CHALLENGE_NOT_FOUND');
   });
+
+  it('five-attempt lock: ACCOUNT_LOCKED with Retry-After (FR-010 boundary)', async () => {
+    mockVerifyIdToken.mockResolvedValueOnce(decoded());
+    const fifthFailureTime = Date.now() - 60_000;
+    vi.spyOn(mfaRepository, 'getRecentAttempts').mockResolvedValue(
+      Array.from({ length: 5 }, (_, i) => ({
+        id: `att-${i}`,
+        participant_id: participant.id,
+        challenge_id: activeChallenge.id,
+        success: false,
+        ip_address: null,
+        created_at: new Date(fifthFailureTime - i * 1000).toISOString(),
+      })) as MfaAttempt[]
+    );
+
+    const response = await request(app)
+      .post('/api/auth/mfa/verify')
+      .set('Authorization', 'Bearer valid.id.token')
+      .send({ challengeId: activeChallenge.id, code: otp });
+
+    expect(response.status).toBe(423);
+    expect(response.body.code).toBe('ACCOUNT_LOCKED');
+    expect(response.body.retryAfter).toBeGreaterThan(0);
+    expect(response.headers['retry-after']).toBeDefined();
+    expect(mfaRepository.tryConsumeChallenge).not.toHaveBeenCalled();
+    expect(mockSetCustomUserClaims).not.toHaveBeenCalled();
+  });
 });
