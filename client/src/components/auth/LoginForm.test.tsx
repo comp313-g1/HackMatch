@@ -124,7 +124,16 @@ describe('LoginForm', () => {
     expect(status).toHaveTextContent('jane@example.com');
     expect(status).toHaveTextContent(/one-time code/i);
     expect(mockSignIn).toHaveBeenCalledWith(expect.anything(), 'jane@example.com', 'secret123');
-    expect(onPrimaryAuthSuccess).toHaveBeenCalledWith({ email: 'jane@example.com', user });
+    expect(onPrimaryAuthSuccess).toHaveBeenCalledWith({
+      email: 'jane@example.com',
+      user,
+      challenge: {
+        challengeId: 'challenge-1',
+        email: 'j***e@example.com',
+        expiresInSeconds: 600,
+        message: 'A 6-digit verification code has been sent to your email.',
+      },
+    });
   });
 
   it('returns to an empty form when choosing a different account', async () => {

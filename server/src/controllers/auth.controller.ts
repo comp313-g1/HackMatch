@@ -20,6 +20,7 @@ import {
   _setMfaOtpEmailSender,
   _resetMfaOtpEmailSender,
 } from '../services/issueMfaOtp.js';
+import { verifyMfaOtpForParticipant } from '../services/verifyMfaOtp.js';
 import type { MfaOtpEmailSender } from '../utils/mfaOtpEmail.js';
 
 export type { MfaOtpEmailSender };
@@ -98,6 +99,80 @@ export async function issueMfaChallenge(
       email: issued.maskedEmail,
       expiresInSeconds: issued.expiresInSeconds,
       message: issued.message,
+    });
+  } catch (err: unknown) {
+    next(err);
+  }
+}
+
+/**
+ * Verifies a 6-digit MFA OTP and sets the MFA claim (POST /api/auth/mfa/verify).
+ * Used by the React OTP entry form (US-004 / S1-P1-10 / FR-010).
+ */
+export async function verifyMfaChallenge(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+
+  try {
+    const firebaseUser = req.firebaseUser;
+    if (!firebaseUser?.uid) {
+      res.status(401).json({
+        error: 'Authentication required. Missing or malformed Authorization header.',
+        code: 'UNAUTHORIZED',
+      });
+      return;
+    }
+
+    let participant = req.participant;
+    if (!participant) {
+      participant =
+        (await participantsRepository.findByFirebaseUid(firebaseUser.uid)) ?? undefined;
+    }
+    if (!participant) {
+      res.status(404).json({
+        error: 'No HackMatch account is linked to this sign-in. Please register first.',
+        code: 'PARTICIPANT_NOT_FOUND',
+      });
+      return;
+    }
+
+    const { challengeId, code } = req.body as { challengeId: string; code: string };
+    const forwarded = req.headers['x-forwarded-for'];
+    const ip =
+      typeof req.ip === 'string'
+        ? req.ip
+        : Array.isArray(forwarded)
+          ? forwarded[0]
+          : typeof forwarded === 'string'
+            ? forwarded.split(',')[0]?.trim()
+            : null;
+
+    const result = await verifyMfaOtpForParticipant(
+      participant,
+      firebaseUser,
+      challengeId,
+      code,
+      ip
+    );
+
+    if (!result.ok) {
+      if (result.retryAfter != null) {
+        res.setHeader('Retry-After', String(result.retryAfter));
+      }
+      res.status(result.status).json({
+        error: result.error,
+        code: result.code,
+        ...(result.retryAfter != null ? { retryAfter: result.retryAfter } : {}),
+      });
+      return;
+    }
+
+    res.status(200).json({
+      verified: true,
+      message: 'Verification code accepted. You can continue to your account.',
     });
   } catch (err: unknown) {
     next(err);

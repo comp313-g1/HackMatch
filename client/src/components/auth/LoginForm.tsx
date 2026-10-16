@@ -9,11 +9,13 @@ import {
 } from './loginErrors';
 import { assertAccountActive } from './accountStatus';
 import { requestMfaChallenge } from './mfaChallenge';
+import type { OtpChallenge } from './providerSignIn';
 import { AuthSplitLayout } from './AuthSplitLayout';
 
 export interface PrimaryAuthResult {
   email: string;
   user: User;
+  challenge: OtpChallenge;
 }
 
 export interface LoginFormProps {
@@ -60,10 +62,19 @@ export function LoginForm({
       // Block suspended / Firebase-disabled accounts before any MFA or session step (US-003-T4).
       await assertAccountActive(credential.user);
       // US-004 AC 1 / FR-009: generate + email a cryptographically random 6-digit OTP.
-      await requestMfaChallenge(credential.user);
+      const challenge = await requestMfaChallenge(credential.user);
       setPassword('');
       setSignedInEmail(normalizedEmail);
-      onPrimaryAuthSuccess?.({ email: normalizedEmail, user: credential.user });
+      onPrimaryAuthSuccess?.({
+        email: normalizedEmail,
+        user: credential.user,
+        challenge: {
+          challengeId: challenge.challengeId,
+          email: challenge.email,
+          expiresInSeconds: challenge.expiresInSeconds,
+          message: challenge.message,
+        },
+      });
     } catch (err: unknown) {
       const loginError = describeLoginError(err);
       setFormError(loginError);

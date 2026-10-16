@@ -71,6 +71,12 @@ describe('US-003 login integration (LoginForm + account status)', () => {
       expect(onPrimaryAuthSuccess).toHaveBeenCalledWith({
         email: 'jane@example.com',
         user,
+        challenge: {
+          challengeId: 'challenge-1',
+          email: 'j***e@example.com',
+          expiresInSeconds: 600,
+          message: 'A 6-digit verification code has been sent to your email.',
+        },
       });
     });
   });

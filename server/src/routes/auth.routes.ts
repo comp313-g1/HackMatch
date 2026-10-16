@@ -5,6 +5,7 @@ import {
   validateVerifyEmailPayload,
   validateOAuthSignInPayload,
   validateOAuthLinkPayload,
+  validateMfaVerifyPayload,
 } from '../validators/auth.validator.js';
 import {
   register,
@@ -13,6 +14,7 @@ import {
   oauthSignIn,
   oauthLink,
   issueMfaChallenge,
+  verifyMfaChallenge,
   getCurrentUser,
   createSession,
   logout,
@@ -89,6 +91,17 @@ authRouter.post(
   requireFirebaseAuth,
   requireActiveAccount,
   issueMfaChallenge
+);
+
+/**
+ * Verify a 6-digit MFA OTP and set the MFA claim (US-004 / FR-010 / S1-P1-10–11).
+ */
+authRouter.post(
+  '/mfa/verify',
+  requireFirebaseAuth,
+  requireActiveAccount,
+  validateMfaVerifyPayload,
+  verifyMfaChallenge
 );
 
 /**

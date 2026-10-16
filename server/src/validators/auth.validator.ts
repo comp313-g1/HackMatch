@@ -347,4 +347,61 @@ export function validateOAuthLinkPayload(
   next();
 }
 
+export interface MfaVerifyFieldErrors {
+  challengeId?: string;
+  code?: string;
+}
+
+/**
+ * Validates POST /api/auth/mfa/verify body (US-004 / S1-P1-10–11).
+ * Expects challengeId (non-empty string) and a 6-digit numeric code.
+ */
+export function validateMfaVerifyPayload(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    res.status(400).json({
+      error: 'Validation failed',
+      errors: {
+        challengeId: 'Challenge id is required.',
+        code: 'Enter the 6-digit verification code.',
+      },
+    });
+    return;
+  }
+
+  const fieldErrors: MfaVerifyFieldErrors = {};
+  const rawChallengeId = body.challengeId;
+  if (typeof rawChallengeId !== 'string' || rawChallengeId.trim().length === 0) {
+    fieldErrors.challengeId = 'Challenge id is required.';
+  }
+
+  const rawCode = body.code;
+  const code =
+    typeof rawCode === 'string'
+      ? rawCode.trim()
+      : typeof rawCode === 'number'
+        ? String(rawCode)
+        : '';
+  if (!/^\d{6}$/.test(code)) {
+    fieldErrors.code = 'Enter the 6-digit verification code.';
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    res.status(400).json({
+      error: 'Validation failed',
+      errors: fieldErrors,
+    });
+    return;
+  }
+
+  req.body = {
+    challengeId: (rawChallengeId as string).trim(),
+    code,
+  };
+  next();
+}
 

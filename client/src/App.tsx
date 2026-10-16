@@ -4,6 +4,7 @@ import { EmailVerificationView } from './components/auth/EmailVerificationView';
 import { LoginForm } from './components/auth/LoginForm';
 import { MfaGate } from './components/auth/MfaGate';
 import { SignedInPanel } from './components/auth/SignedInPanel';
+import type { OtpChallenge } from './components/auth/providerSignIn';
 
 type View = 'register' | 'login' | 'verify' | 'account';
 
@@ -28,6 +29,7 @@ export function App(): React.JSX.Element {
   const [currentView, setCurrentView] = useState<View>(getInitialView);
   const [verificationEmail, setVerificationEmail] = useState<string>('');
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
+  const [otpChallenge, setOtpChallenge] = useState<OtpChallenge | null>(null);
   const [healthStatus, setHealthStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -168,8 +170,10 @@ export function App(): React.JSX.Element {
               Your Account
             </h2>
             <MfaGate
+              initialChallenge={otpChallenge}
               onNavigateToSignIn={() => {
                 setStatusNotice(null);
+                setOtpChallenge(null);
                 setCurrentView('login');
               }}
             >
@@ -208,7 +212,8 @@ export function App(): React.JSX.Element {
             </h2>
             <LoginForm
               onNavigateToRegister={() => setCurrentView('register')}
-              onPrimaryAuthSuccess={() => {
+              onPrimaryAuthSuccess={(result) => {
+                setOtpChallenge(result.challenge);
                 setStatusNotice(null);
                 setCurrentView('account');
               }}
@@ -226,9 +231,9 @@ export function App(): React.JSX.Element {
                 setCurrentView('verify');
               }}
               onRequiresOtp={(challenge) => {
-                setStatusNotice(
-                  `A 6-digit verification code has been sent to ${challenge.email}. (US-004 MFA)`
-                );
+                setOtpChallenge(challenge);
+                setStatusNotice(null);
+                setCurrentView('account');
               }}
             />
           </section>
