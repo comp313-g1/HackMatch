@@ -30,9 +30,9 @@ export function SignedInPanel({ email, onSignedOut }: SignedInPanelProps): React
   };
 
   return (
-    <div className="max-w-md w-full mx-auto p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
-      <h3 className="text-xl font-bold text-gray-900 mb-2">You are signed in</h3>
-      <p className="text-sm text-gray-600 mb-6">
+    <div className="max-w-md w-full mx-auto p-6 bg-white rounded-xl border border-cream-200 shadow-sm">
+      <h3 className="font-display text-xl font-semibold text-forest-900 mb-2">You are signed in</h3>
+      <p className="text-sm text-ink-muted mb-6">
         Welcome back{email ? `, ${email}` : ''}. Your session is fully verified.
       </p>
       {error && (
@@ -48,7 +48,7 @@ export function SignedInPanel({ email, onSignedOut }: SignedInPanelProps): React
         onClick={handleSignOut}
         disabled={signingOut}
         aria-busy={signingOut}
-        className="w-full py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+        className="w-full py-2 px-4 border border-cream-200 rounded-md shadow-sm text-sm font-medium text-ink bg-white hover:bg-cream-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest disabled:opacity-50"
       >
         {signingOut ? 'Signing out...' : 'Sign out'}
       </button>

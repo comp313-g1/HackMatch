@@ -8,6 +8,7 @@ import {
   type LoginValidationErrors,
 } from './loginErrors';
 import { assertAccountActive } from './accountStatus';
+import { AuthSplitLayout } from './AuthSplitLayout';
 
 export interface PrimaryAuthResult {
   email: string;
@@ -19,6 +20,13 @@ export interface LoginFormProps {
   onPrimaryAuthSuccess?: (result: PrimaryAuthResult) => void;
   onNavigateToRegister?: () => void;
 }
+
+const inputClass =
+  'w-full px-3 py-2 border rounded-md shadow-sm text-sm bg-white focus:outline-none focus:ring-2 focus:ring-forest focus:border-forest disabled:bg-cream-100 disabled:text-ink-muted';
+const primaryBtnClass =
+  'w-full mt-2 py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-semibold text-white bg-forest hover:bg-forest-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest disabled:opacity-50';
+const secondaryBtnClass =
+  'w-full py-2 px-4 border border-cream-200 rounded-md shadow-sm text-sm font-medium text-ink bg-white hover:bg-cream-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest';
 
 export function LoginForm({
   onPrimaryAuthSuccess,
@@ -77,24 +85,22 @@ export function LoginForm({
       <div
         role="status"
         aria-live="polite"
-        className="max-w-md w-full mx-auto p-6 bg-white rounded-lg border border-gray-200 shadow-sm"
+        className="max-w-md w-full mx-auto p-6 bg-white rounded-xl border border-cream-200 shadow-sm"
       >
-        <h3 className="text-xl font-bold text-center text-gray-900 mb-2">Password Accepted</h3>
-        <p className="text-sm text-gray-600 text-center mb-4">
-          Signed in as <span className="font-semibold text-gray-900">{signedInEmail}</span>.
+        <h3 className="font-display text-xl font-semibold text-center text-forest-900 mb-2">
+          Password Accepted
+        </h3>
+        <p className="text-sm text-ink-muted text-center mb-4">
+          Signed in as <span className="font-semibold text-ink">{signedInEmail}</span>.
         </p>
-        <div className="p-3 bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-md mb-6">
+        <div className="p-3 bg-forest-50 border border-forest-100 text-forest-900 text-xs rounded-md mb-6">
           <p className="font-medium mb-1">One more step:</p>
           <p>
             For your security, you must enter the one-time code sent to your email before you can
             use your account.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleUseDifferentAccount}
-          className="w-full py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
+        <button type="button" onClick={handleUseDifferentAccount} className={secondaryBtnClass}>
           Use a different account
         </button>
       </div>
@@ -102,12 +108,10 @@ export function LoginForm({
   }
 
   return (
-    <div className="max-w-md w-full mx-auto p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
-      <h2 className="text-xl font-bold text-gray-900 mb-1">Sign In</h2>
-      <p className="text-sm text-gray-600 mb-6">
-        Sign in with your HackMatch email and password.
-      </p>
-
+    <AuthSplitLayout
+      title="Sign In"
+      description="Sign in with your HackMatch email and password."
+    >
       {formError && (
         <div
           role="alert"
@@ -119,7 +123,7 @@ export function LoginForm({
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <div>
-          <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="login-email" className="block text-sm font-medium text-ink mb-1">
             Email Address
           </label>
           <input
@@ -137,8 +141,8 @@ export function LoginForm({
             disabled={loading}
             aria-invalid={Boolean(fieldErrors.email)}
             aria-describedby={fieldErrors.email ? 'login-email-error' : undefined}
-            className={`w-full px-3 py-2 border rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 ${
-              fieldErrors.email ? 'border-red-300 text-red-900' : 'border-gray-300'
+            className={`${inputClass} ${
+              fieldErrors.email ? 'border-red-300 text-red-900' : 'border-cream-200'
             }`}
             placeholder="jane@example.com"
           />
@@ -150,7 +154,7 @@ export function LoginForm({
         </div>
 
         <div>
-          <label htmlFor="login-password" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="login-password" className="block text-sm font-medium text-ink mb-1">
             Password
           </label>
           <input
@@ -168,8 +172,8 @@ export function LoginForm({
             disabled={loading}
             aria-invalid={Boolean(fieldErrors.password)}
             aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
-            className={`w-full px-3 py-2 border rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 ${
-              fieldErrors.password ? 'border-red-300 text-red-900' : 'border-gray-300'
+            className={`${inputClass} ${
+              fieldErrors.password ? 'border-red-300 text-red-900' : 'border-cream-200'
             }`}
             placeholder="••••••••"
           />
@@ -184,25 +188,25 @@ export function LoginForm({
           type="submit"
           disabled={loading}
           aria-busy={loading}
-          className="w-full mt-2 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+          className={primaryBtnClass}
         >
           {loading ? 'Signing In...' : 'Sign In'}
         </button>
       </form>
 
       {onNavigateToRegister && (
-        <p className="mt-4 text-sm text-center text-gray-600">
+        <p className="mt-4 text-sm text-center text-ink-muted">
           New to HackMatch?{' '}
           <button
             type="button"
             onClick={onNavigateToRegister}
-            className="font-medium text-blue-700 underline hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+            className="font-medium text-forest-700 underline hover:text-forest-900 focus:outline-none focus:ring-2 focus:ring-forest rounded"
           >
             Create an account
           </button>
         </p>
       )}
-    </div>
+    </AuthSplitLayout>
   );
 }
 

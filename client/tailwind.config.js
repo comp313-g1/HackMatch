@@ -14,7 +14,34 @@ export default {
       'xl': '1280px', // Desktop base (1280x720)
       '2xl': '1536px',
     },
-    extend: {},
+    extend: {
+      colors: {
+        cream: {
+          DEFAULT: '#F7F3E9',
+          50: '#FBF9F4',
+          100: '#F3EDE0',
+          200: '#E8DFD0',
+        },
+        forest: {
+          DEFAULT: '#1B4332',
+          50: '#E8F0EC',
+          100: '#D1E1D9',
+          200: '#A3C3B3',
+          600: '#2D6A4F',
+          700: '#1B4332',
+          800: '#143328',
+          900: '#0F241C',
+        },
+        ink: {
+          DEFAULT: '#1A1F1C',
+          muted: '#5C6660',
+        },
+      },
+      fontFamily: {
+        display: ['Fraunces', 'Georgia', 'serif'],
+        sans: ['"Source Sans 3"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+      },
+    },
   },
   plugins: [],
 };

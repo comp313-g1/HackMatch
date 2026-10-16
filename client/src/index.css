@@ -2,16 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --color-cream: #f7f3e9;
+  --color-cream-soft: #f3ede0;
+  --color-forest: #1b4332;
+  --color-forest-hover: #143328;
+  --color-ink: #1a1f1c;
+  --color-ink-muted: #5c6660;
+}
+
 /* Ensure no horizontal page scroll per NR-017 & NR-018 */
 html,
 body {
   overflow-x: hidden;
   margin: 0;
   padding: 0;
+  background-color: var(--color-cream);
+  color: var(--color-ink);
 }
 
-/* Accessible focus outline */
+/* Accessible focus outline — forest accent */
 :focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--color-forest);
   outline-offset: 2px;
 }

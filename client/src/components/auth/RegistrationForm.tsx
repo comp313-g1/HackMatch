@@ -5,6 +5,7 @@ import {
   type ValidationErrors,
 } from './validation';
 import { ProviderSignInButtons } from './ProviderSignInButtons';
+import { AuthSplitLayout } from './AuthSplitLayout';
 import type { OtpChallenge } from './providerSignIn';
 
 export interface RegistrationFormProps {
@@ -12,6 +13,13 @@ export interface RegistrationFormProps {
   onNavigateToVerification?: (email?: string) => void;
   onRequiresOtp?: (challenge: OtpChallenge) => void;
 }
+
+const inputClass =
+  'w-full px-3 py-2 border rounded-md shadow-sm text-sm bg-white focus:outline-none focus:ring-2 focus:ring-forest focus:border-forest disabled:bg-cream-100 disabled:text-ink-muted';
+const primaryBtnClass =
+  'w-full mt-2 py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-semibold text-white bg-forest hover:bg-forest-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest disabled:opacity-50';
+const secondaryBtnClass =
+  'w-full py-2 px-4 border border-cream-200 rounded-md shadow-sm text-sm font-medium text-ink bg-white hover:bg-cream-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest';
 
 export function RegistrationForm({
   onSuccess,
@@ -169,19 +177,19 @@ export function RegistrationForm({
       <div
         role="status"
         aria-live="polite"
-        className="max-w-md w-full mx-auto p-6 bg-white rounded-lg border border-gray-200 shadow-sm"
+        className="max-w-md w-full mx-auto p-6 bg-white rounded-xl border border-cream-200 shadow-sm"
       >
-        <div className="w-12 h-12 mx-auto mb-4 bg-green-100 rounded-full flex items-center justify-center text-green-600 text-2xl font-bold">
+        <div className="w-12 h-12 mx-auto mb-4 bg-forest-50 rounded-full flex items-center justify-center text-forest-700 text-2xl font-bold">
           ✓
         </div>
-        <h3 className="text-xl font-bold text-center text-gray-900 mb-2">
+        <h3 className="font-display text-xl font-semibold text-center text-forest-900 mb-2">
           Verify Your Email
         </h3>
-        <p className="text-sm text-gray-600 text-center mb-4">
+        <p className="text-sm text-ink-muted text-center mb-4">
           A verification link has been sent to{' '}
-          <span className="font-semibold text-gray-900">{registeredEmail}</span>.
+          <span className="font-semibold text-ink">{registeredEmail}</span>.
         </p>
-        <div className="p-3 bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-md mb-6">
+        <div className="p-3 bg-forest-50 border border-forest-100 text-forest-900 text-xs rounded-md mb-6">
           <p className="font-medium mb-1">Important Security Note:</p>
           <p>
             You must verify your email before accessing team formation features.
@@ -192,16 +200,12 @@ export function RegistrationForm({
           <button
             type="button"
             onClick={() => onNavigateToVerification(registeredEmail)}
-            className="w-full mb-3 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className={`${primaryBtnClass} mb-3 mt-0`}
           >
             Didn't receive the email? Request a replacement link
           </button>
         )}
-        <button
-          type="button"
-          onClick={handleReset}
-          className="w-full py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
+        <button type="button" onClick={handleReset} className={secondaryBtnClass}>
           Register Another Account
         </button>
       </div>
@@ -209,12 +213,10 @@ export function RegistrationForm({
   }
 
   return (
-    <div className="max-w-md w-full mx-auto p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
-      <h2 className="text-xl font-bold text-gray-900 mb-1">Create an Account</h2>
-      <p className="text-sm text-gray-600 mb-6">
-        Sign up as a participant to discover hackathons and join teams.
-      </p>
-
+    <AuthSplitLayout
+      title="Create an Account"
+      description="Sign up as a participant to discover hackathons and join teams."
+    >
       {formError && (
         <div
           role="alert"
@@ -244,16 +246,16 @@ export function RegistrationForm({
 
       <div className="relative my-6">
         <div className="absolute inset-0 flex items-center" aria-hidden="true">
-          <div className="w-full border-t border-gray-200" />
+          <div className="w-full border-t border-cream-200" />
         </div>
         <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-white px-2 text-gray-500 font-medium">Or register with email</span>
+          <span className="bg-white px-2 text-ink-muted font-medium">Or register with email</span>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <div>
-          <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="fullName" className="block text-sm font-medium text-ink mb-1">
             Full Name
           </label>
           <input
@@ -271,8 +273,8 @@ export function RegistrationForm({
             disabled={loading || oauthLoading}
             aria-invalid={Boolean(fieldErrors.fullName)}
             aria-describedby={fieldErrors.fullName ? 'fullName-error' : undefined}
-            className={`w-full px-3 py-2 border rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 ${
-              fieldErrors.fullName ? 'border-red-300 text-red-900' : 'border-gray-300'
+            className={`${inputClass} ${
+              fieldErrors.fullName ? 'border-red-300 text-red-900' : 'border-cream-200'
             }`}
             placeholder="Jane Doe"
           />
@@ -284,7 +286,7 @@ export function RegistrationForm({
         </div>
 
         <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="email" className="block text-sm font-medium text-ink mb-1">
             Email Address
           </label>
           <input
@@ -302,8 +304,8 @@ export function RegistrationForm({
             disabled={loading || oauthLoading}
             aria-invalid={Boolean(fieldErrors.email)}
             aria-describedby={fieldErrors.email ? 'email-error' : undefined}
-            className={`w-full px-3 py-2 border rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 ${
-              fieldErrors.email ? 'border-red-300 text-red-900' : 'border-gray-300'
+            className={`${inputClass} ${
+              fieldErrors.email ? 'border-red-300 text-red-900' : 'border-cream-200'
             }`}
             placeholder="jane@example.com"
           />
@@ -315,7 +317,7 @@ export function RegistrationForm({
         </div>
 
         <div>
-          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="password" className="block text-sm font-medium text-ink mb-1">
             Password
           </label>
           <input
@@ -335,12 +337,12 @@ export function RegistrationForm({
             aria-describedby={
               fieldErrors.password ? 'password-error password-hint' : 'password-hint'
             }
-            className={`w-full px-3 py-2 border rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 ${
-              fieldErrors.password ? 'border-red-300 text-red-900' : 'border-gray-300'
+            className={`${inputClass} ${
+              fieldErrors.password ? 'border-red-300 text-red-900' : 'border-cream-200'
             }`}
             placeholder="••••••••"
           />
-          <p id="password-hint" className="mt-1 text-xs text-gray-500">
+          <p id="password-hint" className="mt-1 text-xs text-ink-muted">
             Must be at least 8 characters with uppercase, lowercase, a number, and a special character.
           </p>
           {fieldErrors.password && (
@@ -354,12 +356,12 @@ export function RegistrationForm({
           type="submit"
           disabled={loading || oauthLoading}
           aria-busy={loading}
-          className="w-full mt-2 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+          className={primaryBtnClass}
         >
           {loading ? 'Creating Account...' : 'Create Account'}
         </button>
       </form>
-    </div>
+    </AuthSplitLayout>
   );
 }
 

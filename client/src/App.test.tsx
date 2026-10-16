@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { applyActionCode } from 'firebase/auth';
 import App from './App';
@@ -19,6 +19,8 @@ vi.mock('firebase/auth', async (importOriginal) => {
 
 describe('App Component (View Routing and Integration)', () => {
   const mockApplyActionCode = vi.mocked(applyActionCode);
+
+  const primaryNav = () => screen.getByRole('navigation', { name: /primary/i });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -88,11 +90,16 @@ describe('App Component (View Routing and Integration)', () => {
 
     render(<App />);
 
+    const main = screen.getByRole('main');
     // Fill and submit registration form
-    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Test User' } });
-    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'registered@example.com' } });
-    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Valid1@password' } });
-    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+    fireEvent.change(within(main).getByLabelText(/full name/i), { target: { value: 'Test User' } });
+    fireEvent.change(within(main).getByLabelText(/email address/i), {
+      target: { value: 'registered@example.com' },
+    });
+    fireEvent.change(within(main).getByLabelText(/^password/i), {
+      target: { value: 'Valid1@password' },
+    });
+    fireEvent.click(within(main).getByRole('button', { name: /create account/i }));
 
     // Wait for registration success view
     const replacementBtn = await screen.findByRole('button', {
@@ -119,23 +126,32 @@ describe('App Component (View Routing and Integration)', () => {
     const signInBtn = await screen.findByRole('button', { name: /proceed to sign in/i });
     fireEvent.click(signInBtn);
 
-    expect(await screen.findByRole('tab', { name: /sign in/i })).toHaveAttribute('aria-selected', 'true');
+    expect(within(primaryNav()).getByRole('button', { name: /^sign in$/i })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
     expect(screen.getByLabelText(/password/i)).toHaveAttribute('autocomplete', 'current-password');
     expect(screen.getByText(/participant account verified! you can now sign in/i)).toBeInTheDocument();
   });
 
-  it('switches between the create account and sign in tabs', () => {
+  it('switches between create account and sign in via header nav', () => {
     render(<App />);
 
-    expect(screen.getByRole('tab', { name: /create account/i })).toHaveAttribute('aria-selected', 'true');
+    expect(within(primaryNav()).getByRole('button', { name: /create account/i })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
     expect(screen.getByRole('heading', { level: 2, name: /create an account/i })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('tab', { name: /sign in/i }));
-    expect(screen.getByRole('tab', { name: /sign in/i })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
+    fireEvent.click(within(primaryNav()).getByRole('button', { name: /^sign in$/i }));
+    expect(within(primaryNav()).getByRole('button', { name: /^sign in$/i })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
+    expect(within(screen.getByRole('main')).getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { level: 2, name: /create an account/i })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('tab', { name: /create account/i }));
+    fireEvent.click(within(primaryNav()).getByRole('button', { name: /create account/i }));
     expect(screen.getByRole('heading', { level: 2, name: /create an account/i })).toBeInTheDocument();
   });
 
@@ -148,7 +164,10 @@ describe('App Component (View Routing and Integration)', () => {
     expect(screen.queryByText(/you are signed in/i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /go to sign in/i }));
-    expect(screen.getByRole('tab', { name: /sign in/i })).toHaveAttribute('aria-selected', 'true');
+    expect(within(primaryNav()).getByRole('button', { name: /^sign in$/i })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
   });
 
   it('opens the sign-in form directly when ?view=login is in the URL', () => {
@@ -156,8 +175,11 @@ describe('App Component (View Routing and Integration)', () => {
 
     render(<App />);
 
-    expect(screen.getByRole('tab', { name: /sign in/i })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^sign in$/i })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
+    expect(within(screen.getByRole('main')).getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
   });
 
   it('navigates from empty code verification view back to registration view when clicking back button', () => {
