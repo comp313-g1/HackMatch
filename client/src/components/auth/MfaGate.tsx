@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { onAuthStateChanged, getIdTokenResult, signOut, type User } from 'firebase/auth';
+import { onAuthStateChanged, getIdTokenResult, type User } from 'firebase/auth';
 import { auth } from '../../config/firebase';
 import { hasCompletedMfa, describeSessionError, type SessionError } from './mfaClaim';
+import { logout } from './logout';
 
 type GateStatus = 'loading' | 'signed-out' | 'mfa-required' | 'authorized' | 'error';
 
@@ -73,9 +74,13 @@ export function MfaGate({ children, onNavigateToSignIn }: MfaGateProps): React.J
     if (signingOut) return;
     setSigningOut(true);
     try {
-      await signOut(auth);
+      await logout(user);
     } catch (err: unknown) {
-      setError(describeSessionError(err));
+      const message =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Sign-out failed. Please try again.';
+      setError({ kind: 'unknown', message });
       setStatus('error');
     } finally {
       setSigningOut(false);

@@ -6,12 +6,14 @@ import { MFA_CLAIM } from '../utils/mfaClaim.js';
 const mockVerifyIdToken = vi.fn();
 const mockCreateSessionCookie = vi.fn();
 const mockVerifySessionCookie = vi.fn();
+const mockRevokeRefreshTokens = vi.fn();
 
 vi.mock('../config/firebase.js', () => {
   const authMock = {
     verifyIdToken: (...args: unknown[]) => mockVerifyIdToken(...args),
     createSessionCookie: (...args: unknown[]) => mockCreateSessionCookie(...args),
     verifySessionCookie: (...args: unknown[]) => mockVerifySessionCookie(...args),
+    revokeRefreshTokens: (...args: unknown[]) => mockRevokeRefreshTokens(...args),
   };
   return {
     firebaseAuth: authMock,
@@ -244,46 +246,163 @@ describe('GET /api/auth/session (read session cookie)', () => {
   });
 });
 
-describe('DELETE /api/auth/session (clear session, CSRF protected)', () => {
+describe('DELETE /api/auth/session (logout + refresh-token revocation)', () => {
   const CSRF = 'a'.repeat(43);
 
-  it('clears both cookies when the CSRF header matches the cookie', async () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRevokeRefreshTokens.mockResolvedValue(undefined);
+    mockVerifySessionCookie.mockResolvedValue(decoded());
+    mockVerifyIdToken.mockResolvedValue(decoded());
+  });
+
+  it('revokes refresh tokens, clears cookies, and returns LOGGED_OUT (happy path)', async () => {
     const response = await request(app)
       .delete('/api/auth/session')
-      .set('Cookie', `hm_session=cookie; hm_csrf=${CSRF}`)
+      .set('Cookie', `hm_session=good-cookie; hm_csrf=${CSRF}`)
       .set('X-CSRF-Token', CSRF)
       .set('Origin', 'http://localhost:5173');
 
-    expect(response.status).toBe(204);
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      message: 'Signed out successfully. All refresh tokens for this account have been revoked.',
+      code: 'LOGGED_OUT',
+    });
+    expect(mockVerifySessionCookie).toHaveBeenCalledWith('good-cookie', false);
+    expect(mockRevokeRefreshTokens).toHaveBeenCalledWith('fb-uid-1');
     expect(findCookie(response, 'hm_session')).toMatch(/Expires=Thu, 01 Jan 1970/);
     expect(findCookie(response, 'hm_csrf')).toMatch(/Expires=Thu, 01 Jan 1970/);
+    expect(response.headers['cache-control']).toBe('no-store');
+  });
+
+  it('accepts Bearer-token logout without a session cookie (no CSRF)', async () => {
+    const response = await request(app)
+      .delete('/api/auth/session')
+      .set('Authorization', 'Bearer valid.id.token');
+
+    expect(response.status).toBe(200);
+    expect(response.body.code).toBe('LOGGED_OUT');
+    expect(mockVerifyIdToken).toHaveBeenCalledWith('valid.id.token', false);
+    expect(mockRevokeRefreshTokens).toHaveBeenCalledWith('fb-uid-1');
+    expect(mockVerifySessionCookie).not.toHaveBeenCalled();
+  });
+
+  it('returns 401 NO_SESSION when there is no cookie and no Bearer token', async () => {
+    const response = await request(app).delete('/api/auth/session');
+
+    expect(response.status).toBe(401);
+    expect(response.body.code).toBe('NO_SESSION');
+    expect(mockRevokeRefreshTokens).not.toHaveBeenCalled();
+    expect(findCookie(response, 'hm_session')).toMatch(/Expires=Thu, 01 Jan 1970/);
   });
 
   it.each([
-    ['no CSRF header', `hm_csrf=${CSRF}`, undefined],
-    ['no CSRF cookie', 'hm_session=cookie', CSRF],
-    ['mismatched token', `hm_csrf=${CSRF}`, 'b'.repeat(43)],
-    ['different length token', `hm_csrf=${CSRF}`, 'short'],
-    ['empty cookie and header', 'hm_csrf=', ''],
-  ])('rejects %s with 403 CSRF_TOKEN_INVALID', async (_label, cookie, header) => {
+    ['no CSRF header', `hm_session=cookie; hm_csrf=${CSRF}`, undefined],
+    ['mismatched token', `hm_session=cookie; hm_csrf=${CSRF}`, 'b'.repeat(43)],
+    ['different length token', `hm_session=cookie; hm_csrf=${CSRF}`, 'short'],
+  ])('rejects cookie logout with %s (403 CSRF_TOKEN_INVALID)', async (_label, cookie, header) => {
     const req = request(app).delete('/api/auth/session').set('Cookie', cookie);
     if (header !== undefined) req.set('X-CSRF-Token', header);
     const response = await req;
 
     expect(response.status).toBe(403);
     expect(response.body.code).toBe('CSRF_TOKEN_INVALID');
-    expect(findCookie(response, 'hm_session')).toBeUndefined();
+    expect(mockRevokeRefreshTokens).not.toHaveBeenCalled();
   });
 
   it('rejects a request from another origin with 403 ORIGIN_NOT_ALLOWED', async () => {
     const response = await request(app)
       .delete('/api/auth/session')
-      .set('Cookie', `hm_csrf=${CSRF}`)
+      .set('Cookie', `hm_session=cookie; hm_csrf=${CSRF}`)
       .set('X-CSRF-Token', CSRF)
       .set('Origin', 'https://evil.example.com');
 
     expect(response.status).toBe(403);
     expect(response.body.code).toBe('ORIGIN_NOT_ALLOWED');
+    expect(mockRevokeRefreshTokens).not.toHaveBeenCalled();
+  });
+
+  it('still signs out when the Firebase user was already deleted', async () => {
+    mockRevokeRefreshTokens.mockRejectedValueOnce(firebaseError('auth/user-not-found'));
+
+    const response = await request(app)
+      .delete('/api/auth/session')
+      .set('Authorization', 'Bearer valid.id.token');
+
+    expect(response.status).toBe(200);
+    expect(response.body.code).toBe('LOGGED_OUT');
+  });
+
+  it('clears cookies and returns REVOCATION_FAILED when Firebase is unreachable', async () => {
+    mockRevokeRefreshTokens.mockRejectedValueOnce(firebaseError('auth/internal-error'));
+
+    const response = await request(app)
+      .delete('/api/auth/session')
+      .set('Authorization', 'Bearer valid.id.token');
+
+    expect(response.status).toBe(503);
+    expect(response.body.code).toBe('REVOCATION_FAILED');
+    expect(findCookie(response, 'hm_session')).toMatch(/Expires=Thu, 01 Jan 1970/);
+  });
+
+  it('rejects an invalid Bearer token with 401 INVALID_TOKEN', async () => {
+    mockVerifyIdToken.mockRejectedValueOnce(firebaseError('auth/argument-error'));
+
+    const response = await request(app)
+      .delete('/api/auth/session')
+      .set('Authorization', 'Bearer bad.token');
+
+    expect(response.status).toBe(401);
+    expect(response.body.code).toBe('INVALID_TOKEN');
+    expect(mockRevokeRefreshTokens).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Bearer when the session cookie is unusable', async () => {
+    mockVerifySessionCookie.mockRejectedValueOnce(firebaseError('auth/session-cookie-expired'));
+
+    const response = await request(app)
+      .delete('/api/auth/session')
+      .set('Cookie', `hm_session=stale; hm_csrf=${CSRF}`)
+      .set('X-CSRF-Token', CSRF)
+      .set('Authorization', 'Bearer valid.id.token');
+
+    expect(response.status).toBe(200);
+    expect(response.body.code).toBe('LOGGED_OUT');
+    expect(mockVerifyIdToken).toHaveBeenCalled();
+    expect(mockRevokeRefreshTokens).toHaveBeenCalledWith('fb-uid-1');
+  });
+
+  it('US-003-T5: replaying an old ID token after logout fails with TOKEN_REVOKED', async () => {
+    const logoutResponse = await request(app)
+      .delete('/api/auth/session')
+      .set('Authorization', 'Bearer valid.id.token');
+    expect(logoutResponse.body.code).toBe('LOGGED_OUT');
+    expect(mockRevokeRefreshTokens).toHaveBeenCalledWith('fb-uid-1');
+
+    mockVerifyIdToken.mockRejectedValueOnce(firebaseError('auth/id-token-revoked'));
+
+    const replay = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', 'Bearer valid.id.token');
+
+    expect(replay.status).toBe(401);
+    expect(replay.body.code).toBe('TOKEN_REVOKED');
+  });
+
+  it('US-003-T5: replaying an old session cookie after logout fails with SESSION_REVOKED', async () => {
+    await request(app)
+      .delete('/api/auth/session')
+      .set('Cookie', `hm_session=good-cookie; hm_csrf=${CSRF}`)
+      .set('X-CSRF-Token', CSRF);
+
+    mockVerifySessionCookie.mockRejectedValueOnce(firebaseError('auth/session-cookie-revoked'));
+
+    const replay = await request(app)
+      .get('/api/auth/session')
+      .set('Cookie', 'hm_session=good-cookie');
+
+    expect(replay.status).toBe(401);
+    expect(replay.body.code).toBe('SESSION_REVOKED');
   });
 });
 

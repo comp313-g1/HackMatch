@@ -3,6 +3,7 @@ import { RegistrationForm } from './components/auth/RegistrationForm';
 import { EmailVerificationView } from './components/auth/EmailVerificationView';
 import { LoginForm } from './components/auth/LoginForm';
 import { MfaGate } from './components/auth/MfaGate';
+import { SignedInPanel } from './components/auth/SignedInPanel';
 
 type View = 'register' | 'login' | 'verify' | 'account';
 
@@ -132,12 +133,13 @@ export function App(): React.JSX.Element {
               }}
             >
               {(user) => (
-                <div className="max-w-md w-full mx-auto p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">You are signed in</h3>
-                  <p className="text-sm text-gray-600">
-                    Welcome back{user.email ? `, ${user.email}` : ''}. Your session is fully verified.
-                  </p>
-                </div>
+                <SignedInPanel
+                  email={user.email}
+                  onSignedOut={() => {
+                    setStatusNotice('You have been signed out.');
+                    setCurrentView('login');
+                  }}
+                />
               )}
             </MfaGate>
           </section>

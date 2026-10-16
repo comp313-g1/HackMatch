@@ -3,12 +3,12 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import {
   onAuthStateChanged,
   getIdTokenResult,
-  signOut,
   type User,
   type IdTokenResult,
 } from 'firebase/auth';
 import { MfaGate } from './MfaGate';
 import { MFA_CLAIM } from './mfaClaim';
+import { logout } from './logout';
 
 vi.mock('firebase/auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('firebase/auth')>();
@@ -17,12 +17,17 @@ vi.mock('firebase/auth', async (importOriginal) => {
     onAuthStateChanged: vi.fn(),
     getIdTokenResult: vi.fn(),
     signOut: vi.fn(),
+    getIdToken: vi.fn(),
   };
 });
 
+vi.mock('./logout', () => ({
+  logout: vi.fn(),
+}));
+
 const mockOnAuthStateChanged = vi.mocked(onAuthStateChanged);
 const mockGetIdTokenResult = vi.mocked(getIdTokenResult);
-const mockSignOut = vi.mocked(signOut);
+const mockLogout = vi.mocked(logout);
 
 const AUTH_TIME = 1_792_000_000;
 const user = { uid: 'fb-uid-1', email: 'jane@example.com' } as User;
@@ -54,7 +59,7 @@ describe('MfaGate', () => {
       emitAuthState = cb;
       return unsubscribe;
     }) as unknown as typeof onAuthStateChanged);
-    mockSignOut.mockResolvedValue(undefined);
+    mockLogout.mockResolvedValue(undefined);
   });
 
   it('shows a loading state until Firebase reports the auth state', () => {
@@ -172,7 +177,7 @@ describe('MfaGate', () => {
     await screen.findByText(/email code required/i);
 
     fireEvent.click(screen.getByRole('button', { name: /sign out/i }));
-    expect(mockSignOut).toHaveBeenCalledTimes(1);
+    expect(mockLogout).toHaveBeenCalledTimes(1);
 
     act(() => emitAuthState(null));
     expect(await screen.findByText(/you are not signed in/i)).toBeInTheDocument();
@@ -180,14 +185,18 @@ describe('MfaGate', () => {
 
   it('shows an error if signing out fails', async () => {
     mockGetIdTokenResult.mockResolvedValueOnce(passwordOnlyToken);
-    mockSignOut.mockRejectedValueOnce(firebaseError('auth/network-request-failed'));
+    mockLogout.mockRejectedValueOnce(
+      Object.assign(new Error('Network error while signing out. Please check your connection and try again.'), {
+        kind: 'network',
+      })
+    );
     renderGate();
     act(() => emitAuthState(user));
     await screen.findByText(/email code required/i);
 
     fireEvent.click(screen.getByRole('button', { name: /sign out/i }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/network error/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/network error while signing out/i);
   });
 
   it('locks protected content again when the user signs out elsewhere', async () => {

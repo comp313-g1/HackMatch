@@ -14,13 +14,13 @@ import {
   oauthLink,
   getCurrentUser,
   createSession,
-  clearSession,
+  logout,
 } from '../controllers/auth.controller.js';
 import { requireVerifiedParticipant } from '../middleware/requireVerifiedParticipant.js';
 import { requireFirebaseAuth } from '../middleware/requireFirebaseAuth.js';
 import { requireMfa } from '../middleware/requireMfa.js';
 import { requireSessionCookie } from '../middleware/requireSessionCookie.js';
-import { requireCsrf } from '../middleware/requireCsrf.js';
+import { requireCsrfIfCookieSession } from '../middleware/requireCsrf.js';
 
 export const authRouter = Router();
 
@@ -70,13 +70,14 @@ authRouter.post(
 authRouter.get('/me', requireFirebaseAuth, getCurrentUser);
 
 /**
- * Cookie-based sessions (US-003 AC 4): exchange a recent, MFA-verified ID token for an
+ * Cookie-based sessions (US-003 AC 4 / AC 5): exchange a recent, MFA-verified ID token for an
  * HttpOnly, Secure, SameSite=Strict session cookie with a fixed lifetime, inspect it,
- * or clear it. Clearing requires the CSRF token.
+ * or sign out. Logout revokes Firebase refresh tokens and clears cookies; CSRF is required
+ * when a session cookie is present.
  */
 authRouter.post('/session', requireFirebaseAuth, requireMfa, createSession);
 authRouter.get('/session', requireSessionCookie, getCurrentUser);
-authRouter.delete('/session', requireCsrf, clearSession);
+authRouter.delete('/session', requireCsrfIfCookieSession, logout);
 
 
 

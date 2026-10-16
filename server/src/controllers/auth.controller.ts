@@ -848,11 +848,101 @@ export async function createSession(
 }
 
 /**
- * Clears the session and CSRF cookies (DELETE /api/auth/session). Mount after `requireCsrf`.
- * Refresh-token revocation on logout is handled by the US-003 logout task.
+ * Signs the user out (DELETE /api/auth/session, US-003 AC 5 / FR-008 / US-003-T5).
+ *
+ * Mount after `requireCsrfIfCookieSession`. Resolves the user from the session cookie
+ * or a Bearer ID token (without requiring an unrevoked token, so a second logout is safe),
+ * revokes all Firebase refresh tokens for that account, then clears the cookies.
+ * Replaying the old ID token or session cookie against protected routes then fails
+ * because those middlewares verify with checkRevoked=true.
  */
-export function clearSession(_req: Request, res: Response): void {
+export async function logout(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
   res.setHeader('Cache-Control', 'no-store');
+
+  const cookies = (req.cookies ?? {}) as Record<string, unknown>;
+  const sessionCookie = cookies[securityConfig.sessionCookie.name];
+  const bearer = extractBearerToken(req.headers.authorization);
+
+  let uid: string | null = null;
+
+  if (typeof sessionCookie === 'string' && sessionCookie !== '') {
+    try {
+      // checkRevoked=false: allow logout even if tokens were already revoked.
+      const decoded = await firebaseAuth.verifySessionCookie(sessionCookie, false);
+      uid = decoded.uid;
+    } catch (err: unknown) {
+      const failure = mapFirebaseAuthError(err);
+      if (failure && !bearer) {
+        clearSessionCookies(res);
+        res.status(failure.status).json({ error: failure.error, code: failure.code });
+        return;
+      }
+      // Fall through and try the Bearer token when the session cookie is unusable.
+    }
+  }
+
+  if (!uid && bearer) {
+    try {
+      const decoded = await firebaseAuth.verifyIdToken(bearer, false);
+      uid = decoded.uid;
+    } catch (err: unknown) {
+      const failure = mapFirebaseAuthError(err) ?? {
+        status: 401,
+        code: 'INVALID_TOKEN',
+        error: 'Invalid authentication token. Please sign in again.',
+      };
+      clearSessionCookies(res);
+      res.status(failure.status).json({ error: failure.error, code: failure.code });
+      return;
+    }
+  }
+
+  if (!uid) {
+    clearSessionCookies(res);
+    res.status(401).json({
+      error: 'No active session. Please sign in.',
+      code: 'NO_SESSION',
+    });
+    return;
+  }
+
+  try {
+    await firebaseAuth.revokeRefreshTokens(uid);
+  } catch (err: unknown) {
+    const code =
+      err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';
+
+    if (code === 'auth/user-not-found') {
+      // Account already gone: local cookies are still cleared below.
+    } else {
+      const failure = mapFirebaseAuthError(err);
+      if (failure) {
+        // Local cookies are cleared so this browser is signed out even if Firebase is down.
+        clearSessionCookies(res);
+        res.status(failure.status).json({
+          error:
+            failure.code === 'AUTH_SERVICE_UNAVAILABLE'
+              ? 'Could not fully revoke your session. You are signed out on this device; try again if you used other devices.'
+              : failure.error,
+          code: failure.code === 'AUTH_SERVICE_UNAVAILABLE' ? 'REVOCATION_FAILED' : failure.code,
+        });
+        return;
+      }
+      next(err);
+      return;
+    }
+  }
+
   clearSessionCookies(res);
-  res.status(204).end();
+  res.status(200).json({
+    message: 'Signed out successfully. All refresh tokens for this account have been revoked.',
+    code: 'LOGGED_OUT',
+  });
 }
+
+/** @deprecated Use `logout`. Kept as a name alias for older imports in tests. */
+export const clearSession = logout;

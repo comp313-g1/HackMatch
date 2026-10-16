@@ -43,3 +43,21 @@ export function requireCsrf(req: Request, res: Response, next: NextFunction): vo
 
   next();
 }
+
+/**
+ * CSRF is required only when a session cookie is present. Bearer-token logout skips it
+ * because the ID token itself is the secret (US-003 logout).
+ */
+export function requireCsrfIfCookieSession(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const cookies = (req.cookies ?? {}) as Record<string, unknown>;
+  const sessionCookie = cookies[securityConfig.sessionCookie.name];
+  if (typeof sessionCookie === 'string' && sessionCookie !== '') {
+    requireCsrf(req, res, next);
+    return;
+  }
+  next();
+}
