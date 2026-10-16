@@ -259,7 +259,7 @@ describe('ProviderSignInButtons · server-side error codes', () => {
     [401, 'INVALID_TOKEN', undefined, /credential has expired/i],
     [423, 'ACCOUNT_LOCKED', 900, /15 minutes/i],
     [429, 'RATE_LIMITED', 30, /30 seconds/i],
-    [502, 'EMAIL_DELIVERY_FAILED', undefined, /couldn't send the verification email/i],
+    [502, 'EMAIL_DELIVERY_FAILED', undefined, /couldn't send your verification code/i],
   ])(
     'case 8: HTTP %i %s maps to its own message',
     async (status, code, retryAfter, expected) => {

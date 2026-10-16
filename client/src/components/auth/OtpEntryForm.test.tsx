@@ -229,6 +229,29 @@ describe('OtpEntryForm (US-004 S1-P1-10)', () => {
     expect(screen.getByText(/code expires in/i)).toBeInTheDocument();
   });
 
+  it('resend: replaces predecessor challengeId so verify uses only the new challenge (AC 5)', async () => {
+    mockRequestMfaChallenge.mockResolvedValueOnce({
+      requiresOtp: true,
+      challengeId: 'challenge-resend',
+      email: 'j***e@example.com',
+      expiresInSeconds: 600,
+      message: 'A new code has been sent.',
+    });
+    mockVerifyMfaCode.mockResolvedValueOnce({ verified: true, message: 'ok' });
+    renderForm();
+
+    fireEvent.click(screen.getByRole('button', { name: /resend code/i }));
+    await waitFor(() => expect(mockRequestMfaChallenge).toHaveBeenCalled());
+
+    fireEvent.change(screen.getByLabelText(/6-digit code/i), { target: { value: '654321' } });
+    fireEvent.click(screen.getByRole('button', { name: /verify code/i }));
+
+    await waitFor(() =>
+      expect(mockVerifyMfaCode).toHaveBeenCalledWith(user, 'challenge-resend', '654321')
+    );
+    expect(mockVerifyMfaCode).not.toHaveBeenCalledWith(user, 'challenge-abc', expect.anything());
+  });
+
   it('resend failure: shows error and applies rate-limit cooldown', async () => {
     mockRequestMfaChallenge.mockRejectedValueOnce(
       Object.assign(new Error('Too many requests. Try again later.'), { code: 'RATE_LIMITED' })
@@ -264,6 +287,47 @@ describe('OtpEntryForm (US-004 S1-P1-10)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/failed to send verification code/i);
   });
 
+  it('delivery failure: clears challenge, shows retry help, and allows Try sending again (FR-084)', async () => {
+    mockRequestMfaChallenge
+      .mockRejectedValueOnce(
+        Object.assign(new Error("We couldn't send your verification code. Please try again in a moment."), {
+          code: 'EMAIL_DELIVERY_FAILED',
+        })
+      )
+      .mockResolvedValueOnce({
+        requiresOtp: true,
+        challengeId: 'challenge-retry',
+        email: 'j***e@example.com',
+        expiresInSeconds: 600,
+        message: 'sent',
+      });
+
+    renderForm({ initialChallenge: null });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't send your verification code/i);
+    expect(screen.getByText(/no session was created/i)).toBeInTheDocument();
+    const retry = screen.getByRole('button', { name: /try sending again/i });
+    expect(retry).toBeEnabled();
+
+    fireEvent.click(retry);
+    expect(await screen.findByLabelText(/6-digit code/i)).toBeInTheDocument();
+    expect(mockRequestMfaChallenge).toHaveBeenCalledTimes(2);
+  });
+
+  it('delivery failure on resend: drops predecessor challenge and offers retry', async () => {
+    mockRequestMfaChallenge.mockRejectedValueOnce(
+      Object.assign(new Error("We couldn't send your verification code."), {
+        code: 'EMAIL_DELIVERY_FAILED',
+      })
+    );
+    renderForm();
+
+    fireEvent.click(screen.getByRole('button', { name: /resend code/i }));
+
+    expect(await screen.findByRole('button', { name: /try sending again/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/6-digit code/i)).not.toBeInTheDocument();
+  });
+
   it('sign out: calls logout and notifies the parent', async () => {
     const { onSignedOut } = renderForm();
 
@@ -271,5 +335,38 @@ describe('OtpEntryForm (US-004 S1-P1-10)', () => {
 
     await waitFor(() => expect(mockLogout).toHaveBeenCalledWith(user));
     expect(onSignedOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('lockout: fifth failure disables verify/resend and shows countdown (FR-010)', async () => {
+    mockVerifyMfaCode.mockRejectedValueOnce(
+      Object.assign(new Error('Account temporarily locked.'), {
+        code: 'ACCOUNT_LOCKED',
+        retryAfter: 900,
+      })
+    );
+    renderForm();
+
+    fireEvent.change(screen.getByLabelText(/6-digit code/i), { target: { value: '000000' } });
+    fireEvent.click(screen.getByRole('button', { name: /verify code/i }));
+
+    expect(await screen.findByText(/account locked/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /verify code/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /locked/i })).toBeDisabled();
+    expect(screen.getByLabelText(/6-digit code/i)).toBeDisabled();
+  });
+
+  it('lockout: resend while locked surfaces ACCOUNT_LOCKED and blocks further sends', async () => {
+    mockRequestMfaChallenge.mockRejectedValueOnce(
+      Object.assign(new Error('Account temporarily locked.'), {
+        code: 'ACCOUNT_LOCKED',
+        retryAfter: 600,
+      })
+    );
+    renderForm();
+
+    fireEvent.click(screen.getByRole('button', { name: /resend code/i }));
+
+    expect(await screen.findByText(/account locked/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /locked/i })).toBeDisabled();
   });
 });

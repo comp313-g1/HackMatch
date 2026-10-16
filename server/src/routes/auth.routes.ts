@@ -19,6 +19,7 @@ import {
   logout,
   sendMfaOtp,
   verifyMfaOtp,
+  verifyMfaChallenge,
 } from '../controllers/auth.controller.js';
 import { requireVerifiedParticipant } from '../middleware/requireVerifiedParticipant.js';
 import { requireFirebaseAuth } from '../middleware/requireFirebaseAuth.js';
@@ -85,7 +86,12 @@ authRouter.post(
   requireFirebaseAuth,
   requireActiveAccount,
   validateMfaVerifyPayload,
-  verifyMfaOtp
+  (req, res, next) => {
+    if (req.body && req.body.code !== undefined && req.body.otp === undefined) {
+      return verifyMfaChallenge(req, res, next);
+    }
+    return verifyMfaOtp(req, res, next);
+  }
 );
 
 /**

@@ -75,7 +75,7 @@ export function translateOAuthServerError(code?: string, retryAfter?: number): s
       }.`;
     }
     case 'EMAIL_DELIVERY_FAILED':
-      return "We couldn't send the verification email. Please try again.";
+      return "We couldn't send your verification code. Please try again in a moment.";
     case 'ACCOUNT_SUSPENDED':
       return 'This account has been suspended and cannot sign in. Please contact support.';
     case 'ACCOUNT_DISABLED':

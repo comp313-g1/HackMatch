@@ -8,7 +8,7 @@ import {
 } from './issueMfaOtp.js';
 import { mfaRepository } from '../db/mfa.repository.js';
 import { hashOtp } from '../utils/otp.js';
-import { _resetRateLimiter } from '../utils/rateLimiter.js';
+import { _resetRateLimiter, rateLimiter } from '../utils/rateLimiter.js';
 import type { Participant, MfaChallenge } from '../db/types.js';
 
 describe('issueMfaOtpForParticipant (US-004 AC 1 / FR-009 / FR-081 / FR-084)', () => {
@@ -85,6 +85,31 @@ describe('issueMfaOtpForParticipant (US-004 AC 1 / FR-009 / FR-081 / FR-084)', (
     const result = await issueMfaOtpForParticipant(participant);
     expect(result).toMatchObject({ ok: false, status: 423, code: 'ACCOUNT_LOCKED' });
     expect(mfaRepository.createChallenge).not.toHaveBeenCalled();
+    // Lock path invalidates outstanding challenges (US-004 AC 3 / AC 5).
+    expect(mfaRepository.invalidatePendingChallenges).toHaveBeenCalledWith(participant.id);
+  });
+
+  it('resend/reissue invalidates predecessor challenges without resetting failure attempts (AC 5)', async () => {
+    _setMfaOtpEmailSender(async () => undefined);
+    const priorFailures = Array.from({ length: 2 }, (_, i) => ({
+      id: `att-${i}`,
+      participant_id: participant.id,
+      challenge_id: 'old-challenge',
+      success: false,
+      ip_address: null,
+      created_at: new Date(Date.now() - (2 - i) * 1000).toISOString(),
+    }));
+    vi.spyOn(mfaRepository, 'getRecentAttempts').mockResolvedValue(priorFailures);
+    const createAttemptSpy = vi.spyOn(mfaRepository, 'createAttempt');
+
+    const result = await issueMfaOtpForParticipant(participant);
+
+    expect(result.ok).toBe(true);
+    expect(mfaRepository.invalidatePendingChallenges).toHaveBeenCalledWith(participant.id);
+    expect(mfaRepository.createChallenge).toHaveBeenCalled();
+    // Failure attempts are untouched by reissue (only challenges are invalidated).
+    expect(createAttemptSpy).not.toHaveBeenCalled();
+    expect(await mfaRepository.getRecentAttempts(participant.id)).toEqual(priorFailures);
   });
 
   it('returns RATE_LIMITED after a successful send within the 60s cooldown (FR-081)', async () => {
@@ -102,14 +127,35 @@ describe('issueMfaOtpForParticipant (US-004 AC 1 / FR-009 / FR-081 / FR-084)', (
     _setMfaOtpEmailSender(async () => {
       throw new Error('SMTP timeout');
     });
+    const recordSpy = vi.spyOn(rateLimiter, 'recordSend');
 
     const result = await issueMfaOtpForParticipant(participant);
     expect(result).toMatchObject({
       ok: false,
       status: 502,
       code: 'EMAIL_DELIVERY_FAILED',
+      retryable: true,
     });
     expect(mfaRepository.invalidatePendingChallenges).toHaveBeenCalledWith(participant.id);
+    // Failed sends must not consume the FR-081 quota so the user can retry.
+    expect(recordSpy).not.toHaveBeenCalled();
+  });
+
+  it('allows an immediate retry after a delivery failure (FR-084 + FR-081)', async () => {
+    let attempts = 0;
+    _setMfaOtpEmailSender(async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('SMTP timeout');
+    });
+
+    const first = await issueMfaOtpForParticipant(participant);
+    expect(first).toMatchObject({ ok: false, code: 'EMAIL_DELIVERY_FAILED', retryable: true });
+
+    const second = await issueMfaOtpForParticipant(participant);
+    expect(second.ok).toBe(true);
+    if (second.ok) {
+      expect(second.challengeId).toBe('challenge-uuid-1');
+    }
   });
 
   it('returns MFA_STORE_UNAVAILABLE when MFA tables are missing', async () => {

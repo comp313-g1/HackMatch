@@ -192,6 +192,7 @@ export async function issueMfaChallenge(
         error: issued.error,
         code: issued.code,
         ...(issued.retryAfter != null ? { retryAfter: issued.retryAfter } : {}),
+        ...(issued.retryable != null ? { retryable: issued.retryable } : {}),
       });
       return;
     }
@@ -209,8 +210,8 @@ export async function issueMfaChallenge(
 }
 
 /**
- * Verifies a 6-digit MFA OTP and sets the MFA claim (POST /api/auth/mfa/verify).
- * Used by the React OTP entry form (US-004 / S1-P1-10 / FR-010).
+ * Verifies a 6-digit MFA OTP, atomically consumes the challenge, and sets the MFA claim
+ * (POST /api/auth/mfa/verify) — US-004 AC 2 / FR-010 / S1-P1-11.
  */
 export async function verifyMfaChallenge(
   req: Request,
@@ -229,6 +230,14 @@ export async function verifyMfaChallenge(
       return;
     }
 
+    if (!firebaseUser.email || firebaseUser.email_verified !== true) {
+      res.status(403).json({
+        error: 'A verified email is required before a login code can be verified.',
+        code: 'EMAIL_NOT_VERIFIED',
+      });
+      return;
+    }
+
     let participant = req.participant;
     if (!participant) {
       participant =
@@ -238,6 +247,14 @@ export async function verifyMfaChallenge(
       res.status(404).json({
         error: 'No HackMatch account is linked to this sign-in. Please register first.',
         code: 'PARTICIPANT_NOT_FOUND',
+      });
+      return;
+    }
+
+    if (participant.is_suspended) {
+      res.status(403).json({
+        error: ACCOUNT_SUSPENDED_MESSAGE,
+        code: 'ACCOUNT_SUSPENDED',
       });
       return;
     }
@@ -1195,6 +1212,9 @@ export async function verifyMfaOtp(
  * (POST /api/auth/session, US-003 AC 4). Must be mounted after `requireFirebaseAuth`
  * and `requireMfa`. The cookie lasts a fixed SESSION_COOKIE_MAX_AGE_SECONDS (7 days by
  * default) and is not extended by later requests.
+ *
+ * FR-010 / US-004: OTP lockout also blocks session renewal for 15 minutes. Existing
+ * session cookies are not revoked solely by the lock (checked only on create).
  */
 export async function createSession(
   req: Request,
@@ -1212,30 +1232,6 @@ export async function createSession(
     return;
   }
 
-  // Check 15-minute account lockout if participant is present (US-004 AC 3 / FR-010)
-  if (req.participant) {
-    try {
-      const lockout = await evaluateAccountLockout(req.participant.id);
-      if (lockout.locked) {
-        res.status(423).json({
-          error: 'Account temporarily locked due to too many failed OTP attempts. Please wait 15 minutes before trying again.',
-          code: 'ACCOUNT_LOCKED',
-          retryAfter: lockout.retryAfterSeconds,
-        });
-        return;
-      }
-    } catch (lockoutErr: unknown) {
-      if (
-        lockoutErr instanceof Error &&
-        lockoutErr.message.includes('Missing SUPABASE_URL')
-      ) {
-        // Safe offline/unit-test fallback when DB is unconfigured
-      } else {
-        throw lockoutErr;
-      }
-    }
-  }
-
   const nowSeconds = Math.floor(Date.now() / 1000);
   const signInAge = nowSeconds - decoded.auth_time;
   if (!Number.isFinite(signInAge) || signInAge < -60 || signInAge > securityConfig.recentSignInSeconds) {
@@ -1246,8 +1242,43 @@ export async function createSession(
     return;
   }
 
-  const maxAgeSeconds = securityConfig.sessionCookie.maxAgeSeconds;
   try {
+    let participant = req.participant;
+    if (!participant) {
+      participant =
+        (await participantsRepository.findByFirebaseUid(decoded.uid)) ?? undefined;
+    }
+    if (participant) {
+      try {
+        const lockout = await evaluateAccountLockout(participant.id);
+        if (lockout.locked) {
+          if (lockout.retryAfterSeconds != null) {
+            res.setHeader('Retry-After', String(lockout.retryAfterSeconds));
+          }
+          res.status(423).json({
+            error:
+              'Account temporarily locked due to too many failed OTP attempts. Please wait 15 minutes before trying again.',
+            code: 'ACCOUNT_LOCKED',
+            ...(lockout.retryAfterSeconds != null
+              ? { retryAfter: lockout.retryAfterSeconds }
+              : {}),
+          });
+          return;
+        }
+      } catch (lockoutErr: unknown) {
+        if (
+          lockoutErr instanceof Error &&
+          (lockoutErr.message.includes('Missing SUPABASE_URL') ||
+            lockoutErr.message.includes('relation "mfa_attempts" does not exist'))
+        ) {
+          // Safe offline/unit-test fallback when DB is unconfigured
+        } else {
+          throw lockoutErr;
+        }
+      }
+    }
+
+    const maxAgeSeconds = securityConfig.sessionCookie.maxAgeSeconds;
     const sessionCookie = await firebaseAuth.createSessionCookie(idToken, {
       expiresIn: maxAgeSeconds * 1000,
     });

@@ -104,7 +104,7 @@ export function describeLoginError(error: unknown): LoginError {
         message:
           error && typeof error === 'object' && 'message' in error
             ? String((error as { message: unknown }).message)
-            : 'Failed to send verification code. Please try again.',
+            : "We couldn't send your verification code. Please try signing in again.",
       };
     case 'EMAIL_NOT_VERIFIED':
       return {

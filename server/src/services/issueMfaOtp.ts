@@ -38,6 +38,8 @@ export interface IssueMfaOtpFailure {
     | 'FRESH_AUTH_REQUIRED';
   error: string;
   retryAfter?: number;
+  /** When true, the client may retry under FR-081 (FR-084). */
+  retryable?: boolean;
 }
 
 export type IssueMfaOtpResult = IssueMfaOtpSuccess | IssueMfaOtpFailure;
@@ -77,9 +79,10 @@ export function isMfaStoreUnavailableError(err: unknown): boolean {
     code === '42P01' ||
     code === 'PGRST205' ||
     code === 'PGRST204' ||
-    blob.includes('mfa_challenges') ||
-    blob.includes('mfa_attempts') ||
-    blob.includes('does not exist') ||
+    ((blob.includes('mfa_challenges') || blob.includes('mfa_attempts')) &&
+      (blob.includes('does not exist') ||
+        blob.includes('could not find') ||
+        blob.includes('schema cache'))) ||
     blob.includes('could not find the table')
   );
 }
@@ -96,6 +99,8 @@ export async function issueMfaOtpForParticipant(
   try {
     const lockout = await evaluateAccountLockout(participant.id);
     if (lockout.locked) {
+      // US-004 AC 3/5: lock invalidates outstanding challenges; keep failure counter intact.
+      await mfaRepository.invalidatePendingChallenges(participant.id);
       return {
         ok: false,
         status: 423,
@@ -138,9 +143,11 @@ export async function issueMfaOtpForParticipant(
 
     try {
       await emailSender(normalizedEmail, otpCode);
+      // FR-081: count only successful dispatches so failed sends can retry immediately.
       rateLimiter.recordSend('mfa_otp', normalizedEmail);
     } catch (dispatchErr: unknown) {
-      // FR-084: delivery failure never authenticates; invalidate the fresh challenge.
+      // FR-084: delivery failure never authenticates or creates a session; invalidate the
+      // fresh challenge; do not log the OTP; allow controlled retry (not rate-limited).
       await mfaRepository.invalidatePendingChallenges(participant.id);
       const errMsg = dispatchErr instanceof Error ? dispatchErr.message : 'Unknown dispatch error';
       console.warn(`[AUTH] Failed to send MFA OTP email for ${normalizedEmail}: ${errMsg}`);
@@ -148,7 +155,9 @@ export async function issueMfaOtpForParticipant(
         ok: false,
         status: 502,
         code: 'EMAIL_DELIVERY_FAILED',
-        error: 'Failed to dispatch verification code email. Please try again.',
+        error:
+          "We couldn't send your verification code. Please try again in a moment. If this keeps happening, check your email address or contact support.",
+        retryable: true,
       };
     }
 

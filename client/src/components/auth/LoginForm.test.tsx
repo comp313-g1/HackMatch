@@ -212,6 +212,25 @@ describe('LoginForm', () => {
     expect(onNavigateToRegister).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps the email and shows retry feedback when OTP email delivery fails (FR-084)', async () => {
+    const user = { uid: 'u1', email: 'jane@example.com' };
+    mockSignIn.mockResolvedValueOnce({ user } as UserCredential);
+    mockRequestMfaChallenge.mockRejectedValueOnce(
+      Object.assign(new Error("We couldn't send your verification code. Please try again in a moment."), {
+        code: 'EMAIL_DELIVERY_FAILED',
+      })
+    );
+    const onPrimaryAuthSuccess = vi.fn();
+    render(<LoginForm onPrimaryAuthSuccess={onPrimaryAuthSuccess} />);
+
+    fillAndSubmit('jane@example.com', 'secret123');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't send your verification code/i);
+    expect(screen.getByLabelText(/email address/i)).toHaveValue('jane@example.com');
+    expect(onPrimaryAuthSuccess).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /sign in/i })).toBeEnabled();
+  });
+
   it('blocks a suspended account after Firebase accepts the password (US-003-T4)', async () => {
     const user = { uid: 'u1', email: 'jane@example.com' };
     mockSignIn.mockResolvedValueOnce({ user } as UserCredential);

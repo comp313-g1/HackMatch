@@ -1,6 +1,6 @@
 /**
- * MFA OTP verification / consume (FR-010 / US-004 AC 2–3).
- * Supports the React OTP entry form (S1-P1-10) via POST /api/auth/mfa/verify.
+ * MFA OTP verification / atomic consume (FR-010 / US-004 AC 2–3 / S1-P1-11).
+ * Supports POST /api/auth/mfa/verify used by the React OTP entry form.
  */
 
 import type { DecodedIdToken } from 'firebase-admin/auth';
@@ -31,18 +31,10 @@ export interface VerifyMfaOtpFailure {
 
 export type VerifyMfaOtpResult = VerifyMfaOtpSuccess | VerifyMfaOtpFailure;
 
-function timingSafeEqualHex(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < a.length; i++) {
-    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return mismatch === 0;
-}
-
 /**
- * Validates a 6-digit OTP against the current challenge, records the attempt,
- * and on success marks the challenge consumed and sets the MFA claim.
+ * Validates a 6-digit OTP against the current challenge, atomically consumes it
+ * on match (compare-and-set), records the attempt, resets the failure cycle on
+ * success via a successful attempt row, and sets the MFA claim.
  */
 export async function verifyMfaOtpForParticipant(
   participant: Participant,
@@ -54,6 +46,8 @@ export async function verifyMfaOtpForParticipant(
   try {
     const lockout = await evaluateAccountLockout(participant.id);
     if (lockout.locked) {
+      // US-004 AC 3/5: ensure predecessor challenges cannot authenticate during lock.
+      await mfaRepository.invalidatePendingChallenges(participant.id);
       return {
         ok: false,
         status: 423,
@@ -103,8 +97,38 @@ export async function verifyMfaOtpForParticipant(
       };
     }
 
-    const matches = timingSafeEqualHex(hashOtp(rawCode), challenge.otp_hash);
-    if (!matches) {
+    const otpHash = hashOtp(rawCode);
+    const consumed = await mfaRepository.tryConsumeChallenge(challenge.id, otpHash);
+
+    if (!consumed) {
+      // Compare-and-set matched zero rows: wrong code, concurrent consume, or state change.
+      const latest = await mfaRepository.getChallengeById(challenge.id);
+      if (!latest || latest.participant_id !== participant.id) {
+        return {
+          ok: false,
+          status: 404,
+          code: 'CHALLENGE_NOT_FOUND',
+          error: 'This verification code is no longer valid. Request a new code and try again.',
+        };
+      }
+      if (latest.consumed_at) {
+        return {
+          ok: false,
+          status: 400,
+          code: 'OTP_CONSUMED',
+          error: 'This verification code has already been used. Request a new code and try again.',
+        };
+      }
+      if (latest.invalidated_at || Date.now() >= Date.parse(latest.expires_at)) {
+        await mfaRepository.invalidatePendingChallenges(participant.id);
+        return {
+          ok: false,
+          status: 400,
+          code: 'OTP_EXPIRED',
+          error: 'This verification code has expired. Request a new code and try again.',
+        };
+      }
+
       await mfaRepository.createAttempt({
         participant_id: participant.id,
         challenge_id: challenge.id,
@@ -133,7 +157,7 @@ export async function verifyMfaOtpForParticipant(
       };
     }
 
-    await mfaRepository.markChallengeConsumed(challenge.id);
+    // Success attempt resets consecutive-failure counting for the next cycle (FR-010).
     await mfaRepository.createAttempt({
       participant_id: participant.id,
       challenge_id: challenge.id,

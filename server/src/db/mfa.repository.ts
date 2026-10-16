@@ -13,6 +13,16 @@ export interface IMfaRepository {
   getLatestActiveChallenge(participantId: string): Promise<MfaChallenge | null>;
   invalidatePendingChallenges(participantId: string): Promise<number>;
   markChallengeConsumed(challengeId: string): Promise<MfaChallenge>;
+  /**
+   * Atomically consume a challenge only when the OTP hash matches and the row is
+   * still unused, not invalidated, and not expired (US-004 AC 2 / FR-010).
+   * Returns null when the compare-and-set update matched zero rows.
+   */
+  tryConsumeChallenge(
+    challengeId: string,
+    otpHash: string,
+    now?: Date
+  ): Promise<MfaChallenge | null>;
   createAttempt(data: CreateMfaAttemptDTO): Promise<MfaAttempt>;
   getRecentAttempts(participantId: string, limit?: number): Promise<MfaAttempt[]>;
   countRecentChallenges(participantId: string, since: Date | string): Promise<number>;
@@ -130,6 +140,39 @@ export const mfaRepository: IMfaRepository = {
     return data as MfaChallenge;
   },
 
+  async tryConsumeChallenge(
+    challengeId: string,
+    otpHash: string,
+    now: Date = new Date()
+  ): Promise<MfaChallenge | null> {
+    if (!challengeId || typeof challengeId !== 'string' || challengeId.trim() === '') {
+      throw new Error('challengeId is required');
+    }
+    if (!otpHash || typeof otpHash !== 'string' || otpHash.trim() === '') {
+      throw new Error('otpHash is required');
+    }
+    if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
+      throw new Error('now must be a valid Date');
+    }
+
+    const client = getSupabaseClient();
+    const nowIso = now.toISOString();
+
+    const { data, error } = await client
+      .from('mfa_challenges')
+      .update({ consumed_at: nowIso })
+      .eq('id', challengeId.trim())
+      .eq('otp_hash', otpHash.trim())
+      .is('consumed_at', null)
+      .is('invalidated_at', null)
+      .gt('expires_at', nowIso)
+      .select('*')
+      .maybeSingle();
+
+    if (error) throw error;
+    return (data as MfaChallenge | null) ?? null;
+  },
+
   async createAttempt(data: CreateMfaAttemptDTO): Promise<MfaAttempt> {
     if (!data.participant_id || typeof data.participant_id !== 'string' || data.participant_id.trim() === '') {
       throw new Error('participant_id is required');
@@ -203,6 +246,7 @@ export const getChallengeById = mfaRepository.getChallengeById.bind(mfaRepositor
 export const getLatestActiveChallenge = mfaRepository.getLatestActiveChallenge.bind(mfaRepository);
 export const invalidatePendingChallenges = mfaRepository.invalidatePendingChallenges.bind(mfaRepository);
 export const markChallengeConsumed = mfaRepository.markChallengeConsumed.bind(mfaRepository);
+export const tryConsumeChallenge = mfaRepository.tryConsumeChallenge.bind(mfaRepository);
 export const createAttempt = mfaRepository.createAttempt.bind(mfaRepository);
 export const getRecentAttempts = mfaRepository.getRecentAttempts.bind(mfaRepository);
 export const countRecentChallenges = mfaRepository.countRecentChallenges.bind(mfaRepository);

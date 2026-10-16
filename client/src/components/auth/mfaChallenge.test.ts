@@ -50,4 +50,20 @@ describe('requestMfaChallenge (US-004 AC 1)', () => {
       code: 'EMAIL_DELIVERY_FAILED',
     });
   });
+
+  it('throws ACCOUNT_LOCKED with retryAfter when the five-attempt lock is active', async () => {
+    mockAuthFetch.mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({
+        code: 'ACCOUNT_LOCKED',
+        error: 'Account temporarily locked.',
+        retryAfter: 900,
+      }),
+    } as Response);
+
+    await expect(requestMfaChallenge(user)).rejects.toMatchObject({
+      code: 'ACCOUNT_LOCKED',
+      retryAfter: 900,
+    });
+  });
 });

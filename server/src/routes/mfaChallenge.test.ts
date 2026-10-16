@@ -107,6 +107,8 @@ describe('POST /api/auth/mfa/challenge (US-004 S1-P1-09)', () => {
 
     const createArg = vi.mocked(mfaRepository.createChallenge).mock.calls[0]?.[0];
     expect(createArg?.otp_hash).toBe(hashOtp(capturedOtp));
+    // Resend/reissue path: predecessors invalidated before the new challenge is stored (AC 5).
+    expect(mfaRepository.invalidatePendingChallenges).toHaveBeenCalledWith(participant.id);
   });
 
   it('unauthorized: missing Authorization header → 401', async () => {
@@ -181,7 +183,31 @@ describe('POST /api/auth/mfa/challenge (US-004 S1-P1-09)', () => {
 
     expect(response.status).toBe(502);
     expect(response.body.code).toBe('EMAIL_DELIVERY_FAILED');
+    expect(response.body.retryable).toBe(true);
+    expect(response.body.error).toMatch(/try again/i);
+    expect(response.headers['set-cookie']).toBeUndefined();
     expect(mfaRepository.invalidatePendingChallenges).toHaveBeenCalled();
+  });
+
+  it('allows retry after EMAIL_DELIVERY_FAILED without hitting RATE_LIMITED (FR-084)', async () => {
+    let calls = 0;
+    _setMfaOtpEmailSender(async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('SMTP down');
+    });
+    mockVerifyIdToken.mockResolvedValue(decoded());
+
+    const failed = await request(app)
+      .post('/api/auth/mfa/challenge')
+      .set('Authorization', 'Bearer valid.id.token');
+    expect(failed.status).toBe(502);
+    expect(failed.body.code).toBe('EMAIL_DELIVERY_FAILED');
+
+    const retried = await request(app)
+      .post('/api/auth/mfa/challenge')
+      .set('Authorization', 'Bearer valid.id.token');
+    expect(retried.status).toBe(200);
+    expect(retried.body.requiresOtp).toBe(true);
   });
 
   it('returns 429 RATE_LIMITED on rapid reissue (FR-081 boundary)', async () => {
@@ -230,5 +256,31 @@ describe('POST /api/auth/mfa/challenge (US-004 S1-P1-09)', () => {
 
     expect(response.status).toBe(503);
     expect(response.body.code).toBe('MFA_STORE_UNAVAILABLE');
+  });
+
+  it('five-attempt lock: blocks new OTP challenge with ACCOUNT_LOCKED (FR-010)', async () => {
+    mockVerifyIdToken.mockResolvedValueOnce(decoded());
+    const fifthFailureTime = Date.now() - 120_000;
+    vi.spyOn(mfaRepository, 'getRecentAttempts').mockResolvedValue(
+      Array.from({ length: 5 }, (_, i) => ({
+        id: `att-${i}`,
+        participant_id: participant.id,
+        challenge_id: null,
+        success: false,
+        ip_address: null,
+        created_at: new Date(fifthFailureTime - i * 1000).toISOString(),
+      }))
+    );
+
+    const response = await request(app)
+      .post('/api/auth/mfa/challenge')
+      .set('Authorization', 'Bearer valid.id.token');
+
+    expect(response.status).toBe(423);
+    expect(response.body.code).toBe('ACCOUNT_LOCKED');
+    expect(response.body.retryAfter).toBeGreaterThan(0);
+    expect(response.headers['retry-after']).toBeDefined();
+    expect(mfaRepository.createChallenge).not.toHaveBeenCalled();
+    expect(mfaRepository.invalidatePendingChallenges).toHaveBeenCalledWith(participant.id);
   });
 });
