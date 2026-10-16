@@ -4,6 +4,7 @@ import { signInWithEmailAndPassword, type UserCredential } from 'firebase/auth';
 import { LoginForm } from './LoginForm';
 import { GENERIC_CREDENTIALS_ERROR, ACCOUNT_SUSPENDED_ERROR } from './loginErrors';
 import { assertAccountActive } from './accountStatus';
+import { requestMfaChallenge } from './mfaChallenge';
 
 vi.mock('firebase/auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('firebase/auth')>();
@@ -17,8 +18,13 @@ vi.mock('./accountStatus', () => ({
   assertAccountActive: vi.fn(),
 }));
 
+vi.mock('./mfaChallenge', () => ({
+  requestMfaChallenge: vi.fn(),
+}));
+
 const mockSignIn = vi.mocked(signInWithEmailAndPassword);
 const mockAssertAccountActive = vi.mocked(assertAccountActive);
+const mockRequestMfaChallenge = vi.mocked(requestMfaChallenge);
 
 const firebaseError = (code: string) => Object.assign(new Error(code), { code });
 
@@ -32,6 +38,13 @@ describe('LoginForm', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockAssertAccountActive.mockResolvedValue(undefined);
+    mockRequestMfaChallenge.mockResolvedValue({
+      requiresOtp: true,
+      challengeId: 'challenge-1',
+      email: 'j***e@example.com',
+      expiresInSeconds: 600,
+      message: 'A 6-digit verification code has been sent to your email.',
+    });
   });
 
   it('renders email and password fields with a sign in button', () => {

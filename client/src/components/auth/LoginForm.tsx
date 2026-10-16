@@ -8,6 +8,7 @@ import {
   type LoginValidationErrors,
 } from './loginErrors';
 import { assertAccountActive } from './accountStatus';
+import { requestMfaChallenge } from './mfaChallenge';
 import { AuthSplitLayout } from './AuthSplitLayout';
 
 export interface PrimaryAuthResult {
@@ -58,13 +59,19 @@ export function LoginForm({
       const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
       // Block suspended / Firebase-disabled accounts before any MFA or session step (US-003-T4).
       await assertAccountActive(credential.user);
+      // US-004 AC 1 / FR-009: generate + email a cryptographically random 6-digit OTP.
+      await requestMfaChallenge(credential.user);
       setPassword('');
       setSignedInEmail(normalizedEmail);
       onPrimaryAuthSuccess?.({ email: normalizedEmail, user: credential.user });
     } catch (err: unknown) {
       const loginError = describeLoginError(err);
       setFormError(loginError);
-      if (loginError.kind === 'credentials' || loginError.kind === 'suspended' || loginError.kind === 'disabled') {
+      if (
+        loginError.kind === 'credentials' ||
+        loginError.kind === 'suspended' ||
+        loginError.kind === 'disabled'
+      ) {
         setPassword('');
       }
     } finally {

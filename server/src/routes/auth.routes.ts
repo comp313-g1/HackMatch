@@ -12,6 +12,7 @@ import {
   verifyEmail,
   oauthSignIn,
   oauthLink,
+  issueMfaChallenge,
   getCurrentUser,
   createSession,
   logout,
@@ -78,6 +79,17 @@ authRouter.get('/account-status', requireFirebaseAuth, requireActiveAccount, (_r
   res.setHeader('Cache-Control', 'no-store');
   res.status(200).json({ active: true });
 });
+
+/**
+ * Issue a cryptographically random 6-digit MFA OTP after primary auth (US-004 AC 1 / FR-009 / S1-P1-09).
+ * Requires a verified Firebase ID token and an active participant. Never creates a session (FR-007).
+ */
+authRouter.post(
+  '/mfa/challenge',
+  requireFirebaseAuth,
+  requireActiveAccount,
+  issueMfaChallenge
+);
 
 /**
  * Cookie-based sessions (US-003 AC 4 / AC 5): exchange a recent, MFA-verified ID token for an

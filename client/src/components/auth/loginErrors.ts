@@ -31,6 +31,8 @@ export type LoginErrorKind =
   | 'throttled'
   | 'disabled'
   | 'suspended'
+  | 'locked'
+  | 'otp_delivery'
   | 'network'
   | 'unknown';
 
@@ -79,6 +81,36 @@ export function describeLoginError(error: unknown): LoginError {
       };
     case 'ACCOUNT_SUSPENDED':
       return { kind: 'suspended', message: ACCOUNT_SUSPENDED_ERROR };
+    case 'ACCOUNT_LOCKED':
+      return {
+        kind: 'locked',
+        message:
+          error && typeof error === 'object' && 'message' in error
+            ? String((error as { message: unknown }).message)
+            : 'Account temporarily locked due to too many failed OTP attempts. Please wait before trying again.',
+      };
+    case 'RATE_LIMITED':
+      return {
+        kind: 'throttled',
+        message:
+          error && typeof error === 'object' && 'message' in error
+            ? String((error as { message: unknown }).message)
+            : 'Too many OTP requests. Please wait before requesting another code.',
+      };
+    case 'EMAIL_DELIVERY_FAILED':
+    case 'MFA_CHALLENGE_FAILED':
+      return {
+        kind: 'otp_delivery',
+        message:
+          error && typeof error === 'object' && 'message' in error
+            ? String((error as { message: unknown }).message)
+            : 'Failed to send verification code. Please try again.',
+      };
+    case 'EMAIL_NOT_VERIFIED':
+      return {
+        kind: 'unknown',
+        message: 'A verified email is required before a login code can be sent.',
+      };
     case 'auth/network-request-failed':
       return {
         kind: 'network',
