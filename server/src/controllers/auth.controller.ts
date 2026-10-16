@@ -106,8 +106,8 @@ export async function issueMfaChallenge(
 }
 
 /**
- * Verifies a 6-digit MFA OTP and sets the MFA claim (POST /api/auth/mfa/verify).
- * Used by the React OTP entry form (US-004 / S1-P1-10 / FR-010).
+ * Verifies a 6-digit MFA OTP, atomically consumes the challenge, and sets the MFA claim
+ * (POST /api/auth/mfa/verify) — US-004 AC 2 / FR-010 / S1-P1-11.
  */
 export async function verifyMfaChallenge(
   req: Request,
@@ -126,6 +126,14 @@ export async function verifyMfaChallenge(
       return;
     }
 
+    if (!firebaseUser.email || firebaseUser.email_verified !== true) {
+      res.status(403).json({
+        error: 'A verified email is required before a login code can be verified.',
+        code: 'EMAIL_NOT_VERIFIED',
+      });
+      return;
+    }
+
     let participant = req.participant;
     if (!participant) {
       participant =
@@ -135,6 +143,14 @@ export async function verifyMfaChallenge(
       res.status(404).json({
         error: 'No HackMatch account is linked to this sign-in. Please register first.',
         code: 'PARTICIPANT_NOT_FOUND',
+      });
+      return;
+    }
+
+    if (participant.is_suspended) {
+      res.status(403).json({
+        error: ACCOUNT_SUSPENDED_MESSAGE,
+        code: 'ACCOUNT_SUSPENDED',
       });
       return;
     }
