@@ -347,4 +347,50 @@ export function validateOAuthLinkPayload(
   next();
 }
 
+export interface MfaVerifyFieldErrors {
+  otp?: string;
+}
+
+/**
+ * Express middleware validating payload for POST /api/auth/mfa/verify (US-004 AC 2 / S1-P3-04).
+ * Enforces presence of 6-digit numeric OTP and sanitizes optional challengeId.
+ */
+export function validateMfaVerifyPayload(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    res.status(400).json({
+      error: 'Validation failed',
+      errors: {
+        otp: 'A 6-digit verification code is required.',
+      },
+    });
+    return;
+  }
+
+  const rawOtp = body.otp;
+  if (typeof rawOtp !== 'string' || !/^\d{6}$/.test(rawOtp.trim())) {
+    res.status(400).json({
+      error: 'Validation failed',
+      errors: {
+        otp: 'A 6-digit verification code is required.',
+      },
+    });
+    return;
+  }
+
+  const rawChallengeId = body.challengeId;
+  req.body = {
+    otp: rawOtp.trim(),
+    ...(typeof rawChallengeId === 'string' && rawChallengeId.trim().length > 0
+      ? { challengeId: rawChallengeId.trim() }
+      : {}),
+  };
+
+  next();
+}
+
 

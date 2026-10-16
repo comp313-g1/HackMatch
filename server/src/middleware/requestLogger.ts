@@ -4,6 +4,8 @@ const SENSITIVE_KEYS = new Set([
   'password',
   'token',
   'otp',
+  'otpcode',
+  'code',
   'refreshtoken',
   'accesstoken',
   'secret',

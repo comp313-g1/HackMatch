@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   generateOtp,
   hashOtp,
+  verifyOtpHash,
   evaluateAccountLockout,
   createMfaChallenge,
   OTP_EXPIRY_SECONDS,
@@ -59,6 +60,46 @@ describe('OTP Utility (server/src/utils/otp.ts)', () => {
     });
   });
 
+  describe('verifyOtpHash() (NR-008)', () => {
+    const validOtp = '654321';
+    const expectedHash = hashOtp(validOtp);
+
+    it('returns true when rawOtp matches expected SHA-256 hash', () => {
+      expect(verifyOtpHash(validOtp, expectedHash)).toBe(true);
+    });
+
+    it('returns true when rawOtp has outer whitespace', () => {
+      expect(verifyOtpHash('  654321  ', expectedHash)).toBe(true);
+    });
+
+    it('returns true when expected hash has uppercase hex characters', () => {
+      expect(verifyOtpHash(validOtp, expectedHash.toUpperCase())).toBe(true);
+    });
+
+    it('returns false when rawOtp does not match expected hash', () => {
+      expect(verifyOtpHash('000000', expectedHash)).toBe(false);
+    });
+
+    it('returns false without throwing when inputs are empty or blank', () => {
+      expect(verifyOtpHash('', expectedHash)).toBe(false);
+      expect(verifyOtpHash('   ', expectedHash)).toBe(false);
+      expect(verifyOtpHash(validOtp, '')).toBe(false);
+      expect(verifyOtpHash(validOtp, '   ')).toBe(false);
+    });
+
+    it('returns false without throwing when expected hash is invalid hex or wrong length', () => {
+      expect(verifyOtpHash(validOtp, 'not-a-valid-hex-hash')).toBe(false);
+      expect(verifyOtpHash(validOtp, 'a'.repeat(63))).toBe(false);
+      expect(verifyOtpHash(validOtp, 'a'.repeat(65))).toBe(false);
+      expect(verifyOtpHash(validOtp, 'z'.repeat(64))).toBe(false);
+    });
+
+    it('returns false when non-string values are passed', () => {
+      expect(verifyOtpHash(null as unknown as string, expectedHash)).toBe(false);
+      expect(verifyOtpHash(validOtp, undefined as unknown as string)).toBe(false);
+    });
+  });
+
   describe('evaluateAccountLockout() (FR-010 / NR-008)', () => {
     const participantId = '00000000-0000-0000-0000-000000000001';
     const baseTime = 1_000_000_000_000;
@@ -109,7 +150,7 @@ describe('OTP Utility (server/src/utils/otp.ts)', () => {
       expect(result.retryAfterSeconds).toBe(600);
     });
 
-    it('returns locked: false when 5 consecutive failures occurred more than 15 minutes ago (lock expired)', async () => {
+    it('returns locked: false with lastLockoutEndsAt when 5 consecutive failures occurred more than 15 minutes ago (lock expired)', async () => {
       // 5th failure happened at baseTime - 16 minutes (960,000 ms ago)
       const fifthFailureTime = baseTime - 960_000;
       const attempts: MfaAttempt[] = [
@@ -122,18 +163,83 @@ describe('OTP Utility (server/src/utils/otp.ts)', () => {
       vi.spyOn(mfaRepository, 'getRecentAttempts').mockResolvedValue(attempts);
 
       const result = await evaluateAccountLockout(participantId, baseTime);
-      expect(result).toEqual({ locked: false });
+      expect(result).toEqual({
+        locked: false,
+        lastLockoutEndsAt: baseTime - 20_000,
+      });
     });
 
-    it('resets failure count when a successful attempt intervenes', async () => {
-      // 2 failures, then 1 success, then 3 failures -> only 2 consecutive failures since success!
+    it('returns locked: false at exact boundary now === lockoutEndsAt', async () => {
+      // 5th failure occurred exactly 15 minutes ago
+      const fifthFailureTime = baseTime - LOCKOUT_WINDOW_MS;
       const attempts: MfaAttempt[] = [
-        { id: '6', participant_id: participantId, success: false, created_at: new Date(baseTime - 1000).toISOString() },
-        { id: '5', participant_id: participantId, success: false, created_at: new Date(baseTime - 2000).toISOString() },
-        { id: '4', participant_id: participantId, success: true, created_at: new Date(baseTime - 3000).toISOString() },
-        { id: '3', participant_id: participantId, success: false, created_at: new Date(baseTime - 4000).toISOString() },
-        { id: '2', participant_id: participantId, success: false, created_at: new Date(baseTime - 5000).toISOString() },
-        { id: '1', participant_id: participantId, success: false, created_at: new Date(baseTime - 6000).toISOString() },
+        { id: '5', participant_id: participantId, success: false, created_at: new Date(fifthFailureTime).toISOString() },
+        { id: '4', participant_id: participantId, success: false, created_at: new Date(fifthFailureTime - 1000).toISOString() },
+        { id: '3', participant_id: participantId, success: false, created_at: new Date(fifthFailureTime - 2000).toISOString() },
+        { id: '2', participant_id: participantId, success: false, created_at: new Date(fifthFailureTime - 3000).toISOString() },
+        { id: '1', participant_id: participantId, success: false, created_at: new Date(fifthFailureTime - 4000).toISOString() },
+      ];
+      vi.spyOn(mfaRepository, 'getRecentAttempts').mockResolvedValue(attempts);
+
+      const result = await evaluateAccountLockout(participantId, baseTime);
+      expect(result).toEqual({
+        locked: false,
+        lastLockoutEndsAt: baseTime,
+      });
+    });
+
+    it('remains locked when more than 5 failures occurred during the lockout window', async () => {
+      const fifthFailureTime = baseTime - 300_000;
+      const attempts: MfaAttempt[] = [
+        { id: '7', participant_id: participantId, success: false, created_at: new Date(baseTime - 60_000).toISOString() },
+        { id: '6', participant_id: participantId, success: false, created_at: new Date(baseTime - 120_000).toISOString() },
+        { id: '5', participant_id: participantId, success: false, created_at: new Date(fifthFailureTime).toISOString() },
+        { id: '4', participant_id: participantId, success: false, created_at: new Date(fifthFailureTime - 60_000).toISOString() },
+        { id: '3', participant_id: participantId, success: false, created_at: new Date(fifthFailureTime - 120_000).toISOString() },
+        { id: '2', participant_id: participantId, success: false, created_at: new Date(fifthFailureTime - 180_000).toISOString() },
+        { id: '1', participant_id: participantId, success: false, created_at: new Date(fifthFailureTime - 240_000).toISOString() },
+      ];
+      vi.spyOn(mfaRepository, 'getRecentAttempts').mockResolvedValue(attempts);
+
+      const result = await evaluateAccountLockout(participantId, baseTime);
+      expect(result.locked).toBe(true);
+      expect(result.retryAfterSeconds).toBe(600);
+    });
+
+    it('triggers a fresh lockout after a previous lockout expired and 5 new failures occur', async () => {
+      // 5 failures from 1 hour ago (expired), then 5 fresh failures 5 minutes ago
+      const oldLockoutTime = baseTime - 3_600_000;
+      const newFifthFailureTime = baseTime - 300_000;
+      const attempts: MfaAttempt[] = [
+        { id: '10', participant_id: participantId, success: false, created_at: new Date(newFifthFailureTime).toISOString() },
+        { id: '9', participant_id: participantId, success: false, created_at: new Date(newFifthFailureTime - 1000).toISOString() },
+        { id: '8', participant_id: participantId, success: false, created_at: new Date(newFifthFailureTime - 2000).toISOString() },
+        { id: '7', participant_id: participantId, success: false, created_at: new Date(newFifthFailureTime - 3000).toISOString() },
+        { id: '6', participant_id: participantId, success: false, created_at: new Date(newFifthFailureTime - 4000).toISOString() },
+        { id: '5', participant_id: participantId, success: false, created_at: new Date(oldLockoutTime).toISOString() },
+        { id: '4', participant_id: participantId, success: false, created_at: new Date(oldLockoutTime - 1000).toISOString() },
+        { id: '3', participant_id: participantId, success: false, created_at: new Date(oldLockoutTime - 2000).toISOString() },
+        { id: '2', participant_id: participantId, success: false, created_at: new Date(oldLockoutTime - 3000).toISOString() },
+        { id: '1', participant_id: participantId, success: false, created_at: new Date(oldLockoutTime - 4000).toISOString() },
+      ];
+      vi.spyOn(mfaRepository, 'getRecentAttempts').mockResolvedValue(attempts);
+
+      const result = await evaluateAccountLockout(participantId, baseTime);
+      expect(result.locked).toBe(true);
+      expect(result.retryAfterSeconds).toBe(600);
+    });
+
+    it('resets failure count and clears prior lockout when a successful attempt intervenes', async () => {
+      // 5 failures from 30 minutes ago, followed by 1 success, followed by 2 failures
+      const attempts: MfaAttempt[] = [
+        { id: '8', participant_id: participantId, success: false, created_at: new Date(baseTime - 1000).toISOString() },
+        { id: '7', participant_id: participantId, success: false, created_at: new Date(baseTime - 2000).toISOString() },
+        { id: '6', participant_id: participantId, success: true, created_at: new Date(baseTime - 3000).toISOString() },
+        { id: '5', participant_id: participantId, success: false, created_at: new Date(baseTime - 1_800_000).toISOString() },
+        { id: '4', participant_id: participantId, success: false, created_at: new Date(baseTime - 1_810_000).toISOString() },
+        { id: '3', participant_id: participantId, success: false, created_at: new Date(baseTime - 1_820_000).toISOString() },
+        { id: '2', participant_id: participantId, success: false, created_at: new Date(baseTime - 1_830_000).toISOString() },
+        { id: '1', participant_id: participantId, success: false, created_at: new Date(baseTime - 1_840_000).toISOString() },
       ];
       vi.spyOn(mfaRepository, 'getRecentAttempts').mockResolvedValue(attempts);
 
@@ -154,7 +260,10 @@ describe('OTP Utility (server/src/utils/otp.ts)', () => {
       vi.spyOn(mfaRepository, 'getRecentAttempts').mockResolvedValue(attempts);
 
       const result = await evaluateAccountLockout(participantId, baseTime);
-      expect(result).toEqual({ locked: false });
+      expect(result).toEqual({
+        locked: false,
+        lastLockoutEndsAt: baseTime - 900_000,
+      });
     });
   });
 

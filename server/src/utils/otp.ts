@@ -20,9 +20,47 @@ export function hashOtp(code: string): string {
   return crypto.createHash('sha256').update(code.trim()).digest('hex');
 }
 
+/**
+ * Verifies a plaintext OTP candidate against a stored SHA-256 hex verifier
+ * in constant time using crypto.timingSafeEqual (NR-008).
+ * Returns false for mismatched lengths, non-hex strings, or non-matching digests without throwing.
+ */
+export function verifyOtpHash(rawOtp: string, expectedHashHex: string): boolean {
+  if (
+    typeof rawOtp !== 'string' ||
+    typeof expectedHashHex !== 'string' ||
+    rawOtp.trim().length === 0 ||
+    expectedHashHex.trim().length === 0
+  ) {
+    return false;
+  }
+
+  const computedHashHex = hashOtp(rawOtp);
+  const normalizedExpected = expectedHashHex.trim().toLowerCase();
+
+  // SHA-256 hex digests must be exactly 64 valid hex characters (32 bytes)
+  if (computedHashHex.length !== 64 || !/^[0-9a-f]{64}$/.test(normalizedExpected)) {
+    return false;
+  }
+
+  try {
+    const computedBuffer = Buffer.from(computedHashHex, 'hex');
+    const expectedBuffer = Buffer.from(normalizedExpected, 'hex');
+
+    if (computedBuffer.length !== expectedBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(computedBuffer, expectedBuffer);
+  } catch {
+    return false;
+  }
+}
+
 export interface AccountLockoutStatus {
   locked: boolean;
   retryAfterSeconds?: number;
+  lastLockoutEndsAt?: number;
 }
 
 /**
@@ -60,6 +98,7 @@ export async function evaluateAccountLockout(
 
   let failureCount = 0;
   let lockoutEndsAt = 0;
+  let lastLockoutEndsAt = 0;
 
   for (const attempt of chronologicalFailures) {
     const attemptTime = new Date(attempt.created_at).getTime();
@@ -75,6 +114,7 @@ export async function evaluateAccountLockout(
 
     if (failureCount === MAX_CONSECUTIVE_FAILURES) {
       lockoutEndsAt = attemptTime + LOCKOUT_WINDOW_MS;
+      lastLockoutEndsAt = lockoutEndsAt;
     }
   }
 
@@ -83,6 +123,13 @@ export async function evaluateAccountLockout(
     return {
       locked: true,
       retryAfterSeconds,
+    };
+  }
+
+  if (lastLockoutEndsAt > 0) {
+    return {
+      locked: false,
+      lastLockoutEndsAt,
     };
   }
 

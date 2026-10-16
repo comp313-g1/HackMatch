@@ -34,7 +34,8 @@ export interface IssueMfaOtpFailure {
     | 'ACCOUNT_LOCKED'
     | 'RATE_LIMITED'
     | 'EMAIL_DELIVERY_FAILED'
-    | 'MFA_STORE_UNAVAILABLE';
+    | 'MFA_STORE_UNAVAILABLE'
+    | 'FRESH_AUTH_REQUIRED';
   error: string;
   retryAfter?: number;
 }
@@ -89,7 +90,8 @@ export function isMfaStoreUnavailableError(err: unknown): boolean {
  * challenge descriptor (no plaintext OTP, no session).
  */
 export async function issueMfaOtpForParticipant(
-  participant: Participant
+  participant: Participant,
+  decodedAuthTime?: number
 ): Promise<IssueMfaOtpResult> {
   try {
     const lockout = await evaluateAccountLockout(participant.id);
@@ -101,6 +103,20 @@ export async function issueMfaOtpForParticipant(
         error:
           'Account temporarily locked due to too many failed OTP attempts. Please wait 15 minutes before trying again.',
         retryAfter: lockout.retryAfterSeconds,
+      };
+    }
+
+    if (
+      lockout.lastLockoutEndsAt &&
+      typeof decodedAuthTime === 'number' &&
+      decodedAuthTime * 1000 < lockout.lastLockoutEndsAt
+    ) {
+      return {
+        ok: false,
+        status: 401,
+        code: 'FRESH_AUTH_REQUIRED',
+        error:
+          'Your account was previously locked. Please sign in again with your password or credentials before requesting a new code.',
       };
     }
 

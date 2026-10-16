@@ -5,6 +5,7 @@ import {
   validateVerifyEmailPayload,
   validateOAuthSignInPayload,
   validateOAuthLinkPayload,
+  validateMfaVerifyPayload,
 } from '../validators/auth.validator.js';
 import {
   register,
@@ -16,6 +17,8 @@ import {
   getCurrentUser,
   createSession,
   logout,
+  sendMfaOtp,
+  verifyMfaOtp,
 } from '../controllers/auth.controller.js';
 import { requireVerifiedParticipant } from '../middleware/requireVerifiedParticipant.js';
 import { requireFirebaseAuth } from '../middleware/requireFirebaseAuth.js';
@@ -63,6 +66,26 @@ authRouter.post(
   requireVerifiedParticipant,
   validateOAuthLinkPayload,
   oauthLink
+);
+
+/**
+ * MFA OTP dispatch endpoint (US-004 AC 1 / FR-009 / FR-081 / FR-084).
+ * Enforces verified participant/admin account, 15m lockout, 60s/1h rate limits,
+ * and invalidates predecessor challenges.
+ */
+authRouter.post('/mfa/send', requireFirebaseAuth, requireActiveAccount, sendMfaOtp);
+
+/**
+ * MFA OTP verification endpoint (US-004 AC 2 / FR-010 / NR-008).
+ * Validates 6-digit OTP, enforces 15m lockout, single-use consumption,
+ * logs attempt, and sets Firebase mfa_auth_time claim on success.
+ */
+authRouter.post(
+  '/mfa/verify',
+  requireFirebaseAuth,
+  requireActiveAccount,
+  validateMfaVerifyPayload,
+  verifyMfaOtp
 );
 
 /**
