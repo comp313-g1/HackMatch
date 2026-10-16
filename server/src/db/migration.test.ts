@@ -391,3 +391,29 @@ describe('0009_protect_admin_role_provisioning.sql Migration DDL', () => {
   });
 });
 
+describe('0010_add_participant_suspension.sql Migration DDL', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0010_add_participant_suspension.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('adds is_suspended with a safe default of FALSE', () => {
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+is_suspended\s+BOOLEAN\s+NOT\s+NULL\s+DEFAULT\s+FALSE/i);
+  });
+
+  it('adds nullable suspended_at timestamp', () => {
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+suspended_at\s+TIMESTAMPTZ/i);
+  });
+
+  it('indexes suspended accounts for auth lookups', () => {
+    expect(sql).toMatch(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_participants_is_suspended/i);
+    expect(sql).toMatch(/WHERE\s+is_suspended\s*=\s*TRUE/i);
+  });
+});
+

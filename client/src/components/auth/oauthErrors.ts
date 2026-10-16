@@ -25,7 +25,9 @@ export type OAuthServerCode =
   | 'PROVIDER_ALREADY_EXISTS'
   | 'ACCOUNT_LOCKED'
   | 'RATE_LIMITED'
-  | 'EMAIL_DELIVERY_FAILED';
+  | 'EMAIL_DELIVERY_FAILED'
+  | 'ACCOUNT_SUSPENDED'
+  | 'ACCOUNT_DISABLED';
 
 /** Fallback used for unknown/missing codes so the UI never renders an empty error. */
 export const OAUTH_GENERIC_FAILURE_MESSAGE = 'Sign-in failed. Please try again.';
@@ -74,6 +76,10 @@ export function translateOAuthServerError(code?: string, retryAfter?: number): s
     }
     case 'EMAIL_DELIVERY_FAILED':
       return "We couldn't send the verification email. Please try again.";
+    case 'ACCOUNT_SUSPENDED':
+      return 'This account has been suspended and cannot sign in. Please contact support.';
+    case 'ACCOUNT_DISABLED':
+      return 'This account cannot sign in right now. Please contact support if you think this is a mistake.';
     default:
       return OAUTH_GENERIC_FAILURE_MESSAGE;
   }

@@ -8,17 +8,23 @@ import { requestLoggerMiddleware } from './middleware/requestLogger.js';
 import { healthRouter } from './routes/health.routes.js';
 import { authRouter } from './routes/auth.routes.js';
 import { actionsRouter } from './routes/actions.routes.js';
+import { accessRouter } from './routes/access.routes.js';
+import { securityConfig } from './config/security.js';
+import { createRequireHttps } from './middleware/requireHttps.js';
 
 export const app: Express = express();
 
-// Security and utility headers
+app.set('trust proxy', securityConfig.trustProxy);
+
+// Security and utility headers (helmet sends HSTS so browsers stay on HTTPS)
 app.use(helmet());
+app.use(createRequireHttps(securityConfig.enforceHttps));
 app.use(
   cors({
     origin: config.clientUrl,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id', 'X-CSRF-Token'],
   })
 );
 
@@ -34,6 +40,7 @@ app.use(requestLoggerMiddleware);
 // API Routes
 app.use('/api', healthRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/access', accessRouter);
 app.use('/api', actionsRouter);
 
 // Fallback 404 handler

@@ -12,8 +12,16 @@ import {
   verifyEmail,
   oauthSignIn,
   oauthLink,
+  getCurrentUser,
+  createSession,
+  logout,
 } from '../controllers/auth.controller.js';
 import { requireVerifiedParticipant } from '../middleware/requireVerifiedParticipant.js';
+import { requireFirebaseAuth } from '../middleware/requireFirebaseAuth.js';
+import { requireMfa } from '../middleware/requireMfa.js';
+import { requireSessionCookie } from '../middleware/requireSessionCookie.js';
+import { requireCsrfIfCookieSession } from '../middleware/requireCsrf.js';
+import { requireActiveAccount } from '../middleware/requireActiveAccount.js';
 
 export const authRouter = Router();
 
@@ -55,6 +63,31 @@ authRouter.post(
   validateOAuthLinkPayload,
   oauthLink
 );
+
+/**
+ * Returns the signed-in user's identity after verifying the Firebase ID token,
+ * including revocation and disabled-account checks (US-003 AC 4 / AC 5).
+ */
+authRouter.get('/me', requireFirebaseAuth, getCurrentUser);
+
+/**
+ * Post-password / pre-session check (US-003 AC 2 / US-003-T4).
+ * Rejects Firebase-disabled and DB-suspended accounts before MFA or session creation.
+ */
+authRouter.get('/account-status', requireFirebaseAuth, requireActiveAccount, (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({ active: true });
+});
+
+/**
+ * Cookie-based sessions (US-003 AC 4 / AC 5): exchange a recent, MFA-verified ID token for an
+ * HttpOnly, Secure, SameSite=Strict session cookie with a fixed lifetime, inspect it,
+ * or sign out. Logout revokes Firebase refresh tokens and clears cookies; CSRF is required
+ * when a session cookie is present. Suspended accounts cannot start a session.
+ */
+authRouter.post('/session', requireFirebaseAuth, requireActiveAccount, requireMfa, createSession);
+authRouter.get('/session', requireSessionCookie, getCurrentUser);
+authRouter.delete('/session', requireCsrfIfCookieSession, logout);
 
 
 

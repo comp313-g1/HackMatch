@@ -202,7 +202,7 @@ export function EmailVerificationView({
   };
 
   return (
-    <div className="max-w-lg w-full mx-auto p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
+    <div className="max-w-lg w-full mx-auto p-6 bg-white rounded-xl border border-cream-200 shadow-sm">
       {/* 1. Loading State */}
       {status === 'loading' && (
         <div
@@ -210,11 +210,11 @@ export function EmailVerificationView({
           aria-live="polite"
           className="flex flex-col items-center justify-center py-12 text-center"
         >
-          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4" />
-          <h2 className="text-xl font-bold text-gray-900 mb-2">
+          <div className="w-12 h-12 border-4 border-forest border-t-transparent rounded-full animate-spin mb-4" />
+          <h2 className="font-display text-xl font-semibold text-forest-900 mb-2">
             Verifying Email Address
           </h2>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-ink-muted">
             Please wait while we verify your email address...
           </p>
         </div>
@@ -227,17 +227,17 @@ export function EmailVerificationView({
           aria-live="polite"
           className="flex flex-col items-center text-center py-6"
         >
-          <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center text-green-600 text-3xl font-bold mb-4">
+          <div className="w-14 h-14 bg-forest-50 rounded-full flex items-center justify-center text-forest-700 text-3xl font-bold mb-4">
             ✓
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+          <h2 className="font-display text-2xl font-semibold text-forest-900 mb-2">
             Email Verified Successfully
           </h2>
-          <p className="text-sm text-gray-600 max-w-sm mb-6">
+          <p className="text-sm text-ink-muted max-w-sm mb-6">
             Your email address has been verified. You can now sign in to your HackMatch account.
           </p>
 
-          <div className="w-full p-4 bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-md text-left mb-6">
+          <div className="w-full p-4 bg-forest-50 border border-forest-100 text-forest-900 text-xs rounded-md text-left mb-6">
             <p className="font-semibold mb-1">Security Policy Notice:</p>
             <p>
               In accordance with our security policy (US-001 AC 5), email verification does not automatically create an active session. You must sign in with your credentials and complete multi-factor authentication (MFA).
@@ -247,7 +247,7 @@ export function EmailVerificationView({
           <button
             type="button"
             onClick={onNavigateToSignIn}
-            className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className="w-full py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-semibold text-white bg-forest hover:bg-forest-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest"
           >
             Proceed to Sign In
           </button>
@@ -305,16 +305,16 @@ export function EmailVerificationView({
       {/* 5. Empty / Missing Code State */}
       {status === 'empty_code' && (
         <div className="py-4">
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 text-blue-900 rounded-md">
+          <div className="mb-6 p-4 bg-forest-50 border border-forest-100 text-forest-900 rounded-md">
             <div className="flex items-center space-x-3 mb-1">
-              <span className="text-blue-600 text-xl font-bold" aria-hidden="true">
+              <span className="text-forest-700 text-xl font-bold" aria-hidden="true">
                 ℹ
               </span>
-              <h2 className="text-lg font-semibold text-blue-900">
+              <h2 className="text-lg font-semibold text-forest-900">
                 Email Verification
               </h2>
             </div>
-            <p className="text-sm text-blue-800">
+            <p className="text-sm text-forest-800">
               No verification code was detected. If you arrived here directly, please check the link sent to your email or request a new verification link below.
             </p>
           </div>
@@ -326,7 +326,7 @@ export function EmailVerificationView({
               <button
                 type="button"
                 onClick={onNavigateToRegister}
-                className="text-sm font-medium text-blue-600 hover:text-blue-700 underline focus:outline-none"
+                className="text-sm font-medium text-forest-700 hover:text-forest-900 underline focus:outline-none"
               >
                 Back to Registration
               </button>
@@ -358,7 +358,7 @@ export function EmailVerificationView({
           <button
             type="button"
             onClick={handleRetry}
-            className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 mb-3"
+            className="w-full py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-semibold text-white bg-forest hover:bg-forest-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest mb-3"
           >
             Retry Verification
           </button>
@@ -367,7 +367,7 @@ export function EmailVerificationView({
             <button
               type="button"
               onClick={onNavigateToRegister}
-              className="text-sm font-medium text-gray-600 hover:text-gray-800 underline focus:outline-none"
+              className="text-sm font-medium text-ink-muted hover:text-ink underline focus:outline-none"
             >
               Back to Registration
             </button>

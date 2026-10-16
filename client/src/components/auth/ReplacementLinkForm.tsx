@@ -147,7 +147,7 @@ export function ReplacementLinkForm({
       <h3 className="text-lg font-semibold text-gray-900 mb-1">
         Request Replacement Verification Link
       </h3>
-      <p className="text-sm text-gray-600 mb-4">
+      <p className="text-sm text-ink-muted mb-4">
         Enter your registered email address to receive a new verification link.
       </p>
 
@@ -174,7 +174,7 @@ export function ReplacementLinkForm({
 
       <form noValidate onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="replacement-email" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="replacement-email" className="block text-sm font-medium text-ink mb-1">
             Email Address
           </label>
           <input
@@ -185,8 +185,8 @@ export function ReplacementLinkForm({
             disabled={isSubmitting}
             aria-invalid={Boolean(fieldError)}
             aria-describedby={fieldError ? 'replacement-email-error' : undefined}
-            className={`block w-full px-3 py-2 border rounded-md shadow-sm sm:text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-              fieldError ? 'border-red-300 text-red-900' : 'border-gray-300 text-gray-900'
+            className={`block w-full px-3 py-2 border rounded-md shadow-sm sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-forest focus:border-forest ${
+              fieldError ? 'border-red-300 text-red-900' : 'border-cream-200 text-ink'
             }`}
             placeholder="you@example.com"
           />
@@ -199,7 +199,7 @@ export function ReplacementLinkForm({
 
         {/* Cooldown notice (not in aria-live to avoid screen-reader polling spam per NR-018) */}
         {cooldownSeconds > 0 && (
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-ink-muted">
             Please wait {cooldownSeconds} second{cooldownSeconds === 1 ? '' : 's'} before requesting another link.
           </p>
         )}
@@ -208,7 +208,7 @@ export function ReplacementLinkForm({
           <button
             type="submit"
             disabled={isSubmitting || cooldownSeconds > 0}
-            className="flex-1 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-semibold text-white bg-forest hover:bg-forest-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSubmitting
               ? 'Sending Link...'
@@ -222,7 +222,7 @@ export function ReplacementLinkForm({
               type="button"
               onClick={onCancel}
               disabled={isSubmitting}
-              className="py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+              className="py-2 px-4 border border-cream-200 rounded-md shadow-sm text-sm font-medium text-ink bg-white hover:bg-cream-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest disabled:opacity-50"
             >
               Cancel
             </button>

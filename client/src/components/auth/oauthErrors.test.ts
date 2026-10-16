@@ -49,6 +49,12 @@ describe('oauthErrors unit tests (US-002 AC 4 / S1-P2-04)', () => {
     expect(translateOAuthServerError('EMAIL_DELIVERY_FAILED')).toBe(
       "We couldn't send the verification email. Please try again."
     );
+    expect(translateOAuthServerError('ACCOUNT_SUSPENDED')).toBe(
+      'This account has been suspended and cannot sign in. Please contact support.'
+    );
+    expect(translateOAuthServerError('ACCOUNT_DISABLED')).toBe(
+      'This account cannot sign in right now. Please contact support if you think this is a mistake.'
+    );
   });
 
   it('handles parameterized ACCOUNT_LOCKED and RATE_LIMITED error messages', () => {

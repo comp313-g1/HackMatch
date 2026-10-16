@@ -7,6 +7,9 @@ export interface Participant {
   full_name: string;
   role: ParticipantRole;
   is_verified: boolean;
+  /** Set by US-027 admin suspension; blocked at login/session renew by US-003. */
+  is_suspended?: boolean;
+  suspended_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -17,6 +20,7 @@ export interface CreateParticipantDTO {
   full_name: string;
   role?: ParticipantRole;
   is_verified?: boolean;
+  is_suspended?: boolean;
 }
 
 export interface UpdateParticipantDTO {
@@ -24,6 +28,8 @@ export interface UpdateParticipantDTO {
   full_name?: string;
   role?: ParticipantRole;
   is_verified?: boolean;
+  is_suspended?: boolean;
+  suspended_at?: string | null;
 }
 
 export type OAuthProvider = 'google' | 'github' | 'google.com' | 'github.com';

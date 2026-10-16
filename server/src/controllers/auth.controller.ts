@@ -7,6 +7,16 @@ import { mfaRepository } from '../db/mfa.repository.js';
 import type { Participant, OAuthProvider } from '../db/types.js';
 import { generateOtp, createMfaChallenge, evaluateAccountLockout } from '../utils/otp.js';
 import { rateLimiter } from '../utils/rateLimiter.js';
+import { hasCompletedMfa } from '../utils/mfaClaim.js';
+import { securityConfig } from '../config/security.js';
+import { extractBearerToken, mapFirebaseAuthError } from '../middleware/requireFirebaseAuth.js';
+import {
+  sessionCookieOptions,
+  csrfCookieOptions,
+  generateCsrfToken,
+  clearSessionCookies,
+} from '../utils/sessionCookies.js';
+import { ACCOUNT_SUSPENDED_MESSAGE } from '../middleware/requireActiveAccount.js';
 
 export type MfaOtpEmailSender = (email: string, otp: string) => Promise<void>;
 
@@ -479,6 +489,15 @@ export async function oauthSignIn(
       return;
     }
 
+    // Suspended accounts cannot start a session (US-003 AC 2 / US-003-T4 / FR-005)
+    if (participant.is_suspended) {
+      res.status(403).json({
+        error: ACCOUNT_SUSPENDED_MESSAGE,
+        code: 'ACCOUNT_SUSPENDED',
+      });
+      return;
+    }
+
     // 6. Check 15-minute account lockout (FR-010 / NR-008)
     const lockout = await evaluateAccountLockout(participant.id);
     if (lockout.locked) {
@@ -744,5 +763,196 @@ export async function oauthLink(
   }
 }
 
+/**
+ * Returns the identity behind a verified Firebase ID token (GET /api/auth/me, US-003 AC 4).
+ * Must be mounted after `requireFirebaseAuth`. Never echoes the token itself.
+ */
+export function getCurrentUser(req: Request, res: Response): void {
+  const decoded = req.firebaseUser;
+  if (!decoded) {
+    res.status(401).json({
+      error: 'Authentication required. Missing or malformed Authorization header.',
+      code: 'UNAUTHORIZED',
+    });
+    return;
+  }
+
+  const role = typeof decoded.role === 'string' ? decoded.role : null;
+
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({
+    user: {
+      uid: decoded.uid,
+      email: decoded.email ?? null,
+      emailVerified: decoded.email_verified === true,
+      role,
+      signInProvider: decoded.firebase?.sign_in_provider ?? null,
+    },
+    session: {
+      authTime: new Date(decoded.auth_time * 1000).toISOString(),
+      expiresAt: new Date(decoded.exp * 1000).toISOString(),
+      mfaVerified: hasCompletedMfa(decoded),
+    },
+  });
+}
 
 
+
+
+/**
+ * Exchanges a fresh, MFA-verified Firebase ID token for an HttpOnly session cookie
+ * (POST /api/auth/session, US-003 AC 4). Must be mounted after `requireFirebaseAuth`
+ * and `requireMfa`. The cookie lasts a fixed SESSION_COOKIE_MAX_AGE_SECONDS (7 days by
+ * default) and is not extended by later requests.
+ */
+export async function createSession(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  const decoded = req.firebaseUser;
+  const idToken = extractBearerToken(req.headers.authorization);
+  if (!decoded || !idToken) {
+    res.status(401).json({
+      error: 'Authentication required. Missing or malformed Authorization header.',
+      code: 'UNAUTHORIZED',
+    });
+    return;
+  }
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const signInAge = nowSeconds - decoded.auth_time;
+  if (!Number.isFinite(signInAge) || signInAge < -60 || signInAge > securityConfig.recentSignInSeconds) {
+    res.status(401).json({
+      error: 'Please sign in again to start a new session.',
+      code: 'RECENT_SIGN_IN_REQUIRED',
+    });
+    return;
+  }
+
+  const maxAgeSeconds = securityConfig.sessionCookie.maxAgeSeconds;
+  try {
+    const sessionCookie = await firebaseAuth.createSessionCookie(idToken, {
+      expiresIn: maxAgeSeconds * 1000,
+    });
+    const csrfToken = generateCsrfToken();
+
+    res.cookie(securityConfig.sessionCookie.name, sessionCookie, sessionCookieOptions());
+    res.cookie(securityConfig.sessionCookie.csrfName, csrfToken, csrfCookieOptions());
+    res.status(200).json({
+      session: {
+        expiresAt: new Date((nowSeconds + maxAgeSeconds) * 1000).toISOString(),
+        maxAgeSeconds,
+      },
+      csrfToken,
+    });
+  } catch (err: unknown) {
+    const failure = mapFirebaseAuthError(err);
+    if (failure) {
+      res.status(failure.status).json({ error: failure.error, code: failure.code });
+      return;
+    }
+    next(err);
+  }
+}
+
+/**
+ * Signs the user out (DELETE /api/auth/session, US-003 AC 5 / FR-008 / US-003-T5).
+ *
+ * Mount after `requireCsrfIfCookieSession`. Resolves the user from the session cookie
+ * or a Bearer ID token (without requiring an unrevoked token, so a second logout is safe),
+ * revokes all Firebase refresh tokens for that account, then clears the cookies.
+ * Replaying the old ID token or session cookie against protected routes then fails
+ * because those middlewares verify with checkRevoked=true.
+ */
+export async function logout(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+
+  const cookies = (req.cookies ?? {}) as Record<string, unknown>;
+  const sessionCookie = cookies[securityConfig.sessionCookie.name];
+  const bearer = extractBearerToken(req.headers.authorization);
+
+  let uid: string | null = null;
+
+  if (typeof sessionCookie === 'string' && sessionCookie !== '') {
+    try {
+      // checkRevoked=false: allow logout even if tokens were already revoked.
+      const decoded = await firebaseAuth.verifySessionCookie(sessionCookie, false);
+      uid = decoded.uid;
+    } catch (err: unknown) {
+      const failure = mapFirebaseAuthError(err);
+      if (failure && !bearer) {
+        clearSessionCookies(res);
+        res.status(failure.status).json({ error: failure.error, code: failure.code });
+        return;
+      }
+      // Fall through and try the Bearer token when the session cookie is unusable.
+    }
+  }
+
+  if (!uid && bearer) {
+    try {
+      const decoded = await firebaseAuth.verifyIdToken(bearer, false);
+      uid = decoded.uid;
+    } catch (err: unknown) {
+      const failure = mapFirebaseAuthError(err) ?? {
+        status: 401,
+        code: 'INVALID_TOKEN',
+        error: 'Invalid authentication token. Please sign in again.',
+      };
+      clearSessionCookies(res);
+      res.status(failure.status).json({ error: failure.error, code: failure.code });
+      return;
+    }
+  }
+
+  if (!uid) {
+    clearSessionCookies(res);
+    res.status(401).json({
+      error: 'No active session. Please sign in.',
+      code: 'NO_SESSION',
+    });
+    return;
+  }
+
+  try {
+    await firebaseAuth.revokeRefreshTokens(uid);
+  } catch (err: unknown) {
+    const code =
+      err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';
+
+    if (code === 'auth/user-not-found') {
+      // Account already gone: local cookies are still cleared below.
+    } else {
+      const failure = mapFirebaseAuthError(err);
+      if (failure) {
+        // Local cookies are cleared so this browser is signed out even if Firebase is down.
+        clearSessionCookies(res);
+        res.status(failure.status).json({
+          error:
+            failure.code === 'AUTH_SERVICE_UNAVAILABLE'
+              ? 'Could not fully revoke your session. You are signed out on this device; try again if you used other devices.'
+              : failure.error,
+          code: failure.code === 'AUTH_SERVICE_UNAVAILABLE' ? 'REVOCATION_FAILED' : failure.code,
+        });
+        return;
+      }
+      next(err);
+      return;
+    }
+  }
+
+  clearSessionCookies(res);
+  res.status(200).json({
+    message: 'Signed out successfully. All refresh tokens for this account have been revoked.',
+    code: 'LOGGED_OUT',
+  });
+}
+
+/** @deprecated Use `logout`. Kept as a name alias for older imports in tests. */
+export const clearSession = logout;

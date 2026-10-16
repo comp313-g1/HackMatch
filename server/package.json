@@ -11,6 +11,7 @@
     "lint": "eslint src/",
     "lint:fix": "eslint --fix",
     "test": "vitest run",
+    "test:us003": "vitest run src/middleware/requireFirebaseAuth.test.ts src/middleware/requireRole.test.ts src/middleware/requireMfa.test.ts src/middleware/requireActiveAccount.test.ts src/middleware/requireHttps.test.ts src/middleware/requireCsrf.test.ts src/routes/session.test.ts src/routes/login.integration.test.ts src/config/security.test.ts",
     "test:coverage": "vitest run --coverage",
     "admin:provision": "tsx src/scripts/provisionAdmin.ts",
     "db:start": "supabase start --workdir ..",
