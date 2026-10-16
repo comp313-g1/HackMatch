@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="640" viewBox="0 0 860 640" role="img" aria-labelledby="f33t"><style>
+text{font-family:"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;fill:#1f2328}
+text.mut{fill:#5b6470}
+text.dim{fill:#8a939e}
+text.w{fill:#ffffff}
+text.ac{fill:#2f6feb}
+text.dg{fill:#c0392b}
+text.wn{fill:#8a6d1f}
+text.ok{fill:#1f7a4d}
+.ln,.st{fill:none;stroke:#d3d8de;stroke-width:1}
+.stk{fill:none;stroke:#1f7a4d;stroke-width:2;stroke-linecap:round}
+.stx{fill:none;stroke:#c0392b;stroke-width:2;stroke-linecap:round}
+.sp{fill:none;stroke:#2f6feb;stroke-width:3;stroke-linecap:round}
+.box{fill:#ffffff;stroke:#d3d8de;stroke-width:1}
+.surf{fill:#f2f4f7}
+.pan{fill:#f2f4f7;stroke:#d3d8de;stroke-width:1}
+.ph{fill:#e3e6ea}
+.acc{fill:#2f6feb}
+.dgr{fill:#fdecea;stroke:#c0392b;stroke-width:1}
+.wrn{fill:#fdf6e3;stroke:#8a6d1f;stroke-width:1}
+.okf{fill:#e9f6ef;stroke:#1f7a4d;stroke-width:1}
+</style>
+<rect x="0" y="0" width="860" height="640" fill="#ffffff"/>
+      <title id="f33t">Figure 3.3 Wireframe: signed-in session and sign-out page</title>
+      <desc>The page shows the account menu, credential lifetimes and the role claim, with a sign-out area explaining that sign-out revokes the renewal credential immediately.</desc>
+      <rect class="box" x="0.5" y="0.5" width="859" height="639" rx="10"/>
+      <line class="ln" x1="0.5" y1="34.5" x2="859.5" y2="34.5"/>
+      <circle class="ph" cx="20" cy="17" r="4.5"/>
+      <circle class="ph" cx="36" cy="17" r="4.5"/>
+      <circle class="ph" cx="52" cy="17" r="4.5"/>
+      <rect class="surf" x="70" y="7" width="380" height="20" rx="10"/>
+      <text class="dim" x="82" y="17.5" font-size="11" dominant-baseline="central">hackmatch.app/me</text>
+      <rect class="surf" x="0" y="35" width="860" height="49"/>
+      <line class="ln" x1="0" y1="84.5" x2="860" y2="84.5"/>
+      <text x="24" y="59.5" font-size="15" font-weight="500" dominant-baseline="central">HackMatch</text>
+      <text class="mut" x="580" y="59.5" font-size="12" dominant-baseline="central">Events</text>
+      <text class="mut" x="648" y="59.5" font-size="12" dominant-baseline="central">Teams</text>
+      <text class="mut" x="790" y="59.5" font-size="12" text-anchor="end" dominant-baseline="central">Alex Chen</text>
+      <circle class="ph" cx="812" cy="59" r="13"/>
+      <rect class="box" x="600" y="88" width="220" height="142" rx="8"/>
+      <text class="mut" x="616" y="116" font-size="12" dominant-baseline="central">Profile</text>
+      <text class="mut" x="616" y="144" font-size="12" dominant-baseline="central">My teams</text>
+      <line class="ln" x1="616" y1="158" x2="804" y2="158"/>
+      <text class="dg" x="616" y="186" font-size="12" dominant-baseline="central">Sign out</text>
+      <text x="60" y="250" font-size="16" font-weight="500" dominant-baseline="central">Your session</text>
+      <rect class="box" x="60" y="264" width="740" height="176" rx="12"/>
+      <text class="mut" x="80" y="296" font-size="12" dominant-baseline="central">Access credential</text>
+      <text class="mut" x="780" y="296" font-size="12" text-anchor="end" dominant-baseline="central">expires in 15 minutes</text>
+      <line class="ln" x1="80" y1="313" x2="780" y2="313"/>
+      <text class="mut" x="80" y="330" font-size="12" dominant-baseline="central">Session renewal</text>
+      <text class="mut" x="780" y="330" font-size="12" text-anchor="end" dominant-baseline="central">7 days</text>
+      <line class="ln" x1="80" y1="347" x2="780" y2="347"/>
+      <text class="mut" x="80" y="364" font-size="12" dominant-baseline="central">Role claim</text>
+      <text class="mut" x="780" y="364" font-size="12" text-anchor="end" dominant-baseline="central">PART</text>
+      <line class="ln" x1="80" y1="381" x2="780" y2="381"/>
+      <text class="mut" x="80" y="398" font-size="12" dominant-baseline="central">Email</text>
+      <text class="mut" x="780" y="398" font-size="12" text-anchor="end" dominant-baseline="central">verified</text>
+      <line class="ln" x1="80" y1="415" x2="780" y2="415"/>
+      <text class="mut" x="80" y="432" font-size="12" dominant-baseline="central">Second factor</text>
+      <text class="mut" x="780" y="432" font-size="12" text-anchor="end" dominant-baseline="central">satisfied this session</text>
+      <rect class="box" x="60" y="460" width="740" height="160" rx="12"/>
+      <text x="80" y="494" font-size="13" font-weight="500" dominant-baseline="central">Sign out</text>
+      <text class="mut" x="80" y="518" font-size="11" dominant-baseline="central">Signing out revokes this session and its renewal credential immediately.</text>
+      <text class="mut" x="80" y="538" font-size="11" dominant-baseline="central">Replaying the old credential fails on protected endpoints. Other devices stay signed in.</text>
+      <rect class="dgr" x="80" y="556" width="160" height="38" rx="6"/>
+      <text class="dg" x="160" y="575.5" font-size="13" font-weight="500" text-anchor="middle" dominant-baseline="central">Sign out</text>
+      <rect class="box" x="256" y="556" width="200" height="38" rx="6"/>
+      <text class="mut" x="356" y="575.5" font-size="13" text-anchor="middle" dominant-baseline="central">Sign out all devices</text>
+      <line class="st" x1="51" y1="296" x2="56" y2="298"/>
+      <circle class="acc" cx="40" cy="296" r="11"/>
+      <text class="w" x="40" y="296.5" font-size="11" font-weight="500" text-anchor="middle" dominant-baseline="central">1</text>
+      <line class="st" x1="51" y1="494" x2="56" y2="496"/>
+      <circle class="acc" cx="40" cy="494" r="11"/>
+      <text class="w" x="40" y="494.5" font-size="11" font-weight="500" text-anchor="middle" dominant-baseline="central">2</text>
+      <line class="st" x1="817" y1="364" x2="786" y2="364"/>
+      <circle class="acc" cx="828" cy="364" r="11"/>
+      <text class="w" x="828" y="364.5" font-size="11" font-weight="500" text-anchor="middle" dominant-baseline="central">3</text>
+    </svg>
