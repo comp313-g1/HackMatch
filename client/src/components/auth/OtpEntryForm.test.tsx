@@ -287,6 +287,47 @@ describe('OtpEntryForm (US-004 S1-P1-10)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/failed to send verification code/i);
   });
 
+  it('delivery failure: clears challenge, shows retry help, and allows Try sending again (FR-084)', async () => {
+    mockRequestMfaChallenge
+      .mockRejectedValueOnce(
+        Object.assign(new Error("We couldn't send your verification code. Please try again in a moment."), {
+          code: 'EMAIL_DELIVERY_FAILED',
+        })
+      )
+      .mockResolvedValueOnce({
+        requiresOtp: true,
+        challengeId: 'challenge-retry',
+        email: 'j***e@example.com',
+        expiresInSeconds: 600,
+        message: 'sent',
+      });
+
+    renderForm({ initialChallenge: null });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't send your verification code/i);
+    expect(screen.getByText(/no session was created/i)).toBeInTheDocument();
+    const retry = screen.getByRole('button', { name: /try sending again/i });
+    expect(retry).toBeEnabled();
+
+    fireEvent.click(retry);
+    expect(await screen.findByLabelText(/6-digit code/i)).toBeInTheDocument();
+    expect(mockRequestMfaChallenge).toHaveBeenCalledTimes(2);
+  });
+
+  it('delivery failure on resend: drops predecessor challenge and offers retry', async () => {
+    mockRequestMfaChallenge.mockRejectedValueOnce(
+      Object.assign(new Error("We couldn't send your verification code."), {
+        code: 'EMAIL_DELIVERY_FAILED',
+      })
+    );
+    renderForm();
+
+    fireEvent.click(screen.getByRole('button', { name: /resend code/i }));
+
+    expect(await screen.findByRole('button', { name: /try sending again/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/6-digit code/i)).not.toBeInTheDocument();
+  });
+
   it('sign out: calls logout and notifies the parent', async () => {
     const { onSignedOut } = renderForm();
 

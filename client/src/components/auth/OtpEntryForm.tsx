@@ -80,6 +80,20 @@ export function OtpEntryForm({
     setStatus('error');
   };
 
+  /** FR-084: clear stale challenge after send failure; keep UI ready for controlled retry. */
+  const applyDeliveryFailure = (fallbackMessage?: string) => {
+    setChallenge(null);
+    setSecondsLeft(0);
+    setCode('');
+    setFieldError(null);
+    setFormError(
+      fallbackMessage && fallbackMessage.trim()
+        ? fallbackMessage
+        : translateOAuthServerError('EMAIL_DELIVERY_FAILED')
+    );
+    setStatus('error');
+  };
+
   useEffect(() => {
     if (initialChallenge) {
       setChallenge(initialChallenge);
@@ -108,6 +122,10 @@ export function OtpEntryForm({
         const meta = readErrorMeta(err);
         if (meta.code === 'ACCOUNT_LOCKED') {
           applyAccountLock(meta.retryAfter, meta.message);
+          return;
+        }
+        if (meta.code === 'EMAIL_DELIVERY_FAILED' || meta.code === 'MFA_CHALLENGE_FAILED') {
+          applyDeliveryFailure(meta.message);
           return;
         }
         setFormError(meta.message);
@@ -206,6 +224,11 @@ export function OtpEntryForm({
         applyAccountLock(meta.retryAfter, meta.message);
         return;
       }
+      if (meta.code === 'EMAIL_DELIVERY_FAILED' || meta.code === 'MFA_CHALLENGE_FAILED') {
+        // Server invalidated the new challenge; drop any predecessor so retry is required.
+        applyDeliveryFailure(meta.message);
+        return;
+      }
       setFormError(meta.message);
       if (meta.code === 'RATE_LIMITED') {
         setResendCooldown(meta.retryAfter && meta.retryAfter > 0 ? Math.ceil(meta.retryAfter) : 60);
@@ -273,6 +296,11 @@ export function OtpEntryForm({
             {formError}
           </div>
         )}
+        {!locked && (
+          <p className="mb-4 text-xs text-ink-muted">
+            No session was created. You can try sending a new verification code.
+          </p>
+        )}
         <div className="space-y-3">
           <button
             type="button"
@@ -281,7 +309,11 @@ export function OtpEntryForm({
             aria-busy={status === 'resending'}
             className={primaryBtnClass}
           >
-            {status === 'resending' ? 'Sending new code...' : 'Send code'}
+            {status === 'resending'
+              ? 'Sending new code...'
+              : formError
+                ? 'Try sending again'
+                : 'Send code'}
           </button>
           <button
             type="button"

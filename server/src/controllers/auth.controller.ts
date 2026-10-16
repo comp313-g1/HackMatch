@@ -90,6 +90,7 @@ export async function issueMfaChallenge(
         error: issued.error,
         code: issued.code,
         ...(issued.retryAfter != null ? { retryAfter: issued.retryAfter } : {}),
+        ...(issued.retryable != null ? { retryable: issued.retryable } : {}),
       });
       return;
     }
@@ -666,6 +667,7 @@ export async function oauthSignIn(
         error: issued.error,
         code: issued.code,
         ...(issued.retryAfter != null ? { retryAfter: issued.retryAfter } : {}),
+        ...(issued.retryable != null ? { retryable: issued.retryable } : {}),
       });
       return;
     }

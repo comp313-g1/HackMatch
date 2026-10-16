@@ -183,7 +183,31 @@ describe('POST /api/auth/mfa/challenge (US-004 S1-P1-09)', () => {
 
     expect(response.status).toBe(502);
     expect(response.body.code).toBe('EMAIL_DELIVERY_FAILED');
+    expect(response.body.retryable).toBe(true);
+    expect(response.body.error).toMatch(/try again/i);
+    expect(response.headers['set-cookie']).toBeUndefined();
     expect(mfaRepository.invalidatePendingChallenges).toHaveBeenCalled();
+  });
+
+  it('allows retry after EMAIL_DELIVERY_FAILED without hitting RATE_LIMITED (FR-084)', async () => {
+    let calls = 0;
+    _setMfaOtpEmailSender(async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('SMTP down');
+    });
+    mockVerifyIdToken.mockResolvedValue(decoded());
+
+    const failed = await request(app)
+      .post('/api/auth/mfa/challenge')
+      .set('Authorization', 'Bearer valid.id.token');
+    expect(failed.status).toBe(502);
+    expect(failed.body.code).toBe('EMAIL_DELIVERY_FAILED');
+
+    const retried = await request(app)
+      .post('/api/auth/mfa/challenge')
+      .set('Authorization', 'Bearer valid.id.token');
+    expect(retried.status).toBe(200);
+    expect(retried.body.requiresOtp).toBe(true);
   });
 
   it('returns 429 RATE_LIMITED on rapid reissue (FR-081 boundary)', async () => {

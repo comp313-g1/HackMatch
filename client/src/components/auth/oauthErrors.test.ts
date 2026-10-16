@@ -47,7 +47,7 @@ describe('oauthErrors unit tests (US-002 AC 4 / S1-P2-04)', () => {
       'This email is already registered. Please sign in with your password, then link this provider.'
     );
     expect(translateOAuthServerError('EMAIL_DELIVERY_FAILED')).toBe(
-      "We couldn't send the verification email. Please try again."
+      "We couldn't send your verification code. Please try again in a moment."
     );
     expect(translateOAuthServerError('ACCOUNT_SUSPENDED')).toBe(
       'This account has been suspended and cannot sign in. Please contact support.'
