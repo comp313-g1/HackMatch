@@ -22,6 +22,8 @@ export interface LoginFormProps {
   /** Called after Firebase accepts the password; the email OTP step (US-004) must follow. */
   onPrimaryAuthSuccess?: (result: PrimaryAuthResult) => void;
   onNavigateToRegister?: () => void;
+  /** Opens the password-recovery request page (US-005). */
+  onNavigateToPasswordRecovery?: (email?: string) => void;
 }
 
 const inputClass =
@@ -34,6 +36,7 @@ const secondaryBtnClass =
 export function LoginForm({
   onPrimaryAuthSuccess,
   onNavigateToRegister,
+  onNavigateToPasswordRecovery,
 }: LoginFormProps): React.JSX.Element {
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
@@ -198,6 +201,18 @@ export function LoginForm({
           {fieldErrors.password && (
             <p id="login-password-error" role="alert" className="mt-1 text-xs text-red-600">
               {fieldErrors.password}
+            </p>
+          )}
+          {onNavigateToPasswordRecovery && (
+            <p className="mt-2 text-right">
+              <button
+                type="button"
+                onClick={() => onNavigateToPasswordRecovery(email.trim() || undefined)}
+                disabled={loading}
+                className="text-xs font-medium text-forest-700 underline hover:text-forest-900 focus:outline-none focus:ring-2 focus:ring-forest rounded"
+              >
+                Forgot password?
+              </button>
             </p>
           )}
         </div>

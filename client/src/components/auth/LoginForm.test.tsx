@@ -212,6 +212,18 @@ describe('LoginForm', () => {
     expect(onNavigateToRegister).toHaveBeenCalledTimes(1);
   });
 
+  it('offers forgot-password with the typed email for US-005 recovery', () => {
+    const onNavigateToPasswordRecovery = vi.fn();
+    render(<LoginForm onNavigateToPasswordRecovery={onNavigateToPasswordRecovery} />);
+
+    fireEvent.change(screen.getByLabelText(/email address/i), {
+      target: { value: 'jane@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /forgot password/i }));
+
+    expect(onNavigateToPasswordRecovery).toHaveBeenCalledWith('jane@example.com');
+  });
+
   it('keeps the email and shows retry feedback when OTP email delivery fails (FR-084)', async () => {
     const user = { uid: 'u1', email: 'jane@example.com' };
     mockSignIn.mockResolvedValueOnce({ user } as UserCredential);

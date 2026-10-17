@@ -77,6 +77,15 @@ describe('App Component (View Routing and Integration)', () => {
     expect(screen.queryByRole('heading', { level: 2, name: /create an account/i })).not.toBeInTheDocument();
   });
 
+  it('renders PasswordRecoveryRequestForm when URL contains view=recover', () => {
+    window.history.pushState({}, '', '/?view=recover');
+
+    render(<App />);
+
+    expect(screen.getByRole('heading', { level: 2, name: /reset password/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 2, name: /create an account/i })).not.toBeInTheDocument();
+  });
+
   it('switches to verification view when RegistrationForm requests replacement link', async () => {
     const mockFetch = vi.fn().mockResolvedValueOnce({
       ok: true,

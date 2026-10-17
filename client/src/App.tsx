@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { RegistrationForm } from './components/auth/RegistrationForm';
 import { EmailVerificationView } from './components/auth/EmailVerificationView';
 import { LoginForm } from './components/auth/LoginForm';
+import { PasswordRecoveryRequestForm } from './components/auth/PasswordRecoveryRequestForm';
 import { MfaGate } from './components/auth/MfaGate';
 import { SignedInPanel } from './components/auth/SignedInPanel';
 import type { OtpChallenge } from './components/auth/providerSignIn';
 
-type View = 'register' | 'login' | 'verify' | 'account';
+type View = 'register' | 'login' | 'verify' | 'account' | 'recover';
 
 const getInitialView = (): View => {
   if (typeof window === 'undefined') return 'register';
@@ -22,12 +23,16 @@ const getInitialView = (): View => {
   if (view === 'account') {
     return 'account';
   }
+  if (view === 'recover' || view === 'forgot-password') {
+    return 'recover';
+  }
   return 'register';
 };
 
 export function App(): React.JSX.Element {
   const [currentView, setCurrentView] = useState<View>(getInitialView);
   const [verificationEmail, setVerificationEmail] = useState<string>('');
+  const [recoveryEmail, setRecoveryEmail] = useState<string>('');
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [otpChallenge, setOtpChallenge] = useState<OtpChallenge | null>(null);
   const [healthStatus, setHealthStatus] = useState<string | null>(null);
@@ -62,7 +67,8 @@ export function App(): React.JSX.Element {
     setCurrentView('login');
   };
 
-  const showAuthNav = currentView === 'register' || currentView === 'login';
+  const showAuthNav =
+    currentView === 'register' || currentView === 'login' || currentView === 'recover';
 
   return (
     <div className="flex flex-col min-h-screen bg-cream text-ink font-sans">
@@ -212,10 +218,32 @@ export function App(): React.JSX.Element {
             </h2>
             <LoginForm
               onNavigateToRegister={() => setCurrentView('register')}
+              onNavigateToPasswordRecovery={(email) => {
+                setRecoveryEmail(email ?? '');
+                setStatusNotice(null);
+                setCurrentView('recover');
+              }}
               onPrimaryAuthSuccess={(result) => {
                 setOtpChallenge(result.challenge);
                 setStatusNotice(null);
                 setCurrentView('account');
+              }}
+            />
+          </section>
+        ) : currentView === 'recover' ? (
+          <section aria-labelledby="recovery-heading">
+            <h2 id="recovery-heading" className="sr-only">
+              Password Recovery
+            </h2>
+            <PasswordRecoveryRequestForm
+              initialEmail={recoveryEmail}
+              onNavigateToSignIn={() => {
+                setStatusNotice(null);
+                setCurrentView('login');
+              }}
+              onNavigateToRegister={() => {
+                setStatusNotice(null);
+                setCurrentView('register');
               }}
             />
           </section>
