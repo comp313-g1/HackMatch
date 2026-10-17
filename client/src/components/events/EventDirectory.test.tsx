@@ -146,4 +146,40 @@ describe('EventDirectory component unit tests (US-008 / #74)', () => {
 
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
+
+  it('navigates to EventDetail on View Details click and restores directory on Back click', async () => {
+    vi.spyOn(eventApiModule, 'fetchPublicEvents').mockResolvedValue({
+      events: sampleEvents,
+      total: 2,
+      limit: 20,
+      offset: 0,
+    });
+
+    vi.spyOn(eventApiModule, 'fetchPublicEventById').mockResolvedValue(sampleEvents[0]);
+
+    render(<EventDirectory />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Hack The North 2026')).toBeInTheDocument();
+    });
+
+    const viewDetailsButtons = screen.getAllByRole('button', { name: /view details/i });
+    fireEvent.click(viewDetailsButtons[0]);
+
+    // Should render EventDetail
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /back to all hackathons/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: /visit official hackathon website/i })
+      ).toBeInTheDocument();
+    });
+
+    // Clicking back restores directory
+    const backBtn = screen.getByRole('button', { name: /back to all hackathons/i });
+    fireEvent.click(backBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Explore Hackathons')).toBeInTheDocument();
+    });
+  });
 });

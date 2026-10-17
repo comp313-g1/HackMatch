@@ -1,33 +1,14 @@
-import React from 'react';
 import type { PublicEvent } from './eventTypes.js';
+import {
+  formatEventDates,
+  formatTeamLimits,
+  getTimeStateBadge,
+} from './eventFormatters.js';
+import { SafeExternalLink } from './SafeExternalLink.js';
 
 export interface EventCardProps {
   event: PublicEvent;
   onSelect?: (id: string) => void;
-}
-
-function formatEventDates(startDate: string, endDate: string): string {
-  try {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-      return 'Date unavailable';
-    }
-    const options: Intl.DateTimeFormatOptions = {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    };
-    const startFormatted = start.toLocaleDateString(undefined, options);
-    const endFormatted = end.toLocaleDateString(undefined, options);
-
-    if (startFormatted === endFormatted) {
-      return startFormatted;
-    }
-    return `${startFormatted} – ${endFormatted}`;
-  } catch {
-    return 'Date unavailable';
-  }
 }
 
 function getTimeStateBadge(timeState: PublicEvent['time_state']): { label: string; className: string } {
@@ -53,6 +34,7 @@ function getTimeStateBadge(timeState: PublicEvent['time_state']): { label: strin
 export function EventCard({ event, onSelect }: EventCardProps): React.JSX.Element {
   const badge = getTimeStateBadge(event.time_state);
   const dateRange = formatEventDates(event.start_date, event.end_date);
+  const teamLimits = formatTeamLimits(event.min_team_size, event.max_team_size);
 
   return (
     <li className="bg-white border border-cream-300 rounded-lg shadow-sm hover:shadow-md transition-shadow p-5 flex flex-col justify-between gap-4">
@@ -85,15 +67,22 @@ export function EventCard({ event, onSelect }: EventCardProps): React.JSX.Elemen
           <span>📍</span>
           <span>{event.location?.trim() || 'Not specified'}</span>
         </p>
+
+        <p className="text-xs text-ink-muted flex items-center gap-1.5">
+          <span>👥</span>
+          <span>Team Size: {teamLimits}</span>
+        </p>
       </div>
 
-      <div className="pt-2 border-t border-cream-100 flex items-center justify-between">
-        <span className="text-xs text-ink-muted font-medium">Verified Hackathon</span>
+      <div className="pt-3 border-t border-cream-100 flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <SafeExternalLink url={event.official_url} label="Official Site" />
+        </div>
         {onSelect && (
           <button
             type="button"
             onClick={() => onSelect(event.id)}
-            className="text-xs font-semibold text-forest-700 hover:text-forest-900 underline focus:outline-none focus:ring-2 focus:ring-forest rounded"
+            className="text-xs font-semibold px-3 py-1.5 bg-forest-50 text-forest-800 border border-forest-200 rounded hover:bg-forest-100 focus:outline-none focus:ring-2 focus:ring-forest transition"
           >
             View Details
           </button>

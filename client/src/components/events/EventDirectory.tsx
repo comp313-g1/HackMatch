@@ -8,6 +8,7 @@ import {
 import { fetchPublicEvents } from './eventApi.js';
 import { EventFilterBar } from './EventFilterBar.js';
 import { EventCard } from './EventCard.js';
+import { EventDetail } from './EventDetail.js';
 
 export function EventDirectory(): React.JSX.Element {
   const [filters, setFilters] = useState<EventFilters>(EMPTY_FILTERS);
@@ -15,6 +16,7 @@ export function EventDirectory(): React.JSX.Element {
   const [total, setTotal] = useState<number>(0);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -83,6 +85,18 @@ export function EventDirectory(): React.JSX.Element {
     loadEvents(filters);
   };
 
+  const handleSelectEvent = (id: string) => {
+    setSelectedEventId(id);
+  };
+
+  const handleBackToList = () => {
+    setSelectedEventId(null);
+  };
+
+  if (selectedEventId) {
+    return <EventDetail eventId={selectedEventId} onBack={handleBackToList} />;
+  }
+
   const isFiltered = hasActiveFilters(filters);
 
   return (
@@ -135,7 +149,7 @@ export function EventDirectory(): React.JSX.Element {
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
         >
           {events.map((evt) => (
-            <EventCard key={evt.id} event={evt} />
+            <EventCard key={evt.id} event={evt} onSelect={handleSelectEvent} />
           ))}
         </ul>
       )}
