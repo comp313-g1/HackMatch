@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { applyActionCode, verifyPasswordResetCode } from 'firebase/auth';
+import { applyActionCode } from 'firebase/auth';
 import App from './App';
 
 vi.mock('firebase/auth', async (importOriginal) => {
@@ -10,8 +10,7 @@ vi.mock('firebase/auth', async (importOriginal) => {
     ...actual,
     applyActionCode: vi.fn(),
     checkActionCode: vi.fn(),
-    verifyPasswordResetCode: vi.fn(),
-    confirmPasswordReset: vi.fn(),
+    signOut: vi.fn(),
     onAuthStateChanged: vi.fn((_auth: unknown, cb: (user: null) => void) => {
       cb(null);
       return () => {};
@@ -90,7 +89,16 @@ describe('App Component (View Routing and Integration)', () => {
 
   it('renders PasswordResetForm when URL contains mode=resetPassword', async () => {
     window.history.pushState({}, '', '/?mode=resetPassword&oobCode=reset-test-code');
-    vi.mocked(verifyPasswordResetCode).mockResolvedValueOnce('reset@example.com');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        state: 'valid',
+        email: 'reset@example.com',
+        accountType: 'credential',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
     render(<App />);
 
@@ -98,6 +106,12 @@ describe('App Component (View Routing and Integration)', () => {
       await screen.findByRole('heading', { level: 2, name: /choose a new password/i })
     ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { level: 2, name: /create an account/i })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/auth/password-reset/validate',
+      expect.objectContaining({ method: 'POST' })
+    );
+
+    vi.unstubAllGlobals();
   });
 
   it('switches to verification view when RegistrationForm requests replacement link', async () => {
