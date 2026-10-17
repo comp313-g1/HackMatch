@@ -82,4 +82,56 @@ describe('EventDetail component unit tests (US-008 / #75)', () => {
     expect(screen.queryByRole('link', { name: /visit official hackathon website/i })).not.toBeInTheDocument();
     expect(screen.getByText('Official link disabled by an administrator')).toBeInTheDocument();
   });
+
+  it('renders EventTeamBoardSection with visitor prompt when user is not signed in', async () => {
+    const handleBack = vi.fn();
+    vi.spyOn(eventApiModule, 'fetchPublicEventById').mockResolvedValue(sampleEvent);
+
+    render(<EventDetail eventId={sampleEvent.id} onBack={handleBack} isSignedIn={false} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Hack The North 2026')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('heading', { level: 3, name: /team vacancy board/i })).toBeInTheDocument();
+    expect(screen.getByText('No open teams available for this event yet.')).toBeInTheDocument();
+    expect(screen.getByText('Sign in to view team details and apply')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
+  });
+
+  it('renders EventTeamBoardSection with PART placeholder when user is signed in', async () => {
+    const handleBack = vi.fn();
+    vi.spyOn(eventApiModule, 'fetchPublicEventById').mockResolvedValue(sampleEvent);
+
+    render(<EventDetail eventId={sampleEvent.id} onBack={handleBack} isSignedIn={true} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Hack The North 2026')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Team details will appear here once teams are listed.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /sign in/i })).not.toBeInTheDocument();
+  });
+
+  it('renders read-only note and no action buttons on concluded event team board', async () => {
+    const handleBack = vi.fn();
+    const concludedEvent: PublicEvent = {
+      ...sampleEvent,
+      status: 'Archived',
+      time_state: 'concluded',
+    };
+    vi.spyOn(eventApiModule, 'fetchPublicEventById').mockResolvedValue(concludedEvent);
+
+    render(<EventDetail eventId={concludedEvent.id} onBack={handleBack} isSignedIn={false} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Hack The North 2026')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('note')).toHaveTextContent(
+      'This event has concluded. The team board is read-only.'
+    );
+    expect(screen.queryByRole('button', { name: /sign in/i })).not.toBeInTheDocument();
+  });
 });
+

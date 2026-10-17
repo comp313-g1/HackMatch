@@ -3,13 +3,18 @@ import type { PublicEvent } from './eventTypes.js';
 import { fetchPublicEventById } from './eventApi.js';
 import { EventMetadata } from './EventMetadata.js';
 import { SafeExternalLink } from './SafeExternalLink.js';
+import { EventTeamBoardSection } from './EventTeamBoardSection.js';
+import { useIsSignedIn } from '../../hooks/useIsSignedIn.js';
 
 export interface EventDetailProps {
   eventId: string;
   onBack: () => void;
+  isSignedIn?: boolean;
 }
 
-export function EventDetail({ eventId, onBack }: EventDetailProps): React.JSX.Element {
+export function EventDetail({ eventId, onBack, isSignedIn }: EventDetailProps): React.JSX.Element {
+  const hookIsSignedIn = useIsSignedIn();
+  const effectiveIsSignedIn = isSignedIn ?? hookIsSignedIn;
   const [event, setEvent] = useState<PublicEvent | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -104,6 +109,12 @@ export function EventDetail({ eventId, onBack }: EventDetailProps): React.JSX.El
               </span>
             )}
           </div>
+
+          {/* Team Vacancy Board Section */}
+          <EventTeamBoardSection
+            timeState={event.time_state}
+            isSignedIn={effectiveIsSignedIn}
+          />
         </div>
       )}
     </article>
