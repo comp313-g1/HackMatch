@@ -1,5 +1,13 @@
 import type { Request, Response, NextFunction } from 'express';
-import { firebaseAuth, verifyEmailActionCode, sendVerificationEmail, getFirebaseAdminAuth } from '../config/firebase.js';
+import {
+  firebaseAuth,
+  verifyEmailActionCode,
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+  inspectPasswordResetCode,
+  confirmPasswordResetCode,
+  getFirebaseAdminAuth,
+} from '../config/firebase.js';
 import { config } from '../config/index.js';
 import { participantsRepository } from '../db/participants.repository.js';
 import { providerIdentitiesRepository } from '../db/provider_identities.repository.js';
@@ -7,7 +15,11 @@ import { mfaRepository } from '../db/mfa.repository.js';
 import type { Participant, OAuthProvider } from '../db/types.js';
 import { generateOtp, createMfaChallenge, evaluateAccountLockout, verifyOtpHash } from '../utils/otp.js';
 import { rateLimiter } from '../utils/rateLimiter.js';
-import { hasCompletedMfa, markMfaComplete } from '../utils/mfaClaim.js';
+import {
+  markPasswordResetCodeConsumed,
+  wasPasswordResetCodeConsumed,
+} from '../utils/consumedResetCodes.js';
+import { clearMfaClaim, hasCompletedMfa } from '../utils/mfaClaim.js';
 import { securityConfig } from '../config/security.js';
 import { extractBearerToken, mapFirebaseAuthError } from '../middleware/requireFirebaseAuth.js';
 import {
@@ -494,6 +506,412 @@ export async function resendVerification(
 }
 
 /**
+ * Uniform confirmation for password-recovery requests (US-005 AC 2 / FR-011).
+ * Identical for known, unknown, and OAuth-only addresses so existence is never leaked.
+ */
+export const PASSWORD_RESET_REQUEST_CONFIRMATION =
+  'If an account exists for that email, you will receive password reset instructions shortly. If you signed in with Google or GitHub, use that provider to regain access.';
+
+/**
+ * Handles password-recovery email requests (POST /api/auth/password-reset).
+ * Firebase dispatches a single-use reset link for credential accounts (FR-011).
+ * OAuth-only and unknown addresses still receive the same HTTP 200 body (AC 1–2).
+ * Rate-limited under FR-081; delivery failures are logged without leaking (FR-084 / NR-021).
+ * Issues zero session cookies or tokens (FR-007).
+ */
+export async function requestPasswordReset(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const { email } = req.body;
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+
+  try {
+    // 1. Dual-tier rate limiting (FR-081) — applied before lookup so limits are not an oracle
+    const limitCheck = rateLimiter.checkLimit('password-reset', normalizedEmail);
+    if (!limitCheck.allowed) {
+      const retryAfterSeconds = limitCheck.retryAfterSeconds ?? 60;
+      res.setHeader('Retry-After', String(retryAfterSeconds));
+      res.status(429).json({
+        error: 'Too many requests. Please wait before requesting another password reset email.',
+        code: 'RATE_LIMITED',
+        retryAfter: retryAfterSeconds,
+      });
+      return;
+    }
+
+    // 2. Lookup participant; only credential (password) accounts receive a reset email
+    const participant = await participantsRepository.findByEmail(normalizedEmail);
+
+    if (participant && !participant.is_suspended) {
+      try {
+        const firebaseUser = await firebaseAuth.getUserByEmail(normalizedEmail);
+        const hasPasswordProvider = (firebaseUser.providerData || []).some(
+          (provider) => provider.providerId === 'password'
+        );
+
+        if (hasPasswordProvider) {
+          const actionCodeSettings = {
+            url: `${config.clientUrl}/?mode=resetPassword&view=reset&email=${encodeURIComponent(normalizedEmail)}`,
+          };
+          if (process.env.VITEST) {
+            await firebaseAuth.generatePasswordResetLink(normalizedEmail, actionCodeSettings);
+          } else {
+            const sendFn = firebaseAuth.sendPasswordResetEmail || sendPasswordResetEmail;
+            await sendFn(normalizedEmail, actionCodeSettings);
+          }
+        }
+        // OAuth-only: skip send; still return generic confirmation (US-005 AC 1)
+      } catch (sendErr: unknown) {
+        // FR-084: never verify/session; log without tokens; keep uniform 200 (anti-enumeration)
+        const errCode =
+          sendErr && typeof sendErr === 'object' && 'code' in sendErr
+            ? String((sendErr as { code: unknown }).code)
+            : '';
+        if (errCode !== 'auth/user-not-found') {
+          const errMsg = sendErr instanceof Error ? sendErr.message : 'Unknown dispatch error';
+          console.warn(
+            `[AUTH] Failed to generate/dispatch password-reset email for ${normalizedEmail}: ${errMsg}`
+          );
+        }
+      }
+    } else {
+      // Normalize timing to neutralize side-channel analysis
+      if (config.nodeEnv !== 'test') {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+
+    rateLimiter.recordSend('password-reset', normalizedEmail);
+
+    // 3. FR-011 anti-enumeration: uniform HTTP 200, zero session artifacts
+    res.status(200).json({
+      message: PASSWORD_RESET_REQUEST_CONFIRMATION,
+    });
+  } catch (err: unknown) {
+    next(err);
+  }
+}
+
+function userHasPasswordProvider(user: {
+  providerData?: Array<{ providerId?: string }>;
+}): boolean {
+  return (user.providerData || []).some((provider) => provider.providerId === 'password');
+}
+
+function respondPasswordResetLinkFailure(
+  res: Response,
+  code: string,
+  oobCode: string
+): boolean {
+  if (code === 'auth/expired-action-code') {
+    res.status(400).json({
+      error: 'This password reset link has expired. Please request a new link to continue.',
+      code: 'EXPIRED_ACTION_CODE',
+      state: 'expired',
+    });
+    return true;
+  }
+  if (code === 'auth/invalid-action-code') {
+    if (wasPasswordResetCodeConsumed(oobCode)) {
+      res.status(400).json({
+        error:
+          'This password reset link has already been used. Request a new link if you still need to change your password.',
+        code: 'USED_ACTION_CODE',
+        state: 'used',
+      });
+      return true;
+    }
+    res.status(400).json({
+      error:
+        'This password reset link is invalid or has been tampered with. Please request a new link.',
+      code: 'INVALID_ACTION_CODE',
+      state: 'invalid',
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Validates a password-reset oobCode and classifies recovery state
+ * (POST /api/auth/password-reset/validate) — US-005 / S1-P2-16 / FR-011.
+ * Explicit states: valid (credential), expired, invalid, used, oauth.
+ * Does not change the password or issue a session.
+ */
+export async function validatePasswordReset(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  const { oobCode } = req.body as { oobCode: string };
+
+  try {
+    if (wasPasswordResetCodeConsumed(oobCode)) {
+      res.status(400).json({
+        error:
+          'This password reset link has already been used. Request a new link if you still need to change your password.',
+        code: 'USED_ACTION_CODE',
+        state: 'used',
+      });
+      return;
+    }
+
+    const inspectFn = firebaseAuth.inspectPasswordResetCode || inspectPasswordResetCode;
+    let email: string;
+    try {
+      const inspected = await inspectFn(oobCode);
+      email = inspected.email;
+    } catch (inspectErr: unknown) {
+      const code =
+        inspectErr && typeof inspectErr === 'object' && 'code' in inspectErr
+          ? String((inspectErr as { code: unknown }).code)
+          : '';
+      if (respondPasswordResetLinkFailure(res, code, oobCode)) {
+        return;
+      }
+      if (code === 'auth/configuration-error') {
+        res.status(503).json({
+          error: 'Password reset is temporarily unavailable. Please try again later.',
+          code: 'AUTH_SERVICE_UNAVAILABLE',
+        });
+        return;
+      }
+      res.status(502).json({
+        error: 'We could not validate this reset link right now. Please try again.',
+        code: 'PASSWORD_RESET_VALIDATE_FAILED',
+      });
+      return;
+    }
+
+    let firebaseUser: { uid: string; providerData?: Array<{ providerId?: string }> };
+    try {
+      firebaseUser = await firebaseAuth.getUserByEmail(email);
+    } catch (userErr: unknown) {
+      const code =
+        userErr && typeof userErr === 'object' && 'code' in userErr
+          ? String((userErr as { code: unknown }).code)
+          : '';
+      if (code === 'auth/user-not-found') {
+        res.status(400).json({
+          error:
+            'This password reset link is invalid or has been tampered with. Please request a new link.',
+          code: 'INVALID_ACTION_CODE',
+          state: 'invalid',
+        });
+        return;
+      }
+      throw userErr;
+    }
+
+    if (!userHasPasswordProvider(firebaseUser)) {
+      res.status(200).json({
+        state: 'oauth',
+        code: 'OAUTH_RECOVERY_REQUIRED',
+        email,
+        message:
+          'This account signs in with Google or GitHub. Use that provider to regain access — a password cannot be set from this link.',
+      });
+      return;
+    }
+
+    res.status(200).json({
+      state: 'valid',
+      email,
+      accountType: 'credential',
+    });
+  } catch (err: unknown) {
+    next(err);
+  }
+}
+
+/**
+ * Confirms a password-reset oobCode, applies the new password, and revokes all
+ * Firebase refresh tokens across devices (POST /api/auth/password-reset/confirm).
+ * US-005 AC 4 / FR-012 / S1-P2-14 / S1-P2-15: never signs the user in, never clears
+ * OTP lock, never bypasses MFA — next login must complete US-004.
+ * Authorization is possession of a valid unconsumed oobCode.
+ */
+export async function confirmPasswordReset(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+
+  const { oobCode, newPassword } = req.body as { oobCode: string; newPassword: string };
+
+  try {
+    if (wasPasswordResetCodeConsumed(oobCode)) {
+      res.status(400).json({
+        error:
+          'This password reset link has already been used. Request a new link if you still need to change your password.',
+        code: 'USED_ACTION_CODE',
+        state: 'used',
+      });
+      return;
+    }
+
+    // Preflight: classify expired/invalid/used/oauth before consuming the code (S1-P2-16).
+    const inspectFn = firebaseAuth.inspectPasswordResetCode || inspectPasswordResetCode;
+    try {
+      const inspected = await inspectFn(oobCode);
+      const firebaseUser = await firebaseAuth.getUserByEmail(inspected.email);
+      if (!userHasPasswordProvider(firebaseUser)) {
+        res.status(403).json({
+          error:
+            'This account signs in with Google or GitHub. Use that provider to regain access — a password cannot be set from this link.',
+          code: 'OAUTH_RECOVERY_REQUIRED',
+          state: 'oauth',
+        });
+        return;
+      }
+    } catch (preflightErr: unknown) {
+      const code =
+        preflightErr && typeof preflightErr === 'object' && 'code' in preflightErr
+          ? String((preflightErr as { code: unknown }).code)
+          : '';
+      if (respondPasswordResetLinkFailure(res, code, oobCode)) {
+        return;
+      }
+      if (code === 'auth/user-not-found') {
+        res.status(400).json({
+          error:
+            'This password reset link is invalid or has been tampered with. Please request a new link.',
+          code: 'INVALID_ACTION_CODE',
+          state: 'invalid',
+        });
+        return;
+      }
+      // Fall through to confirmFn which may still succeed if inspect is unavailable.
+    }
+
+    const confirmFn = firebaseAuth.confirmPasswordResetCode || confirmPasswordResetCode;
+    let result: { email: string; uid: string };
+
+    try {
+      result = await confirmFn(oobCode, newPassword);
+    } catch (confirmErr: unknown) {
+      const code =
+        confirmErr && typeof confirmErr === 'object' && 'code' in confirmErr
+          ? String((confirmErr as { code: unknown }).code)
+          : '';
+
+      if (respondPasswordResetLinkFailure(res, code, oobCode)) {
+        return;
+      }
+      if (code === 'auth/weak-password') {
+        res.status(400).json({
+          error: 'Validation failed',
+          code: 'WEAK_PASSWORD',
+          errors: {
+            newPassword:
+              'Password must be at least 8 characters long and include uppercase, lowercase, a number, and a special character.',
+          },
+        });
+        return;
+      }
+      if (code === 'auth/user-disabled') {
+        res.status(403).json({
+          error: 'This account has been disabled. Please contact support.',
+          code: 'USER_DISABLED',
+        });
+        return;
+      }
+      if (code === 'auth/configuration-error') {
+        res.status(503).json({
+          error: 'Password reset is temporarily unavailable. Please try again later.',
+          code: 'AUTH_SERVICE_UNAVAILABLE',
+        });
+        return;
+      }
+
+      console.warn(
+        '[AUTH] Password reset confirm failed:',
+        confirmErr instanceof Error ? confirmErr.message : 'unknown error'
+      );
+      res.status(502).json({
+        error: 'We could not reset your password right now. Please try again.',
+        code: 'PASSWORD_RESET_FAILED',
+      });
+      return;
+    }
+
+    // Mark consumed so replay returns USED_ACTION_CODE (S1-P2-16), not a vague invalid.
+    markPasswordResetCodeConsumed(oobCode);
+
+    // S1-P2-15: drop MFA completion so the next sign-in cannot skip US-004.
+    // FR-012: do not clear OTP failure locks — only the MFA claim and pending challenges.
+    try {
+      await clearMfaClaim(result.uid);
+    } catch (claimErr: unknown) {
+      console.warn(
+        `[AUTH] Password updated for uid=${result.uid} but clearing MFA claim failed:`,
+        claimErr instanceof Error ? claimErr.message : 'unknown error'
+      );
+    }
+
+    try {
+      const participant =
+        (result.email
+          ? await participantsRepository.findByEmail(result.email)
+          : null) ?? (await participantsRepository.findByFirebaseUid(result.uid));
+      if (participant) {
+        await mfaRepository.invalidatePendingChallenges(participant.id);
+      }
+    } catch (challengeErr: unknown) {
+      console.warn(
+        `[AUTH] Password updated for uid=${result.uid} but invalidating MFA challenges failed:`,
+        challengeErr instanceof Error ? challengeErr.message : 'unknown error'
+      );
+    }
+
+    try {
+      await firebaseAuth.revokeRefreshTokens(result.uid);
+    } catch (revokeErr: unknown) {
+      const revokeCode =
+        revokeErr && typeof revokeErr === 'object' && 'code' in revokeErr
+          ? String((revokeErr as { code: unknown }).code)
+          : '';
+
+      if (revokeCode !== 'auth/user-not-found') {
+        console.warn(
+          `[AUTH] Password updated for uid=${result.uid} but refresh-token revocation failed:`,
+          revokeErr instanceof Error ? revokeErr.message : 'unknown error'
+        );
+        // Password already changed; clear local cookies and surface explicit failure (FR-012).
+        clearSessionCookies(res);
+        res.status(502).json({
+          error:
+            'Your password was updated, but we could not sign out other devices. Please try signing in again or contact support if sessions remain active.',
+          code: 'REVOCATION_FAILED',
+          signedIn: false,
+          sessionIssued: false,
+          requiresMfa: true,
+        });
+        return;
+      }
+    }
+
+    // Drop any stale browser session cookie; do not issue a new session (FR-007 / FR-012).
+    clearSessionCookies(res);
+
+    res.status(200).json({
+      message:
+        'Password updated. All existing sessions have been revoked. Please sign in with your new password — email verification (OTP) is required before access.',
+      email: result.email || undefined,
+      signedIn: false,
+      sessionIssued: false,
+      requiresMfa: true,
+    });
+  } catch (err: unknown) {
+    next(err);
+  }
+}
+
+/**
  * Handles processing email verification action codes (POST /api/auth/verify-email).
  * Verifies the action code, marks the participant verified in Supabase PostgreSQL,
  * synchronizes Firebase user record, and strictly enforces zero session issuance (US-001 AC 5 / FR-007).
@@ -722,10 +1140,10 @@ export async function oauthSignIn(
 
       const handle = consentHandleAvatar
         ? (typeof decodedToken.screen_name === 'string'
-            ? decodedToken.screen_name
-            : typeof decodedToken.name === 'string'
-              ? decodedToken.name
-              : null)
+          ? decodedToken.screen_name
+          : typeof decodedToken.name === 'string'
+            ? decodedToken.name
+            : null)
         : null;
       const avatarUrl = consentHandleAvatar
         ? (typeof decodedToken.picture === 'string' ? decodedToken.picture : null)
@@ -922,10 +1340,10 @@ export async function oauthLink(
     const rawClaims = decodedProviderToken as Record<string, unknown>;
     const handle = consentHandleAvatar
       ? (typeof rawClaims.screen_name === 'string'
-          ? rawClaims.screen_name
-          : typeof rawClaims.name === 'string'
-            ? rawClaims.name
-            : null)
+        ? rawClaims.screen_name
+        : typeof rawClaims.name === 'string'
+          ? rawClaims.name
+          : null)
       : null;
     const avatarUrl = consentHandleAvatar
       ? (typeof rawClaims.picture === 'string' ? rawClaims.picture : null)

@@ -2,9 +2,55 @@ export interface ValidationErrors {
   fullName?: string;
   email?: string;
   password?: string;
+  confirmPassword?: string;
 }
 
 export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Shared registration / password-reset policy copy (US-001 / US-005 AC 3). */
+export const PASSWORD_POLICY_MESSAGE =
+  'Password must be at least 8 characters long and include uppercase, lowercase, a number, and a special character.';
+
+/**
+ * Returns true when password meets the registration policy (US-001 / FR-001 / US-005 AC 3).
+ */
+export function isPasswordPolicyCompliant(password: string): boolean {
+  if (!password || password.length < 8) return false;
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasDigit = /[0-9]/.test(password);
+  const hasSpecial = /[^A-Za-z0-9]/.test(password);
+  return hasUpper && hasLower && hasDigit && hasSpecial;
+}
+
+/**
+ * Validates a new password field. Returns null if valid.
+ */
+export function validatePassword(password: string): string | null {
+  if (!password) {
+    return 'Password is required.';
+  }
+  if (!isPasswordPolicyCompliant(password)) {
+    return PASSWORD_POLICY_MESSAGE;
+  }
+  return null;
+}
+
+/**
+ * Validates password confirmation for reset forms. Preserves pairing with `password`.
+ */
+export function validatePasswordConfirmation(
+  password: string,
+  confirmPassword: string
+): string | null {
+  if (!confirmPassword) {
+    return 'Please confirm your new password.';
+  }
+  if (password !== confirmPassword) {
+    return 'Passwords do not match.';
+  }
+  return null;
+}
 
 /**
  * Validates email format per US-001 / FR-001.
@@ -43,19 +89,9 @@ export function validateRegistrationInput(
     errors.email = emailError;
   }
 
-  if (!password) {
-    errors.password = 'Password is required.';
-  } else {
-    const isMinLength = password.length >= 8;
-    const hasUpper = /[A-Z]/.test(password);
-    const hasLower = /[a-z]/.test(password);
-    const hasDigit = /[0-9]/.test(password);
-    const hasSpecial = /[^A-Za-z0-9]/.test(password);
-
-    if (!isMinLength || !hasUpper || !hasLower || !hasDigit || !hasSpecial) {
-      errors.password =
-        'Password must be at least 8 characters long and include uppercase, lowercase, a number, and a special character.';
-    }
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    errors.password = passwordError;
   }
 
   return errors;

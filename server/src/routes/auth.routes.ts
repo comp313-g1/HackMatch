@@ -2,6 +2,9 @@ import { Router } from 'express';
 import {
   validateRegisterPayload,
   validateResendVerificationPayload,
+  validatePasswordResetRequestPayload,
+  validatePasswordResetValidatePayload,
+  validatePasswordResetConfirmPayload,
   validateVerifyEmailPayload,
   validateOAuthSignInPayload,
   validateOAuthLinkPayload,
@@ -10,6 +13,9 @@ import {
 import {
   register,
   resendVerification,
+  requestPasswordReset,
+  validatePasswordReset,
+  confirmPasswordReset,
   verifyEmail,
   oauthSignIn,
   oauthLink,
@@ -42,6 +48,32 @@ authRouter.post('/register', validateRegisterPayload, register);
  * Enforces rate limiting and anti-enumeration protections.
  */
 authRouter.post('/resend-verification', validateResendVerificationPayload, resendVerification);
+
+/**
+ * Public endpoint to request a Firebase password-reset email (US-005 / FR-011 / S1-P1-13).
+ * Rate-limited (FR-081); uniform confirmation for known/unknown/OAuth-only (anti-enumeration).
+ */
+authRouter.post('/password-reset', validatePasswordResetRequestPayload, requestPasswordReset);
+
+/**
+ * Public endpoint to classify a password-reset oobCode (US-005 / S1-P2-16).
+ * Returns explicit expired / invalid / used / oauth / valid states without changing the password.
+ */
+authRouter.post(
+  '/password-reset/validate',
+  validatePasswordResetValidatePayload,
+  validatePasswordReset
+);
+
+/**
+ * Public endpoint to confirm a password-reset oobCode, set the new password, and revoke
+ * all Firebase refresh tokens (US-005 AC 4 / FR-012 / S1-P2-14). Issues zero sessions.
+ */
+authRouter.post(
+  '/password-reset/confirm',
+  validatePasswordResetConfirmPayload,
+  confirmPasswordReset
+);
 
 /**
  * Public endpoint to verify email with an action code (US-001 AC 3 / FR-002).
