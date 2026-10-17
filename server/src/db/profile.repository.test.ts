@@ -118,35 +118,98 @@ describe('profileRepository unit tests (US-006 / #64)', () => {
     expect(result.portfolios).toEqual([mockPortfolio]);
   });
 
-  it('areConfirmedTeammates returns true only when both users share a Confirmed team_memberships row', async () => {
-    const mockMaybeSingle = vi.fn().mockResolvedValue({
-      data: { team_id: 'team-1' },
-      error: null,
-    });
-    const mockIn = vi.fn().mockReturnValue({ maybeSingle: mockMaybeSingle });
-    const mockSecondStatusEq = vi.fn().mockReturnValue({ in: mockIn });
-    const mockSecondParticipantEq = vi.fn().mockReturnValue({ eq: mockSecondStatusEq });
+  describe('areConfirmedTeammates contact revocation (US-006 AC 4 / #69)', () => {
+    type Row = { participant_id: string; team_id: string; status: string };
 
-    const mockFirstStatusEq = vi.fn().mockResolvedValue({
-      data: [{ team_id: 'team-1' }],
-      error: null,
-    });
-    const mockFirstParticipantEq = vi.fn().mockReturnValue({ eq: mockFirstStatusEq });
+    function mockMemberships(rows: Row[], failSecondQuery = false) {
+      let queryCount = 0;
+      vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+        from: vi.fn(() => ({
+          select: vi.fn(() => {
+            queryCount += 1;
+            const filters: Array<(r: Row) => boolean> = [];
+            const run = () => {
+              if (failSecondQuery && queryCount > 1) {
+                return { data: null, error: { message: 'db down' } };
+              }
+              return { data: rows.filter((r) => filters.every((f) => f(r))), error: null };
+            };
+            const builder: Record<string, unknown> = {
+              eq: (col: keyof Row, val: string) => {
+                filters.push((r) => r[col] === val);
+                return builder;
+              },
+              in: (col: keyof Row, vals: string[]) => {
+                filters.push((r) => vals.includes(r[col]));
+                return builder;
+              },
+              limit: (n: number) => {
+                const result = run();
+                return Promise.resolve({
+                  data: (result.data as Row[] | null)?.slice(0, n) ?? null,
+                  error: result.error,
+                });
+              },
+              then: (resolve: (v: unknown) => unknown) => Promise.resolve(run()).then(resolve),
+            };
+            return builder;
+          }),
+        })),
+      } as unknown as SupabaseClient);
+    }
 
-    let callCount = 0;
-    const mockSelect = vi.fn(() => {
-      callCount += 1;
-      if (callCount === 1) {
-        return { eq: mockFirstParticipantEq };
+    it('returns true while both users hold Confirmed membership in a shared team, even across multiple shared teams', async () => {
+      mockMemberships([
+        { participant_id: 'part-1', team_id: 'team-1', status: 'Confirmed' },
+        { participant_id: 'part-2', team_id: 'team-1', status: 'Confirmed' },
+        { participant_id: 'part-1', team_id: 'team-2', status: 'Confirmed' },
+        { participant_id: 'part-2', team_id: 'team-2', status: 'Confirmed' },
+      ]);
+
+      expect(await profileRepository.areConfirmedTeammates('part-1', 'part-2')).toBe(true);
+    });
+
+    it.each(['Removed', 'Left', 'Pending', 'Disbanded'])(
+      'returns false once the target membership status becomes %s',
+      async (status) => {
+        mockMemberships([
+          { participant_id: 'part-1', team_id: 'team-1', status: 'Confirmed' },
+          { participant_id: 'part-2', team_id: 'team-1', status },
+        ]);
+
+        expect(await profileRepository.areConfirmedTeammates('part-1', 'part-2')).toBe(false);
       }
-      return { eq: mockSecondParticipantEq };
+    );
+
+    it('returns false when the viewer is no longer Confirmed on the shared team', async () => {
+      mockMemberships([
+        { participant_id: 'part-1', team_id: 'team-1', status: 'Left' },
+        { participant_id: 'part-2', team_id: 'team-1', status: 'Confirmed' },
+      ]);
+
+      expect(await profileRepository.areConfirmedTeammates('part-1', 'part-2')).toBe(false);
     });
 
-    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
-      from: vi.fn().mockReturnValue({ select: mockSelect }),
-    } as unknown as SupabaseClient);
+    it('returns false when confirmed members belong to different teams', async () => {
+      mockMemberships([
+        { participant_id: 'part-1', team_id: 'team-1', status: 'Confirmed' },
+        { participant_id: 'part-2', team_id: 'team-2', status: 'Confirmed' },
+      ]);
 
-    const isTeammate = await profileRepository.areConfirmedTeammates('part-1', 'part-2');
-    expect(isTeammate).toBe(true);
+      expect(await profileRepository.areConfirmedTeammates('part-1', 'part-2')).toBe(false);
+    });
+
+    it('fails closed when the shared-team lookup errors', async () => {
+      mockMemberships(
+        [
+          { participant_id: 'part-1', team_id: 'team-1', status: 'Confirmed' },
+          { participant_id: 'part-2', team_id: 'team-1', status: 'Confirmed' },
+        ],
+        true
+      );
+
+      expect(await profileRepository.areConfirmedTeammates('part-1', 'part-2')).toBe(false);
+    });
   });
 });
+

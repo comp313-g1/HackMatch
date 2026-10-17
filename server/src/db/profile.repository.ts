@@ -189,15 +189,16 @@ export const profileRepository: IProfileRepository = {
     }
 
     const teamIds = (viewerMemberships as Array<{ team_id: string }>).map((m) => m.team_id);
-    const { data: sharedMembership, error: sharedError } = await client
+    const { data: sharedMemberships, error: sharedError } = await client
       .from('team_memberships')
       .select('team_id')
       .eq('participant_id', targetParticipantId)
       .eq('status', 'Confirmed')
       .in('team_id', teamIds)
-      .maybeSingle();
+      .limit(1);
 
-    if (sharedError || !sharedMembership) {
+    // Fail closed: any lookup error or absence of a Confirmed shared row revokes access (US-006 AC 4).
+    if (sharedError || !sharedMemberships || sharedMemberships.length === 0) {
       return false;
     }
 

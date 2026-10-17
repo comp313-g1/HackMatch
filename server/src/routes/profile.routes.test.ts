@@ -328,6 +328,40 @@ describe('Express Profile Read & Update Endpoints (US-006 / #64)', () => {
       expect(res.body.profile.sharedContactHandle).toBe('@teammate_contact');
     });
 
+    it('revokes sharedContactHandle on the next request after teammate membership is removed (US-006 AC 4 / #69)', async () => {
+      mockVerifyIdToken.mockResolvedValue(validDecodedToken);
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(ownerParticipant);
+      vi.spyOn(participantsRepository, 'findById').mockResolvedValue(otherParticipant);
+      vi.spyOn(profileRepository, 'getFullProfile').mockResolvedValue({
+        profile: {
+          ...sampleProfileRecord,
+          participant_id: otherParticipant.id,
+          handle: 'other_dev',
+          shared_contact_handle: '@teammate_contact',
+        },
+        skills: [],
+        portfolios: [],
+      });
+      const teammateSpy = vi
+        .spyOn(profileRepository, 'areConfirmedTeammates')
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(false);
+
+      const before = await request(app)
+        .get(`/api/profiles/${otherParticipant.id}`)
+        .set('Authorization', 'Bearer valid-token');
+      const after = await request(app)
+        .get(`/api/profiles/${otherParticipant.id}`)
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(before.body.profile.sharedContactHandle).toBe('@teammate_contact');
+      expect(after.status).toBe(200);
+      expect(after.body.profile.sharedContactHandle).toBeUndefined();
+      expect(after.body.profile.sharedContactAudienceNotice).toBeUndefined();
+      expect(after.headers['cache-control']).toBe('no-store');
+      expect(teammateSpy).toHaveBeenCalledTimes(2);
+    });
+
     it('rejects unauthenticated requests to full candidate profile endpoint with 401 (US-006 AC 3)', async () => {
       const res = await request(app).get(`/api/profiles/${otherParticipant.id}`);
 
