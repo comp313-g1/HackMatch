@@ -445,7 +445,7 @@ export async function requestPasswordReset(
 
         if (hasPasswordProvider) {
           const actionCodeSettings = {
-            url: `${config.clientUrl}/?mode=resetPassword&view=login&email=${encodeURIComponent(normalizedEmail)}`,
+            url: `${config.clientUrl}/?mode=resetPassword&view=reset&email=${encodeURIComponent(normalizedEmail)}`,
           };
           if (process.env.VITEST) {
             await firebaseAuth.generatePasswordResetLink(normalizedEmail, actionCodeSettings);

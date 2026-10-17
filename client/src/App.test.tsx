@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { applyActionCode } from 'firebase/auth';
+import { applyActionCode, verifyPasswordResetCode } from 'firebase/auth';
 import App from './App';
 
 vi.mock('firebase/auth', async (importOriginal) => {
@@ -10,6 +10,8 @@ vi.mock('firebase/auth', async (importOriginal) => {
     ...actual,
     applyActionCode: vi.fn(),
     checkActionCode: vi.fn(),
+    verifyPasswordResetCode: vi.fn(),
+    confirmPasswordReset: vi.fn(),
     onAuthStateChanged: vi.fn((_auth: unknown, cb: (user: null) => void) => {
       cb(null);
       return () => {};
@@ -83,6 +85,18 @@ describe('App Component (View Routing and Integration)', () => {
     render(<App />);
 
     expect(screen.getByRole('heading', { level: 2, name: /reset password/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 2, name: /create an account/i })).not.toBeInTheDocument();
+  });
+
+  it('renders PasswordResetForm when URL contains mode=resetPassword', async () => {
+    window.history.pushState({}, '', '/?mode=resetPassword&oobCode=reset-test-code');
+    vi.mocked(verifyPasswordResetCode).mockResolvedValueOnce('reset@example.com');
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: /choose a new password/i })
+    ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { level: 2, name: /create an account/i })).not.toBeInTheDocument();
   });
 

@@ -3,11 +3,12 @@ import { RegistrationForm } from './components/auth/RegistrationForm';
 import { EmailVerificationView } from './components/auth/EmailVerificationView';
 import { LoginForm } from './components/auth/LoginForm';
 import { PasswordRecoveryRequestForm } from './components/auth/PasswordRecoveryRequestForm';
+import { PasswordResetForm } from './components/auth/PasswordResetForm';
 import { MfaGate } from './components/auth/MfaGate';
 import { SignedInPanel } from './components/auth/SignedInPanel';
 import type { OtpChallenge } from './components/auth/providerSignIn';
 
-type View = 'register' | 'login' | 'verify' | 'account' | 'recover';
+type View = 'register' | 'login' | 'verify' | 'account' | 'recover' | 'reset';
 
 const getInitialView = (): View => {
   if (typeof window === 'undefined') return 'register';
@@ -16,6 +17,10 @@ const getInitialView = (): View => {
   const view = params.get('view');
   if (mode === 'verifyEmail' || view === 'verify' || view === 'resend-verification') {
     return 'verify';
+  }
+  // Password-reset continue URL may include view=login; mode wins (US-005 S1-P1-14).
+  if (mode === 'resetPassword' || view === 'reset') {
+    return 'reset';
   }
   if (view === 'login') {
     return 'login';
@@ -68,7 +73,10 @@ export function App(): React.JSX.Element {
   };
 
   const showAuthNav =
-    currentView === 'register' || currentView === 'login' || currentView === 'recover';
+    currentView === 'register' ||
+    currentView === 'login' ||
+    currentView === 'recover' ||
+    currentView === 'reset';
 
   return (
     <div className="flex flex-col min-h-screen bg-cream text-ink font-sans">
@@ -244,6 +252,22 @@ export function App(): React.JSX.Element {
               onNavigateToRegister={() => {
                 setStatusNotice(null);
                 setCurrentView('register');
+              }}
+            />
+          </section>
+        ) : currentView === 'reset' ? (
+          <section aria-labelledby="password-reset-heading">
+            <h2 id="password-reset-heading" className="sr-only">
+              Set New Password
+            </h2>
+            <PasswordResetForm
+              onNavigateToSignIn={() => {
+                setStatusNotice('Password updated. Sign in with your new password.');
+                setCurrentView('login');
+              }}
+              onNavigateToRecover={() => {
+                setStatusNotice(null);
+                setCurrentView('recover');
               }}
             />
           </section>
