@@ -3,6 +3,7 @@ import { AuthSplitLayout } from './AuthSplitLayout';
 import {
   completePasswordReset,
   describePasswordResetLinkError,
+  PASSWORD_RESET_STATE_COPY,
   validatePasswordResetLink,
   type PasswordResetLinkError,
 } from './passwordResetConfirm';
@@ -18,6 +19,10 @@ export type PasswordResetFormStatus =
   | 'ready'
   | 'submitting'
   | 'success'
+  | 'expired'
+  | 'invalid'
+  | 'used'
+  | 'oauth'
   | 'error';
 
 export interface PasswordResetFormProps {
@@ -58,6 +63,73 @@ function scrubOobCodeFromUrl(): void {
   }
 }
 
+function statusFromLinkError(
+  kind: PasswordResetLinkError['kind']
+): PasswordResetFormStatus | null {
+  if (kind === 'expired' || kind === 'invalid' || kind === 'used' || kind === 'oauth') {
+    return kind;
+  }
+  return null;
+}
+
+function LinkStatePanel({
+  tone,
+  title,
+  message,
+  onNavigateToRecover,
+  onNavigateToSignIn,
+  recoverLabel = 'Request a new reset link',
+  signInLabel = 'Back to sign in',
+}: {
+  tone: 'amber' | 'red' | 'forest';
+  title: string;
+  message: string;
+  onNavigateToRecover?: () => void;
+  onNavigateToSignIn?: () => void;
+  recoverLabel?: string;
+  signInLabel?: string;
+}): React.JSX.Element {
+  const toneClass =
+    tone === 'amber'
+      ? 'bg-amber-50 border-amber-200 text-amber-900'
+      : tone === 'forest'
+        ? 'bg-forest-50 border-forest-100 text-forest-900'
+        : 'bg-red-50 border-red-200 text-red-900';
+
+  return (
+    <div
+      role="alert"
+      className="max-w-md w-full mx-auto p-6 bg-white rounded-xl border border-cream-200 shadow-sm"
+    >
+      <div className={`mb-6 p-4 border rounded-md ${toneClass}`}>
+        <h2 className="text-lg font-semibold mb-1">{title}</h2>
+        <p className="text-sm opacity-90">{message}</p>
+      </div>
+      <div className="space-y-2">
+        {onNavigateToRecover && tone !== 'forest' && (
+          <button type="button" onClick={onNavigateToRecover} className={primaryBtnClass}>
+            {recoverLabel}
+          </button>
+        )}
+        {onNavigateToSignIn && (
+          <button
+            type="button"
+            onClick={onNavigateToSignIn}
+            className={tone === 'forest' ? primaryBtnClass : secondaryBtnClass}
+          >
+            {signInLabel}
+          </button>
+        )}
+        {onNavigateToRecover && tone === 'forest' && (
+          <button type="button" onClick={onNavigateToRecover} className={secondaryBtnClass}>
+            {recoverLabel}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function PasswordResetForm({
   actionCode: propActionCode,
   mode: propMode,
@@ -86,13 +158,14 @@ export function PasswordResetForm({
     setStatus('loading');
     setLinkError(null);
     try {
-      const email = await validatePasswordResetLink(code);
-      setAccountEmail(email);
+      const result = await validatePasswordResetLink(code);
+      setAccountEmail(result.email);
       setOobCode(code);
       setStatus('ready');
     } catch (err: unknown) {
-      setLinkError(describePasswordResetLinkError(err));
-      setStatus('error');
+      const described = describePasswordResetLinkError(err);
+      setLinkError(described);
+      setStatus(statusFromLinkError(described.kind) ?? 'error');
     }
   }, []);
 
@@ -104,9 +177,10 @@ export function PasswordResetForm({
       hasValidatedRef.current = true;
       setLinkError({
         kind: 'invalid',
-        message: 'Invalid action mode for password reset.',
+        message: PASSWORD_RESET_STATE_COPY.invalid.message,
+        code: 'INVALID_ACTION_CODE',
       });
-      setStatus('error');
+      setStatus('invalid');
       return;
     }
 
@@ -133,7 +207,6 @@ export function PasswordResetForm({
     if (confirmError) nextErrors.confirmPassword = confirmError;
 
     if (Object.keys(nextErrors).length > 0) {
-      // Preserve password + confirm values (NR-017 / task requirement).
       setFieldErrors(nextErrors);
       setStatus('ready');
       return;
@@ -149,13 +222,13 @@ export function PasswordResetForm({
       setStatus('success');
     } catch (err: unknown) {
       const described = describePasswordResetLinkError(err);
-      if (described.kind === 'expired' || described.kind === 'invalid') {
+      const linkStatus = statusFromLinkError(described.kind);
+      if (linkStatus) {
         setLinkError(described);
-        setStatus('error');
+        setStatus(linkStatus);
         return;
       }
       if (described.kind === 'revocation_failed') {
-        // Password already changed; surface explicit FR-012 failure and keep a sign-in path.
         setSubmitError(described);
         setPassword('');
         setConfirmPassword('');
@@ -167,7 +240,6 @@ export function PasswordResetForm({
       } else {
         setSubmitError(described);
       }
-      // Preserve entered passwords on non-link failures.
       setStatus('ready');
     }
   };
@@ -212,13 +284,64 @@ export function PasswordResetForm({
     );
   }
 
+  if (status === 'expired') {
+    return (
+      <LinkStatePanel
+        tone="amber"
+        title={PASSWORD_RESET_STATE_COPY.expired.title}
+        message={linkError?.message || PASSWORD_RESET_STATE_COPY.expired.message}
+        onNavigateToRecover={onNavigateToRecover}
+        onNavigateToSignIn={onNavigateToSignIn}
+      />
+    );
+  }
+
+  if (status === 'used') {
+    return (
+      <LinkStatePanel
+        tone="amber"
+        title={PASSWORD_RESET_STATE_COPY.used.title}
+        message={linkError?.message || PASSWORD_RESET_STATE_COPY.used.message}
+        onNavigateToRecover={onNavigateToRecover}
+        onNavigateToSignIn={onNavigateToSignIn}
+        signInLabel="Continue to sign in"
+      />
+    );
+  }
+
+  if (status === 'invalid') {
+    return (
+      <LinkStatePanel
+        tone="red"
+        title={PASSWORD_RESET_STATE_COPY.invalid.title}
+        message={linkError?.message || PASSWORD_RESET_STATE_COPY.invalid.message}
+        onNavigateToRecover={onNavigateToRecover}
+        onNavigateToSignIn={onNavigateToSignIn}
+      />
+    );
+  }
+
+  if (status === 'oauth') {
+    return (
+      <LinkStatePanel
+        tone="forest"
+        title={PASSWORD_RESET_STATE_COPY.oauth.title}
+        message={linkError?.message || PASSWORD_RESET_STATE_COPY.oauth.message}
+        onNavigateToRecover={onNavigateToRecover}
+        onNavigateToSignIn={onNavigateToSignIn}
+        recoverLabel="Request help another way"
+        signInLabel="Sign in with Google or GitHub"
+      />
+    );
+  }
+
   if (status === 'empty' || status === 'error') {
     const title = status === 'empty' ? 'Reset link required' : 'Reset link unavailable';
     const message =
       status === 'empty'
         ? 'Open the password reset link from your email, or request a new link below.'
         : linkError?.message ||
-          'This password reset link is invalid or has already been used. Please request a new link.';
+          'We could not process this password reset link. Please request a new one.';
 
     return (
       <div

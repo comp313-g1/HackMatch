@@ -3,6 +3,7 @@ import {
   validateRegisterPayload,
   validateResendVerificationPayload,
   validatePasswordResetRequestPayload,
+  validatePasswordResetValidatePayload,
   validatePasswordResetConfirmPayload,
   validateVerifyEmailPayload,
   validateOAuthSignInPayload,
@@ -13,6 +14,7 @@ import {
   register,
   resendVerification,
   requestPasswordReset,
+  validatePasswordReset,
   confirmPasswordReset,
   verifyEmail,
   oauthSignIn,
@@ -50,6 +52,16 @@ authRouter.post('/resend-verification', validateResendVerificationPayload, resen
  * Rate-limited (FR-081); uniform confirmation for known/unknown/OAuth-only (anti-enumeration).
  */
 authRouter.post('/password-reset', validatePasswordResetRequestPayload, requestPasswordReset);
+
+/**
+ * Public endpoint to classify a password-reset oobCode (US-005 / S1-P2-16).
+ * Returns explicit expired / invalid / used / oauth / valid states without changing the password.
+ */
+authRouter.post(
+  '/password-reset/validate',
+  validatePasswordResetValidatePayload,
+  validatePasswordReset
+);
 
 /**
  * Public endpoint to confirm a password-reset oobCode, set the new password, and revoke

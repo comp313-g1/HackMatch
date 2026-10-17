@@ -6,6 +6,7 @@ import { providerIdentitiesRepository } from '../db/provider_identities.reposito
 import { mfaRepository } from '../db/mfa.repository.js';
 import type { Participant, ProviderIdentity, MfaChallenge, MfaAttempt } from '../db/types.js';
 import { _resetRateLimiter } from '../utils/rateLimiter.js';
+import { _resetConsumedPasswordResetCodes } from '../utils/consumedResetCodes.js';
 import { _setMfaOtpEmailSender, _resetMfaOtpEmailSender } from '../controllers/auth.controller.js';
 import { hashOtp } from '../utils/otp.js';
 
@@ -21,6 +22,7 @@ const mockGetUserByEmail = vi.fn();
 const mockVerifyEmailActionCode = vi.fn();
 const mockSendPasswordResetEmail = vi.fn();
 const mockConfirmPasswordResetCode = vi.fn();
+const mockInspectPasswordResetCode = vi.fn();
 const mockRevokeRefreshTokens = vi.fn();
 const mockGetUser = vi.fn();
 
@@ -36,6 +38,7 @@ vi.mock('../config/firebase.js', () => ({
     getUser: (...args: unknown[]) => mockGetUser(...args),
     verifyEmailActionCode: (...args: unknown[]) => mockVerifyEmailActionCode(...args),
     sendPasswordResetEmail: (...args: unknown[]) => mockSendPasswordResetEmail(...args),
+    inspectPasswordResetCode: (...args: unknown[]) => mockInspectPasswordResetCode(...args),
     confirmPasswordResetCode: (...args: unknown[]) => mockConfirmPasswordResetCode(...args),
     revokeRefreshTokens: (...args: unknown[]) => mockRevokeRefreshTokens(...args),
   },
@@ -50,11 +53,13 @@ vi.mock('../config/firebase.js', () => ({
     getUser: (...args: unknown[]) => mockGetUser(...args),
     verifyEmailActionCode: (...args: unknown[]) => mockVerifyEmailActionCode(...args),
     sendPasswordResetEmail: (...args: unknown[]) => mockSendPasswordResetEmail(...args),
+    inspectPasswordResetCode: (...args: unknown[]) => mockInspectPasswordResetCode(...args),
     confirmPasswordResetCode: (...args: unknown[]) => mockConfirmPasswordResetCode(...args),
     revokeRefreshTokens: (...args: unknown[]) => mockRevokeRefreshTokens(...args),
   },
   verifyEmailActionCode: (...args: unknown[]) => mockVerifyEmailActionCode(...args),
   sendPasswordResetEmail: (...args: unknown[]) => mockSendPasswordResetEmail(...args),
+  inspectPasswordResetCode: (...args: unknown[]) => mockInspectPasswordResetCode(...args),
   confirmPasswordResetCode: (...args: unknown[]) => mockConfirmPasswordResetCode(...args),
   getFirebaseAdminAuth: vi.fn(),
   _resetFirebaseInstances: vi.fn(),
@@ -1205,6 +1210,114 @@ describe('Auth Routes (POST /api/auth/password-reset)', () => {
   });
 });
 
+describe('Auth Routes (POST /api/auth/password-reset/validate)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetConsumedPasswordResetCodes();
+    mockInspectPasswordResetCode.mockResolvedValue({ email: 'credential@example.com' });
+    mockGetUserByEmail.mockResolvedValue({
+      uid: 'fb-uid-credential',
+      email: 'credential@example.com',
+      providerData: [{ providerId: 'password' }],
+    });
+  });
+
+  it('returns valid state for a credential account reset link (S1-P2-16)', async () => {
+    const response = await request(app)
+      .post('/api/auth/password-reset/validate')
+      .send({ oobCode: 'fresh-oob' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      state: 'valid',
+      email: 'credential@example.com',
+      accountType: 'credential',
+    });
+  });
+
+  it('returns expired state for EXPIRED_OOB_CODE', async () => {
+    mockInspectPasswordResetCode.mockRejectedValueOnce(
+      Object.assign(new Error('expired'), { code: 'auth/expired-action-code' })
+    );
+
+    const response = await request(app)
+      .post('/api/auth/password-reset/validate')
+      .send({ oobCode: 'stale-oob' });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({ code: 'EXPIRED_ACTION_CODE', state: 'expired' });
+  });
+
+  it('returns invalid state for tampered links', async () => {
+    mockInspectPasswordResetCode.mockRejectedValueOnce(
+      Object.assign(new Error('bad'), { code: 'auth/invalid-action-code' })
+    );
+
+    const response = await request(app)
+      .post('/api/auth/password-reset/validate')
+      .send({ oobCode: 'tampered-oob' });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({ code: 'INVALID_ACTION_CODE', state: 'invalid' });
+  });
+
+  it('returns oauth recovery state for OAuth-only accounts', async () => {
+    mockGetUserByEmail.mockResolvedValueOnce({
+      uid: 'fb-uid-oauth',
+      email: 'oauth@example.com',
+      providerData: [{ providerId: 'google.com' }],
+    });
+    mockInspectPasswordResetCode.mockResolvedValueOnce({ email: 'oauth@example.com' });
+
+    const response = await request(app)
+      .post('/api/auth/password-reset/validate')
+      .send({ oobCode: 'oauth-oob' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      state: 'oauth',
+      code: 'OAUTH_RECOVERY_REQUIRED',
+      email: 'oauth@example.com',
+    });
+  });
+
+  it('returns used state after a successful confirm replay', async () => {
+    mockInspectPasswordResetCode.mockResolvedValue({ email: 'credential@example.com' });
+    mockGetUserByEmail.mockResolvedValue({
+      uid: 'fb-uid-credential',
+      email: 'credential@example.com',
+      providerData: [{ providerId: 'password' }],
+    });
+    mockGetUser.mockResolvedValue({
+      uid: 'fb-uid-credential',
+      customClaims: { role: 'PART' },
+    });
+    mockConfirmPasswordResetCode.mockResolvedValue({
+      email: 'credential@example.com',
+      uid: 'fb-uid-credential',
+    });
+    mockRevokeRefreshTokens.mockResolvedValue(undefined);
+    mockSetCustomUserClaims.mockResolvedValue(undefined);
+    vi.spyOn(participantsRepository, 'findByEmail').mockResolvedValue(null);
+
+    const confirm = await request(app)
+      .post('/api/auth/password-reset/confirm')
+      .send({
+        oobCode: 'consume-once-oob',
+        newPassword: 'Valid1@Password',
+        confirmPassword: 'Valid1@Password',
+      });
+    expect(confirm.status).toBe(200);
+
+    const response = await request(app)
+      .post('/api/auth/password-reset/validate')
+      .send({ oobCode: 'consume-once-oob' });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({ code: 'USED_ACTION_CODE', state: 'used' });
+  });
+});
+
 describe('Auth Routes (POST /api/auth/password-reset/confirm)', () => {
   const validConfirm = {
     oobCode: 'valid-reset-oob',
@@ -1214,6 +1327,13 @@ describe('Auth Routes (POST /api/auth/password-reset/confirm)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetConsumedPasswordResetCodes();
+    mockInspectPasswordResetCode.mockResolvedValue({ email: 'credential@example.com' });
+    mockGetUserByEmail.mockResolvedValue({
+      uid: 'fb-uid-credential',
+      email: 'credential@example.com',
+      providerData: [{ providerId: 'password' }],
+    });
     mockConfirmPasswordResetCode.mockResolvedValue({
       email: 'credential@example.com',
       uid: 'fb-uid-credential',
@@ -1252,7 +1372,11 @@ describe('Auth Routes (POST /api/auth/password-reset/confirm)', () => {
     });
     expect(response.body.message).toMatch(/otp|email verification/i);
     expect(response.body.token).toBeUndefined();
-    expect(response.headers['set-cookie']).toBeUndefined();
+    // May clear stale cookies (Expires in the past); must not issue a live session.
+    const setCookie = response.headers['set-cookie'];
+    if (setCookie) {
+      expect(String(setCookie)).toMatch(/Expires=Thu, 01 Jan 1970/i);
+    }
     expect(mockConfirmPasswordResetCode).toHaveBeenCalledWith(
       'valid-reset-oob',
       'Valid1@Password'
@@ -1294,7 +1418,7 @@ describe('Auth Routes (POST /api/auth/password-reset/confirm)', () => {
   });
 
   it('returns 400 EXPIRED_ACTION_CODE without revoking when the link is expired', async () => {
-    mockConfirmPasswordResetCode.mockRejectedValueOnce(
+    mockInspectPasswordResetCode.mockRejectedValueOnce(
       Object.assign(new Error('expired'), { code: 'auth/expired-action-code' })
     );
 
@@ -1303,12 +1427,13 @@ describe('Auth Routes (POST /api/auth/password-reset/confirm)', () => {
       .send(validConfirm);
 
     expect(response.status).toBe(400);
-    expect(response.body.code).toBe('EXPIRED_ACTION_CODE');
+    expect(response.body).toMatchObject({ code: 'EXPIRED_ACTION_CODE', state: 'expired' });
+    expect(mockConfirmPasswordResetCode).not.toHaveBeenCalled();
     expect(mockRevokeRefreshTokens).not.toHaveBeenCalled();
   });
 
-  it('returns 400 INVALID_ACTION_CODE for used or tampered links', async () => {
-    mockConfirmPasswordResetCode.mockRejectedValueOnce(
+  it('returns 400 INVALID_ACTION_CODE for tampered links', async () => {
+    mockInspectPasswordResetCode.mockRejectedValueOnce(
       Object.assign(new Error('invalid'), { code: 'auth/invalid-action-code' })
     );
 
@@ -1317,8 +1442,48 @@ describe('Auth Routes (POST /api/auth/password-reset/confirm)', () => {
       .send(validConfirm);
 
     expect(response.status).toBe(400);
-    expect(response.body.code).toBe('INVALID_ACTION_CODE');
+    expect(response.body).toMatchObject({ code: 'INVALID_ACTION_CODE', state: 'invalid' });
     expect(mockRevokeRefreshTokens).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 OAUTH_RECOVERY_REQUIRED for OAuth-only accounts', async () => {
+    mockGetUserByEmail.mockResolvedValueOnce({
+      uid: 'fb-uid-oauth',
+      email: 'oauth@example.com',
+      providerData: [{ providerId: 'github.com' }],
+    });
+    mockInspectPasswordResetCode.mockResolvedValueOnce({ email: 'oauth@example.com' });
+
+    const response = await request(app)
+      .post('/api/auth/password-reset/confirm')
+      .send({
+        oobCode: 'oauth-oob',
+        newPassword: 'Valid1@Password',
+        confirmPassword: 'Valid1@Password',
+      });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({
+      code: 'OAUTH_RECOVERY_REQUIRED',
+      state: 'oauth',
+    });
+    expect(mockConfirmPasswordResetCode).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 USED_ACTION_CODE when the same oobCode is confirmed twice', async () => {
+    mockGetUser.mockResolvedValue({
+      uid: 'fb-uid-credential',
+      customClaims: { role: 'PART' },
+    });
+    mockSetCustomUserClaims.mockResolvedValue(undefined);
+    vi.spyOn(participantsRepository, 'findByEmail').mockResolvedValue(null);
+
+    const first = await request(app).post('/api/auth/password-reset/confirm').send(validConfirm);
+    expect(first.status).toBe(200);
+
+    const second = await request(app).post('/api/auth/password-reset/confirm').send(validConfirm);
+    expect(second.status).toBe(400);
+    expect(second.body).toMatchObject({ code: 'USED_ACTION_CODE', state: 'used' });
   });
 
   it('returns 400 field errors for weak passwords without calling Firebase', async () => {

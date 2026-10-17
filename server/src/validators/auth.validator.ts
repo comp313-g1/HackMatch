@@ -215,6 +215,43 @@ export interface PasswordResetConfirmFieldErrors {
 }
 
 /**
+ * Express middleware validating POST /api/auth/password-reset/validate (US-005 / S1-P2-16).
+ * Requires a non-empty oobCode string.
+ */
+export function validatePasswordResetValidatePayload(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const body = req.body;
+  if (!body || typeof body !== 'object') {
+    res.status(400).json({
+      error: 'Validation failed',
+      errors: {
+        oobCode: 'Reset link code is required.',
+      },
+    });
+    return;
+  }
+
+  const rawCode = body.oobCode;
+  if (typeof rawCode !== 'string' || rawCode.trim().length === 0) {
+    res.status(400).json({
+      error: 'Validation failed',
+      errors: {
+        oobCode: 'Reset link code is required.',
+      },
+      code: 'INVALID_ACTION_CODE',
+      state: 'invalid',
+    });
+    return;
+  }
+
+  req.body = { oobCode: rawCode.trim() };
+  next();
+}
+
+/**
  * Express middleware validating POST /api/auth/password-reset/confirm (US-005 / FR-012).
  * Enforces oobCode presence and registration password policy; optional confirmPassword must match.
  * Field errors preserve client-entered values (NR-017).

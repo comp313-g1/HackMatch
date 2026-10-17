@@ -1,11 +1,10 @@
 /**
- * Password-reset link validation + confirm (US-005 AC 2–4 / FR-011 / FR-012 / S1-P1-14 / S1-P2-14).
- * Link preview uses Firebase Client verifyPasswordResetCode.
- * Confirm + global session revocation go through POST /api/auth/password-reset/confirm.
- * Does not create a session (next login still requires MFA).
+ * Password-reset link validation + confirm (US-005 / FR-011 / FR-012 / S1-P1-14 / S1-P2-14–16).
+ * Validate/classify via POST /api/auth/password-reset/validate (expired|invalid|used|oauth|valid).
+ * Confirm + revoke via POST /api/auth/password-reset/confirm. Never auto-logs in.
  */
 
-import { signOut, verifyPasswordResetCode } from 'firebase/auth';
+import { signOut } from 'firebase/auth';
 import { auth } from '../../config/firebase';
 import { PASSWORD_POLICY_MESSAGE, validatePassword } from './validation';
 
@@ -20,6 +19,8 @@ export interface PasswordResetConfirmResult {
 export type PasswordResetLinkErrorKind =
   | 'expired'
   | 'invalid'
+  | 'used'
+  | 'oauth'
   | 'network'
   | 'weak_password'
   | 'revocation_failed'
@@ -30,6 +31,40 @@ export interface PasswordResetLinkError {
   message: string;
   code?: string;
 }
+
+export type PasswordResetLinkState = 'valid' | 'expired' | 'invalid' | 'used' | 'oauth';
+
+export interface PasswordResetValidateResult {
+  state: 'valid';
+  email: string;
+  accountType: 'credential';
+}
+
+export const PASSWORD_RESET_STATE_COPY: Record<
+  Exclude<PasswordResetLinkState, 'valid'>,
+  { title: string; message: string }
+> = {
+  expired: {
+    title: 'Reset link expired',
+    message:
+      'This password reset link has expired. Please request a new link to continue.',
+  },
+  invalid: {
+    title: 'Reset link invalid',
+    message:
+      'This password reset link is invalid or has been tampered with. Please request a new link.',
+  },
+  used: {
+    title: 'Reset link already used',
+    message:
+      'This password reset link has already been used. Request a new link if you still need to change your password.',
+  },
+  oauth: {
+    title: 'Use your sign-in provider',
+    message:
+      'This account signs in with Google or GitHub. Use that provider to regain access — a password cannot be set from this link.',
+  },
+};
 
 export function describePasswordResetLinkError(err: unknown): PasswordResetLinkError {
   if (err && typeof err === 'object' && 'kind' in err && 'message' in err) {
@@ -47,16 +82,26 @@ export function describePasswordResetLinkError(err: unknown): PasswordResetLinkE
       return {
         kind: 'expired',
         code,
-        message:
-          'This password reset link has expired. Please request a new link to continue.',
+        message: PASSWORD_RESET_STATE_COPY.expired.message,
+      };
+    case 'USED_ACTION_CODE':
+      return {
+        kind: 'used',
+        code,
+        message: PASSWORD_RESET_STATE_COPY.used.message,
       };
     case 'auth/invalid-action-code':
     case 'INVALID_ACTION_CODE':
       return {
         kind: 'invalid',
         code,
-        message:
-          'This password reset link is invalid or has already been used. Please request a new link.',
+        message: PASSWORD_RESET_STATE_COPY.invalid.message,
+      };
+    case 'OAUTH_RECOVERY_REQUIRED':
+      return {
+        kind: 'oauth',
+        code,
+        message: PASSWORD_RESET_STATE_COPY.oauth.message,
       };
     case 'auth/network-request-failed':
       return {
@@ -85,13 +130,6 @@ export function describePasswordResetLinkError(err: unknown): PasswordResetLinkE
         code,
         message: 'This account has been disabled. Please contact support.',
       };
-    case 'auth/user-not-found':
-      return {
-        kind: 'invalid',
-        code,
-        message:
-          'This password reset link is invalid or has already been used. Please request a new link.',
-      };
     default:
       return {
         kind: 'unknown',
@@ -107,25 +145,98 @@ function throwLinkError(err: unknown): never {
 }
 
 /**
- * Validates a Firebase password-reset oobCode and returns the account email.
- * Rejects expired, invalid, and already-used codes (FR-011 / US-005 AC 2).
+ * Validates a Firebase password-reset oobCode via the Express API.
+ * Throws typed errors for expired / invalid / used / oauth (US-005 S1-P2-16).
  */
-export async function validatePasswordResetLink(oobCode: string): Promise<string> {
+export async function validatePasswordResetLink(
+  oobCode: string
+): Promise<PasswordResetValidateResult> {
   const code = oobCode.trim();
   if (!code) {
     throwLinkError({
       kind: 'invalid',
-      message:
-        'This password reset link is invalid or has already been used. Please request a new link.',
-      code: 'auth/invalid-action-code',
+      message: PASSWORD_RESET_STATE_COPY.invalid.message,
+      code: 'INVALID_ACTION_CODE',
     });
   }
 
+  let response: Response;
   try {
-    return await verifyPasswordResetCode(auth, code);
-  } catch (err: unknown) {
-    throwLinkError(err);
+    response = await fetch('/api/auth/password-reset/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oobCode: code }),
+    });
+  } catch {
+    throwLinkError({
+      kind: 'network',
+      message: 'Network error. Please check your internet connection and try again.',
+      code: 'auth/network-request-failed',
+    });
   }
+
+  const data = (await response.json().catch(() => null)) as {
+    state?: string;
+    email?: string;
+    accountType?: string;
+    message?: string;
+    error?: string;
+    code?: string;
+  } | null;
+
+  if (response.ok && data?.state === 'valid' && data.email) {
+    return {
+      state: 'valid',
+      email: data.email,
+      accountType: 'credential',
+    };
+  }
+
+  if (response.ok && data?.state === 'oauth') {
+    throwLinkError({
+      kind: 'oauth',
+      message: data.message || PASSWORD_RESET_STATE_COPY.oauth.message,
+      code: data.code || 'OAUTH_RECOVERY_REQUIRED',
+    });
+  }
+
+  if (data?.code === 'EXPIRED_ACTION_CODE' || data?.state === 'expired') {
+    throwLinkError({
+      kind: 'expired',
+      message: data.error || PASSWORD_RESET_STATE_COPY.expired.message,
+      code: 'EXPIRED_ACTION_CODE',
+    });
+  }
+
+  if (data?.code === 'USED_ACTION_CODE' || data?.state === 'used') {
+    throwLinkError({
+      kind: 'used',
+      message: data.error || PASSWORD_RESET_STATE_COPY.used.message,
+      code: 'USED_ACTION_CODE',
+    });
+  }
+
+  if (data?.code === 'INVALID_ACTION_CODE' || data?.state === 'invalid') {
+    throwLinkError({
+      kind: 'invalid',
+      message: data.error || PASSWORD_RESET_STATE_COPY.invalid.message,
+      code: 'INVALID_ACTION_CODE',
+    });
+  }
+
+  if (data?.code === 'OAUTH_RECOVERY_REQUIRED') {
+    throwLinkError({
+      kind: 'oauth',
+      message: data.error || PASSWORD_RESET_STATE_COPY.oauth.message,
+      code: 'OAUTH_RECOVERY_REQUIRED',
+    });
+  }
+
+  throwLinkError({
+    kind: 'unknown',
+    message: data?.error || 'We could not validate this reset link right now. Please try again.',
+    code: data?.code,
+  });
 }
 
 /**
@@ -171,6 +282,7 @@ export async function completePasswordReset(
     message?: string;
     error?: string;
     code?: string;
+    state?: string;
     email?: string;
     signedIn?: boolean;
     sessionIssued?: boolean;
@@ -179,7 +291,6 @@ export async function completePasswordReset(
   } | null;
 
   if (response.ok) {
-    // Defensive: ensure the browser has no Firebase client session after reset.
     try {
       await signOut(auth);
     } catch {
@@ -203,23 +314,35 @@ export async function completePasswordReset(
     });
   }
 
-  if (data?.code === 'EXPIRED_ACTION_CODE' || response.status === 410) {
+  if (data?.code === 'EXPIRED_ACTION_CODE' || data?.state === 'expired') {
     throwLinkError({
       kind: 'expired',
-      message:
-        data?.error ||
-        'This password reset link has expired. Please request a new link to continue.',
+      message: data?.error || PASSWORD_RESET_STATE_COPY.expired.message,
       code: 'EXPIRED_ACTION_CODE',
     });
   }
 
-  if (data?.code === 'INVALID_ACTION_CODE') {
+  if (data?.code === 'USED_ACTION_CODE' || data?.state === 'used') {
+    throwLinkError({
+      kind: 'used',
+      message: data?.error || PASSWORD_RESET_STATE_COPY.used.message,
+      code: 'USED_ACTION_CODE',
+    });
+  }
+
+  if (data?.code === 'INVALID_ACTION_CODE' || data?.state === 'invalid') {
     throwLinkError({
       kind: 'invalid',
-      message:
-        data?.error ||
-        'This password reset link is invalid or has already been used. Please request a new link.',
+      message: data?.error || PASSWORD_RESET_STATE_COPY.invalid.message,
       code: 'INVALID_ACTION_CODE',
+    });
+  }
+
+  if (data?.code === 'OAUTH_RECOVERY_REQUIRED' || data?.state === 'oauth') {
+    throwLinkError({
+      kind: 'oauth',
+      message: data?.error || PASSWORD_RESET_STATE_COPY.oauth.message,
+      code: 'OAUTH_RECOVERY_REQUIRED',
     });
   }
 

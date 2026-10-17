@@ -278,6 +278,85 @@ export interface PasswordResetConfirmResult {
   uid: string;
 }
 
+export interface PasswordResetInspectResult {
+  email: string;
+}
+
+/**
+ * Inspects a password-reset oobCode without changing the password
+ * (Identity Toolkit `accounts:resetPassword` with oobCode only).
+ * Used by POST /api/auth/password-reset/validate (US-005 / S1-P2-16).
+ * Never logs the oobCode (NR-021).
+ */
+export async function inspectPasswordResetCode(
+  oobCode: string
+): Promise<PasswordResetInspectResult> {
+  const apiKey = process.env.FIREBASE_WEB_API_KEY || process.env.VITE_FIREBASE_API_KEY;
+
+  if (!apiKey) {
+    throw createAuthError(
+      '[Firebase Error] FIREBASE_WEB_API_KEY is not configured to validate password-reset links.',
+      'auth/configuration-error'
+    );
+  }
+
+  const trimmedCode = oobCode.trim();
+  if (!trimmedCode) {
+    throw createAuthError('The action code is invalid or missing.', 'auth/invalid-action-code');
+  }
+
+  const url = `https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=${apiKey}`;
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ oobCode: trimmedCode }),
+    });
+  } catch {
+    throw createAuthError(
+      'Failed to validate password reset link due to network or service error.',
+      'auth/network-request-failed'
+    );
+  }
+
+  const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+  if (!response.ok) {
+    const errObj =
+      data.error && typeof data.error === 'object' ? (data.error as Record<string, unknown>) : {};
+    const message = typeof errObj.message === 'string' ? errObj.message : '';
+
+    if (message.includes('EXPIRED_OOB_CODE')) {
+      throw createAuthError('The password reset link has expired.', 'auth/expired-action-code');
+    }
+    if (message.includes('INVALID_OOB_CODE')) {
+      throw createAuthError(
+        'The password reset link is invalid or has already been used.',
+        'auth/invalid-action-code'
+      );
+    }
+
+    throw createAuthError(
+      'Password reset link validation failed due to network or service error.',
+      'auth/network-request-failed'
+    );
+  }
+
+  const email = String(data.email || '').trim().toLowerCase();
+  if (!email) {
+    throw createAuthError(
+      'The password reset link is invalid or has already been used.',
+      'auth/invalid-action-code'
+    );
+  }
+
+  return { email };
+}
+
 /**
  * Consumes a password-reset oobCode and sets the new password via Identity Toolkit
  * (`accounts:resetPassword`). Does not create a session (US-005 AC 4 / FR-012).
@@ -376,12 +455,14 @@ export const firebaseAuth: Auth & {
   verifyEmailActionCode?: typeof verifyEmailActionCode;
   sendVerificationEmail?: typeof sendVerificationEmail;
   sendPasswordResetEmail?: typeof sendPasswordResetEmail;
+  inspectPasswordResetCode?: typeof inspectPasswordResetCode;
   confirmPasswordResetCode?: typeof confirmPasswordResetCode;
 } = new Proxy(
   {} as Auth & {
     verifyEmailActionCode?: typeof verifyEmailActionCode;
     sendVerificationEmail?: typeof sendVerificationEmail;
     sendPasswordResetEmail?: typeof sendPasswordResetEmail;
+    inspectPasswordResetCode?: typeof inspectPasswordResetCode;
     confirmPasswordResetCode?: typeof confirmPasswordResetCode;
   },
   {
@@ -394,6 +475,9 @@ export const firebaseAuth: Auth & {
       }
       if (prop === 'sendPasswordResetEmail') {
         return sendPasswordResetEmail;
+      }
+      if (prop === 'inspectPasswordResetCode') {
+        return inspectPasswordResetCode;
       }
       if (prop === 'confirmPasswordResetCode') {
         return confirmPasswordResetCode;
