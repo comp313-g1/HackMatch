@@ -19,7 +19,7 @@ import {
   markPasswordResetCodeConsumed,
   wasPasswordResetCodeConsumed,
 } from '../utils/consumedResetCodes.js';
-import { clearMfaClaim, hasCompletedMfa } from '../utils/mfaClaim.js';
+import { clearMfaClaim, hasCompletedMfa, markMfaComplete } from '../utils/mfaClaim.js';
 import { securityConfig } from '../config/security.js';
 import { extractBearerToken, mapFirebaseAuthError } from '../middleware/requireFirebaseAuth.js';
 import {
