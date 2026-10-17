@@ -3,14 +3,33 @@ import React from 'react';
 export interface SafeExternalLinkProps {
   url: string | null;
   label: string;
+  disabled?: boolean;
 }
 
 /**
- * Renders an external anchor tag ONLY when the URL is a valid, absolute HTTPS URL.
- * Enforces target="_blank" and rel="noopener noreferrer" per FR-020 and security guidelines.
- * If url is null, empty, non-HTTPS, or malformed, renders a non-navigable text notice.
+ * Renders an external anchor tag ONLY when:
+ * 1. disabled is not true.
+ * 2. URL is a valid, absolute HTTPS URL.
+ * Enforces target="_blank" and rel="noopener noreferrer" per FR-020 and FR-076.
+ * If disabled is true, renders an administrator-disabled notice with aria-disabled="true".
+ * If url is null, empty, non-HTTPS, or malformed, renders a non-navigable unavailable notice.
  */
-export function SafeExternalLink({ url, label }: SafeExternalLinkProps): React.JSX.Element {
+export function SafeExternalLink({
+  url,
+  label,
+  disabled = false,
+}: SafeExternalLinkProps): React.JSX.Element {
+  if (disabled) {
+    return (
+      <span
+        aria-disabled="true"
+        className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded italic"
+      >
+        Official link disabled by an administrator
+      </span>
+    );
+  }
+
   if (!url || typeof url !== 'string' || url.trim().length === 0) {
     return <span className="text-xs text-ink-muted italic">Official link unavailable</span>;
   }

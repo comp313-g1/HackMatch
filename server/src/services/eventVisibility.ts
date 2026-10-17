@@ -85,3 +85,12 @@ export function escapeLikeTerm(term: string): string {
   return stripped.replace(/[%_]/g, '\\$&');
 }
 
+/**
+ * Checks whether an event status is approved for public visibility (US-008 AC 1, AC 4).
+ * Only 'Published' and 'Archived' records are public. 'Disabled', 'Pending', and rejected records are hidden.
+ */
+export function isPubliclyVisible(status: string): boolean {
+  return status === 'Published' || status === 'Archived';
+}
+
+

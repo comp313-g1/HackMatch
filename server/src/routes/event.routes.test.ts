@@ -160,6 +160,16 @@ describe('Public Express Event List and Detail Endpoints (US-008 / #72, #73)', (
     expect(res.body.event.link_disabled).toBe(true);
   });
 
+  it('GET /api/events/:eventId returns 404 for Disabled or non-public events without revealing existence', async () => {
+    // When an event exists in DB but has status 'Disabled', findPublicEventById returns null
+    vi.spyOn(eventsRepository, 'findPublicEventById').mockResolvedValue(null);
+
+    const res = await request(app).get('/api/events/e1000000-0000-4000-8000-000000000099');
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'Event not found' });
+  });
+
   it('returns generic 500 without leaking database details when repository throws', async () => {
     vi.spyOn(eventsRepository, 'listPublicEvents').mockRejectedValue(
       new Error('FATAL: connection pool exhausted at postgresql://...')

@@ -93,6 +93,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps): React.JSX.El
                 <SafeExternalLink
                   url={event.official_url}
                   label="Visit Official Hackathon Website"
+                  disabled={event.link_disabled}
                 />
               </div>
             </div>

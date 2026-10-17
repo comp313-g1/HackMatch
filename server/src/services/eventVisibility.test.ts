@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveTimeState, toPublicEvent } from './eventVisibility.js';
+import { deriveTimeState, toPublicEvent, isPubliclyVisible } from './eventVisibility.js';
 import type { EventRecord } from '../db/events.repository.js';
 
 describe('eventVisibility service unit tests (US-008 / #72)', () => {
@@ -76,5 +76,14 @@ describe('eventVisibility service unit tests (US-008 / #72)', () => {
     const insecureRecord = { ...baseRecord, official_url: 'http://insecure.com' };
     const publicEvent = toPublicEvent(insecureRecord);
     expect(publicEvent.official_url).toBeNull();
+  });
+
+  it('isPubliclyVisible returns true only for Published and Archived', () => {
+    expect(isPubliclyVisible('Published')).toBe(true);
+    expect(isPubliclyVisible('Archived')).toBe(true);
+    expect(isPubliclyVisible('Disabled')).toBe(false);
+    expect(isPubliclyVisible('Pending')).toBe(false);
+    expect(isPubliclyVisible('Rejected')).toBe(false);
+    expect(isPubliclyVisible('')).toBe(false);
   });
 });

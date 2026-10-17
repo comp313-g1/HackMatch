@@ -56,7 +56,11 @@ export function EventCard({ event, onSelect }: EventCardProps): React.JSX.Elemen
 
       <div className="pt-3 border-t border-cream-100 flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <SafeExternalLink url={event.official_url} label="Official Site" />
+          <SafeExternalLink
+            url={event.official_url}
+            label="Official Site"
+            disabled={event.link_disabled}
+          />
         </div>
         {onSelect && (
           <button

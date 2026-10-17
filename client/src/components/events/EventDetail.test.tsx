@@ -63,4 +63,23 @@ describe('EventDetail component unit tests (US-008 / #75)', () => {
     const retryBtn = screen.getByRole('button', { name: /retry/i });
     expect(retryBtn).toBeInTheDocument();
   });
+
+  it('renders disabled link notice when event has link_disabled: true', async () => {
+    const handleBack = vi.fn();
+    const disabledEvent: PublicEvent = {
+      ...sampleEvent,
+      official_url: null,
+      link_disabled: true,
+    };
+    vi.spyOn(eventApiModule, 'fetchPublicEventById').mockResolvedValue(disabledEvent);
+
+    render(<EventDetail eventId={disabledEvent.id} onBack={handleBack} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Hack The North 2026')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole('link', { name: /visit official hackathon website/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Official link disabled by an administrator')).toBeInTheDocument();
+  });
 });

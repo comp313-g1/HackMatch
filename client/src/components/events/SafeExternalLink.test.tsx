@@ -41,4 +41,18 @@ describe('SafeExternalLink component unit tests (US-008 / #75)', () => {
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
     expect(screen.getByText('Official link unavailable')).toBeInTheDocument();
   });
+
+  it('renders administrator-disabled notice when disabled is true, even if valid HTTPS URL is provided', () => {
+    render(
+      <SafeExternalLink
+        url="https://hackthenorth.com"
+        label="Official Site"
+        disabled={true}
+      />
+    );
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    const disabledNotice = screen.getByText('Official link disabled by an administrator');
+    expect(disabledNotice).toBeInTheDocument();
+    expect(disabledNotice).toHaveAttribute('aria-disabled', 'true');
+  });
 });
