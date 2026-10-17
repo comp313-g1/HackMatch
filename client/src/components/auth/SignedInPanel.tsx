@@ -2,6 +2,10 @@ import React, { useState } from 'react';
 import { auth } from '../../config/firebase';
 import { logout } from './logout';
 import { ProfileEditorForm } from '../profile/ProfileEditorForm';
+import {
+  CandidateProfileCard,
+  type CandidateProfileData,
+} from '../profile/CandidateProfileCard';
 
 export interface SignedInPanelProps {
   email: string | null;
@@ -12,6 +16,7 @@ export function SignedInPanel({ email, onSignedOut }: SignedInPanelProps): React
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showProfileEditor, setShowProfileEditor] = useState(false);
+  const [currentProfile, setCurrentProfile] = useState<CandidateProfileData | null>(null);
 
   const handleSignOut = async () => {
     if (signingOut) return;
@@ -68,7 +73,20 @@ export function SignedInPanel({ email, onSignedOut }: SignedInPanelProps): React
         </div>
       </div>
 
-      {showProfileEditor && <ProfileEditorForm />}
+      {showProfileEditor && (
+        <div className="space-y-6">
+          <ProfileEditorForm
+            loadOnMount
+            onLoaded={(loaded) => setCurrentProfile(loaded as unknown as CandidateProfileData)}
+            onSaved={(saved) => setCurrentProfile(saved as unknown as CandidateProfileData)}
+          />
+          {currentProfile && (
+            <div className="max-w-md w-full mx-auto">
+              <CandidateProfileCard viewerCategory="OWNER" profile={currentProfile} />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

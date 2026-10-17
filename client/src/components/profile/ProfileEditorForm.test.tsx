@@ -144,4 +144,75 @@ describe('ProfileEditorForm (US-006 / #65)', () => {
     expect(screen.getByLabelText(/display handle/i)).toHaveValue('taken_handle');
     expect(screen.getByLabelText(/academic institution/i)).toHaveValue('Centennial College');
   });
+
+  it('shows a loading state when loadOnMount is true and populates loaded profile values (#66)', async () => {
+    let resolveLoad: (value: Response) => void = () => {};
+    vi.spyOn(authFetchModule, 'authFetch').mockReturnValueOnce(
+      new Promise<Response>((resolve) => {
+        resolveLoad = resolve;
+      })
+    );
+
+    render(<ProfileEditorForm loadOnMount />);
+
+    expect(screen.getByRole('status')).toHaveTextContent(/loading your technical profile/i);
+
+    resolveLoad(
+      new Response(
+        JSON.stringify({
+          profile: {
+            handle: 'loaded_dev',
+            primaryRole: 'Mobile',
+            institution: 'University of Waterloo',
+            skills: ['Kotlin', 'Swift'],
+            portfolioLinks: [{ url: 'https://github.com/loaded_dev', label: 'GitHub' }],
+            sharedContactHandle: '@loaded_contact',
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+
+    expect(await screen.findByLabelText(/display handle/i)).toHaveValue('loaded_dev');
+    expect(screen.getByLabelText(/primary role/i)).toHaveValue('Mobile');
+    expect(screen.getByLabelText(/academic institution/i)).toHaveValue('University of Waterloo');
+    expect(screen.getByLabelText(/skill tags/i)).toHaveValue('Kotlin, Swift');
+    expect(screen.getByLabelText(/portfolio https url 1/i)).toHaveValue(
+      'https://github.com/loaded_dev'
+    );
+  });
+
+  it('shows an empty-profile notice when loaded profile has no saved fields and allows retry on load failure (#66)', async () => {
+    const fetchSpy = vi
+      .spyOn(authFetchModule, 'authFetch')
+      .mockRejectedValueOnce(new Error('Network down'))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            profile: {
+              handle: null,
+              primaryRole: null,
+              institution: null,
+              skills: [],
+              portfolioLinks: [],
+              sharedContactHandle: null,
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      );
+
+    render(<ProfileEditorForm loadOnMount />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /network error while loading your technical profile/i
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /retry loading profile/i }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      /your technical profile has no saved details yet/i
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
 });

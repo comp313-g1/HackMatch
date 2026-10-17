@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   PRIMARY_ROLES,
   validateProfileForm,
@@ -19,6 +19,8 @@ export interface ProfileEditorInitialValues {
 
 export interface ProfileEditorFormProps {
   initialValues?: ProfileEditorInitialValues;
+  loadOnMount?: boolean;
+  onLoaded?: (loadedProfile: Record<string, unknown>) => void;
   onSaved?: (savedProfile: Record<string, unknown>) => void;
 }
 
@@ -29,8 +31,25 @@ const primaryBtnClass =
 const secondaryBtnClass =
   'py-1.5 px-3 border border-cream-200 rounded-md shadow-sm text-xs font-medium text-ink bg-white hover:bg-cream-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest disabled:opacity-50';
 
+function isProfileEmpty(values?: ProfileEditorInitialValues): boolean {
+  if (!values) return true;
+  const hasHandle = Boolean(values.handle && values.handle.trim().length > 0);
+  const hasRole = Boolean(values.primaryRole && values.primaryRole.trim().length > 0);
+  const hasInstitution = Boolean(values.institution && values.institution.trim().length > 0);
+  const hasSkills = Array.isArray(values.skills) && values.skills.length > 0;
+  const hasPortfolios =
+    Array.isArray(values.portfolioLinks) &&
+    values.portfolioLinks.some((link) => link.url && link.url.trim().length > 0);
+  const hasContact = Boolean(
+    values.sharedContactHandle && values.sharedContactHandle.trim().length > 0
+  );
+  return !hasHandle && !hasRole && !hasInstitution && !hasSkills && !hasPortfolios && !hasContact;
+}
+
 export function ProfileEditorForm({
   initialValues,
+  loadOnMount = false,
+  onLoaded,
   onSaved,
 }: ProfileEditorFormProps): React.JSX.Element {
   const [handle, setHandle] = useState<string>(initialValues?.handle ?? '');
@@ -51,10 +70,60 @@ export function ProfileEditorForm({
     initialValues?.sharedContactHandle ?? ''
   );
 
+  const [loadingProfile, setLoadingProfile] = useState<boolean>(loadOnMount);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isEmptyProfileState, setIsEmptyProfileState] = useState<boolean>(
+    initialValues ? isProfileEmpty(initialValues) : false
+  );
   const [fieldErrors, setFieldErrors] = useState<ProfileFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
+
+  const applyProfileValues = useCallback((profileData: ProfileEditorInitialValues) => {
+    setHandle(profileData.handle ?? '');
+    setPrimaryRole(profileData.primaryRole ?? '');
+    setInstitution(profileData.institution ?? '');
+    setSkillsInput(profileData.skills ? profileData.skills.join(', ') : '');
+    setPortfolioLinks(
+      profileData.portfolioLinks && profileData.portfolioLinks.length > 0
+        ? profileData.portfolioLinks.map((link) => ({
+            url: link.url,
+            label: link.label ?? '',
+          }))
+        : [{ url: '', label: '' }]
+    );
+    setSharedContactHandle(profileData.sharedContactHandle ?? '');
+    setIsEmptyProfileState(isProfileEmpty(profileData));
+  }, []);
+
+  const fetchMyProfile = useCallback(async () => {
+    setLoadingProfile(true);
+    setLoadError(null);
+    try {
+      const response = await authFetch('/api/profiles/me', {
+        method: 'GET',
+      });
+      const data = await response.json().catch(() => null);
+      if (response.ok && data?.profile) {
+        const loaded = data.profile as ProfileEditorInitialValues & Record<string, unknown>;
+        applyProfileValues(loaded);
+        onLoaded?.(loaded);
+      } else {
+        setLoadError(data?.error || 'Could not load your technical profile.');
+      }
+    } catch {
+      setLoadError('Network error while loading your technical profile.');
+    } finally {
+      setLoadingProfile(false);
+    }
+  }, [applyProfileValues, onLoaded]);
+
+  useEffect(() => {
+    if (loadOnMount) {
+      void fetchMyProfile();
+    }
+  }, [loadOnMount, fetchMyProfile]);
 
   const handlePortfolioLinkChange = (
     index: number,
@@ -95,6 +164,16 @@ export function ProfileEditorForm({
 
       if (response.ok) {
         setSuccessMessage('Technical profile updated successfully.');
+        setIsEmptyProfileState(
+          isProfileEmpty({
+            handle: payload.handle,
+            primaryRole: payload.primaryRole,
+            institution: payload.institution,
+            skills: payload.skills,
+            portfolioLinks: payload.portfolioLinks,
+            sharedContactHandle: payload.sharedContactHandle,
+          })
+        );
         if (data?.profile && onSaved) {
           onSaved(data.profile);
         }
@@ -135,6 +214,19 @@ export function ProfileEditorForm({
     await submitPayload(validation.payload);
   };
 
+  if (loadingProfile) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        className="max-w-lg w-full mx-auto p-6 bg-white rounded-xl border border-cream-200 shadow-sm"
+      >
+        <p className="text-sm font-medium text-ink-muted">Loading your technical profile...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-lg w-full mx-auto p-6 bg-white rounded-xl border border-cream-200 shadow-sm">
       <div className="mb-4">
@@ -154,6 +246,33 @@ export function ProfileEditorForm({
         links are labelled self-declared. HackMatch validates HTTPS URL format only and does not
         independently certify skills, identity, or achievements.
       </div>
+
+      {loadError && (
+        <div
+          role="alert"
+          className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-md space-y-2"
+        >
+          <p>{loadError}</p>
+          <button
+            type="button"
+            onClick={() => void fetchMyProfile()}
+            className={secondaryBtnClass}
+          >
+            Retry loading profile
+          </button>
+        </div>
+      )}
+
+      {isEmptyProfileState && !loadError && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-4 p-3 bg-cream-50 border border-cream-200 text-ink-muted text-xs rounded-md"
+        >
+          Your technical profile has no saved details yet. Complete the fields below so prospective
+          teammates can assess your capabilities.
+        </div>
+      )}
 
       {formError && (
         <div

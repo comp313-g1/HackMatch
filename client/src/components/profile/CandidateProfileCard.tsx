@@ -23,14 +23,55 @@ export interface CandidateProfileData {
 export interface CandidateProfileCardProps {
   viewerCategory: ProfileViewerCategory;
   profile: CandidateProfileData;
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
   onRequestSignIn?: () => void;
 }
 
 export function CandidateProfileCard({
   viewerCategory,
   profile,
+  loading = false,
+  error = null,
+  onRetry,
   onRequestSignIn,
 }: CandidateProfileCardProps): React.JSX.Element {
+  if (loading) {
+    return (
+      <article
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        aria-label="Loading candidate profile"
+        className="max-w-md w-full p-5 bg-white rounded-xl border border-cream-200 shadow-sm"
+      >
+        <p className="text-sm font-medium text-ink-muted">Loading candidate profile...</p>
+      </article>
+    );
+  }
+
+  if (error) {
+    return (
+      <article
+        role="alert"
+        aria-label="Candidate profile error"
+        className="max-w-md w-full p-5 bg-white rounded-xl border border-red-200 shadow-sm space-y-3"
+      >
+        <p className="text-sm text-red-700">{error}</p>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="py-1.5 px-3 border border-cream-200 rounded-md shadow-sm text-xs font-medium text-ink bg-white hover:bg-cream-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest"
+          >
+            Retry loading profile
+          </button>
+        )}
+      </article>
+    );
+  }
+
   // 1. Visitor boundary (US-006 AC 3 / FR-014 / US-006-T3):
   // Visitors see anonymized previews only — never member handles, participant cards, portfolio links, or contacts.
   if (viewerCategory === 'VISITOR') {
@@ -100,9 +141,13 @@ export function CandidateProfileCard({
             <p className="text-xs text-ink-muted mt-0.5">{profile.institution}</p>
           )}
         </div>
-        {profile.primaryRole && (
+        {profile.primaryRole ? (
           <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-forest-50 text-forest-800 border border-forest-100">
             {profile.primaryRole}
+          </span>
+        ) : (
+          <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-cream-50 text-ink-muted border border-cream-200">
+            Role not specified
           </span>
         )}
       </div>

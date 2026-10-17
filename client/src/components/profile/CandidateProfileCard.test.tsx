@@ -55,4 +55,35 @@ describe('CandidateProfileCard Privacy Boundaries (US-006 / #67 / FR-014)', () =
     expect(screen.getByText('@maya_private_discord')).toBeInTheDocument();
     expect(screen.getByText(/visible only to confirmed teammates/i)).toBeInTheDocument();
   });
+
+  it('renders loading, error/retry, and empty profile states cleanly (#66)', () => {
+    const { rerender } = render(
+      <CandidateProfileCard viewerCategory="PART" profile={{}} loading />
+    );
+    expect(screen.getByRole('status', { name: /loading candidate profile/i })).toHaveTextContent(
+      /loading candidate profile/i
+    );
+
+    rerender(
+      <CandidateProfileCard
+        viewerCategory="PART"
+        profile={{}}
+        error="Failed to load candidate profile."
+      />
+    );
+    expect(screen.getByRole('alert', { name: /candidate profile error/i })).toHaveTextContent(
+      /failed to load candidate profile/i
+    );
+
+    rerender(
+      <CandidateProfileCard
+        viewerCategory="PART"
+        profile={{ displayName: 'New Member', skills: [], portfolioLinks: [] }}
+      />
+    );
+    expect(screen.getByText('New Member')).toBeInTheDocument();
+    expect(screen.getByText(/role not specified/i)).toBeInTheDocument();
+    expect(screen.getByText(/no skills listed yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/no portfolio links listed/i)).toBeInTheDocument();
+  });
 });
