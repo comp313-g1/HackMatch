@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { auth } from '../../config/firebase';
 import { logout } from './logout';
-import { ProfileEditorForm } from '../profile/ProfileEditorForm';
+import { authFetch } from '../../config/authFetch';
+import { ProfileEditorForm, type ProfileEditorInitialValues } from '../profile/ProfileEditorForm';
 import {
   CandidateProfileCard,
   type CandidateProfileData,
@@ -15,8 +16,41 @@ export interface SignedInPanelProps {
 export function SignedInPanel({ email, onSignedOut }: SignedInPanelProps): React.JSX.Element {
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showProfileEditor, setShowProfileEditor] = useState(false);
+  const [showProfileSection, setShowProfileSection] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const [currentProfile, setCurrentProfile] = useState<CandidateProfileData | null>(null);
+
+  const fetchProfile = useCallback(async () => {
+    setLoadingProfile(true);
+    setProfileLoadError(null);
+    try {
+      const response = await authFetch('/api/profiles/me', { method: 'GET' });
+      const data = await response.json().catch(() => null);
+      if (response.ok && data?.profile) {
+        setCurrentProfile(data.profile as CandidateProfileData);
+      } else {
+        setProfileLoadError(data?.error || 'Could not load your technical profile.');
+      }
+    } catch {
+      setProfileLoadError('Network error while loading your technical profile.');
+    } finally {
+      setLoadingProfile(false);
+    }
+  }, []);
+
+  const handleToggleProfileSection = () => {
+    if (!showProfileSection) {
+      setShowProfileSection(true);
+      if (!currentProfile) {
+        void fetchProfile();
+      }
+    } else {
+      setShowProfileSection(false);
+      setIsEditingProfile(false);
+    }
+  };
 
   const handleSignOut = async () => {
     if (signingOut) return;
@@ -35,6 +69,9 @@ export function SignedInPanel({ email, onSignedOut }: SignedInPanelProps): React
       setSigningOut(false);
     }
   };
+
+  const isProfileEmpty =
+    !currentProfile || (!currentProfile.primaryRole && !currentProfile.handle);
 
   return (
     <div className="space-y-6">
@@ -56,10 +93,10 @@ export function SignedInPanel({ email, onSignedOut }: SignedInPanelProps): React
         <div className="space-y-3">
           <button
             type="button"
-            onClick={() => setShowProfileEditor((prev) => !prev)}
+            onClick={handleToggleProfileSection}
             className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-semibold text-white bg-forest hover:bg-forest-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest"
           >
-            {showProfileEditor ? 'Hide Technical Profile' : 'Manage Technical Profile'}
+            {showProfileSection ? 'Hide Technical Profile' : 'Manage Technical Profile'}
           </button>
           <button
             type="button"
@@ -73,16 +110,39 @@ export function SignedInPanel({ email, onSignedOut }: SignedInPanelProps): React
         </div>
       </div>
 
-      {showProfileEditor && (
-        <div className="space-y-6">
-          <ProfileEditorForm
-            loadOnMount
-            onLoaded={(loaded) => setCurrentProfile(loaded as unknown as CandidateProfileData)}
-            onSaved={(saved) => setCurrentProfile(saved as unknown as CandidateProfileData)}
-          />
-          {currentProfile && (
-            <div className="max-w-md w-full mx-auto">
-              <CandidateProfileCard viewerCategory="OWNER" profile={currentProfile} />
+      {showProfileSection && (
+        <div className="max-w-md w-full mx-auto space-y-4">
+          {loadingProfile ? (
+            <CandidateProfileCard viewerCategory="OWNER" profile={{}} loading />
+          ) : profileLoadError ? (
+            <CandidateProfileCard
+              viewerCategory="OWNER"
+              profile={{}}
+              error={profileLoadError}
+              onRetry={() => void fetchProfile()}
+            />
+          ) : isEditingProfile ? (
+            <ProfileEditorForm
+              initialValues={currentProfile as ProfileEditorInitialValues | undefined}
+              onSaved={(saved) => {
+                setCurrentProfile(saved as unknown as CandidateProfileData);
+                setIsEditingProfile(false);
+              }}
+              onCancel={() => setIsEditingProfile(false)}
+            />
+          ) : (
+            <div className="space-y-4">
+              <CandidateProfileCard
+                viewerCategory="OWNER"
+                profile={currentProfile || {}}
+              />
+              <button
+                type="button"
+                onClick={() => setIsEditingProfile(true)}
+                className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-semibold text-white bg-forest hover:bg-forest-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest"
+              >
+                {isProfileEmpty ? 'Create Technical Profile' : 'Edit Technical Profile'}
+              </button>
             </div>
           )}
         </div>

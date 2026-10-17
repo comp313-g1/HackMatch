@@ -22,6 +22,7 @@ export interface ProfileEditorFormProps {
   loadOnMount?: boolean;
   onLoaded?: (loadedProfile: Record<string, unknown>) => void;
   onSaved?: (savedProfile: Record<string, unknown>) => void;
+  onCancel?: () => void;
 }
 
 const inputClass =
@@ -51,6 +52,7 @@ export function ProfileEditorForm({
   loadOnMount = false,
   onLoaded,
   onSaved,
+  onCancel,
 }: ProfileEditorFormProps): React.JSX.Element {
   const [handle, setHandle] = useState<string>(initialValues?.handle ?? '');
   const [primaryRole, setPrimaryRole] = useState<string>(initialValues?.primaryRole ?? '');
@@ -544,14 +546,26 @@ export function ProfileEditorForm({
           )}
         </div>
 
-        <button
-          type="submit"
-          disabled={saving}
-          aria-busy={saving}
-          className={primaryBtnClass}
-        >
-          {saving ? 'Saving Profile...' : 'Save Technical Profile'}
-        </button>
+        <div className="flex gap-3 pt-2">
+          <button
+            type="submit"
+            disabled={saving}
+            aria-busy={saving}
+            className={primaryBtnClass}
+          >
+            {saving ? 'Saving Profile...' : 'Save Technical Profile'}
+          </button>
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={saving}
+              className="w-auto mt-2 py-2.5 px-4 border border-cream-200 rounded-md shadow-sm text-sm font-medium text-ink bg-white hover:bg-cream-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
       </form>
     </div>
   );
