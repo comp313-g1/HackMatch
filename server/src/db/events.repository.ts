@@ -1,4 +1,5 @@
 import { getSupabaseClient } from './client.js';
+import { escapeLikeTerm } from '../services/eventVisibility.js';
 
 export interface EventRecord {
   id: string;
@@ -15,9 +16,15 @@ export interface EventRecord {
   status: 'Published' | 'Archived' | 'Disabled';
 }
 
+export type TimeState = 'upcoming' | 'ongoing' | 'concluded';
+
 export interface EventListFilter {
   limit: number;
   offset: number;
+  keyword?: string;
+  format?: string;
+  timeState?: TimeState;
+  now?: Date;
 }
 
 export interface IEventsRepository {
@@ -33,10 +40,41 @@ export const PUBLIC_EVENT_COLUMNS =
 export const eventsRepository: IEventsRepository = {
   async listPublicEvents(filter: EventListFilter): Promise<{ rows: EventRecord[]; total: number }> {
     const client = getSupabaseClient();
-    const { data, count, error } = await client
+    let query = client
       .from('events')
       .select(PUBLIC_EVENT_COLUMNS, { count: 'exact' })
-      .in('status', [...PUBLIC_STATUSES])
+      .in('status', [...PUBLIC_STATUSES]);
+
+    // Keyword filter (across title and location using OR within the group)
+    if (filter.keyword && filter.keyword.trim().length > 0) {
+      const sanitized = escapeLikeTerm(filter.keyword.trim());
+      if (sanitized.length > 0) {
+        query = query.or(`title.ilike.%${sanitized}%,location.ilike.%${sanitized}%`);
+      }
+    }
+
+    // Format filter (case-insensitive exact match)
+    if (filter.format && filter.format.trim().length > 0) {
+      const sanitized = escapeLikeTerm(filter.format.trim());
+      query = query.ilike('format', sanitized);
+    }
+
+    // TimeState filter (calculated relative to reference now)
+    const referenceTime = filter.now || new Date();
+    const isoNow = referenceTime.toISOString();
+
+    if (filter.timeState === 'upcoming') {
+      // start_date > now
+      query = query.gt('start_date', isoNow);
+    } else if (filter.timeState === 'ongoing') {
+      // start_date <= now AND end_date >= now AND status = 'Published'
+      query = query.lte('start_date', isoNow).gte('end_date', isoNow).eq('status', 'Published');
+    } else if (filter.timeState === 'concluded') {
+      // end_date < now OR status = 'Archived'
+      query = query.or(`end_date.lt.${isoNow},status.eq.Archived`);
+    }
+
+    const { data, count, error } = await query
       .order('start_date', { ascending: true })
       .order('id', { ascending: true })
       .range(filter.offset, filter.offset + filter.limit - 1);

@@ -1,20 +1,29 @@
 import type { Request, Response } from 'express';
 import { eventsRepository } from '../db/events.repository.js';
 import { toPublicEvent } from '../services/eventVisibility.js';
+import { parseEventListQuery } from '../validators/event.validator.js';
 
-export async function listPublicEvents(_req: Request, res: Response): Promise<void> {
+export async function listPublicEvents(req: Request, res: Response): Promise<void> {
   try {
-    const limit = 20;
-    const offset = 0;
+    const parseResult = parseEventListQuery(req.query as Record<string, unknown>);
 
-    const { rows, total } = await eventsRepository.listPublicEvents({ limit, offset });
+    if (!parseResult.ok) {
+      res.status(400).json({
+        error: 'Invalid query parameters',
+        fields: parseResult.fields,
+      });
+      return;
+    }
+
+    const { filter } = parseResult;
+    const { rows, total } = await eventsRepository.listPublicEvents(filter);
     const events = rows.map((r) => toPublicEvent(r));
 
     res.status(200).json({
       events,
       total,
-      limit,
-      offset,
+      limit: filter.limit,
+      offset: filter.offset,
     });
   } catch {
     res.status(500).json({ error: 'Internal Server Error' });

@@ -3,7 +3,7 @@ import request from 'supertest';
 import { app } from '../app.js';
 import { eventsRepository, type EventRecord } from '../db/events.repository.js';
 
-describe('Public Express Event List and Detail Endpoints (US-008 / #72)', () => {
+describe('Public Express Event List and Detail Endpoints (US-008 / #72, #73)', () => {
   const publishedRecord: EventRecord = {
     id: 'e1000000-0000-4000-8000-000000000001',
     title: 'Hack The North 2026',
@@ -62,6 +62,43 @@ describe('Public Express Event List and Detail Endpoints (US-008 / #72)', () => 
     // Ensure no internal timestamps or normalized_url leaked
     expect(res.body.events[0].normalized_url).toBeUndefined();
     expect(res.body.events[0].created_at).toBeUndefined();
+  });
+
+  it('GET /api/events passes parsed and canonicalized query parameters to repository', async () => {
+    const listSpy = vi.spyOn(eventsRepository, 'listPublicEvents').mockResolvedValue({
+      rows: [publishedRecord],
+      total: 1,
+    });
+
+    const res = await request(app).get(
+      '/api/events?q=hackathon+north&format=hybrid&timeState=UPCOMING&limit=10&offset=5'
+    );
+
+    expect(res.status).toBe(200);
+    expect(listSpy).toHaveBeenCalledWith({
+      keyword: 'hackathon north',
+      format: 'Hybrid', // canonicalized
+      timeState: 'upcoming',
+      limit: 10,
+      offset: 5,
+    });
+    expect(res.body.limit).toBe(10);
+    expect(res.body.offset).toBe(5);
+  });
+
+  it('GET /api/events returns 400 Bad Request with field errors for invalid query params', async () => {
+    const res = await request(app).get(
+      '/api/events?format=InvalidFormat&timeState=not-a-state&limit=99&offset=-5'
+    );
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid query parameters');
+    expect(res.body.fields).toEqual({
+      format: 'Format must be one of: In-Person, Virtual, Hybrid',
+      timeState: 'Time state must be one of: upcoming, ongoing, concluded',
+      limit: 'Limit must be an integer between 1 and 50',
+      offset: 'Offset must be a non-negative integer',
+    });
   });
 
   it('GET /api/events returns empty array when no events match', async () => {

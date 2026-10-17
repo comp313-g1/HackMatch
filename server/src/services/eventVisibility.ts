@@ -72,3 +72,16 @@ export function toPublicEvent(record: EventRecord, now: Date = new Date()): Publ
     time_state: deriveTimeState(record, now),
   };
 }
+
+/**
+ * Strips PostgREST query control characters and escapes LIKE wildcards.
+ * Strips: , ( ) " \ *
+ * Escapes: % -> \% and _ -> \_
+ */
+export function escapeLikeTerm(term: string): string {
+  // Strip control characters that could break PostgREST or filter grammar
+  const stripped = term.replace(/[,()"\\*]/g, '');
+  // Escape LIKE pattern wildcards so user input is treated as literal text
+  return stripped.replace(/[%_]/g, '\\$&');
+}
+
