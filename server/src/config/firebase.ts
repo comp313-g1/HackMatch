@@ -206,15 +206,85 @@ export async function sendVerificationEmail(
 }
 
 /**
+ * Dispatches a Firebase-managed password-reset email (US-005 / FR-011).
+ *
+ * Uses Identity Toolkit `accounts:sendOobCode` with `requestType: PASSWORD_RESET`.
+ * Link expiry and single-use semantics are Firebase-managed (~60 minutes per FR-011).
+ * Never logs the oobCode or continue URL query secrets (NR-021).
+ */
+export async function sendPasswordResetEmail(
+  email: string,
+  actionCodeSettings?: { url?: string }
+): Promise<void> {
+  const apiKey = process.env.FIREBASE_WEB_API_KEY || process.env.VITE_FIREBASE_API_KEY;
+
+  if (!apiKey) {
+    throw createAuthError(
+      '[Firebase Error] FIREBASE_WEB_API_KEY is not configured to dispatch password-reset emails.',
+      'auth/configuration-error'
+    );
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) {
+    throw createAuthError('Email address is required for password reset.', 'auth/invalid-email');
+  }
+
+  const sendOobUrl = `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`;
+  const sendPayload: Record<string, unknown> = {
+    requestType: 'PASSWORD_RESET',
+    email: normalizedEmail,
+  };
+
+  if (actionCodeSettings?.url) {
+    sendPayload.continueUrl = actionCodeSettings.url;
+  }
+
+  const sendRes = await fetch(sendOobUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(sendPayload),
+  });
+
+  if (!sendRes.ok) {
+    const errorData = (await sendRes.json().catch(() => ({}))) as Record<string, unknown>;
+    const errObj =
+      errorData.error && typeof errorData.error === 'object'
+        ? (errorData.error as Record<string, unknown>)
+        : {};
+    const errMsg = typeof errObj.message === 'string' ? errObj.message : 'Email dispatch failed';
+
+    if (errMsg.includes('EMAIL_NOT_FOUND')) {
+      throw createAuthError('No user record found for the given email.', 'auth/user-not-found');
+    }
+    if (errMsg.includes('INVALID_EMAIL')) {
+      throw createAuthError('The email address is badly formatted.', 'auth/invalid-email');
+    }
+    if (errMsg.includes('TOO_MANY_ATTEMPTS') || errMsg.includes('TOO_MANY_REQUESTS')) {
+      throw createAuthError('Too many password-reset requests.', 'auth/too-many-requests');
+    }
+
+    throw createAuthError(
+      `Firebase password-reset email dispatch failed: ${errMsg}`,
+      'auth/network-request-failed'
+    );
+  }
+}
+
+/**
  * Singleton proxy to allow direct consumption without throwing on module import.
  */
 export const firebaseAuth: Auth & {
   verifyEmailActionCode?: typeof verifyEmailActionCode;
   sendVerificationEmail?: typeof sendVerificationEmail;
+  sendPasswordResetEmail?: typeof sendPasswordResetEmail;
 } = new Proxy(
   {} as Auth & {
     verifyEmailActionCode?: typeof verifyEmailActionCode;
     sendVerificationEmail?: typeof sendVerificationEmail;
+    sendPasswordResetEmail?: typeof sendPasswordResetEmail;
   },
   {
     get(_target, prop) {
@@ -223,6 +293,9 @@ export const firebaseAuth: Auth & {
       }
       if (prop === 'sendVerificationEmail') {
         return sendVerificationEmail;
+      }
+      if (prop === 'sendPasswordResetEmail') {
+        return sendPasswordResetEmail;
       }
       const authClient = getFirebaseAdminAuth();
       const value = (authClient as unknown as Record<string | symbol, unknown>)[prop];

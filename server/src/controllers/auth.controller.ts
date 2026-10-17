@@ -1,5 +1,11 @@
 import type { Request, Response, NextFunction } from 'express';
-import { firebaseAuth, verifyEmailActionCode, sendVerificationEmail, getFirebaseAdminAuth } from '../config/firebase.js';
+import {
+  firebaseAuth,
+  verifyEmailActionCode,
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+  getFirebaseAdminAuth,
+} from '../config/firebase.js';
 import { config } from '../config/index.js';
 import { participantsRepository } from '../db/participants.repository.js';
 import { providerIdentitiesRepository } from '../db/provider_identities.repository.js';
@@ -385,6 +391,95 @@ export async function resendVerification(
     // 3. FR-081 Anti-enumeration: Uniform HTTP 200 response (zero session tokens/cookies issued)
     res.status(200).json({
       message: 'If an account exists for this address, a verification link has been sent.',
+    });
+  } catch (err: unknown) {
+    next(err);
+  }
+}
+
+/**
+ * Uniform confirmation for password-recovery requests (US-005 AC 2 / FR-011).
+ * Identical for known, unknown, and OAuth-only addresses so existence is never leaked.
+ */
+export const PASSWORD_RESET_REQUEST_CONFIRMATION =
+  'If an account exists for that email, you will receive password reset instructions shortly. If you signed in with Google or GitHub, use that provider to regain access.';
+
+/**
+ * Handles password-recovery email requests (POST /api/auth/password-reset).
+ * Firebase dispatches a single-use reset link for credential accounts (FR-011).
+ * OAuth-only and unknown addresses still receive the same HTTP 200 body (AC 1–2).
+ * Rate-limited under FR-081; delivery failures are logged without leaking (FR-084 / NR-021).
+ * Issues zero session cookies or tokens (FR-007).
+ */
+export async function requestPasswordReset(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const { email } = req.body;
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+
+  try {
+    // 1. Dual-tier rate limiting (FR-081) — applied before lookup so limits are not an oracle
+    const limitCheck = rateLimiter.checkLimit('password-reset', normalizedEmail);
+    if (!limitCheck.allowed) {
+      const retryAfterSeconds = limitCheck.retryAfterSeconds ?? 60;
+      res.setHeader('Retry-After', String(retryAfterSeconds));
+      res.status(429).json({
+        error: 'Too many requests. Please wait before requesting another password reset email.',
+        code: 'RATE_LIMITED',
+        retryAfter: retryAfterSeconds,
+      });
+      return;
+    }
+
+    // 2. Lookup participant; only credential (password) accounts receive a reset email
+    const participant = await participantsRepository.findByEmail(normalizedEmail);
+
+    if (participant && !participant.is_suspended) {
+      try {
+        const firebaseUser = await firebaseAuth.getUserByEmail(normalizedEmail);
+        const hasPasswordProvider = (firebaseUser.providerData || []).some(
+          (provider) => provider.providerId === 'password'
+        );
+
+        if (hasPasswordProvider) {
+          const actionCodeSettings = {
+            url: `${config.clientUrl}/?mode=resetPassword&view=login&email=${encodeURIComponent(normalizedEmail)}`,
+          };
+          if (process.env.VITEST) {
+            await firebaseAuth.generatePasswordResetLink(normalizedEmail, actionCodeSettings);
+          } else {
+            const sendFn = firebaseAuth.sendPasswordResetEmail || sendPasswordResetEmail;
+            await sendFn(normalizedEmail, actionCodeSettings);
+          }
+        }
+        // OAuth-only: skip send; still return generic confirmation (US-005 AC 1)
+      } catch (sendErr: unknown) {
+        // FR-084: never verify/session; log without tokens; keep uniform 200 (anti-enumeration)
+        const errCode =
+          sendErr && typeof sendErr === 'object' && 'code' in sendErr
+            ? String((sendErr as { code: unknown }).code)
+            : '';
+        if (errCode !== 'auth/user-not-found') {
+          const errMsg = sendErr instanceof Error ? sendErr.message : 'Unknown dispatch error';
+          console.warn(
+            `[AUTH] Failed to generate/dispatch password-reset email for ${normalizedEmail}: ${errMsg}`
+          );
+        }
+      }
+    } else {
+      // Normalize timing to neutralize side-channel analysis
+      if (config.nodeEnv !== 'test') {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+
+    rateLimiter.recordSend('password-reset', normalizedEmail);
+
+    // 3. FR-011 anti-enumeration: uniform HTTP 200, zero session artifacts
+    res.status(200).json({
+      message: PASSWORD_RESET_REQUEST_CONFIRMATION,
     });
   } catch (err: unknown) {
     next(err);

@@ -136,10 +136,10 @@ export interface VerifyEmailFieldErrors {
 }
 
 /**
- * Express middleware validating payload for POST /api/auth/resend-verification.
- * Enforces email presence, syntax, and maximum length.
+ * Shared email-only body validation used by resend-verification and password-reset.
+ * Enforces email presence, syntax, and maximum length; normalizes to lowercase.
  */
-export function validateResendVerificationPayload(
+function validateEmailOnlyPayload(
   req: Request,
   res: Response,
   next: NextFunction
@@ -182,6 +182,30 @@ export function validateResendVerificationPayload(
   };
 
   next();
+}
+
+/**
+ * Express middleware validating payload for POST /api/auth/resend-verification.
+ * Enforces email presence, syntax, and maximum length.
+ */
+export function validateResendVerificationPayload(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  validateEmailOnlyPayload(req, res, next);
+}
+
+/**
+ * Express middleware validating payload for POST /api/auth/password-reset (US-005 / FR-011).
+ * Same email rules as resend-verification; preserves client-entered email on 400 via field errors.
+ */
+export function validatePasswordResetRequestPayload(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  validateEmailOnlyPayload(req, res, next);
 }
 
 /**

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   validateRegisterPayload,
   validateResendVerificationPayload,
+  validatePasswordResetRequestPayload,
   validateVerifyEmailPayload,
   validateOAuthSignInPayload,
   validateOAuthLinkPayload,
@@ -10,6 +11,7 @@ import {
 import {
   register,
   resendVerification,
+  requestPasswordReset,
   verifyEmail,
   oauthSignIn,
   oauthLink,
@@ -40,6 +42,12 @@ authRouter.post('/register', validateRegisterPayload, register);
  * Enforces rate limiting and anti-enumeration protections.
  */
 authRouter.post('/resend-verification', validateResendVerificationPayload, resendVerification);
+
+/**
+ * Public endpoint to request a Firebase password-reset email (US-005 / FR-011 / S1-P1-13).
+ * Rate-limited (FR-081); uniform confirmation for known/unknown/OAuth-only (anti-enumeration).
+ */
+authRouter.post('/password-reset', validatePasswordResetRequestPayload, requestPasswordReset);
 
 /**
  * Public endpoint to verify email with an action code (US-001 AC 3 / FR-002).
