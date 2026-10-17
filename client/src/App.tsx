@@ -262,7 +262,10 @@ export function App(): React.JSX.Element {
             </h2>
             <PasswordResetForm
               onNavigateToSignIn={() => {
-                setStatusNotice('Password updated. Sign in with your new password.');
+                setStatusNotice(
+                  'Password updated. Sign in with your new password — you will need the email OTP before access.'
+                );
+                setOtpChallenge(null);
                 setCurrentView('login');
               }}
               onNavigateToRecover={() => {

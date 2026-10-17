@@ -3,7 +3,7 @@ import request from 'supertest';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { app } from '../app.js';
 import { participantsRepository } from '../db/participants.repository.js';
-import { hasCompletedMfa, markMfaComplete, MFA_CLAIM } from '../utils/mfaClaim.js';
+import { hasCompletedMfa, markMfaComplete, clearMfaClaim, MFA_CLAIM } from '../utils/mfaClaim.js';
 
 const mockVerifyIdToken = vi.fn();
 const mockGetUser = vi.fn();
@@ -83,6 +83,32 @@ describe('markMfaComplete', () => {
 
   it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])('rejects invalid auth_time %s', async (bad) => {
     await expect(markMfaComplete('fb-uid-1', bad)).rejects.toThrow(/auth_time/);
+    expect(mockSetCustomUserClaims).not.toHaveBeenCalled();
+  });
+});
+
+describe('clearMfaClaim (US-005 / S1-P2-15)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSetCustomUserClaims.mockResolvedValue(undefined);
+  });
+
+  it('removes mfa_auth_time while preserving role and other claims', async () => {
+    mockGetUser.mockResolvedValueOnce({
+      uid: 'fb-uid-1',
+      customClaims: { role: 'PART', [MFA_CLAIM]: AUTH_TIME },
+    });
+
+    await clearMfaClaim('fb-uid-1');
+
+    expect(mockSetCustomUserClaims).toHaveBeenCalledWith('fb-uid-1', { role: 'PART' });
+  });
+
+  it('no-ops when the MFA claim is already absent', async () => {
+    mockGetUser.mockResolvedValueOnce({ uid: 'fb-uid-1', customClaims: { role: 'PART' } });
+
+    await clearMfaClaim('fb-uid-1');
+
     expect(mockSetCustomUserClaims).not.toHaveBeenCalled();
   });
 });

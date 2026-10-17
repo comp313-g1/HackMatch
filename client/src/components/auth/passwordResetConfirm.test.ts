@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { verifyPasswordResetCode } from 'firebase/auth';
+import { signOut, verifyPasswordResetCode } from 'firebase/auth';
 import {
   completePasswordReset,
   describePasswordResetLinkError,
@@ -12,10 +12,12 @@ vi.mock('firebase/auth', async (importOriginal) => {
   return {
     ...actual,
     verifyPasswordResetCode: vi.fn(),
+    signOut: vi.fn(),
   };
 });
 
 const mockVerify = vi.mocked(verifyPasswordResetCode);
+const mockSignOut = vi.mocked(signOut);
 
 describe('passwordResetConfirm (US-005 AC 2–4 / FR-012)', () => {
   const fetchMock = vi.fn();
@@ -61,16 +63,25 @@ describe('passwordResetConfirm (US-005 AC 2–4 / FR-012)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('completePasswordReset POSTs to /api/auth/password-reset/confirm', async () => {
+  it('completePasswordReset POSTs confirm API, signs out locally, and never auto-logs in', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       status: 200,
       json: async () => ({
         message: 'Password updated. All existing sessions have been revoked.',
+        signedIn: false,
+        sessionIssued: false,
+        requiresMfa: true,
+        email: 'jane@example.com',
       }),
     });
+    mockSignOut.mockResolvedValueOnce(undefined);
 
-    await completePasswordReset('oob-code', 'Valid1@Password', 'Valid1@Password');
+    const result = await completePasswordReset(
+      'oob-code',
+      'Valid1@Password',
+      'Valid1@Password'
+    );
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/auth/password-reset/confirm',
@@ -83,6 +94,14 @@ describe('passwordResetConfirm (US-005 AC 2–4 / FR-012)', () => {
         }),
       })
     );
+    expect(mockSignOut).toHaveBeenCalled();
+    expect(result).toEqual({
+      signedIn: false,
+      sessionIssued: false,
+      requiresMfa: true,
+      email: 'jane@example.com',
+      message: 'Password updated. All existing sessions have been revoked.',
+    });
   });
 
   it('completePasswordReset maps REVOCATION_FAILED from the API', async () => {

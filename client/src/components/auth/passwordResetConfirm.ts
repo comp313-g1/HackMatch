@@ -5,9 +5,17 @@
  * Does not create a session (next login still requires MFA).
  */
 
-import { verifyPasswordResetCode } from 'firebase/auth';
+import { signOut, verifyPasswordResetCode } from 'firebase/auth';
 import { auth } from '../../config/firebase';
 import { PASSWORD_POLICY_MESSAGE, validatePassword } from './validation';
+
+export interface PasswordResetConfirmResult {
+  signedIn: false;
+  sessionIssued: false;
+  requiresMfa: true;
+  email?: string;
+  message?: string;
+}
 
 export type PasswordResetLinkErrorKind =
   | 'expired'
@@ -121,14 +129,14 @@ export async function validatePasswordResetLink(oobCode: string): Promise<string
 }
 
 /**
- * Confirms the reset via the Express API (password replace + revokeRefreshTokens).
- * Authorization is possession of a valid oobCode; no session is issued.
+ * Confirms the reset via the Express API (password replace + revoke + clear MFA claim).
+ * Authorization is possession of a valid oobCode; never auto-logs in (S1-P2-15).
  */
 export async function completePasswordReset(
   oobCode: string,
   newPassword: string,
   confirmPassword?: string
-): Promise<void> {
+): Promise<PasswordResetConfirmResult> {
   const policyError = validatePassword(newPassword);
   if (policyError) {
     throw Object.assign(new Error(policyError), {
@@ -163,11 +171,28 @@ export async function completePasswordReset(
     message?: string;
     error?: string;
     code?: string;
+    email?: string;
+    signedIn?: boolean;
+    sessionIssued?: boolean;
+    requiresMfa?: boolean;
     errors?: { newPassword?: string; confirmPassword?: string; oobCode?: string };
   } | null;
 
   if (response.ok) {
-    return;
+    // Defensive: ensure the browser has no Firebase client session after reset.
+    try {
+      await signOut(auth);
+    } catch {
+      // Ignore sign-out failures; server already revoked refresh tokens.
+    }
+
+    return {
+      signedIn: false,
+      sessionIssued: false,
+      requiresMfa: true,
+      email: data?.email,
+      message: data?.message,
+    };
   }
 
   if (response.status === 400 && data?.errors?.newPassword) {

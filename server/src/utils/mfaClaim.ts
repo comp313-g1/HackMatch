@@ -33,3 +33,18 @@ export async function markMfaComplete(uid: string, authTime: number): Promise<vo
   const existing = (user.customClaims ?? {}) as Record<string, unknown>;
   await firebaseAuth.setCustomUserClaims(uid, { ...existing, [MFA_CLAIM]: authTime });
 }
+
+/**
+ * Removes the MFA completion claim after password recovery (US-005 AC 4 / FR-012 / S1-P2-15).
+ * Preserves other claims (e.g. role). Does not clear OTP failure locks (FR-012).
+ * Next primary login gets a new auth_time and must complete US-004 again.
+ */
+export async function clearMfaClaim(uid: string): Promise<void> {
+  const user = await firebaseAuth.getUser(uid);
+  const existing = { ...(user.customClaims ?? {}) } as Record<string, unknown>;
+  if (!(MFA_CLAIM in existing)) {
+    return;
+  }
+  delete existing[MFA_CLAIM];
+  await firebaseAuth.setCustomUserClaims(uid, existing);
+}

@@ -22,6 +22,7 @@ const mockVerifyEmailActionCode = vi.fn();
 const mockSendPasswordResetEmail = vi.fn();
 const mockConfirmPasswordResetCode = vi.fn();
 const mockRevokeRefreshTokens = vi.fn();
+const mockGetUser = vi.fn();
 
 vi.mock('../config/firebase.js', () => ({
   firebaseAuth: {
@@ -32,6 +33,7 @@ vi.mock('../config/firebase.js', () => ({
     generateEmailVerificationLink: (...args: unknown[]) => mockGenerateEmailVerificationLink(...args),
     generatePasswordResetLink: (...args: unknown[]) => mockGeneratePasswordResetLink(...args),
     getUserByEmail: (...args: unknown[]) => mockGetUserByEmail(...args),
+    getUser: (...args: unknown[]) => mockGetUser(...args),
     verifyEmailActionCode: (...args: unknown[]) => mockVerifyEmailActionCode(...args),
     sendPasswordResetEmail: (...args: unknown[]) => mockSendPasswordResetEmail(...args),
     confirmPasswordResetCode: (...args: unknown[]) => mockConfirmPasswordResetCode(...args),
@@ -45,6 +47,7 @@ vi.mock('../config/firebase.js', () => ({
     generateEmailVerificationLink: (...args: unknown[]) => mockGenerateEmailVerificationLink(...args),
     generatePasswordResetLink: (...args: unknown[]) => mockGeneratePasswordResetLink(...args),
     getUserByEmail: (...args: unknown[]) => mockGetUserByEmail(...args),
+    getUser: (...args: unknown[]) => mockGetUser(...args),
     verifyEmailActionCode: (...args: unknown[]) => mockVerifyEmailActionCode(...args),
     sendPasswordResetEmail: (...args: unknown[]) => mockSendPasswordResetEmail(...args),
     confirmPasswordResetCode: (...args: unknown[]) => mockConfirmPasswordResetCode(...args),
@@ -1218,23 +1221,76 @@ describe('Auth Routes (POST /api/auth/password-reset/confirm)', () => {
     mockRevokeRefreshTokens.mockResolvedValue(undefined);
   });
 
-  it('confirms password, revokes refresh tokens, and issues zero session cookies (US-005 AC 4 / FR-012)', async () => {
+  it('confirms password, clears MFA claim, revokes tokens, and never auto-logs in (US-005 AC 4 / S1-P2-15)', async () => {
+    mockGetUser.mockResolvedValue({
+      uid: 'fb-uid-credential',
+      customClaims: { role: 'PART', mfa_auth_time: 1_700_000_000 },
+    });
+    mockSetCustomUserClaims.mockResolvedValue(undefined);
+    vi.spyOn(participantsRepository, 'findByEmail').mockResolvedValue({
+      id: 'part-uuid-credential',
+      firebase_uid: 'fb-uid-credential',
+      email: 'credential@example.com',
+      full_name: 'Credential User',
+      role: 'PART',
+      is_verified: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+    vi.spyOn(mfaRepository, 'invalidatePendingChallenges').mockResolvedValue(1);
+
     const response = await request(app)
       .post('/api/auth/password-reset/confirm')
       .send(validConfirm);
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({
-      message:
-        'Password updated. All existing sessions have been revoked. Please sign in with your new password.',
+    expect(response.body).toMatchObject({
       email: 'credential@example.com',
+      signedIn: false,
+      sessionIssued: false,
+      requiresMfa: true,
     });
+    expect(response.body.message).toMatch(/otp|email verification/i);
     expect(response.body.token).toBeUndefined();
+    expect(response.headers['set-cookie']).toBeUndefined();
     expect(mockConfirmPasswordResetCode).toHaveBeenCalledWith(
       'valid-reset-oob',
       'Valid1@Password'
     );
+    expect(mockSetCustomUserClaims).toHaveBeenCalledWith('fb-uid-credential', { role: 'PART' });
+    expect(mfaRepository.invalidatePendingChallenges).toHaveBeenCalledWith('part-uuid-credential');
     expect(mockRevokeRefreshTokens).toHaveBeenCalledWith('fb-uid-credential');
+  });
+
+  it('returns MFA_REQUIRED when a post-reset ID token tries to create a session without OTP', async () => {
+    mockVerifyIdToken.mockResolvedValueOnce({
+      uid: 'fb-uid-credential',
+      email: 'credential@example.com',
+      role: 'PART',
+      auth_time: 1_800_000_000,
+      exp: 1_800_003_600,
+      // Prior MFA claim from before reset must not match new auth_time
+      mfa_auth_time: 1_700_000_000,
+      firebase: { sign_in_provider: 'password' },
+    });
+    vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue({
+      id: 'part-uuid-credential',
+      firebase_uid: 'fb-uid-credential',
+      email: 'credential@example.com',
+      full_name: 'Credential User',
+      role: 'PART',
+      is_verified: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    const response = await request(app)
+      .post('/api/auth/session')
+      .set('Authorization', 'Bearer post-reset.id.token');
+
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe('MFA_REQUIRED');
+    expect(response.headers['set-cookie']).toBeUndefined();
   });
 
   it('returns 400 EXPIRED_ACTION_CODE without revoking when the link is expired', async () => {

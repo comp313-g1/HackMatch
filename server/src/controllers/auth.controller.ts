@@ -10,9 +10,10 @@ import {
 import { config } from '../config/index.js';
 import { participantsRepository } from '../db/participants.repository.js';
 import { providerIdentitiesRepository } from '../db/provider_identities.repository.js';
+import { mfaRepository } from '../db/mfa.repository.js';
 import type { Participant, OAuthProvider } from '../db/types.js';
 import { rateLimiter } from '../utils/rateLimiter.js';
-import { hasCompletedMfa } from '../utils/mfaClaim.js';
+import { clearMfaClaim, hasCompletedMfa } from '../utils/mfaClaim.js';
 import { securityConfig } from '../config/security.js';
 import { extractBearerToken, mapFirebaseAuthError } from '../middleware/requireFirebaseAuth.js';
 import {
@@ -490,8 +491,9 @@ export async function requestPasswordReset(
 /**
  * Confirms a password-reset oobCode, applies the new password, and revokes all
  * Firebase refresh tokens across devices (POST /api/auth/password-reset/confirm).
- * US-005 AC 4 / FR-012 / S1-P2-14: never signs the user in, never clears OTP lock,
- * never bypasses MFA. Authorization is possession of a valid unconsumed oobCode.
+ * US-005 AC 4 / FR-012 / S1-P2-14 / S1-P2-15: never signs the user in, never clears
+ * OTP lock, never bypasses MFA — next login must complete US-004.
+ * Authorization is possession of a valid unconsumed oobCode.
  */
 export async function confirmPasswordReset(
   req: Request,
@@ -566,6 +568,32 @@ export async function confirmPasswordReset(
       return;
     }
 
+    // S1-P2-15: drop MFA completion so the next sign-in cannot skip US-004.
+    // FR-012: do not clear OTP failure locks — only the MFA claim and pending challenges.
+    try {
+      await clearMfaClaim(result.uid);
+    } catch (claimErr: unknown) {
+      console.warn(
+        `[AUTH] Password updated for uid=${result.uid} but clearing MFA claim failed:`,
+        claimErr instanceof Error ? claimErr.message : 'unknown error'
+      );
+    }
+
+    try {
+      const participant =
+        (result.email
+          ? await participantsRepository.findByEmail(result.email)
+          : null) ?? (await participantsRepository.findByFirebaseUid(result.uid));
+      if (participant) {
+        await mfaRepository.invalidatePendingChallenges(participant.id);
+      }
+    } catch (challengeErr: unknown) {
+      console.warn(
+        `[AUTH] Password updated for uid=${result.uid} but invalidating MFA challenges failed:`,
+        challengeErr instanceof Error ? challengeErr.message : 'unknown error'
+      );
+    }
+
     try {
       await firebaseAuth.revokeRefreshTokens(result.uid);
     } catch (revokeErr: unknown) {
@@ -585,6 +613,9 @@ export async function confirmPasswordReset(
           error:
             'Your password was updated, but we could not sign out other devices. Please try signing in again or contact support if sessions remain active.',
           code: 'REVOCATION_FAILED',
+          signedIn: false,
+          sessionIssued: false,
+          requiresMfa: true,
         });
         return;
       }
@@ -595,8 +626,11 @@ export async function confirmPasswordReset(
 
     res.status(200).json({
       message:
-        'Password updated. All existing sessions have been revoked. Please sign in with your new password.',
+        'Password updated. All existing sessions have been revoked. Please sign in with your new password — email verification (OTP) is required before access.',
       email: result.email || undefined,
+      signedIn: false,
+      sessionIssued: false,
+      requiresMfa: true,
     });
   } catch (err: unknown) {
     next(err);
