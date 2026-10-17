@@ -208,6 +208,75 @@ export function validatePasswordResetRequestPayload(
   validateEmailOnlyPayload(req, res, next);
 }
 
+export interface PasswordResetConfirmFieldErrors {
+  oobCode?: string;
+  newPassword?: string;
+  confirmPassword?: string;
+}
+
+/**
+ * Express middleware validating POST /api/auth/password-reset/confirm (US-005 / FR-012).
+ * Enforces oobCode presence and registration password policy; optional confirmPassword must match.
+ * Field errors preserve client-entered values (NR-017).
+ */
+export function validatePasswordResetConfirmPayload(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const body = req.body;
+  if (!body || typeof body !== 'object') {
+    res.status(400).json({
+      error: 'Validation failed',
+      errors: {
+        oobCode: 'Reset link code is required.',
+        newPassword: 'Password is required.',
+      } satisfies PasswordResetConfirmFieldErrors,
+    });
+    return;
+  }
+
+  const fieldErrors: PasswordResetConfirmFieldErrors = {};
+
+  const rawCode = body.oobCode;
+  if (typeof rawCode !== 'string' || rawCode.trim().length === 0) {
+    fieldErrors.oobCode = 'Reset link code is required.';
+  }
+
+  const rawPassword = body.newPassword;
+  if (typeof rawPassword !== 'string' || rawPassword.length === 0) {
+    fieldErrors.newPassword = 'Password is required.';
+  } else if (!isPasswordPolicyCompliant(rawPassword)) {
+    fieldErrors.newPassword =
+      'Password must be at least 8 characters long and include uppercase, lowercase, a number, and a special character.';
+  }
+
+  const rawConfirm = body.confirmPassword;
+  if (rawConfirm !== undefined && rawConfirm !== null) {
+    if (typeof rawConfirm !== 'string' || rawConfirm.length === 0) {
+      fieldErrors.confirmPassword = 'Please confirm your new password.';
+    } else if (typeof rawPassword === 'string' && rawConfirm !== rawPassword) {
+      fieldErrors.confirmPassword = 'Passwords do not match.';
+    }
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    res.status(400).json({
+      error: 'Validation failed',
+      errors: fieldErrors,
+    });
+    return;
+  }
+
+  req.body = {
+    oobCode: (rawCode as string).trim(),
+    newPassword: rawPassword as string,
+    ...(typeof rawConfirm === 'string' ? { confirmPassword: rawConfirm } : {}),
+  };
+
+  next();
+}
+
 /**
  * Express middleware validating payload for POST /api/auth/verify-email.
  * Enforces presence of non-empty oobCode string.

@@ -323,4 +323,70 @@ describe('Firebase Admin Auth (Offline & Configuration)', () => {
       expect(typeof firebaseAuth.sendPasswordResetEmail).toBe('function');
     });
   });
+
+  describe('confirmPasswordResetCode helper (US-005 / FR-012)', () => {
+    it('throws auth/configuration-error when FIREBASE_WEB_API_KEY is missing', async () => {
+      const { confirmPasswordResetCode } = await import('./firebase.js');
+      delete process.env.FIREBASE_WEB_API_KEY;
+      delete process.env.VITE_FIREBASE_API_KEY;
+
+      await expect(
+        confirmPasswordResetCode('oob', 'Valid1@Password')
+      ).rejects.toMatchObject({
+        code: 'auth/configuration-error',
+      });
+    });
+
+    it('confirms reset via Identity Toolkit and returns email + uid', async () => {
+      const firebaseModule = await import('./firebase.js');
+      process.env.FIREBASE_WEB_API_KEY = 'test-web-api-key';
+
+      const mockFetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          email: 'jane@example.com',
+          localId: 'uid-123',
+          requestType: 'PASSWORD_RESET',
+        }),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      const result = await firebaseModule.confirmPasswordResetCode('oob-abc', 'Valid1@Password');
+
+      expect(result).toEqual({ email: 'jane@example.com', uid: 'uid-123' });
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=test-web-api-key',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ oobCode: 'oob-abc', newPassword: 'Valid1@Password' }),
+        })
+      );
+
+      vi.unstubAllGlobals();
+    });
+
+    it('maps EXPIRED_OOB_CODE to auth/expired-action-code', async () => {
+      const firebaseModule = await import('./firebase.js');
+      process.env.FIREBASE_WEB_API_KEY = 'test-web-api-key';
+
+      const mockFetch = vi.fn().mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: { message: 'EXPIRED_OOB_CODE' } }),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      await expect(
+        firebaseModule.confirmPasswordResetCode('stale', 'Valid1@Password')
+      ).rejects.toMatchObject({
+        code: 'auth/expired-action-code',
+      });
+
+      vi.unstubAllGlobals();
+    });
+
+    it('is accessible via firebaseAuth.confirmPasswordResetCode proxy', async () => {
+      const { firebaseAuth } = await import('./firebase.js');
+      expect(typeof firebaseAuth.confirmPasswordResetCode).toBe('function');
+    });
+  });
 });

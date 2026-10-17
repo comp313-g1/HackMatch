@@ -273,6 +273,102 @@ export async function sendPasswordResetEmail(
   }
 }
 
+export interface PasswordResetConfirmResult {
+  email: string;
+  uid: string;
+}
+
+/**
+ * Consumes a password-reset oobCode and sets the new password via Identity Toolkit
+ * (`accounts:resetPassword`). Does not create a session (US-005 AC 4 / FR-012).
+ * Never logs the oobCode (NR-021).
+ */
+export async function confirmPasswordResetCode(
+  oobCode: string,
+  newPassword: string
+): Promise<PasswordResetConfirmResult> {
+  const apiKey = process.env.FIREBASE_WEB_API_KEY || process.env.VITE_FIREBASE_API_KEY;
+
+  if (!apiKey) {
+    throw createAuthError(
+      '[Firebase Error] FIREBASE_WEB_API_KEY is not configured to confirm password resets.',
+      'auth/configuration-error'
+    );
+  }
+
+  const trimmedCode = oobCode.trim();
+  if (!trimmedCode) {
+    throw createAuthError('The action code is invalid or missing.', 'auth/invalid-action-code');
+  }
+
+  const url = `https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=${apiKey}`;
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        oobCode: trimmedCode,
+        newPassword,
+      }),
+    });
+  } catch {
+    throw createAuthError(
+      'Failed to confirm password reset due to network or service error.',
+      'auth/network-request-failed'
+    );
+  }
+
+  const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+  if (!response.ok) {
+    const errObj =
+      data.error && typeof data.error === 'object' ? (data.error as Record<string, unknown>) : {};
+    const message = typeof errObj.message === 'string' ? errObj.message : '';
+
+    if (message.includes('EXPIRED_OOB_CODE')) {
+      throw createAuthError('The password reset link has expired.', 'auth/expired-action-code');
+    }
+    if (message.includes('INVALID_OOB_CODE')) {
+      throw createAuthError(
+        'The password reset link is invalid or has already been used.',
+        'auth/invalid-action-code'
+      );
+    }
+    if (message.includes('WEAK_PASSWORD')) {
+      throw createAuthError('Password does not meet security requirements.', 'auth/weak-password');
+    }
+    if (message.includes('USER_DISABLED')) {
+      throw createAuthError('This account has been disabled.', 'auth/user-disabled');
+    }
+
+    throw createAuthError(
+      'Password reset confirmation failed due to network or service error.',
+      'auth/network-request-failed'
+    );
+  }
+
+  const email = String(data.email || '').trim().toLowerCase();
+  let uid = data.localId ? String(data.localId) : '';
+
+  if (!uid && email) {
+    const user = await getFirebaseAdminAuth().getUserByEmail(email);
+    uid = user.uid;
+  }
+
+  if (!uid) {
+    throw createAuthError(
+      'Password was updated but the account could not be resolved for session revocation.',
+      'auth/user-not-found'
+    );
+  }
+
+  return { email, uid };
+}
+
 /**
  * Singleton proxy to allow direct consumption without throwing on module import.
  */
@@ -280,11 +376,13 @@ export const firebaseAuth: Auth & {
   verifyEmailActionCode?: typeof verifyEmailActionCode;
   sendVerificationEmail?: typeof sendVerificationEmail;
   sendPasswordResetEmail?: typeof sendPasswordResetEmail;
+  confirmPasswordResetCode?: typeof confirmPasswordResetCode;
 } = new Proxy(
   {} as Auth & {
     verifyEmailActionCode?: typeof verifyEmailActionCode;
     sendVerificationEmail?: typeof sendVerificationEmail;
     sendPasswordResetEmail?: typeof sendPasswordResetEmail;
+    confirmPasswordResetCode?: typeof confirmPasswordResetCode;
   },
   {
     get(_target, prop) {
@@ -296,6 +394,9 @@ export const firebaseAuth: Auth & {
       }
       if (prop === 'sendPasswordResetEmail') {
         return sendPasswordResetEmail;
+      }
+      if (prop === 'confirmPasswordResetCode') {
+        return confirmPasswordResetCode;
       }
       const authClient = getFirebaseAdminAuth();
       const value = (authClient as unknown as Record<string | symbol, unknown>)[prop];

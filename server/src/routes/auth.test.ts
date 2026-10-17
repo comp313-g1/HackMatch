@@ -20,6 +20,8 @@ const mockGeneratePasswordResetLink = vi.fn();
 const mockGetUserByEmail = vi.fn();
 const mockVerifyEmailActionCode = vi.fn();
 const mockSendPasswordResetEmail = vi.fn();
+const mockConfirmPasswordResetCode = vi.fn();
+const mockRevokeRefreshTokens = vi.fn();
 
 vi.mock('../config/firebase.js', () => ({
   firebaseAuth: {
@@ -32,6 +34,8 @@ vi.mock('../config/firebase.js', () => ({
     getUserByEmail: (...args: unknown[]) => mockGetUserByEmail(...args),
     verifyEmailActionCode: (...args: unknown[]) => mockVerifyEmailActionCode(...args),
     sendPasswordResetEmail: (...args: unknown[]) => mockSendPasswordResetEmail(...args),
+    confirmPasswordResetCode: (...args: unknown[]) => mockConfirmPasswordResetCode(...args),
+    revokeRefreshTokens: (...args: unknown[]) => mockRevokeRefreshTokens(...args),
   },
   auth: {
     createUser: (...args: unknown[]) => mockCreateUser(...args),
@@ -43,9 +47,12 @@ vi.mock('../config/firebase.js', () => ({
     getUserByEmail: (...args: unknown[]) => mockGetUserByEmail(...args),
     verifyEmailActionCode: (...args: unknown[]) => mockVerifyEmailActionCode(...args),
     sendPasswordResetEmail: (...args: unknown[]) => mockSendPasswordResetEmail(...args),
+    confirmPasswordResetCode: (...args: unknown[]) => mockConfirmPasswordResetCode(...args),
+    revokeRefreshTokens: (...args: unknown[]) => mockRevokeRefreshTokens(...args),
   },
   verifyEmailActionCode: (...args: unknown[]) => mockVerifyEmailActionCode(...args),
   sendPasswordResetEmail: (...args: unknown[]) => mockSendPasswordResetEmail(...args),
+  confirmPasswordResetCode: (...args: unknown[]) => mockConfirmPasswordResetCode(...args),
   getFirebaseAdminAuth: vi.fn(),
   _resetFirebaseInstances: vi.fn(),
 }));
@@ -1192,6 +1199,122 @@ describe('Auth Routes (POST /api/auth/password-reset)', () => {
         },
       });
     });
+  });
+});
+
+describe('Auth Routes (POST /api/auth/password-reset/confirm)', () => {
+  const validConfirm = {
+    oobCode: 'valid-reset-oob',
+    newPassword: 'Valid1@Password',
+    confirmPassword: 'Valid1@Password',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockConfirmPasswordResetCode.mockResolvedValue({
+      email: 'credential@example.com',
+      uid: 'fb-uid-credential',
+    });
+    mockRevokeRefreshTokens.mockResolvedValue(undefined);
+  });
+
+  it('confirms password, revokes refresh tokens, and issues zero session cookies (US-005 AC 4 / FR-012)', async () => {
+    const response = await request(app)
+      .post('/api/auth/password-reset/confirm')
+      .send(validConfirm);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      message:
+        'Password updated. All existing sessions have been revoked. Please sign in with your new password.',
+      email: 'credential@example.com',
+    });
+    expect(response.body.token).toBeUndefined();
+    expect(mockConfirmPasswordResetCode).toHaveBeenCalledWith(
+      'valid-reset-oob',
+      'Valid1@Password'
+    );
+    expect(mockRevokeRefreshTokens).toHaveBeenCalledWith('fb-uid-credential');
+  });
+
+  it('returns 400 EXPIRED_ACTION_CODE without revoking when the link is expired', async () => {
+    mockConfirmPasswordResetCode.mockRejectedValueOnce(
+      Object.assign(new Error('expired'), { code: 'auth/expired-action-code' })
+    );
+
+    const response = await request(app)
+      .post('/api/auth/password-reset/confirm')
+      .send(validConfirm);
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('EXPIRED_ACTION_CODE');
+    expect(mockRevokeRefreshTokens).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 INVALID_ACTION_CODE for used or tampered links', async () => {
+    mockConfirmPasswordResetCode.mockRejectedValueOnce(
+      Object.assign(new Error('invalid'), { code: 'auth/invalid-action-code' })
+    );
+
+    const response = await request(app)
+      .post('/api/auth/password-reset/confirm')
+      .send(validConfirm);
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('INVALID_ACTION_CODE');
+    expect(mockRevokeRefreshTokens).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 field errors for weak passwords without calling Firebase', async () => {
+    const response = await request(app)
+      .post('/api/auth/password-reset/confirm')
+      .send({
+        oobCode: 'valid-reset-oob',
+        newPassword: 'weak',
+        confirmPassword: 'weak',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Validation failed');
+    expect(response.body.errors.newPassword).toMatch(/at least 8 characters/i);
+    expect(mockConfirmPasswordResetCode).not.toHaveBeenCalled();
+    expect(mockRevokeRefreshTokens).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when confirmPassword does not match (preserves field errors)', async () => {
+    const response = await request(app)
+      .post('/api/auth/password-reset/confirm')
+      .send({
+        oobCode: 'valid-reset-oob',
+        newPassword: 'Valid1@Password',
+        confirmPassword: 'Valid1@Other',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.errors.confirmPassword).toMatch(/do not match/i);
+    expect(mockConfirmPasswordResetCode).not.toHaveBeenCalled();
+  });
+
+  it('returns 502 REVOCATION_FAILED when password update succeeds but revoke fails', async () => {
+    mockRevokeRefreshTokens.mockRejectedValueOnce(new Error('Firebase Admin unavailable'));
+
+    const response = await request(app)
+      .post('/api/auth/password-reset/confirm')
+      .send(validConfirm);
+
+    expect(response.status).toBe(502);
+    expect(response.body.code).toBe('REVOCATION_FAILED');
+    expect(mockConfirmPasswordResetCode).toHaveBeenCalled();
+    expect(mockRevokeRefreshTokens).toHaveBeenCalledWith('fb-uid-credential');
+  });
+
+  it('rejects missing oobCode with HTTP 400', async () => {
+    const response = await request(app)
+      .post('/api/auth/password-reset/confirm')
+      .send({ newPassword: 'Valid1@Password' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.errors.oobCode).toMatch(/required/i);
   });
 });
 

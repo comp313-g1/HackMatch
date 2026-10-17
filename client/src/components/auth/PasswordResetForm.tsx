@@ -143,7 +143,7 @@ export function PasswordResetForm({
     setStatus('submitting');
 
     try {
-      await completePasswordReset(oobCode, password);
+      await completePasswordReset(oobCode, password, confirmPassword);
       setPassword('');
       setConfirmPassword('');
       setStatus('success');
@@ -152,6 +152,14 @@ export function PasswordResetForm({
       if (described.kind === 'expired' || described.kind === 'invalid') {
         setLinkError(described);
         setStatus('error');
+        return;
+      }
+      if (described.kind === 'revocation_failed') {
+        // Password already changed; surface explicit FR-012 failure and keep a sign-in path.
+        setSubmitError(described);
+        setPassword('');
+        setConfirmPassword('');
+        setStatus('ready');
         return;
       }
       if (described.kind === 'weak_password') {
@@ -191,8 +199,9 @@ export function PasswordResetForm({
           Password updated
         </h2>
         <p className="text-sm text-ink-muted text-center mb-4">
-          Your password has been changed. Sign in with your new password — you will still need to
-          complete email verification (OTP) before accessing your account.
+          Your password has been changed and existing sessions on other devices were signed out.
+          Sign in with your new password — you will still need to complete email verification (OTP)
+          before accessing your account.
         </p>
         {onNavigateToSignIn && (
           <button type="button" onClick={onNavigateToSignIn} className={primaryBtnClass}>

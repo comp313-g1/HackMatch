@@ -117,7 +117,11 @@ describe('PasswordResetForm (US-005 S1-P1-14)', () => {
 
     expect(await screen.findByRole('status')).toHaveTextContent(/password updated/i);
     expect(screen.getByText(/sign in with your new password/i)).toBeInTheDocument();
-    expect(mockComplete).toHaveBeenCalledWith('valid-oob', 'Valid1@Password');
+    expect(mockComplete).toHaveBeenCalledWith(
+      'valid-oob',
+      'Valid1@Password',
+      'Valid1@Password'
+    );
 
     fireEvent.click(screen.getByRole('button', { name: /continue to sign in/i }));
     expect(onNavigateToSignIn).toHaveBeenCalledTimes(1);

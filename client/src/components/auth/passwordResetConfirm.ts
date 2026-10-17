@@ -1,10 +1,11 @@
 /**
- * Password-reset link validation + confirm (US-005 AC 2–3 / FR-011 / S1-P1-14).
- * Uses Firebase Client SDK: verifyPasswordResetCode → confirmPasswordReset.
- * Does not create a session (US-005 AC 4 — next login still requires MFA).
+ * Password-reset link validation + confirm (US-005 AC 2–4 / FR-011 / FR-012 / S1-P1-14 / S1-P2-14).
+ * Link preview uses Firebase Client verifyPasswordResetCode.
+ * Confirm + global session revocation go through POST /api/auth/password-reset/confirm.
+ * Does not create a session (next login still requires MFA).
  */
 
-import { confirmPasswordReset, verifyPasswordResetCode } from 'firebase/auth';
+import { verifyPasswordResetCode } from 'firebase/auth';
 import { auth } from '../../config/firebase';
 import { PASSWORD_POLICY_MESSAGE, validatePassword } from './validation';
 
@@ -13,6 +14,7 @@ export type PasswordResetLinkErrorKind =
   | 'invalid'
   | 'network'
   | 'weak_password'
+  | 'revocation_failed'
   | 'unknown';
 
 export interface PasswordResetLinkError {
@@ -22,6 +24,10 @@ export interface PasswordResetLinkError {
 }
 
 export function describePasswordResetLinkError(err: unknown): PasswordResetLinkError {
+  if (err && typeof err === 'object' && 'kind' in err && 'message' in err) {
+    return err as PasswordResetLinkError;
+  }
+
   const code =
     err && typeof err === 'object' && 'code' in err
       ? String((err as { code: unknown }).code)
@@ -29,6 +35,7 @@ export function describePasswordResetLinkError(err: unknown): PasswordResetLinkE
 
   switch (code) {
     case 'auth/expired-action-code':
+    case 'EXPIRED_ACTION_CODE':
       return {
         kind: 'expired',
         code,
@@ -36,6 +43,7 @@ export function describePasswordResetLinkError(err: unknown): PasswordResetLinkE
           'This password reset link has expired. Please request a new link to continue.',
       };
     case 'auth/invalid-action-code':
+    case 'INVALID_ACTION_CODE':
       return {
         kind: 'invalid',
         code,
@@ -49,12 +57,21 @@ export function describePasswordResetLinkError(err: unknown): PasswordResetLinkE
         message: 'Network error. Please check your internet connection and try again.',
       };
     case 'auth/weak-password':
+    case 'WEAK_PASSWORD':
       return {
         kind: 'weak_password',
         code,
         message: PASSWORD_POLICY_MESSAGE,
       };
+    case 'REVOCATION_FAILED':
+      return {
+        kind: 'revocation_failed',
+        code,
+        message:
+          'Your password was updated, but we could not sign out other devices. Please try signing in again or contact support if sessions remain active.',
+      };
     case 'auth/user-disabled':
+    case 'USER_DISABLED':
       return {
         kind: 'invalid',
         code,
@@ -64,12 +81,10 @@ export function describePasswordResetLinkError(err: unknown): PasswordResetLinkE
       return {
         kind: 'invalid',
         code,
-        message: 'This password reset link is invalid or has already been used. Please request a new link.',
+        message:
+          'This password reset link is invalid or has already been used. Please request a new link.',
       };
     default:
-      if (err && typeof err === 'object' && 'kind' in err && 'message' in err) {
-        return err as PasswordResetLinkError;
-      }
       return {
         kind: 'unknown',
         code: code || undefined,
@@ -106,12 +121,13 @@ export async function validatePasswordResetLink(oobCode: string): Promise<string
 }
 
 /**
- * Applies a new password for a validated reset oobCode.
- * Client policy is checked first; Firebase enforces again server-side.
+ * Confirms the reset via the Express API (password replace + revokeRefreshTokens).
+ * Authorization is possession of a valid oobCode; no session is issued.
  */
 export async function completePasswordReset(
   oobCode: string,
-  newPassword: string
+  newPassword: string,
+  confirmPassword?: string
 ): Promise<void> {
   const policyError = validatePassword(newPassword);
   if (policyError) {
@@ -122,9 +138,79 @@ export async function completePasswordReset(
     } satisfies PasswordResetLinkError);
   }
 
+  let response: Response;
   try {
-    await confirmPasswordReset(auth, oobCode.trim(), newPassword);
-  } catch (err: unknown) {
-    throwLinkError(err);
+    response = await fetch('/api/auth/password-reset/confirm', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        oobCode: oobCode.trim(),
+        newPassword,
+        ...(confirmPassword !== undefined ? { confirmPassword } : {}),
+      }),
+    });
+  } catch {
+    throwLinkError({
+      kind: 'network',
+      message: 'Network error. Please check your internet connection and try again.',
+      code: 'auth/network-request-failed',
+    });
   }
+
+  const data = (await response.json().catch(() => null)) as {
+    message?: string;
+    error?: string;
+    code?: string;
+    errors?: { newPassword?: string; confirmPassword?: string; oobCode?: string };
+  } | null;
+
+  if (response.ok) {
+    return;
+  }
+
+  if (response.status === 400 && data?.errors?.newPassword) {
+    throwLinkError({
+      kind: 'weak_password',
+      message: data.errors.newPassword,
+      code: data.code || 'WEAK_PASSWORD',
+    });
+  }
+
+  if (data?.code === 'EXPIRED_ACTION_CODE' || response.status === 410) {
+    throwLinkError({
+      kind: 'expired',
+      message:
+        data?.error ||
+        'This password reset link has expired. Please request a new link to continue.',
+      code: 'EXPIRED_ACTION_CODE',
+    });
+  }
+
+  if (data?.code === 'INVALID_ACTION_CODE') {
+    throwLinkError({
+      kind: 'invalid',
+      message:
+        data?.error ||
+        'This password reset link is invalid or has already been used. Please request a new link.',
+      code: 'INVALID_ACTION_CODE',
+    });
+  }
+
+  if (data?.code === 'REVOCATION_FAILED') {
+    throwLinkError({
+      kind: 'revocation_failed',
+      message:
+        data?.error ||
+        'Your password was updated, but we could not sign out other devices. Please try signing in again or contact support if sessions remain active.',
+      code: 'REVOCATION_FAILED',
+    });
+  }
+
+  throwLinkError({
+    kind: 'unknown',
+    message: data?.error || 'We could not reset your password right now. Please try again.',
+    code: data?.code,
+  });
 }

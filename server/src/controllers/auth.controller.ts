@@ -4,6 +4,7 @@ import {
   verifyEmailActionCode,
   sendVerificationEmail,
   sendPasswordResetEmail,
+  confirmPasswordResetCode,
   getFirebaseAdminAuth,
 } from '../config/firebase.js';
 import { config } from '../config/index.js';
@@ -480,6 +481,122 @@ export async function requestPasswordReset(
     // 3. FR-011 anti-enumeration: uniform HTTP 200, zero session artifacts
     res.status(200).json({
       message: PASSWORD_RESET_REQUEST_CONFIRMATION,
+    });
+  } catch (err: unknown) {
+    next(err);
+  }
+}
+
+/**
+ * Confirms a password-reset oobCode, applies the new password, and revokes all
+ * Firebase refresh tokens across devices (POST /api/auth/password-reset/confirm).
+ * US-005 AC 4 / FR-012 / S1-P2-14: never signs the user in, never clears OTP lock,
+ * never bypasses MFA. Authorization is possession of a valid unconsumed oobCode.
+ */
+export async function confirmPasswordReset(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+
+  const { oobCode, newPassword } = req.body as { oobCode: string; newPassword: string };
+
+  try {
+    const confirmFn = firebaseAuth.confirmPasswordResetCode || confirmPasswordResetCode;
+    let result: { email: string; uid: string };
+
+    try {
+      result = await confirmFn(oobCode, newPassword);
+    } catch (confirmErr: unknown) {
+      const code =
+        confirmErr && typeof confirmErr === 'object' && 'code' in confirmErr
+          ? String((confirmErr as { code: unknown }).code)
+          : '';
+
+      if (code === 'auth/expired-action-code') {
+        res.status(400).json({
+          error: 'This password reset link has expired. Please request a new link to continue.',
+          code: 'EXPIRED_ACTION_CODE',
+        });
+        return;
+      }
+      if (code === 'auth/invalid-action-code') {
+        res.status(400).json({
+          error:
+            'This password reset link is invalid or has already been used. Please request a new link.',
+          code: 'INVALID_ACTION_CODE',
+        });
+        return;
+      }
+      if (code === 'auth/weak-password') {
+        res.status(400).json({
+          error: 'Validation failed',
+          code: 'WEAK_PASSWORD',
+          errors: {
+            newPassword:
+              'Password must be at least 8 characters long and include uppercase, lowercase, a number, and a special character.',
+          },
+        });
+        return;
+      }
+      if (code === 'auth/user-disabled') {
+        res.status(403).json({
+          error: 'This account has been disabled. Please contact support.',
+          code: 'USER_DISABLED',
+        });
+        return;
+      }
+      if (code === 'auth/configuration-error') {
+        res.status(503).json({
+          error: 'Password reset is temporarily unavailable. Please try again later.',
+          code: 'AUTH_SERVICE_UNAVAILABLE',
+        });
+        return;
+      }
+
+      console.warn(
+        '[AUTH] Password reset confirm failed:',
+        confirmErr instanceof Error ? confirmErr.message : 'unknown error'
+      );
+      res.status(502).json({
+        error: 'We could not reset your password right now. Please try again.',
+        code: 'PASSWORD_RESET_FAILED',
+      });
+      return;
+    }
+
+    try {
+      await firebaseAuth.revokeRefreshTokens(result.uid);
+    } catch (revokeErr: unknown) {
+      const revokeCode =
+        revokeErr && typeof revokeErr === 'object' && 'code' in revokeErr
+          ? String((revokeErr as { code: unknown }).code)
+          : '';
+
+      if (revokeCode !== 'auth/user-not-found') {
+        console.warn(
+          `[AUTH] Password updated for uid=${result.uid} but refresh-token revocation failed:`,
+          revokeErr instanceof Error ? revokeErr.message : 'unknown error'
+        );
+        // Password already changed; clear local cookies and surface explicit failure (FR-012).
+        clearSessionCookies(res);
+        res.status(502).json({
+          error:
+            'Your password was updated, but we could not sign out other devices. Please try signing in again or contact support if sessions remain active.',
+          code: 'REVOCATION_FAILED',
+        });
+        return;
+      }
+    }
+
+    // Drop any stale browser session cookie; do not issue a new session (FR-007 / FR-012).
+    clearSessionCookies(res);
+
+    res.status(200).json({
+      message:
+        'Password updated. All existing sessions have been revoked. Please sign in with your new password.',
+      email: result.email || undefined,
     });
   } catch (err: unknown) {
     next(err);

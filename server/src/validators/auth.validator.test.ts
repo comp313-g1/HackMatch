@@ -5,6 +5,7 @@ import {
   validateRegisterPayload,
   validateResendVerificationPayload,
   validatePasswordResetRequestPayload,
+  validatePasswordResetConfirmPayload,
   validateVerifyEmailPayload,
   validateOAuthSignInPayload,
   validateOAuthLinkPayload,
@@ -565,6 +566,45 @@ describe('auth.validator unit tests (US-001 AC 1 / T2 / AC 4 / T6)', () => {
         error: 'Validation failed',
         errors: { email: 'Please provide a valid email address.' },
       });
+    });
+  });
+
+  describe('validatePasswordResetConfirmPayload unit tests (US-005 / FR-012)', () => {
+    it('calls next() for a valid oobCode and policy-compliant password', () => {
+      const req = {
+        body: {
+          oobCode: '  reset-oob  ',
+          newPassword: 'Valid1@Password',
+          confirmPassword: 'Valid1@Password',
+        },
+      } as unknown as Request;
+      const res = createMockResponse();
+      const next = vi.fn() as unknown as NextFunction;
+
+      validatePasswordResetConfirmPayload(req, res as unknown as Response, next);
+
+      expect(next).toHaveBeenCalledOnce();
+      expect((req.body as { oobCode: string }).oobCode).toBe('reset-oob');
+    });
+
+    it('returns 400 field errors for weak or mismatched passwords', () => {
+      const req = {
+        body: {
+          oobCode: 'reset-oob',
+          newPassword: 'weak',
+          confirmPassword: 'other',
+        },
+      } as unknown as Request;
+      const res = createMockResponse();
+      const next = vi.fn() as unknown as NextFunction;
+
+      validatePasswordResetConfirmPayload(req, res as unknown as Response, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.statusCode).toBe(400);
+      const body = res.body as { errors: { newPassword?: string; confirmPassword?: string } };
+      expect(body.errors.newPassword).toMatch(/at least 8 characters/i);
+      expect(body.errors.confirmPassword).toMatch(/do not match/i);
     });
   });
 

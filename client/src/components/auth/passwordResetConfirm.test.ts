@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { confirmPasswordReset, verifyPasswordResetCode } from 'firebase/auth';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { verifyPasswordResetCode } from 'firebase/auth';
 import {
   completePasswordReset,
   describePasswordResetLinkError,
@@ -12,16 +12,21 @@ vi.mock('firebase/auth', async (importOriginal) => {
   return {
     ...actual,
     verifyPasswordResetCode: vi.fn(),
-    confirmPasswordReset: vi.fn(),
   };
 });
 
 const mockVerify = vi.mocked(verifyPasswordResetCode);
-const mockConfirm = vi.mocked(confirmPasswordReset);
 
-describe('passwordResetConfirm (US-005 AC 2–3 / FR-011)', () => {
+describe('passwordResetConfirm (US-005 AC 2–4 / FR-012)', () => {
+  const fetchMock = vi.fn();
+
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('validatePasswordResetLink returns email from Firebase', async () => {
@@ -30,7 +35,7 @@ describe('passwordResetConfirm (US-005 AC 2–3 / FR-011)', () => {
     expect(mockVerify).toHaveBeenCalledWith(expect.anything(), 'valid-oob');
   });
 
-  it('maps expired and invalid action codes', () => {
+  it('maps expired, invalid, and revocation failure codes', () => {
     expect(
       describePasswordResetLinkError(
         Object.assign(new Error('expired'), { code: 'auth/expired-action-code' })
@@ -38,41 +43,77 @@ describe('passwordResetConfirm (US-005 AC 2–3 / FR-011)', () => {
     ).toBe('expired');
     expect(
       describePasswordResetLinkError(
-        Object.assign(new Error('used'), { code: 'auth/invalid-action-code' })
+        Object.assign(new Error('used'), { code: 'INVALID_ACTION_CODE' })
       ).kind
     ).toBe('invalid');
+    expect(
+      describePasswordResetLinkError(
+        Object.assign(new Error('revoke'), { code: 'REVOCATION_FAILED' })
+      ).kind
+    ).toBe('revocation_failed');
   });
 
-  it('validatePasswordResetLink rejects expired codes', async () => {
-    mockVerify.mockRejectedValueOnce(
-      Object.assign(new Error('expired'), { code: 'auth/expired-action-code' })
-    );
-    await expect(validatePasswordResetLink('stale')).rejects.toMatchObject({
-      kind: 'expired',
-      code: 'auth/expired-action-code',
-    });
-  });
-
-  it('completePasswordReset enforces policy before calling Firebase', async () => {
+  it('completePasswordReset enforces policy before calling the API', async () => {
     await expect(completePasswordReset('oob', 'weak')).rejects.toMatchObject({
       kind: 'weak_password',
       message: PASSWORD_POLICY_MESSAGE,
     });
-    expect(mockConfirm).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('completePasswordReset confirms a policy-compliant password', async () => {
-    mockConfirm.mockResolvedValueOnce(undefined);
-    await completePasswordReset('oob-code', 'Valid1@Password');
-    expect(mockConfirm).toHaveBeenCalledWith(expect.anything(), 'oob-code', 'Valid1@Password');
-  });
+  it('completePasswordReset POSTs to /api/auth/password-reset/confirm', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        message: 'Password updated. All existing sessions have been revoked.',
+      }),
+    });
 
-  it('completePasswordReset maps already-used codes after submit', async () => {
-    mockConfirm.mockRejectedValueOnce(
-      Object.assign(new Error('used'), { code: 'auth/invalid-action-code' })
+    await completePasswordReset('oob-code', 'Valid1@Password', 'Valid1@Password');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/auth/password-reset/confirm',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          oobCode: 'oob-code',
+          newPassword: 'Valid1@Password',
+          confirmPassword: 'Valid1@Password',
+        }),
+      })
     );
+  });
+
+  it('completePasswordReset maps REVOCATION_FAILED from the API', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 502,
+      json: async () => ({
+        error: 'Your password was updated, but we could not sign out other devices.',
+        code: 'REVOCATION_FAILED',
+      }),
+    });
+
     await expect(completePasswordReset('oob', 'Valid1@Password')).rejects.toMatchObject({
-      kind: 'invalid',
+      kind: 'revocation_failed',
+      code: 'REVOCATION_FAILED',
+    });
+  });
+
+  it('completePasswordReset maps expired action codes from the API', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        error: 'This password reset link has expired.',
+        code: 'EXPIRED_ACTION_CODE',
+      }),
+    });
+
+    await expect(completePasswordReset('oob', 'Valid1@Password')).rejects.toMatchObject({
+      kind: 'expired',
+      code: 'EXPIRED_ACTION_CODE',
     });
   });
 });
