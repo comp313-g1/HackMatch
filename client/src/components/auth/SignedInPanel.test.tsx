@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { SignedInPanel } from './SignedInPanel';
 import { logout } from './logout';
+import * as authFetchModule from '../../config/authFetch';
 
 vi.mock('./logout', () => ({
   logout: vi.fn(),
@@ -71,5 +72,50 @@ describe('SignedInPanel', () => {
 
     resolveLogout();
     expect(await screen.findByRole('button', { name: /^sign out$/i })).toBeEnabled();
+  });
+
+  it('toggles profile view mode with Edit Technical Profile button, opens editor, and cancels back to card view', async () => {
+    vi.spyOn(authFetchModule, 'authFetch').mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/profiles/me')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              profile: {
+                handle: 'jane_coder',
+                primaryRole: 'Frontend',
+                institution: 'Centennial College',
+                skills: ['React'],
+                portfolioLinks: [{ url: 'https://github.com/jane_coder', label: 'GitHub' }],
+                sharedContactHandle: '@jane_discord',
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          )
+        );
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`));
+    });
+
+    render(<SignedInPanel email="jane@example.com" />);
+
+    // Step 1: Click "Manage Technical Profile"
+    fireEvent.click(screen.getByRole('button', { name: /manage technical profile/i }));
+
+    // Step 2: Candidate card displays with "Edit Technical Profile" button
+    expect(await screen.findByText('@jane_coder')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /edit technical profile/i })).toBeInTheDocument();
+
+    // Step 3: Click "Edit Technical Profile" -> enters editor mode
+    fireEvent.click(screen.getByRole('button', { name: /edit technical profile/i }));
+    expect(await screen.findByLabelText(/display handle/i)).toHaveValue('jane_coder');
+    expect(screen.getByRole('button', { name: /save technical profile/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+
+    // Step 4: Click "Cancel" -> returns back to CandidateProfileCard view
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    expect(await screen.findByText('@jane_coder')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/display handle/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /edit technical profile/i })).toBeInTheDocument();
   });
 });
