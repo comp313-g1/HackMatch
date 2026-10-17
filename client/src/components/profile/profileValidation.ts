@@ -179,6 +179,7 @@ export function validateProfileForm(state: ProfileFormState): {
   if (nonEmptyLinks.length > 10) {
     errors.portfolioLinks = 'You can provide at most 10 portfolio links.';
   } else {
+    const seenUrls = new Set<string>();
     for (const item of nonEmptyLinks) {
       const trimmedUrl = item.url.trim();
       const trimmedLabel = item.label.trim();
@@ -191,10 +192,14 @@ export function validateProfileForm(state: ProfileFormState): {
         errors.portfolioLinks = 'Portfolio link label must not exceed 100 characters.';
         break;
       }
-      portfolioLinks.push({
-        url: trimmedUrl,
-        label: trimmedLabel.length > 0 ? trimmedLabel : null,
-      });
+      const lower = trimmedUrl.toLowerCase();
+      if (!seenUrls.has(lower)) {
+        seenUrls.add(lower);
+        portfolioLinks.push({
+          url: trimmedUrl,
+          label: trimmedLabel.length > 0 ? trimmedLabel : null,
+        });
+      }
     }
   }
 

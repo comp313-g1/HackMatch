@@ -18,6 +18,7 @@ export interface CandidateProfileData {
   portfolioLinks?: CandidatePortfolioLink[];
   sharedContactHandle?: string | null;
   sharedContactAudienceNotice?: string;
+  selfDeclaredNotice?: string;
 }
 
 export interface CandidateProfileCardProps {
@@ -205,6 +206,15 @@ export function CandidateProfileCard({
         ) : (
           <p className="text-xs text-ink-muted">No portfolio links listed.</p>
         )}
+      </div>
+
+      <div
+        role="note"
+        aria-label="Self-declared disclaimer"
+        className="p-3 bg-cream-50 border border-cream-200 rounded-md text-xs text-ink-muted"
+      >
+        {profile.selfDeclaredNotice ||
+          'Self-declared — HackMatch validates URL format only and does not certify skills, identity, or achievements.'}
       </div>
 
       {canViewSharedContact && profile.sharedContactHandle && (

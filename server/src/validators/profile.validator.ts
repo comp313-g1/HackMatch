@@ -195,6 +195,7 @@ export function validateProfileUpdateInput(body: unknown): {
     } else if (record.portfolioLinks.length > MAX_PORTFOLIO_LINKS_COUNT) {
       errors.portfolioLinks = `You can provide at most ${MAX_PORTFOLIO_LINKS_COUNT} portfolio links.`;
     } else {
+      const seenUrls = new Set<string>();
       for (const item of record.portfolioLinks) {
         if (typeof item === 'string') {
           const trimmedUrl = item.trim();
@@ -204,7 +205,11 @@ export function validateProfileUpdateInput(body: unknown): {
               'All portfolio links must be valid HTTPS URLs (e.g., https://github.com/username).';
             break;
           }
-          portfolioLinks.push({ url: trimmedUrl, label: null });
+          const lower = trimmedUrl.toLowerCase();
+          if (!seenUrls.has(lower)) {
+            seenUrls.add(lower);
+            portfolioLinks.push({ url: trimmedUrl, label: null });
+          }
         } else if (item && typeof item === 'object' && !Array.isArray(item)) {
           const linkObj = item as Record<string, unknown>;
           const rawUrl = typeof linkObj.url === 'string' ? linkObj.url.trim() : '';
@@ -224,7 +229,11 @@ export function validateProfileUpdateInput(body: unknown): {
             }
             label = linkObj.label.trim();
           }
-          portfolioLinks.push({ url: rawUrl, label });
+          const lower = rawUrl.toLowerCase();
+          if (!seenUrls.has(lower)) {
+            seenUrls.add(lower);
+            portfolioLinks.push({ url: rawUrl, label });
+          }
         } else {
           errors.portfolioLinks =
             'All portfolio links must be valid HTTPS URLs (e.g., https://github.com/username).';

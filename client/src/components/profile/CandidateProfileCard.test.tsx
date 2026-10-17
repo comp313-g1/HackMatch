@@ -86,4 +86,29 @@ describe('CandidateProfileCard Privacy Boundaries (US-006 / #67 / FR-014)', () =
     expect(screen.getByText(/no skills listed yet/i)).toBeInTheDocument();
     expect(screen.getByText(/no portfolio links listed/i)).toBeInTheDocument();
   });
+
+  it('displays self-declared portfolio labels and experience disclaimer notice (US-006 AC 2 / #68)', () => {
+    render(
+      <CandidateProfileCard
+        viewerCategory="PART"
+        profile={{
+          ...sampleProfile,
+          selfDeclaredNotice:
+            'Self-declared — HackMatch validates URL format only and does not certify skills, identity, or achievements.',
+          portfolioLinks: [
+            {
+              url: 'https://github.com/maya_ml',
+              label: 'Code Samples',
+              isSelfDeclared: true,
+            },
+          ],
+        }}
+      />
+    );
+
+    expect(screen.getByRole('note', { name: /self-declared disclaimer/i })).toHaveTextContent(
+      /validates url format only and does not certify skills/i
+    );
+    expect(screen.getByText(/code samples \(https:\/\/github\.com\/maya_ml\)/i)).toBeInTheDocument();
+  });
 });

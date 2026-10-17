@@ -67,4 +67,44 @@ describe('Client Profile Validation (US-006 / #65)', () => {
     expect(inputState.handle).toBe('jane_dev');
     expect(inputState.skillsInput).toBe('React, TypeScript');
   });
+
+  it('deduplicates portfolio URLs case-insensitively while preserving first label (US-006 AC 2 / #68)', () => {
+    const res = validateProfileForm({
+      handle: 'jane_dev',
+      primaryRole: 'Backend',
+      institution: 'Centennial College',
+      skillsInput: 'Node.js',
+      portfolioLinks: [
+        { url: 'https://github.com/jane', label: 'GitHub Primary' },
+        { url: 'HTTPS://GITHUB.COM/JANE', label: 'Duplicate GitHub' },
+      ],
+      sharedContactHandle: '',
+    });
+
+    expect(res.errors).toEqual({});
+    expect(res.payload?.portfolioLinks).toEqual([
+      { url: 'https://github.com/jane', label: 'GitHub Primary' },
+    ]);
+  });
+
+  it('returns simultaneous field-specific errors for invalid handle, role, institution, skills, and portfolio label (US-006 AC 5 / #68)', () => {
+    const res = validateProfileForm({
+      handle: '!', // Invalid characters
+      primaryRole: 'NonExistentRole', // Invalid role
+      institution: 'X'.repeat(151), // Too long
+      skillsInput: 'ValidSkill, ' + 'Y'.repeat(51), // Skill too long
+      portfolioLinks: [
+        { url: 'https://github.com/jane', label: 'L'.repeat(101) }, // Label too long
+      ],
+      sharedContactHandle: 'Z'.repeat(151), // Contact too long
+    });
+
+    expect(res.errors.handle).toBeDefined();
+    expect(res.errors.primaryRole).toBeDefined();
+    expect(res.errors.institution).toBeDefined();
+    expect(res.errors.skills).toBeDefined();
+    expect(res.errors.portfolioLinks).toBeDefined();
+    expect(res.errors.sharedContactHandle).toBeDefined();
+    expect(res.payload).toBeUndefined();
+  });
 });

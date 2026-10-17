@@ -150,5 +150,50 @@ describe('Server Profile Validator (US-006 / #65)', () => {
       validateProfileUpdatePayload(req, res, next);
       expect(next).toHaveBeenCalledOnce();
     });
+
+    it('returns simultaneous field-specific errors with 400 when multiple fields are invalid (US-006 AC 5 / #68)', () => {
+      const req = {
+        body: {
+          handle: '!',
+          primaryRole: 'Architect',
+          institution: 'I'.repeat(151),
+          skills: ['Valid', '   '],
+          portfolioLinks: [{ url: 'http://insecure.test', label: 'Insecure' }],
+          sharedContactHandle: 'C'.repeat(151),
+        },
+      } as Request;
+      const res = createMockRes();
+      const next = vi.fn() as unknown as NextFunction;
+
+      validateProfileUpdatePayload(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(next).not.toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'VALIDATION_ERROR',
+          errors: expect.objectContaining({
+            handle: expect.stringContaining('Handle must be 2 to 50 characters'),
+            primaryRole: expect.stringContaining('Primary role must be one of'),
+            institution: expect.stringContaining('150 characters'),
+            skills: expect.stringContaining('non-empty'),
+            portfolioLinks: expect.stringContaining('HTTPS URLs'),
+            sharedContactHandle: expect.stringContaining('150 characters'),
+          }),
+        })
+      );
+    });
+
+    it('deduplicates portfolio URLs case-insensitively while preserving first label (US-006 AC 2 / #68)', () => {
+      const sanitized = validateProfileUpdateInput({
+        portfolioLinks: [
+          { url: 'https://github.com/alex', label: 'Primary' },
+          { url: 'HTTPS://GITHUB.COM/ALEX', label: 'Duplicate' },
+        ],
+      });
+      expect(sanitized.errors).toEqual({});
+      expect(sanitized.sanitized?.portfolioLinks).toEqual([
+        { url: 'https://github.com/alex', label: 'Primary' },
+      ]);
+    });
   });
 });
