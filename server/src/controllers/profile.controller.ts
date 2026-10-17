@@ -3,240 +3,29 @@ import { participantsRepository } from '../db/participants.repository.js';
 import {
   profileRepository,
   type FullParticipantProfileRecord,
-  type PortfolioLinkInput,
 } from '../db/profile.repository.js';
-import type { Participant, ParticipantPrimaryRole } from '../db/types.js';
+import type { Participant } from '../db/types.js';
+import {
+  ALLOWED_PRIMARY_ROLES,
+  isValidHttpsPortfolioUrl,
+  validateProfileUpdateInput,
+  type ProfileFieldErrors,
+  type SanitizedProfilePayload,
+} from '../validators/profile.validator.js';
 
-export const ALLOWED_PRIMARY_ROLES: readonly ParticipantPrimaryRole[] = [
-  'Frontend',
-  'Backend',
-  'Mobile',
-  'AI/ML',
-  'UI/UX',
-  'Pitch',
-];
+export {
+  ALLOWED_PRIMARY_ROLES,
+  isValidHttpsPortfolioUrl,
+  validateProfileUpdateInput,
+  type ProfileFieldErrors,
+  type SanitizedProfilePayload,
+};
 
 export const SHARED_CONTACT_AUDIENCE_NOTICE =
   'Shared contact handle is visible only to confirmed teammates. Leaving or removal from a team revokes access.';
 
 export const SELF_DECLARED_NOTICE =
   'Self-declared — HackMatch validates URL format only and does not certify skills, identity, or achievements.';
-
-export interface ProfileFieldErrors {
-  handle?: string;
-  primaryRole?: string;
-  institution?: string;
-  skills?: string;
-  portfolioLinks?: string;
-  sharedContactHandle?: string;
-}
-
-export interface SanitizedProfilePayload {
-  handle: string | null;
-  primaryRole: ParticipantPrimaryRole | null;
-  institution: string | null;
-  skills: string[];
-  portfolioLinks: PortfolioLinkInput[];
-  sharedContactHandle: string | null;
-}
-
-const HANDLE_REGEX = /^[A-Za-z0-9_-]{2,50}$/;
-
-export function isValidHttpsPortfolioUrl(rawUrl: string): boolean {
-  if (typeof rawUrl !== 'string') return false;
-  const trimmed = rawUrl.trim();
-  if (trimmed.length <= 8 || trimmed.length > 2048) return false;
-  if (!trimmed.toLowerCase().startsWith('https://')) return false;
-
-  try {
-    const parsed = new URL(trimmed);
-    if (parsed.protocol !== 'https:') return false;
-    if (!parsed.hostname || !parsed.hostname.includes('.') || parsed.hostname.endsWith('.')) {
-      return false;
-    }
-    if (/\s/.test(trimmed)) return false;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function validateProfileUpdateInput(body: unknown): {
-  errors: ProfileFieldErrors;
-  sanitized?: SanitizedProfilePayload;
-} {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    return {
-      errors: {
-        primaryRole: 'Invalid profile payload.',
-      },
-    };
-  }
-
-  const record = body as Record<string, unknown>;
-  const errors: ProfileFieldErrors = {};
-
-  // 1. Handle validation (optional, 2-50 chars alphanumeric, underscore, hyphen)
-  let handle: string | null = null;
-  if (record.handle !== undefined && record.handle !== null && record.handle !== '') {
-    if (typeof record.handle !== 'string') {
-      errors.handle = 'Handle must be a text value.';
-    } else {
-      const trimmedHandle = record.handle.trim();
-      if (trimmedHandle.length > 0) {
-        if (!HANDLE_REGEX.test(trimmedHandle)) {
-          errors.handle =
-            'Handle must be 2 to 50 characters and contain only letters, numbers, underscores, or hyphens.';
-        } else {
-          handle = trimmedHandle;
-        }
-      }
-    }
-  }
-
-  // 2. Primary role validation (Frontend, Backend, Mobile, AI/ML, UI/UX, Pitch)
-  let primaryRole: ParticipantPrimaryRole | null = null;
-  if (
-    record.primaryRole !== undefined &&
-    record.primaryRole !== null &&
-    record.primaryRole !== ''
-  ) {
-    if (
-      typeof record.primaryRole !== 'string' ||
-      !ALLOWED_PRIMARY_ROLES.includes(record.primaryRole.trim() as ParticipantPrimaryRole)
-    ) {
-      errors.primaryRole = `Primary role must be one of: ${ALLOWED_PRIMARY_ROLES.join(', ')}.`;
-    } else {
-      primaryRole = record.primaryRole.trim() as ParticipantPrimaryRole;
-    }
-  }
-
-  // 3. Institution validation (optional, max 150 chars)
-  let institution: string | null = null;
-  if (
-    record.institution !== undefined &&
-    record.institution !== null &&
-    record.institution !== ''
-  ) {
-    if (typeof record.institution !== 'string') {
-      errors.institution = 'Academic institution must be a text value.';
-    } else {
-      const trimmedInstitution = record.institution.trim();
-      if (trimmedInstitution.length > 150) {
-        errors.institution = 'Academic institution must not exceed 150 characters.';
-      } else if (trimmedInstitution.length > 0) {
-        institution = trimmedInstitution;
-      }
-    }
-  }
-
-  // 4. Skills validation (array of non-empty strings, max 50 chars each, deduplicated case-insensitively)
-  const skills: string[] = [];
-  if (record.skills !== undefined && record.skills !== null) {
-    if (!Array.isArray(record.skills)) {
-      errors.skills = 'Skills must be provided as a list of skill tags.';
-    } else if (record.skills.length > 25) {
-      errors.skills = 'You can specify at most 25 skill tags.';
-    } else {
-      const seenSkills = new Set<string>();
-      for (const item of record.skills) {
-        if (typeof item !== 'string' || item.trim().length === 0) {
-          errors.skills = 'Each skill tag must be a non-empty string.';
-          break;
-        }
-        const trimmedSkill = item.trim();
-        if (trimmedSkill.length > 50) {
-          errors.skills = 'Each skill tag must not exceed 50 characters.';
-          break;
-        }
-        const lower = trimmedSkill.toLowerCase();
-        if (!seenSkills.has(lower)) {
-          seenSkills.add(lower);
-          skills.push(trimmedSkill);
-        }
-      }
-    }
-  }
-
-  // 5. Portfolio links validation (HTTPS URLs only, optional label <= 100 chars)
-  const portfolioLinks: PortfolioLinkInput[] = [];
-  if (record.portfolioLinks !== undefined && record.portfolioLinks !== null) {
-    if (!Array.isArray(record.portfolioLinks)) {
-      errors.portfolioLinks = 'Portfolio links must be provided as a list.';
-    } else if (record.portfolioLinks.length > 10) {
-      errors.portfolioLinks = 'You can provide at most 10 portfolio links.';
-    } else {
-      for (const item of record.portfolioLinks) {
-        if (typeof item === 'string') {
-          const trimmedUrl = item.trim();
-          if (trimmedUrl.length === 0) continue;
-          if (!isValidHttpsPortfolioUrl(trimmedUrl)) {
-            errors.portfolioLinks =
-              'All portfolio links must be valid HTTPS URLs (e.g., https://github.com/username).';
-            break;
-          }
-          portfolioLinks.push({ url: trimmedUrl, label: null });
-        } else if (item && typeof item === 'object' && !Array.isArray(item)) {
-          const linkObj = item as Record<string, unknown>;
-          const rawUrl = typeof linkObj.url === 'string' ? linkObj.url.trim() : '';
-          if (!isValidHttpsPortfolioUrl(rawUrl)) {
-            errors.portfolioLinks =
-              'All portfolio links must be valid HTTPS URLs (e.g., https://github.com/username).';
-            break;
-          }
-          let label: string | null = null;
-          if (linkObj.label !== undefined && linkObj.label !== null && linkObj.label !== '') {
-            if (typeof linkObj.label !== 'string' || linkObj.label.trim().length > 100) {
-              errors.portfolioLinks = 'Portfolio link label must not exceed 100 characters.';
-              break;
-            }
-            label = linkObj.label.trim();
-          }
-          portfolioLinks.push({ url: rawUrl, label });
-        } else {
-          errors.portfolioLinks =
-            'All portfolio links must be valid HTTPS URLs (e.g., https://github.com/username).';
-          break;
-        }
-      }
-    }
-  }
-
-  // 6. Shared contact handle validation (optional, max 150 chars)
-  let sharedContactHandle: string | null = null;
-  if (
-    record.sharedContactHandle !== undefined &&
-    record.sharedContactHandle !== null &&
-    record.sharedContactHandle !== ''
-  ) {
-    if (typeof record.sharedContactHandle !== 'string') {
-      errors.sharedContactHandle = 'Shared contact handle must be a text value.';
-    } else {
-      const trimmedContact = record.sharedContactHandle.trim();
-      if (trimmedContact.length > 150) {
-        errors.sharedContactHandle = 'Shared contact handle must not exceed 150 characters.';
-      } else if (trimmedContact.length > 0) {
-        sharedContactHandle = trimmedContact;
-      }
-    }
-  }
-
-  if (Object.keys(errors).length > 0) {
-    return { errors };
-  }
-
-  return {
-    errors: {},
-    sanitized: {
-      handle,
-      primaryRole,
-      institution,
-      skills,
-      portfolioLinks,
-      sharedContactHandle,
-    },
-  };
-}
 
 export function formatProfileResponse(
   participant: Participant,

@@ -3,6 +3,7 @@ import { requireFirebaseAuth } from '../middleware/requireFirebaseAuth.js';
 import { requireMfa } from '../middleware/requireMfa.js';
 import { requireActiveAccount } from '../middleware/requireActiveAccount.js';
 import { requireParticipantRole } from '../middleware/requireRole.js';
+import { validateProfileUpdatePayload } from '../validators/profile.validator.js';
 import {
   getMyProfile,
   getParticipantProfile,
@@ -31,6 +32,7 @@ profileRouter.put(
   requireMfa,
   requireActiveAccount,
   requireParticipantRole,
+  validateProfileUpdatePayload,
   updateParticipantProfile
 );
 
