@@ -6,9 +6,10 @@ import { PasswordRecoveryRequestForm } from './components/auth/PasswordRecoveryR
 import { PasswordResetForm } from './components/auth/PasswordResetForm';
 import { MfaGate } from './components/auth/MfaGate';
 import { SignedInPanel } from './components/auth/SignedInPanel';
+import { EventDirectory } from './components/events/EventDirectory';
 import type { OtpChallenge } from './components/auth/providerSignIn';
 
-type View = 'register' | 'login' | 'verify' | 'account' | 'recover' | 'reset';
+type View = 'register' | 'login' | 'verify' | 'account' | 'recover' | 'reset' | 'events';
 
 const getInitialView = (): View => {
   if (typeof window === 'undefined') return 'register';
@@ -30,6 +31,9 @@ const getInitialView = (): View => {
   }
   if (view === 'recover' || view === 'forgot-password') {
     return 'recover';
+  }
+  if (view === 'events') {
+    return 'events';
   }
   return 'register';
 };
@@ -72,11 +76,17 @@ export function App(): React.JSX.Element {
     setCurrentView('login');
   };
 
+  const goToEvents = () => {
+    setStatusNotice(null);
+    setCurrentView('events');
+  };
+
   const showAuthNav =
     currentView === 'register' ||
     currentView === 'login' ||
     currentView === 'recover' ||
-    currentView === 'reset';
+    currentView === 'reset' ||
+    currentView === 'events';
 
   return (
     <div className="flex flex-col min-h-screen bg-cream text-ink font-sans">
@@ -105,9 +115,13 @@ export function App(): React.JSX.Element {
           <nav className="flex items-center gap-2 sm:gap-4" aria-label="Primary">
             <button
               type="button"
-              disabled
-              title="Coming soon"
-              className="hidden sm:inline text-sm font-medium text-ink-muted cursor-not-allowed opacity-70"
+              onClick={goToEvents}
+              aria-current={currentView === 'events' ? 'page' : undefined}
+              className={`text-sm font-medium rounded px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
+                currentView === 'events'
+                  ? 'text-forest-900 font-semibold'
+                  : 'text-ink-muted hover:text-forest-800'
+              }`}
             >
               Browse Events
             </button>
@@ -237,6 +251,13 @@ export function App(): React.JSX.Element {
                 setCurrentView('account');
               }}
             />
+          </section>
+        ) : currentView === 'events' ? (
+          <section aria-labelledby="events-heading">
+            <h2 id="events-heading" className="sr-only">
+              Hackathon Directory
+            </h2>
+            <EventDirectory />
           </section>
         ) : currentView === 'recover' ? (
           <section aria-labelledby="recovery-heading">
