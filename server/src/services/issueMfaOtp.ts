@@ -34,7 +34,8 @@ export interface IssueMfaOtpFailure {
     | 'ACCOUNT_LOCKED'
     | 'RATE_LIMITED'
     | 'EMAIL_DELIVERY_FAILED'
-    | 'MFA_STORE_UNAVAILABLE';
+    | 'MFA_STORE_UNAVAILABLE'
+    | 'FRESH_AUTH_REQUIRED';
   error: string;
   retryAfter?: number;
   /** When true, the client may retry under FR-081 (FR-084). */
@@ -78,9 +79,10 @@ export function isMfaStoreUnavailableError(err: unknown): boolean {
     code === '42P01' ||
     code === 'PGRST205' ||
     code === 'PGRST204' ||
-    blob.includes('mfa_challenges') ||
-    blob.includes('mfa_attempts') ||
-    blob.includes('does not exist') ||
+    ((blob.includes('mfa_challenges') || blob.includes('mfa_attempts')) &&
+      (blob.includes('does not exist') ||
+        blob.includes('could not find') ||
+        blob.includes('schema cache'))) ||
     blob.includes('could not find the table')
   );
 }
@@ -91,7 +93,8 @@ export function isMfaStoreUnavailableError(err: unknown): boolean {
  * challenge descriptor (no plaintext OTP, no session).
  */
 export async function issueMfaOtpForParticipant(
-  participant: Participant
+  participant: Participant,
+  decodedAuthTime?: number
 ): Promise<IssueMfaOtpResult> {
   try {
     const lockout = await evaluateAccountLockout(participant.id);
@@ -105,6 +108,20 @@ export async function issueMfaOtpForParticipant(
         error:
           'Account temporarily locked due to too many failed OTP attempts. Please wait 15 minutes before trying again.',
         retryAfter: lockout.retryAfterSeconds,
+      };
+    }
+
+    if (
+      lockout.lastLockoutEndsAt &&
+      typeof decodedAuthTime === 'number' &&
+      decodedAuthTime * 1000 < lockout.lastLockoutEndsAt
+    ) {
+      return {
+        ok: false,
+        status: 401,
+        code: 'FRESH_AUTH_REQUIRED',
+        error:
+          'Your account was previously locked. Please sign in again with your password or credentials before requesting a new code.',
       };
     }
 

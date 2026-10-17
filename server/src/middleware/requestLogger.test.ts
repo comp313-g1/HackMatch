@@ -77,4 +77,18 @@ describe('Sanitized Logging Middleware (NR-021)', () => {
     expect(sanitized.idToken).toBe('[REDACTED]');
     expect(sanitized.provider).toBe('google');
   });
+
+  it('redacts otpCode and code per Invariant L41 / NR-021', () => {
+    const rawPayload = {
+      otpCode: '654321',
+      code: '123456',
+      normalField: 'ok',
+    };
+
+    const sanitized = sanitizePayload(rawPayload) as Record<string, unknown>;
+
+    expect(sanitized.otpCode).toBe('[REDACTED]');
+    expect(sanitized.code).toBe('[REDACTED]');
+    expect(sanitized.normalField).toBe('ok');
+  });
 });

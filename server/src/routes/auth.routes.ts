@@ -20,10 +20,12 @@ import {
   oauthSignIn,
   oauthLink,
   issueMfaChallenge,
-  verifyMfaChallenge,
   getCurrentUser,
   createSession,
   logout,
+  sendMfaOtp,
+  verifyMfaOtp,
+  verifyMfaChallenge,
 } from '../controllers/auth.controller.js';
 import { requireVerifiedParticipant } from '../middleware/requireVerifiedParticipant.js';
 import { requireFirebaseAuth } from '../middleware/requireFirebaseAuth.js';
@@ -100,6 +102,31 @@ authRouter.post(
 );
 
 /**
+ * MFA OTP dispatch endpoint (US-004 AC 1 / FR-009 / FR-081 / FR-084).
+ * Enforces verified participant/admin account, 15m lockout, 60s/1h rate limits,
+ * and invalidates predecessor challenges.
+ */
+authRouter.post('/mfa/send', requireFirebaseAuth, requireActiveAccount, sendMfaOtp);
+
+/**
+ * MFA OTP verification endpoint (US-004 AC 2 / FR-010 / NR-008).
+ * Validates 6-digit OTP, enforces 15m lockout, single-use consumption,
+ * logs attempt, and sets Firebase mfa_auth_time claim on success.
+ */
+authRouter.post(
+  '/mfa/verify',
+  requireFirebaseAuth,
+  requireActiveAccount,
+  validateMfaVerifyPayload,
+  (req, res, next) => {
+    if (req.body && req.body.code !== undefined && req.body.otp === undefined) {
+      return verifyMfaChallenge(req, res, next);
+    }
+    return verifyMfaOtp(req, res, next);
+  }
+);
+
+/**
  * Returns the signed-in user's identity after verifying the Firebase ID token,
  * including revocation and disabled-account checks (US-003 AC 4 / AC 5).
  */
@@ -123,17 +150,6 @@ authRouter.post(
   requireFirebaseAuth,
   requireActiveAccount,
   issueMfaChallenge
-);
-
-/**
- * Verify a 6-digit MFA OTP and set the MFA claim (US-004 / FR-010 / S1-P1-10–11).
- */
-authRouter.post(
-  '/mfa/verify',
-  requireFirebaseAuth,
-  requireActiveAccount,
-  validateMfaVerifyPayload,
-  verifyMfaChallenge
 );
 
 /**
