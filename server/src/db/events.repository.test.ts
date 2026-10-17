@@ -1,0 +1,92 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { eventsRepository, type EventRecord } from './events.repository.js';
+import * as clientModule from './client.js';
+
+describe('eventsRepository unit tests (US-008 / #72)', () => {
+  const sampleRecord: EventRecord = {
+    id: 'e1000000-0000-4000-8000-000000000001',
+    title: 'Hack The North 2026',
+    official_url: 'https://hackthenorth.com',
+    event_edition: '2026',
+    start_date: '2026-09-18T18:00:00.000Z',
+    end_date: '2026-09-20T18:00:00.000Z',
+    format: 'In-Person',
+    location: 'Waterloo, ON',
+    min_team_size: 1,
+    max_team_size: 4,
+    is_link_disabled: false,
+    status: 'Published',
+  };
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('listPublicEvents selects only from events table with Published/Archived status', async () => {
+    const mockRange = vi.fn().mockResolvedValue({
+      data: [sampleRecord],
+      count: 1,
+      error: null,
+    });
+    const mockOrder2 = vi.fn().mockReturnValue({ range: mockRange });
+    const mockOrder1 = vi.fn().mockReturnValue({ order: mockOrder2 });
+    const mockIn = vi.fn().mockReturnValue({ order: mockOrder1 });
+    const mockSelect = vi.fn().mockReturnValue({ in: mockIn });
+    const mockFrom = vi.fn().mockReturnValue({ select: mockSelect });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      from: mockFrom,
+    } as unknown as SupabaseClient);
+
+    const result = await eventsRepository.listPublicEvents({ limit: 20, offset: 0 });
+
+    expect(mockFrom).toHaveBeenCalledWith('events');
+    expect(mockIn).toHaveBeenCalledWith('status', ['Published', 'Archived']);
+    expect(mockOrder1).toHaveBeenCalledWith('start_date', { ascending: true });
+    expect(mockOrder2).toHaveBeenCalledWith('id', { ascending: true });
+    expect(mockRange).toHaveBeenCalledWith(0, 19);
+    expect(result.rows).toEqual([sampleRecord]);
+    expect(result.total).toBe(1);
+  });
+
+  it('findPublicEventById finds verified event matching UUID', async () => {
+    const mockMaybeSingle = vi.fn().mockResolvedValue({
+      data: sampleRecord,
+      error: null,
+    });
+    const mockIn = vi.fn().mockReturnValue({ maybeSingle: mockMaybeSingle });
+    const mockEq = vi.fn().mockReturnValue({ in: mockIn });
+    const mockSelect = vi.fn().mockReturnValue({ eq: mockEq });
+    const mockFrom = vi.fn().mockReturnValue({ select: mockSelect });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      from: mockFrom,
+    } as unknown as SupabaseClient);
+
+    const result = await eventsRepository.findPublicEventById(sampleRecord.id);
+
+    expect(mockFrom).toHaveBeenCalledWith('events');
+    expect(mockEq).toHaveBeenCalledWith('id', sampleRecord.id);
+    expect(mockIn).toHaveBeenCalledWith('status', ['Published', 'Archived']);
+    expect(result).toEqual(sampleRecord);
+  });
+
+  it('throws when supabase client encounters a database error', async () => {
+    const dbError = new Error('Database connection failed');
+    const mockMaybeSingle = vi.fn().mockResolvedValue({
+      data: null,
+      error: dbError,
+    });
+    const mockIn = vi.fn().mockReturnValue({ maybeSingle: mockMaybeSingle });
+    const mockEq = vi.fn().mockReturnValue({ in: mockIn });
+    const mockSelect = vi.fn().mockReturnValue({ eq: mockEq });
+    const mockFrom = vi.fn().mockReturnValue({ select: mockSelect });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      from: mockFrom,
+    } as unknown as SupabaseClient);
+
+    await expect(eventsRepository.findPublicEventById(sampleRecord.id)).rejects.toThrow(dbError);
+  });
+});
