@@ -12,51 +12,39 @@ import {
   type ProfileFieldErrors,
   type SanitizedProfilePayload,
 } from '../validators/profile.validator.js';
+import {
+  SHARED_CONTACT_AUDIENCE_NOTICE,
+  SELF_DECLARED_NOTICE,
+  VISITOR_ANONYMIZED_NOTICE,
+  resolveProfileViewerCategory,
+  projectProfileForViewer,
+} from '../services/profilePrivacy.js';
 
 export {
   ALLOWED_PRIMARY_ROLES,
   isValidHttpsPortfolioUrl,
   validateProfileUpdateInput,
+  SHARED_CONTACT_AUDIENCE_NOTICE,
+  SELF_DECLARED_NOTICE,
+  VISITOR_ANONYMIZED_NOTICE,
   type ProfileFieldErrors,
   type SanitizedProfilePayload,
 };
-
-export const SHARED_CONTACT_AUDIENCE_NOTICE =
-  'Shared contact handle is visible only to confirmed teammates. Leaving or removal from a team revokes access.';
-
-export const SELF_DECLARED_NOTICE =
-  'Self-declared — HackMatch validates URL format only and does not certify skills, identity, or achievements.';
 
 export function formatProfileResponse(
   participant: Participant,
   record: FullParticipantProfileRecord,
   options: { isOwner: boolean; includeSharedContact: boolean }
 ): Record<string, unknown> {
-  const base: Record<string, unknown> = {
-    displayName: participant.full_name,
-    handle: record.profile?.handle ?? null,
-    primaryRole: record.profile?.primary_role ?? null,
-    institution: record.profile?.institution ?? null,
-    skills: record.skills.map((s) => s.skill_name),
-    skillsSelfDeclared: true,
-    portfolioLinks: record.portfolios.map((p) => ({
-      url: p.url,
-      label: p.label ?? null,
-      isSelfDeclared: true,
-    })),
-    selfDeclaredNotice: SELF_DECLARED_NOTICE,
-  };
-
-  if (options.isOwner) {
-    base.participantId = participant.id;
-    base.sharedContactHandle = record.profile?.shared_contact_handle ?? null;
-    base.sharedContactAudienceNotice = SHARED_CONTACT_AUDIENCE_NOTICE;
-  } else if (options.includeSharedContact) {
-    base.sharedContactHandle = record.profile?.shared_contact_handle ?? null;
-    base.sharedContactAudienceNotice = SHARED_CONTACT_AUDIENCE_NOTICE;
-  }
-
-  return base;
+  const category = options.isOwner
+    ? 'OWNER'
+    : options.includeSharedContact
+      ? 'CONFIRMED_TEAMMATE'
+      : 'PART';
+  return projectProfileForViewer(participant, record, category) as unknown as Record<
+    string,
+    unknown
+  >;
 }
 
 async function resolveAuthenticatedParticipant(req: Request): Promise<Participant | null> {
@@ -66,6 +54,45 @@ async function resolveAuthenticatedParticipant(req: Request): Promise<Participan
   const uid = req.firebaseUser?.uid;
   if (!uid) return null;
   return participantsRepository.findByFirebaseUid(uid);
+}
+
+/**
+ * GET /api/profiles/:participantId/preview
+ * Public anonymized preview for unauthenticated Visitors (US-006 Description, AC 3 / FR-014).
+ * Never exposes member handles, display names, portfolio links, private contacts, or emails.
+ */
+export async function getVisitorProfilePreview(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const targetParticipantId = String(req.params.participantId || '').trim();
+    if (!targetParticipantId) {
+      res.status(400).json({
+        error: 'Participant identifier is required.',
+        code: 'INVALID_PARTICIPANT_ID',
+      });
+      return;
+    }
+
+    const targetParticipant = await participantsRepository.findById(targetParticipantId);
+    if (!targetParticipant || targetParticipant.role !== 'PART' || targetParticipant.is_suspended) {
+      res.status(404).json({
+        error: 'Participant profile not found.',
+        code: 'PROFILE_NOT_FOUND',
+      });
+      return;
+    }
+
+    const fullProfile = await profileRepository.getFullProfile(targetParticipant.id);
+    res.status(200).json({
+      preview: projectProfileForViewer(targetParticipant, fullProfile, 'VISITOR'),
+    });
+  } catch (err: unknown) {
+    next(err);
+  }
 }
 
 /**
@@ -98,10 +125,7 @@ export async function getMyProfile(
 
     const fullProfile = await profileRepository.getFullProfile(participant.id);
     res.status(200).json({
-      profile: formatProfileResponse(participant, fullProfile, {
-        isOwner: true,
-        includeSharedContact: true,
-      }),
+      profile: projectProfileForViewer(participant, fullProfile, 'OWNER'),
     });
   } catch (err: unknown) {
     next(err);
@@ -151,12 +175,16 @@ export async function getParticipantProfile(
       ? true
       : await profileRepository.areConfirmedTeammates(viewer.id, targetParticipant.id);
 
+    const viewerCategory = resolveProfileViewerCategory({
+      viewerParticipantId: viewer.id,
+      viewerRole: viewer.role,
+      targetParticipantId: targetParticipant.id,
+      isConfirmedTeammate: isTeammate,
+    });
+
     const fullProfile = await profileRepository.getFullProfile(targetParticipant.id);
     res.status(200).json({
-      profile: formatProfileResponse(targetParticipant, fullProfile, {
-        isOwner,
-        includeSharedContact: isOwner || isTeammate,
-      }),
+      profile: projectProfileForViewer(targetParticipant, fullProfile, viewerCategory),
     });
   } catch (err: unknown) {
     next(err);
@@ -263,10 +291,7 @@ export async function updateParticipantProfile(
 
     res.status(200).json({
       message: 'Profile updated successfully.',
-      profile: formatProfileResponse(participant, updatedRecord, {
-        isOwner: true,
-        includeSharedContact: true,
-      }),
+      profile: projectProfileForViewer(participant, updatedRecord, 'OWNER'),
     });
   } catch (err: unknown) {
     if (

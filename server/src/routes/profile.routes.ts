@@ -7,6 +7,7 @@ import { validateProfileUpdatePayload } from '../validators/profile.validator.js
 import {
   getMyProfile,
   getParticipantProfile,
+  getVisitorProfilePreview,
   updateParticipantProfile,
 } from '../controllers/profile.controller.js';
 
@@ -35,6 +36,12 @@ profileRouter.put(
   validateProfileUpdatePayload,
   updateParticipantProfile
 );
+
+/**
+ * Public anonymized preview endpoint for Visitors (US-006 AC 3 / FR-014).
+ * Never exposes member handles, portfolio links, private contacts, or emails.
+ */
+profileRouter.get('/:participantId/preview', getVisitorProfilePreview);
 
 profileRouter.get(
   '/:participantId',

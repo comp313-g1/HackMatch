@@ -327,5 +327,71 @@ describe('Express Profile Read & Update Endpoints (US-006 / #64)', () => {
       expect(res.status).toBe(200);
       expect(res.body.profile.sharedContactHandle).toBe('@teammate_contact');
     });
+
+    it('rejects unauthenticated requests to full candidate profile endpoint with 401 (US-006 AC 3)', async () => {
+      const res = await request(app).get(`/api/profiles/${otherParticipant.id}`);
+
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe('GET /api/profiles/:participantId/preview (Visitor Anonymized Preview - US-006 AC 3 / #67)', () => {
+    it('returns anonymized preview fields without authentication and strips handle, displayName, portfolioLinks, sharedContactHandle, and email', async () => {
+      vi.spyOn(participantsRepository, 'findById').mockResolvedValue(otherParticipant);
+      vi.spyOn(profileRepository, 'getFullProfile').mockResolvedValue({
+        profile: {
+          ...sampleProfileRecord,
+          participant_id: otherParticipant.id,
+          handle: 'other_dev',
+          primary_role: 'Backend',
+          institution: 'University of Toronto',
+          shared_contact_handle: '@secret_contact',
+        },
+        skills: [
+          {
+            id: 'skill-2',
+            participant_id: otherParticipant.id,
+            skill_name: 'Go',
+            created_at: '2026-03-19T00:00:00.000Z',
+          },
+        ],
+        portfolios: [
+          {
+            id: 'port-2',
+            participant_id: otherParticipant.id,
+            url: 'https://github.com/otherdev',
+            label: 'GitHub',
+            created_at: '2026-03-19T00:00:00.000Z',
+            updated_at: '2026-03-19T00:00:00.000Z',
+          },
+        ],
+      });
+
+      const res = await request(app).get(`/api/profiles/${otherParticipant.id}/preview`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.preview).toMatchObject({
+        viewerCategory: 'VISITOR',
+        isAnonymized: true,
+        displayLabel: 'Anonymous Participant',
+        primaryRole: 'Backend',
+        skillCount: 1,
+      });
+      expect(res.body.preview.handle).toBeUndefined();
+      expect(res.body.preview.displayName).toBeUndefined();
+      expect(res.body.preview.portfolioLinks).toBeUndefined();
+      expect(res.body.preview.sharedContactHandle).toBeUndefined();
+      expect(res.body.preview.email).toBeUndefined();
+    });
+
+    it('returns 404 when the requested preview participant does not exist', async () => {
+      vi.spyOn(participantsRepository, 'findById').mockResolvedValue(null);
+
+      const res = await request(app).get(`/api/profiles/${otherParticipant.id}/preview`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe('PROFILE_NOT_FOUND');
+    });
   });
 });
+
