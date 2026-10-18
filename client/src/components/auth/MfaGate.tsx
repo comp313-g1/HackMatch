@@ -14,6 +14,8 @@ export interface MfaGateProps {
   onNavigateToSignIn?: () => void;
   /** Optional challenge from password/OAuth primary auth so resend is not forced immediately. */
   initialChallenge?: OtpChallenge | null;
+  /** Optional callback invoked once the user's session is verified with MFA claim. */
+  onAuthorized?: (user: User) => void;
 }
 
 const cardClass =
@@ -27,6 +29,7 @@ export function MfaGate({
   children,
   onNavigateToSignIn,
   initialChallenge = null,
+  onAuthorized,
 }: MfaGateProps): React.JSX.Element {
   const [status, setStatus] = useState<GateStatus>('loading');
   const [user, setUser] = useState<User | null>(null);
@@ -34,6 +37,18 @@ export function MfaGate({
   const [rechecking, setRechecking] = useState<boolean>(false);
   const [signingOut, setSigningOut] = useState<boolean>(false);
   const checkId = useRef(0);
+  const authorizedNotifiedRef = useRef(false);
+
+  useEffect(() => {
+    if (status === 'authorized' && user) {
+      if (!authorizedNotifiedRef.current) {
+        authorizedNotifiedRef.current = true;
+        onAuthorized?.(user);
+      }
+    } else {
+      authorizedNotifiedRef.current = false;
+    }
+  }, [status, user, onAuthorized]);
 
   const checkSession = useCallback(async (currentUser: User, forceRefresh: boolean) => {
     const id = ++checkId.current;

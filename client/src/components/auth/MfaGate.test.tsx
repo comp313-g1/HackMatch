@@ -217,4 +217,40 @@ describe('MfaGate', () => {
     unmount();
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
+
+  it('invokes onAuthorized callback when session is already verified with MFA', async () => {
+    mockGetIdTokenResult.mockResolvedValueOnce(verifiedToken);
+    const onAuthorized = vi.fn();
+    render(
+      <MfaGate onAuthorized={onAuthorized}>
+        {(u) => <p>Protected content for {u.email}</p>}
+      </MfaGate>
+    );
+
+    act(() => emitAuthState(user));
+
+    await screen.findByText('Protected content for jane@example.com');
+    expect(onAuthorized).toHaveBeenCalledTimes(1);
+    expect(onAuthorized).toHaveBeenCalledWith(user);
+  });
+
+  it('invokes onAuthorized callback after OTP verification transitions to authorized', async () => {
+    mockGetIdTokenResult.mockResolvedValueOnce(passwordOnlyToken).mockResolvedValueOnce(verifiedToken);
+    const onAuthorized = vi.fn();
+    render(
+      <MfaGate onAuthorized={onAuthorized}>
+        {(u) => <p>Protected content for {u.email}</p>}
+      </MfaGate>
+    );
+
+    act(() => emitAuthState(user));
+    await screen.findByText(/email code required/i);
+    expect(onAuthorized).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /i've entered my code/i }));
+
+    await screen.findByText('Protected content for jane@example.com');
+    expect(onAuthorized).toHaveBeenCalledTimes(1);
+    expect(onAuthorized).toHaveBeenCalledWith(user);
+  });
 });

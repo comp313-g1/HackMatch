@@ -1,0 +1,85 @@
+<div id="root">
+    <div class="flex min-h-screen flex-col bg-blossom">
+        <header class="sticky top-0 z-40 border-b border-hairline bg-blossom/95 backdrop-blur">
+            <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6"><a
+                    class="font-display text-xl font-semibold tracking-tight text-ink" href="/">HackMatch</a>
+                <nav class="hidden items-center gap-6 md:flex"><a class="font-body text-sm text-ink/80 hover:text-ink"
+                        href="/events">Browse Events</a><a class="font-body text-sm text-ink/80 hover:text-ink"
+                        href="/teams">Teams</a><a class="font-body text-sm text-ink/80 hover:text-ink"
+                        href="/looking">Looking for Team</a><a class="font-body text-sm text-ink/80 hover:text-ink"
+                        href="/applications">Applications</a><a class="font-body text-sm text-ink/80 hover:text-ink"
+                        href="/invitations">Invitations</a><a class="font-body text-sm text-ink/80 hover:text-ink"
+                        href="/profile">Profile</a><a class="font-body text-sm text-ink/80 hover:text-ink"
+                        href="/signout">Sign out (maplefox)</a></nav><button
+                    class="inline-flex h-10 w-10 items-center justify-center rounded-md border border-hairline text-ink md:hidden"
+                    aria-label="Open menu" aria-expanded="false"><svg xmlns="http://www.w3.org/2000/svg" width="24"
+                        height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-menu h-5 w-5">
+                        <line x1="4" x2="20" y1="12" y2="12"></line>
+                        <line x1="4" x2="20" y1="6" y2="6"></line>
+                        <line x1="4" x2="20" y1="18" y2="18"></line>
+                    </svg></button>
+            </div>
+        </header>
+        <main class="flex-1">
+            <div class="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+                <header class="mb-6 flex items-center justify-between">
+                    <h1 class="font-display text-[1.75rem] text-ink">My teams</h1><a
+                        class="rounded-md bg-forest px-4 py-2 font-body text-sm font-semibold text-blossom hover:opacity-90"
+                        href="/events">Create a team</a>
+                </header>
+                <div class="space-y-4">
+                    <div class="rounded-lg border border-hairline bg-card p-5">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <h2 class="font-display text-[1.25rem] text-ink">Deep Root</h2>
+                                <p class="mt-1 font-body text-sm text-muted-foreground">ForestCode Hack · Open</p>
+                            </div><span class="font-body text-sm text-muted-foreground">1 members</span>
+                        </div>
+                        <p class="mt-3 font-body text-sm text-ink/80">Building an accessible forest-trail planner with
+                            offline maps.</p>
+                        <div class="mt-4 flex flex-wrap gap-2">
+                            <div class="flex items-center gap-2"><span aria-hidden="true"
+                                    class="inline-flex items-center justify-center rounded-full border border-hairline bg-surfaceMuted font-body font-semibold text-ink"
+                                    style="width: 26px; height: 26px; font-size: 9.36px;">M</span><span
+                                    class="font-body text-sm text-ink">maplefox · Frontend</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+        <footer class="border-t border-hairline">
+            <div
+                class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 py-6 sm:flex-row sm:px-6">
+                <p class="font-body text-xs text-muted-foreground">© 2026 HackMatch</p>
+                <div class="flex gap-4"><a class="font-body text-xs text-muted-foreground hover:text-ink"
+                        href="/terms">Terms</a><a class="font-body text-xs text-muted-foreground hover:text-ink"
+                        href="/privacy">Privacy</a></div>
+            </div>
+        </footer>
+        <div class="fixed bottom-4 left-4 z-50 print:hidden">
+            <div class="relative"><button
+                    class="flex items-center gap-2 rounded-full border border-hairline bg-blossom/95 px-3 py-2 shadow-sm backdrop-blur"
+                    aria-haspopup="menu" aria-expanded="false" aria-label="Preview as a different role"><svg
+                        xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="lucide lucide-eye h-4 w-4 text-forest">
+                        <path
+                            d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0">
+                        </path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg><span class="font-body text-xs text-ink/80">Preview as <span
+                            class="font-semibold text-ink">Participant</span></span><svg
+                        xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="lucide lucide-chevron-down h-4 w-4 text-ink/60 transition">
+                        <path d="m6 9 6 6 6-6"></path>
+                    </svg></button></div>
+        </div>
+    </div>
+    <div role="region" aria-label="Notifications (F8)" tabindex="-1" style="pointer-events: none;">
+        <ol tabindex="-1"
+            class="fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]">
+        </ol>
+    </div>
+</div>
