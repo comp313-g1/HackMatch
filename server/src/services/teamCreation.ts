@@ -13,9 +13,14 @@ export interface CreateTeamServiceInput {
   maxTeamSize?: number;
 }
 
+export interface TeamCreationDeps {
+  repo: ITeamsRepository;
+  availabilityRepo?: { clearLookingForTeamStatus(participantId: string): Promise<boolean> };
+}
+
 export async function createTeam(
   input: CreateTeamServiceInput,
-  deps: { repo: ITeamsRepository } = { repo: teamsRepository }
+  deps: TeamCreationDeps = { repo: teamsRepository }
 ): Promise<{ team: Team; membership: TeamMembership }> {
   try {
     let effectiveEventId = input.eventId;
@@ -23,10 +28,16 @@ export async function createTeam(
       effectiveEventId = await deps.repo.createShadowEvent(input.name, input.maxTeamSize);
     }
 
-    return await deps.repo.createTeamWithOwner({
+    const result = await deps.repo.createTeamWithOwner({
       ...input,
       eventId: effectiveEventId,
     });
+
+    if (deps.availabilityRepo) {
+      await deps.availabilityRepo.clearLookingForTeamStatus(input.ownerParticipantId);
+    }
+
+    return result;
   } catch (err: unknown) {
     const serviceError = toTeamServiceError(err);
     if (serviceError) {
