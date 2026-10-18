@@ -26,6 +26,18 @@ export interface TeamListingPatch {
   communicationLink?: string | null;
 }
 
+export interface OpenTeamRecord {
+  team: Team;
+  event: { status: 'Published' | 'Archived' | 'Disabled'; end_date: string };
+  openVacancies: Array<Pick<TeamVacancy, 'id' | 'role' | 'skills'>>;
+  members: Array<{
+    participant_id: string;
+    role: TeamMembershipRole;
+    full_name: string | null;
+    handle: string | null;
+  }>;
+}
+
 export interface ITeamsRepository {
   createShadowEvent(title: string, maxTeamSize?: number): Promise<string>;
   createTeamWithOwner(input: CreateTeamWithOwnerInput): Promise<{ team: Team; membership: TeamMembership }>;
@@ -54,6 +66,7 @@ export interface ITeamsRepository {
   removeTeamVacancy(actorId: string, teamId: string, vacancyId: string): Promise<{ canceledRequests: number }>;
   disbandTeam(actorId: string, teamId: string): Promise<{ releasedMembers: number; canceledRequests: number }>;
   removeTeamMember(actorId: string, teamId: string, memberParticipantId: string, reason: string): Promise<{ availabilityRestored: boolean }>;
+  findOpenTeamRecords(options: { withMemberIdentities: boolean }): Promise<OpenTeamRecord[]>;
 }
 
 export const teamsRepository: ITeamsRepository = {
@@ -313,5 +326,99 @@ export const teamsRepository: ITeamsRepository = {
     });
     if (error) throw error;
     return data as { availabilityRestored: boolean };
+  },
+
+  async findOpenTeamRecords(options: { withMemberIdentities: boolean }): Promise<OpenTeamRecord[]> {
+    const client = getSupabaseClient();
+    const withMemberIdentities = options.withMemberIdentities;
+
+    const selectQuery = `
+      *,
+      events!inner(status, end_date),
+      team_vacancies!inner(id, role, skills, status),
+      team_memberships(
+        participant_id,
+        role,
+        status${withMemberIdentities ? ', participants(full_name, participant_profiles(handle))' : ''}
+      )
+    `.replace(/\s+/g, ' ').trim();
+
+    const { data, error } = await client
+      .from('teams')
+      .select(selectQuery)
+      .eq('recruitment_status', 'Open')
+      .eq('team_vacancies.status', 'Open')
+      .eq('team_memberships.status', 'Confirmed')
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (error) throw error;
+
+    const rows = (data as unknown as Array<Record<string, unknown>>) || [];
+    return rows.map((row) => {
+      const eventData = (Array.isArray(row.events) ? row.events[0] : row.events) as
+        | { status?: 'Published' | 'Archived' | 'Disabled'; end_date?: string }
+        | undefined;
+
+      const event: { status: 'Published' | 'Archived' | 'Disabled'; end_date: string } = {
+        status: eventData?.status ?? 'Published',
+        end_date: eventData?.end_date ?? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      };
+
+      const vacanciesList = (row.team_vacancies || []) as Array<{
+        id: string;
+        role: ParticipantPrimaryRole;
+        skills: string[];
+        status: string;
+      }>;
+      const openVacancies = vacanciesList
+        .filter((v) => v.status === 'Open')
+        .map((v) => ({
+          id: v.id,
+          role: v.role,
+          skills: Array.isArray(v.skills) ? v.skills : [],
+        }));
+
+      const membershipsList = (row.team_memberships || []) as Array<Record<string, unknown>>;
+      const members = membershipsList
+        .filter((m) => m.status === 'Confirmed')
+        .map((m) => {
+          let fullName: string | null = null;
+          let handle: string | null = null;
+
+          if (withMemberIdentities && m.participants) {
+            const participantData = (Array.isArray(m.participants) ? m.participants[0] : m.participants) as
+              | { full_name?: string; participant_profiles?: unknown }
+              | undefined;
+            fullName = participantData?.full_name ?? null;
+
+            if (participantData?.participant_profiles) {
+              const profileData = (Array.isArray(participantData.participant_profiles)
+                ? participantData.participant_profiles[0]
+                : participantData.participant_profiles) as { handle?: string | null } | undefined;
+              handle = profileData?.handle ?? null;
+            }
+          }
+
+          return {
+            participant_id: String(m.participant_id),
+            role: m.role as TeamMembershipRole,
+            full_name: fullName,
+            handle,
+          };
+        });
+
+      const teamFields = { ...row };
+      delete teamFields.events;
+      delete teamFields.team_vacancies;
+      delete teamFields.team_memberships;
+
+      return {
+        team: teamFields as unknown as Team,
+        event,
+        openVacancies,
+        members,
+      };
+    });
   },
 };

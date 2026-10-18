@@ -14,6 +14,7 @@ import {
   validateVacancyBody,
   validateRemovalReasonBody,
 } from '../validators/team.validator.js';
+import { validateOpenTeamsQuery } from '../validators/openTeams.validator.js';
 import {
   createTeamHandler,
   getMyTeamHandler,
@@ -24,6 +25,7 @@ import {
   removeVacancyHandler,
   disbandTeamHandler,
   removeMemberHandler,
+  listOpenTeamsHandler,
 } from '../controllers/team.controller.js';
 
 export const teamRouter = Router();
@@ -36,6 +38,7 @@ const participantAuth = [
   requireVerifiedParticipant,
 ];
 
+teamRouter.get('/', ...participantAuth, validateOpenTeamsQuery, listOpenTeamsHandler);
 teamRouter.post('/', ...participantAuth, requireJsonObjectBody, validateCreateTeamBody, createTeamHandler);
 teamRouter.get('/mine', ...participantAuth, validateMyTeamQuery, getMyTeamHandler);
 teamRouter.get('/:teamId', ...participantAuth, validateTeamIdParams, requireTeamOwner, getTeamHandler);
