@@ -31,12 +31,13 @@ export interface TeamFieldErrors {
 }
 
 export interface CreateTeamInputSanitized {
-  eventId: string;
+  eventId?: string;
   name: string;
   pitch: string;
   goal: TeamGoal;
   commitmentHours: number;
   communicationLink: string | null;
+  maxTeamSize?: number;
 }
 
 /**
@@ -104,18 +105,21 @@ export function validateTeamIdParams(req: Request, res: Response, next: NextFunc
 
 /**
  * Validates eventId query parameter for GET /api/teams/mine.
+ * Optional: when provided, must be a valid UUID. When omitted, allows fetching all participant teams.
  */
 export function validateMyTeamQuery(req: Request, res: Response, next: NextFunction): void {
   const { eventId } = req.query;
 
-  if (!eventId || typeof eventId !== 'string' || !UUID_REGEX.test(eventId.trim())) {
-    res.setHeader('Cache-Control', 'no-store');
-    res.status(400).json({
-      error: 'Validation failed.',
-      code: 'VALIDATION_ERROR',
-      errors: { eventId: 'Event ID is required and must be a valid UUID.' },
-    });
-    return;
+  if (eventId !== undefined && eventId !== null && String(eventId).trim() !== '') {
+    if (typeof eventId !== 'string' || !UUID_REGEX.test(eventId.trim())) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(400).json({
+        error: 'Validation failed.',
+        code: 'VALIDATION_ERROR',
+        errors: { eventId: 'Event ID must be a valid UUID if provided.' },
+      });
+      return;
+    }
   }
 
   next();
@@ -151,7 +155,7 @@ export function validateCreateTeamInput(body: unknown): {
 
   const record = body as Record<string, unknown>;
   const errors: TeamFieldErrors = {};
-  const allowedKeys = ['eventId', 'name', 'pitch', 'goal', 'commitmentHours', 'communicationLink'];
+  const allowedKeys = ['eventId', 'name', 'pitch', 'goal', 'commitmentHours', 'communicationLink', 'maxTeamSize'];
 
   for (const key of Object.keys(record)) {
     if (!allowedKeys.includes(key)) {
@@ -159,10 +163,12 @@ export function validateCreateTeamInput(body: unknown): {
     }
   }
 
-  // 1. eventId
+  // 1. eventId (optional; if provided, must be a valid UUID)
   const rawEventId = record.eventId;
-  if (!rawEventId || typeof rawEventId !== 'string' || !UUID_REGEX.test(rawEventId.trim())) {
-    errors.eventId = 'Event ID is required and must be a valid UUID.';
+  if (rawEventId !== undefined && rawEventId !== null && String(rawEventId).trim() !== '') {
+    if (typeof rawEventId !== 'string' || !UUID_REGEX.test(rawEventId.trim())) {
+      errors.eventId = 'Event ID must be a valid UUID.';
+    }
   }
 
   // 2. name
@@ -221,6 +227,18 @@ export function validateCreateTeamInput(body: unknown): {
     }
   }
 
+  // 7. maxTeamSize (optional, integer 2..20)
+  let sanitizedMaxTeamSize: number | undefined = undefined;
+  const rawMaxTeamSize = record.maxTeamSize;
+  if (rawMaxTeamSize !== undefined && rawMaxTeamSize !== null && rawMaxTeamSize !== '') {
+    const parsedMax = Number(rawMaxTeamSize);
+    if (!Number.isInteger(parsedMax) || parsedMax < 2 || parsedMax > 20) {
+      errors.maxTeamSize = 'Maximum team size must be an integer between 2 and 20.';
+    } else {
+      sanitizedMaxTeamSize = parsedMax;
+    }
+  }
+
   if (Object.keys(errors).length > 0) {
     return { errors };
   }
@@ -228,12 +246,13 @@ export function validateCreateTeamInput(body: unknown): {
   return {
     errors: {},
     sanitized: {
-      eventId: String(rawEventId).trim(),
+      ...(rawEventId ? { eventId: String(rawEventId).trim() } : {}),
       name: String(rawName).trim(),
       pitch: String(rawPitch).replace(/\r\n/g, '\n').trim(),
       goal: normalizedGoal!,
       commitmentHours: rawHours as number,
       communicationLink: sanitizedLink,
+      ...(sanitizedMaxTeamSize !== undefined ? { maxTeamSize: sanitizedMaxTeamSize } : {}),
     },
   };
 }

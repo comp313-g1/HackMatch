@@ -4,12 +4,12 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MyTeamsPage } from './MyTeamsPage';
 import * as teamApi from './teamApi';
 import type { TeamView } from './teamTypes';
-import * as landingDataModule from '../landing/landingData';
 
 vi.mock('./teamApi', async () => {
   const actual = await vi.importActual<typeof import('./teamApi')>('./teamApi');
   return {
     ...actual,
+    fetchMyTeams: vi.fn(),
     fetchMyTeam: vi.fn(),
   };
 });
@@ -57,20 +57,7 @@ describe('MyTeamsPage component (teams.html wireframe)', () => {
   });
 
   it('renders loading state initially with role="status"', () => {
-    vi.spyOn(landingDataModule, 'VERIFIED_EVENTS', 'get').mockReturnValue([
-      {
-        id: 'e-100',
-        name: 'ForestCode Hack',
-        format: 'In-Person',
-        time: 'Upcoming',
-        location: 'Vancouver',
-        country: 'Canada',
-        dates: 'Nov 1 - 3, 2026',
-        openTeams: 5,
-        tags: ['Eco', 'Mapping'],
-      },
-    ]);
-    vi.mocked(teamApi.fetchMyTeam).mockReturnValue(new Promise(() => {}));
+    vi.mocked(teamApi.fetchMyTeams).mockReturnValue(new Promise(() => {}));
 
     render(
       <MyTeamsPage
@@ -84,7 +71,9 @@ describe('MyTeamsPage component (teams.html wireframe)', () => {
     expect(loader).toHaveTextContent(/loading your teams…/i);
   });
 
-  it('renders empty state when user has no teams, with "Create a team" and "Browse Hackathons" buttons', async () => {
+  it('renders empty state when user has no teams, with "Create a team" and "Create a Team" buttons', async () => {
+    vi.mocked(teamApi.fetchMyTeams).mockResolvedValueOnce([]);
+
     render(
       <MyTeamsPage
         onCreateTeam={mockOnCreateTeam}
@@ -99,33 +88,17 @@ describe('MyTeamsPage component (teams.html wireframe)', () => {
     expect(screen.getByRole('heading', { level: 1, name: /my teams/i })).toBeInTheDocument();
     expect(screen.getByText(/you haven’t joined or created any teams yet/i)).toBeInTheDocument();
 
-    const browseBtn = screen.getByRole('button', { name: /browse hackathons to form a team/i });
-    expect(browseBtn).toBeInTheDocument();
-    fireEvent.click(browseBtn);
+    const buttons = screen.getAllByRole('button', { name: /create a team/i });
+    expect(buttons).toHaveLength(2);
+    fireEvent.click(buttons[1]); // Empty state CTA
     expect(mockOnCreateTeam).toHaveBeenCalledTimes(1);
 
-    const createHeaderBtn = screen.getByRole('button', { name: /^create a team$/i });
-    fireEvent.click(createHeaderBtn);
+    fireEvent.click(buttons[0]); // Header button
     expect(mockOnCreateTeam).toHaveBeenCalledTimes(2);
   });
 
-  it('renders sign in required alert when fetchMyTeam throws AuthRequiredError', async () => {
-    // Stub VERIFIED_EVENTS to trigger a fetch attempt
-    vi.spyOn(landingDataModule, 'VERIFIED_EVENTS', 'get').mockReturnValue([
-      {
-        id: 'e-100',
-        name: 'ForestCode Hack',
-        format: 'In-Person',
-        time: 'Upcoming',
-        location: 'Vancouver',
-        country: 'Canada',
-        dates: 'Nov 1 - 3, 2026',
-        openTeams: 5,
-        tags: ['Eco', 'Mapping'],
-      },
-    ]);
-
-    vi.mocked(teamApi.fetchMyTeam).mockRejectedValueOnce(new teamApi.AuthRequiredError());
+  it('renders sign in required alert when fetchMyTeams throws AuthRequiredError', async () => {
+    vi.mocked(teamApi.fetchMyTeams).mockRejectedValueOnce(new teamApi.AuthRequiredError());
 
     render(
       <MyTeamsPage
@@ -140,21 +113,7 @@ describe('MyTeamsPage component (teams.html wireframe)', () => {
   });
 
   it('renders team card matching teams.html wireframe when teams exist', async () => {
-    vi.spyOn(landingDataModule, 'VERIFIED_EVENTS', 'get').mockReturnValue([
-      {
-        id: 'e-100',
-        name: 'ForestCode Hack',
-        format: 'In-Person',
-        time: 'Upcoming',
-        location: 'Vancouver',
-        country: 'Canada',
-        dates: 'Nov 1 - 3, 2026',
-        openTeams: 5,
-        tags: ['Eco', 'Mapping'],
-      },
-    ]);
-
-    vi.mocked(teamApi.fetchMyTeam).mockResolvedValueOnce(sampleTeam);
+    vi.mocked(teamApi.fetchMyTeams).mockResolvedValueOnce([sampleTeam]);
 
     render(
       <MyTeamsPage
@@ -169,7 +128,7 @@ describe('MyTeamsPage component (teams.html wireframe)', () => {
 
     // Team Card elements
     expect(screen.getByRole('heading', { level: 2, name: /deep root/i })).toBeInTheDocument();
-    expect(screen.getByText(/forestcode hack · open/i)).toBeInTheDocument();
+    expect(screen.getByText(/hackmatch · open/i)).toBeInTheDocument();
     expect(screen.getByText(/1 member/i)).toBeInTheDocument();
     expect(
       screen.getByText(/building an accessible forest-trail planner with offline maps/i)

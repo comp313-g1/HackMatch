@@ -12,9 +12,10 @@ import { MfaGate } from './components/auth/MfaGate';
 import { SignedInPanel } from './components/auth/SignedInPanel';
 import { TeamWorkspace } from './components/teams/TeamWorkspace';
 import { MyTeamsPage } from './components/teams/MyTeamsPage';
+import { CreateTeamPage } from './components/teams/CreateTeamPage';
 import type { OtpChallenge } from './components/auth/providerSignIn';
 
-type View = 'landing' | 'register' | 'login' | 'mfa' | 'verify' | 'account' | 'recover' | 'reset' | 'team';
+type View = 'landing' | 'register' | 'login' | 'mfa' | 'verify' | 'account' | 'recover' | 'reset' | 'team' | 'create-team';
 
 const getInitialView = (): View => {
   if (typeof window === 'undefined') return 'landing';
@@ -146,10 +147,17 @@ export function App(): React.JSX.Element {
     }
   };
 
+  const goToCreateTeam = () => {
+    setStatusNotice(null);
+    setIsMobileMenuOpen(false);
+    setCurrentView('create-team');
+  };
+
   const isAuthenticated =
     Boolean(currentUser) ||
     currentView === 'account' ||
     currentView === 'team' ||
+    currentView === 'create-team' ||
     currentView === 'mfa';
   const participantIdentifier =
     currentUser?.displayName ||
@@ -415,6 +423,30 @@ export function App(): React.JSX.Element {
             onSelectEvent={handleSelectEvent}
             currentUser={currentUser}
           />
+        ) : currentView === 'create-team' ? (
+          <section aria-labelledby="create-team-heading">
+            <h2 id="create-team-heading" className="sr-only">
+              Create a Team
+            </h2>
+            <MfaGate
+              initialChallenge={otpChallenge}
+              onNavigateToSignIn={() => {
+                setStatusNotice(null);
+                setOtpChallenge(null);
+                setCurrentView('login');
+              }}
+            >
+              {() => (
+                <CreateTeamPage
+                  onCancel={goToTeam}
+                  onCreated={(newTeam) => {
+                    setStatusNotice(`Team "${newTeam.name}" created successfully!`);
+                    goToTeam();
+                  }}
+                />
+              )}
+            </MfaGate>
+          </section>
         ) : currentView === 'team' ? (
           <section aria-labelledby="team-heading">
             <h2 id="team-heading" className="sr-only">
@@ -434,7 +466,7 @@ export function App(): React.JSX.Element {
                 if (!teamEventId || !UUID_REGEX.test(teamEventId.trim())) {
                   return (
                     <MyTeamsPage
-                      onCreateTeam={goToLanding}
+                      onCreateTeam={goToCreateTeam}
                       onSelectTeam={(eventId) => {
                         handleSelectEvent(eventId);
                       }}

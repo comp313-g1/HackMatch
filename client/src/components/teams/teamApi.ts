@@ -73,13 +73,26 @@ async function handleApiCall<T>(call: () => Promise<Response>): Promise<T> {
   return parseResponseOrThrow<T>(res);
 }
 
-export async function fetchMyTeam(eventId: string): Promise<TeamView | null> {
+export async function fetchMyTeam(eventId?: string): Promise<TeamView | null> {
+  const url = eventId ? `/api/teams/mine?eventId=${encodeURIComponent(eventId)}` : '/api/teams/mine';
   const result = await handleApiCall<{ team: TeamView | null }>(() =>
-    authFetch(`/api/teams/mine?eventId=${encodeURIComponent(eventId)}`, {
+    authFetch(url, {
       method: 'GET',
     })
   );
   return result.team;
+}
+
+export async function fetchMyTeams(): Promise<TeamView[]> {
+  const result = await handleApiCall<{ teams?: TeamView[]; team?: TeamView | null }>(() =>
+    authFetch('/api/teams/mine', {
+      method: 'GET',
+    })
+  );
+  if (result.teams && Array.isArray(result.teams)) {
+    return result.teams;
+  }
+  return result.team ? [result.team] : [];
 }
 
 export async function fetchTeam(teamId: string): Promise<TeamView> {

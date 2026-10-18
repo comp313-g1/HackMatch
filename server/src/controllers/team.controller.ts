@@ -3,6 +3,7 @@ import { createTeam } from '../services/teamCreation.js';
 import {
   getOwnerTeamView,
   getMyTeamView,
+  getMyTeamsView,
   updateListing,
   addVacancy,
   updateVacancy,
@@ -53,16 +54,17 @@ function handleControllerError(err: unknown, res: Response, next: NextFunction):
 export async function createTeamHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const actorId = req.participant!.id;
-    const { eventId, name, pitch, goal, commitmentHours, communicationLink } = req.body;
+    const { eventId, name, pitch, goal, commitmentHours, communicationLink, maxTeamSize } = req.body;
 
     const { team } = await createTeam({
       ownerParticipantId: actorId,
-      eventId: String(eventId || ''),
+      ...(eventId ? { eventId: String(eventId) } : {}),
       name: String(name || ''),
       pitch: String(pitch || ''),
       goal: goal as TeamGoal,
       commitmentHours: Number(commitmentHours),
       communicationLink: communicationLink ? String(communicationLink) : null,
+      ...(maxTeamSize ? { maxTeamSize: Number(maxTeamSize) } : {}),
     });
 
     const parts = await teamsRepository.getTeamViewParts(team.id);
@@ -78,12 +80,19 @@ export async function createTeamHandler(req: Request, res: Response, next: NextF
 export async function getMyTeamHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const actorId = req.participant!.id;
-    const eventId = String(req.query.eventId || '');
+    const rawEventId = req.query.eventId;
 
-    const team = await getMyTeamView(actorId, eventId);
+    if (rawEventId && typeof rawEventId === 'string' && rawEventId.trim() !== '') {
+      const team = await getMyTeamView(actorId, rawEventId.trim());
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(200).json({ team });
+      return;
+    }
 
+    // When eventId is omitted, return all teams the participant belongs to
+    const teams = await getMyTeamsView(actorId);
     res.setHeader('Cache-Control', 'no-store');
-    res.status(200).json({ team });
+    res.status(200).json({ teams, team: teams[0] || null });
   } catch (err: unknown) {
     handleControllerError(err, res, next);
   }

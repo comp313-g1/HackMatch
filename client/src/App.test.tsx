@@ -20,6 +20,15 @@ vi.mock('firebase/auth', async (importOriginal) => {
   };
 });
 
+vi.mock('./components/teams/teamApi', async () => {
+  const actual = await vi.importActual<typeof import('./components/teams/teamApi')>('./components/teams/teamApi');
+  return {
+    ...actual,
+    fetchMyTeams: vi.fn().mockResolvedValue([]),
+    fetchMyTeam: vi.fn().mockResolvedValue(null),
+  };
+});
+
 describe('App Component (View Routing and Integration)', () => {
   const mockApplyActionCode = vi.mocked(applyActionCode);
 
@@ -346,7 +355,13 @@ describe('App Component (View Routing and Integration)', () => {
     // Clicking Teams in header navigates to MyTeamsPage view
     fireEvent.click(within(primaryNav()).getByRole('button', { name: /^teams$/i }));
     expect(await screen.findByRole('heading', { level: 1, name: /my teams/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^create a team$/i })).toBeInTheDocument();
+    const createTeamBtns = screen.getAllByRole('button', { name: /create a team/i });
+    expect(createTeamBtns.length).toBeGreaterThan(0);
+
+    // Clicking Create a team navigates to CreateTeamPage
+    fireEvent.click(createTeamBtns[0]);
+    expect(await screen.findByRole('heading', { level: 1, name: /create a new team/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/team name/i)).toBeInTheDocument();
   });
 });
 

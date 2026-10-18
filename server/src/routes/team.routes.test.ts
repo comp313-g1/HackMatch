@@ -164,6 +164,84 @@ describe('Express Team Listing & Vacancy Endpoints (US-012 / #120)', () => {
       expect(response.body.team.members[0].firebase_uid).toBeUndefined();
     });
 
+    it('auto-creates shadow event and succeeds with 201 when eventId is omitted', async () => {
+      const shadowEventId = '77777777-7777-4777-8777-777777777777';
+      const shadowSpy = vi.spyOn(teamsRepository, 'createShadowEvent').mockResolvedValue(shadowEventId);
+      const createSpy = vi.spyOn(teamsRepository, 'createTeamWithOwner').mockResolvedValue({
+        team: { ...sampleTeam, event_id: shadowEventId },
+        membership: sampleMembership,
+      });
+      vi.spyOn(teamsRepository, 'getTeamViewParts').mockResolvedValue(sampleParts);
+
+      const response = await request(app)
+        .post('/api/teams')
+        .set('Authorization', validTokenHeader)
+        .send({
+          name: 'Stand Alone Team',
+          pitch: 'Building accessible software without an event dependency',
+          goal: 'Learning',
+          commitmentHours: 15,
+          communicationLink: 'https://discord.gg/standalone',
+        });
+
+      expect(response.status).toBe(201);
+      expect(shadowSpy).toHaveBeenCalledWith('Stand Alone Team', undefined);
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ownerParticipantId: ownerParticipant.id,
+          eventId: shadowEventId,
+          name: 'Stand Alone Team',
+        })
+      );
+      expect(response.body.team.id).toBe(sampleTeamId);
+    });
+
+    it('creates shadow event with custom maxTeamSize when specified by owner', async () => {
+      const shadowEventId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+      const shadowSpy = vi.spyOn(teamsRepository, 'createShadowEvent').mockResolvedValue(shadowEventId);
+      vi.spyOn(teamsRepository, 'createTeamWithOwner').mockResolvedValue({
+        team: { ...sampleTeam, event_id: shadowEventId },
+        membership: sampleMembership,
+      });
+      vi.spyOn(teamsRepository, 'getTeamViewParts').mockResolvedValue({
+        ...sampleParts,
+        event: { max_team_size: 6, status: 'Published' },
+      });
+
+      const response = await request(app)
+        .post('/api/teams')
+        .set('Authorization', validTokenHeader)
+        .send({
+          name: 'Big Squad',
+          pitch: 'Large team with 6 members max',
+          goal: 'Competitive',
+          commitmentHours: 30,
+          communicationLink: 'https://discord.gg/bigsquad',
+          maxTeamSize: 6,
+        });
+
+      expect(response.status).toBe(201);
+      expect(shadowSpy).toHaveBeenCalledWith('Big Squad', 6);
+      expect(response.body.team.limits.maxTeamSize).toBe(6);
+    });
+
+    it('rejects with 400 VALIDATION_ERROR when maxTeamSize is outside valid range 2..20', async () => {
+      const response = await request(app)
+        .post('/api/teams')
+        .set('Authorization', validTokenHeader)
+        .send({
+          name: 'Invalid Size Squad',
+          pitch: 'Valid pitch',
+          goal: 'Learning',
+          commitmentHours: 10,
+          maxTeamSize: 25,
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.errors.maxTeamSize).toBe('Maximum team size must be an integer between 2 and 20.');
+    });
+
     it('rejects with 400 VALIDATION_ERROR and does not call repo when unknown key like ownerParticipantId is provided', async () => {
       const createSpy = vi.spyOn(teamsRepository, 'createTeamWithOwner');
 
@@ -328,6 +406,20 @@ describe('Express Team Listing & Vacancy Endpoints (US-012 / #120)', () => {
         .set('Authorization', validTokenHeader);
 
       expect(response.status).toBe(200);
+      expect(response.body.team.id).toBe(sampleTeamId);
+    });
+
+    it('returns all participant teams when eventId is omitted', async () => {
+      vi.spyOn(teamsRepository, 'findConfirmedTeamIdsForParticipant').mockResolvedValue([sampleTeamId]);
+      vi.spyOn(teamsRepository, 'getTeamViewParts').mockResolvedValue(sampleParts);
+
+      const response = await request(app)
+        .get('/api/teams/mine')
+        .set('Authorization', validTokenHeader);
+
+      expect(response.status).toBe(200);
+      expect(response.body.teams).toHaveLength(1);
+      expect(response.body.teams[0].id).toBe(sampleTeamId);
       expect(response.body.team.id).toBe(sampleTeamId);
     });
   });

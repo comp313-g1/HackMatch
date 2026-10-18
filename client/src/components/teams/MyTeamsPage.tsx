@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { fetchMyTeam, AuthRequiredError, TeamApiError } from './teamApi';
+import { fetchMyTeams, AuthRequiredError, TeamApiError } from './teamApi';
 import type { TeamView } from './teamTypes';
 import { VERIFIED_EVENTS } from '../landing/landingData';
 
@@ -23,27 +23,15 @@ export function MyTeamsPage({
     setErrorMessage(null);
 
     try {
-      // In current backend architecture, teams are associated with events.
-      // We query verified events that might have active teams for the participant.
-      // If none or empty, we fetch safely.
-      const discoveredTeams: Array<{ team: TeamView; eventName: string }> = [];
-
-      if (VERIFIED_EVENTS.length > 0) {
-        for (const ev of VERIFIED_EVENTS) {
-          try {
-            const team = await fetchMyTeam(ev.id);
-            if (team) {
-              discoveredTeams.push({ team, eventName: ev.name });
-            }
-          } catch (err) {
-            if (err instanceof AuthRequiredError) {
-              setAuthError('You need to sign in to view your teams.');
-              return;
-            }
-            // Ignore per-event lookup failures so other events can still load
-          }
-        }
-      }
+      // Fetch all confirmed teams for the participant directly
+      const fetchedTeams = await fetchMyTeams();
+      const discoveredTeams: Array<{ team: TeamView; eventName: string }> = fetchedTeams.map((team) => {
+        const ev = VERIFIED_EVENTS.find((e) => e.id === team.eventId);
+        return {
+          team,
+          eventName: ev ? ev.name : 'HackMatch',
+        };
+      });
 
       setTeams(discoveredTeams);
     } catch (err: unknown) {
@@ -121,7 +109,7 @@ export function MyTeamsPage({
               onClick={onCreateTeam}
               className="inline-flex items-center justify-center rounded-md bg-forest px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-forest-800 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream transition"
             >
-              Browse Hackathons to Form a Team
+              Create a Team
             </button>
           </div>
         </div>

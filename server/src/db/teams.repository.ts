@@ -27,9 +27,11 @@ export interface TeamListingPatch {
 }
 
 export interface ITeamsRepository {
+  createShadowEvent(title: string, maxTeamSize?: number): Promise<string>;
   createTeamWithOwner(input: CreateTeamWithOwnerInput): Promise<{ team: Team; membership: TeamMembership }>;
   findTeamById(teamId: string): Promise<Team | null>;
   findConfirmedTeamIdForParticipant(participantId: string, eventId: string): Promise<string | null>;
+  findConfirmedTeamIdsForParticipant(participantId: string): Promise<string[]>;
   getTeamViewParts(teamId: string): Promise<{
     team: Team;
     event: {
@@ -55,6 +57,34 @@ export interface ITeamsRepository {
 }
 
 export const teamsRepository: ITeamsRepository = {
+  async createShadowEvent(title: string, maxTeamSize: number = 4): Promise<string> {
+    const client = getSupabaseClient();
+    const eventId = crypto.randomUUID();
+    const now = new Date();
+    const endDate = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000); // 1 year in future
+    const key = `shadow-${eventId.slice(0, 8)}`;
+
+    const { data, error } = await client
+      .from('events')
+      .insert({
+        id: eventId,
+        title: `${title} Scope`,
+        official_url: `https://hackmatch.internal/events/${key}`,
+        normalized_url: `https://hackmatch.internal/events/${key}`,
+        format: 'Hybrid',
+        min_team_size: 1,
+        max_team_size: maxTeamSize,
+        status: 'Published',
+        start_date: now.toISOString(),
+        end_date: endDate.toISOString(),
+      })
+      .select('id')
+      .single();
+
+    if (error) throw error;
+    return (data as { id: string }).id;
+  },
+
   async createTeamWithOwner(input: CreateTeamWithOwnerInput): Promise<{ team: Team; membership: TeamMembership }> {
     const client = getSupabaseClient();
     const { data, error } = await client.rpc('create_team_with_owner', {
@@ -100,6 +130,19 @@ export const teamsRepository: ITeamsRepository = {
     return data ? (data as { team_id: string }).team_id : null;
   },
 
+  async findConfirmedTeamIdsForParticipant(participantId: string): Promise<string[]> {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('team_memberships')
+      .select('team_id')
+      .eq('participant_id', participantId)
+      .eq('status', 'Confirmed')
+      .order('joined_at', { ascending: false });
+
+    if (error) throw error;
+    return (data || []).map((row: { team_id: string }) => row.team_id);
+  },
+
   async getTeamViewParts(teamId: string): Promise<{
     team: Team;
     event: { max_team_size: number | null };
@@ -122,13 +165,18 @@ export const teamsRepository: ITeamsRepository = {
       .single();
     if (teamError) throw teamError;
 
-    // 2. Event max_team_size, status, end_date
-    const { data: event, error: eventError } = await client
+    // 2. Event max_team_size, status, end_date (with graceful fallback if event is absent)
+    const { data: event } = await client
       .from('events')
       .select('max_team_size, status, end_date')
       .eq('id', (team as Team).event_id)
-      .single();
-    if (eventError) throw eventError;
+      .maybeSingle();
+
+    const safeEvent = event || {
+      max_team_size: 4,
+      status: 'Published' as const,
+      end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+    };
 
     // 3. Confirmed memberships
     const { data: memberships, error: memberError } = await client
@@ -153,11 +201,10 @@ export const teamsRepository: ITeamsRepository = {
         participantMap[p.id] = { full_name: p.full_name };
       }
 
-      const { data: profiles, error: profError } = await client
+      const { data: profiles } = await client
         .from('participant_profiles')
         .select('participant_id, handle')
         .in('participant_id', pIds);
-      if (profError) throw profError;
       for (const pr of (profiles || []) as Array<{ participant_id: string; handle: string | null }>) {
         profileMap[pr.participant_id] = { handle: pr.handle };
       }
@@ -172,17 +219,16 @@ export const teamsRepository: ITeamsRepository = {
     }));
 
     // 4. Open or Filled vacancies
-    const { data: vacancies, error: vacError } = await client
+    const { data: vacancies } = await client
       .from('team_vacancies')
       .select('*')
       .eq('team_id', teamId)
       .in('status', ['Open', 'Filled'])
       .order('created_at', { ascending: true });
-    if (vacError) throw vacError;
 
     return {
       team: team as Team,
-      event: event as { max_team_size: number | null },
+      event: safeEvent as { max_team_size: number | null },
       members,
       vacancies: (vacancies || []) as TeamVacancy[],
     };

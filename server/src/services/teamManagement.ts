@@ -44,6 +44,29 @@ export async function getMyTeamView(
   }
 }
 
+export async function getMyTeamsView(
+  actorId: string,
+  deps: { repo: ITeamsRepository } = { repo: teamsRepository }
+): Promise<TeamView[]> {
+  try {
+    const teamIds = await deps.repo.findConfirmedTeamIdsForParticipant(actorId);
+    const views: TeamView[] = [];
+    for (const teamId of teamIds) {
+      try {
+        const parts = await deps.repo.getTeamViewParts(teamId);
+        views.push(toTeamView(parts));
+      } catch (perTeamErr) {
+        console.warn(`[TEAMS] Skipping teamId ${teamId} due to load error:`, perTeamErr);
+      }
+    }
+    return views;
+  } catch (err: unknown) {
+    const serviceError = toTeamServiceError(err);
+    if (serviceError) throw serviceError;
+    throw err;
+  }
+}
+
 export async function updateListing(
   actorId: string,
   teamId: string,

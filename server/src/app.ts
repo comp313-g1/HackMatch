@@ -54,6 +54,7 @@ app.use((_req: Request, res: Response) => {
 
 // Centralized error handler
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('[SERVER ERROR]', err);
   const errWithStatus = err as Error & { status?: number; statusCode?: number };
   const status = errWithStatus.status || errWithStatus.statusCode || 500;
   const isDev = config.nodeEnv === 'development';
@@ -61,6 +62,6 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 
   res.status(status).json({
     error: defaultError,
-    ...(isDev ? { message: err.message } : {}),
+    ...(isDev ? { message: err.message, stack: err.stack } : {}),
   });
 });

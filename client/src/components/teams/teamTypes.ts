@@ -85,12 +85,13 @@ export interface TeamListingFormValues {
 }
 
 export interface CreateTeamPayload {
-  eventId: string;
+  eventId?: string;
   name: string;
   pitch: string;
   goal: TeamGoal;
   commitmentHours: number;
   communicationLink: string | null;
+  maxTeamSize?: number;
 }
 
 export interface UpdateTeamPayload {
