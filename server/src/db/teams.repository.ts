@@ -32,7 +32,11 @@ export interface ITeamsRepository {
   findConfirmedTeamIdForParticipant(participantId: string, eventId: string): Promise<string | null>;
   getTeamViewParts(teamId: string): Promise<{
     team: Team;
-    event: { max_team_size: number | null };
+    event: {
+      max_team_size: number | null;
+      status?: 'Published' | 'Archived' | 'Disabled';
+      end_date?: string;
+    };
     members: Array<{
       participant_id: string;
       role: TeamMembershipRole;
@@ -47,6 +51,7 @@ export interface ITeamsRepository {
   updateTeamVacancy(actorId: string, teamId: string, vacancyId: string, role: ParticipantPrimaryRole, skills: string[]): Promise<TeamVacancy>;
   removeTeamVacancy(actorId: string, teamId: string, vacancyId: string): Promise<{ canceledRequests: number }>;
   disbandTeam(actorId: string, teamId: string): Promise<{ releasedMembers: number; canceledRequests: number }>;
+  removeTeamMember(actorId: string, teamId: string, memberParticipantId: string, reason: string): Promise<{ availabilityRestored: boolean }>;
 }
 
 export const teamsRepository: ITeamsRepository = {
@@ -117,10 +122,10 @@ export const teamsRepository: ITeamsRepository = {
       .single();
     if (teamError) throw teamError;
 
-    // 2. Event max_team_size
+    // 2. Event max_team_size, status, end_date
     const { data: event, error: eventError } = await client
       .from('events')
-      .select('max_team_size')
+      .select('max_team_size, status, end_date')
       .eq('id', (team as Team).event_id)
       .single();
     if (eventError) throw eventError;
@@ -245,5 +250,22 @@ export const teamsRepository: ITeamsRepository = {
     });
     if (error) throw error;
     return data as { releasedMembers: number; canceledRequests: number };
+  },
+
+  async removeTeamMember(
+    actorId: string,
+    teamId: string,
+    memberParticipantId: string,
+    reason: string
+  ): Promise<{ availabilityRestored: boolean }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('remove_team_member', {
+      p_actor: actorId,
+      p_team: teamId,
+      p_member: memberParticipantId,
+      p_reason: reason,
+    });
+    if (error) throw error;
+    return data as { availabilityRestored: boolean };
   },
 };

@@ -130,3 +130,25 @@ export async function disbandTeam(
   }
 }
 
+export async function removeMember(
+  actorId: string,
+  teamId: string,
+  memberParticipantId: string,
+  reason: string,
+  deps: { repo: ITeamsRepository } = { repo: teamsRepository }
+): Promise<{ availabilityRestored: boolean; team: TeamView }> {
+  try {
+    const result = await deps.repo.removeTeamMember(actorId, teamId, memberParticipantId, reason);
+    const parts = await deps.repo.getTeamViewParts(teamId);
+    return {
+      availabilityRestored: result.availabilityRestored,
+      team: toTeamView(parts),
+    };
+  } catch (err: unknown) {
+    const serviceError = toTeamServiceError(err);
+    if (serviceError) throw serviceError;
+    throw err;
+  }
+}
+
+

@@ -627,4 +627,57 @@ describe('0014_create_team_cancellation_functions.sql Migration DDL', () => {
   });
 });
 
+describe('0015_create_team_member_removal_function.sql Migration DDL (US-012 / #124)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0015_create_team_member_removal_function.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('declares remove_team_member with SECURITY DEFINER and search_path = public', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+remove_team_member/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/SET\s+search_path\s*=\s*public/i);
+  });
+
+  it('uses lock_team_for_owner_mutation to enforce ownership and lifecycle checks', () => {
+    expect(sql).toMatch(/lock_team_for_owner_mutation\s*\(\s*p_actor\s*,\s*p_team\s*\)/i);
+  });
+
+  it('forbids owner self-removal with CANNOT_REMOVE_OWNER exception', () => {
+    expect(sql).toMatch(/IF\s+p_member\s*=\s*v_team\.owner_participant_id\s+THEN/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'CANNOT_REMOVE_OWNER'/i);
+  });
+
+  it('raises MEMBER_NOT_FOUND when target participant has no confirmed membership', () => {
+    expect(sql).toMatch(/WHERE\s+team_id\s*=\s*p_team\s+AND\s+participant_id\s*=\s*p_member\s+AND\s+status\s*=\s*'Confirmed'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'MEMBER_NOT_FOUND'/i);
+  });
+
+  it('marks membership Removed with removal_reason and dispatches notification', () => {
+    expect(sql).toMatch(/UPDATE\s+team_memberships\s+SET\s+status\s*=\s*'Removed'/i);
+    expect(sql).toMatch(/removal_reason\s*=\s*p_reason/i);
+    expect(sql).toMatch(/INSERT\s+INTO\s+participant_notifications/i);
+    expect(sql).toMatch(/'MEMBER_REMOVED'/i);
+  });
+
+  it('restores availability guarded by NOT EXISTS confirmed membership and does NOT update team_requests', () => {
+    expect(sql).toMatch(/UPDATE\s+event_availability/i);
+    expect(sql).toMatch(/SET\s+is_looking\s*=\s*TRUE/i);
+    expect(sql).toMatch(/NOT\s+EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+team_memberships/i);
+    expect(sql).not.toMatch(/UPDATE\s+team_requests/i);
+  });
+
+  it('secures function from anon/public and grants execute strictly to service_role', () => {
+    expect(sql).toMatch(/REVOKE\s+ALL\s+ON\s+FUNCTION\s+remove_team_member[\s\S]*?FROM\s+PUBLIC,\s*anon,\s*authenticated/i);
+    expect(sql).toMatch(/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+remove_team_member[\s\S]*?TO\s+service_role/i);
+  });
+});
+
+
 

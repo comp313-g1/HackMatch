@@ -154,4 +154,24 @@ describe('teamView service unit tests (US-012 / #120)', () => {
     expect(view.limits.openSlots).toBe(1);
     expect(view.limits.remainingCapacity).toBe(0);
   });
+
+  it('includes derived lifecycle in TeamView', () => {
+    const parts = {
+      team: { ...baseTeam, recruitment_status: 'Locked' as const },
+      event: {
+        max_team_size: 4,
+        status: 'Published' as const,
+        end_date: '2099-01-01T00:00:00.000Z',
+      },
+      members: [],
+      vacancies: [],
+    };
+
+    const view = toTeamView(parts);
+    expect(view.lifecycle).toEqual({
+      mutable: false,
+      reason: 'Locked',
+    });
+  });
 });
+

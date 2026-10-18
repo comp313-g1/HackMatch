@@ -210,4 +210,13 @@ export const OWNER_ONLY_ROUTES: OwnerOnlyRoute[] = [
     path: (teamId) => `/api/teams/${teamId}/disband`,
     expectedStatus: 200,
   },
+  {
+    name: 'POST /api/teams/:teamId/members/:participantId/remove',
+    method: 'post',
+    path: (teamId, extraId) =>
+      `/api/teams/${teamId}/members/${extraId || otherParticipant.id}/remove`,
+    validPayload: { reason: 'No longer able to commit hours' },
+    expectedStatus: 200,
+  },
 ];
+

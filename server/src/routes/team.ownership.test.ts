@@ -68,7 +68,9 @@ describe('Team Ownership & Access Control Matrix (US-012 / Task 5 / #122)', () =
     vi.spyOn(teamsRepository, 'updateTeamVacancy').mockResolvedValue(sampleVacancy);
     vi.spyOn(teamsRepository, 'removeTeamVacancy').mockResolvedValue({ canceledRequests: 0 });
     vi.spyOn(teamsRepository, 'disbandTeam').mockResolvedValue({ releasedMembers: 1, canceledRequests: 0 });
+    vi.spyOn(teamsRepository, 'removeTeamMember').mockResolvedValue({ availabilityRestored: false });
   });
+
 
   describe('Table-driven OWNER_ONLY_ROUTES Matrix', () => {
     describe.each(OWNER_ONLY_ROUTES)('$name', (route) => {

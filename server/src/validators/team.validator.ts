@@ -63,7 +63,7 @@ function normalizeGoal(raw: unknown): TeamGoal | null {
  * Validates teamId and optional vacancyId route parameters as valid UUIDs.
  */
 export function validateTeamIdParams(req: Request, res: Response, next: NextFunction): void {
-  const { teamId, vacancyId } = req.params;
+  const { teamId, vacancyId, participantId } = req.params;
 
   if (!teamId || typeof teamId !== 'string' || !UUID_REGEX.test(teamId.trim())) {
     res.setHeader('Cache-Control', 'no-store');
@@ -82,6 +82,18 @@ export function validateTeamIdParams(req: Request, res: Response, next: NextFunc
         error: 'Validation failed.',
         code: 'VALIDATION_ERROR',
         errors: { vacancyId: 'Invalid vacancy ID format.' },
+      });
+      return;
+    }
+  }
+
+  if (participantId !== undefined) {
+    if (typeof participantId !== 'string' || !UUID_REGEX.test(participantId.trim())) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(400).json({
+        error: 'Validation failed.',
+        code: 'VALIDATION_ERROR',
+        errors: { participantId: 'Invalid participant ID format.' },
       });
       return;
     }
@@ -440,6 +452,7 @@ export function validateRemovalReason(body: unknown): {
     }
   }
 
+  let sanitizedReason: string | undefined;
   const rawReason = record.reason;
   if (typeof rawReason !== 'string' || rawReason.trim().length === 0) {
     errors.reason = 'Removal reason is required.';
@@ -448,11 +461,15 @@ export function validateRemovalReason(body: unknown): {
     if (codePointLength(trimmed) > REMOVAL_REASON_MAX) {
       errors.reason = `Removal reason cannot exceed ${REMOVAL_REASON_MAX} characters.`;
     } else {
-      return { errors: {}, sanitized: { reason: trimmed } };
+      sanitizedReason = trimmed;
     }
   }
 
-  return { errors };
+  if (Object.keys(errors).length > 0) {
+    return { errors };
+  }
+
+  return { errors: {}, sanitized: { reason: sanitizedReason! } };
 }
 
 /**
@@ -508,3 +525,22 @@ export const validateVacancyBody: RequestHandler = (req, res, next) => {
   req.body = result.sanitized;
   next();
 };
+
+/**
+ * Express middleware for member removal body validation.
+ */
+export const validateRemovalReasonBody: RequestHandler = (req, res, next) => {
+  const result = validateRemovalReason(req.body);
+  if (Object.keys(result.errors).length > 0) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(400).json({
+      error: 'Validation failed.',
+      code: 'VALIDATION_ERROR',
+      errors: result.errors,
+    });
+    return;
+  }
+  req.body = result.sanitized;
+  next();
+};
+

@@ -1,4 +1,5 @@
 import type { ITeamsRepository } from '../db/teams.repository.js';
+import { deriveTeamLifecycle, type TeamLifecycle } from './teamLifecycle.js';
 import type {
   TeamGoal,
   TeamRecruitmentStatus,
@@ -41,6 +42,7 @@ export interface TeamView {
   members: TeamMemberView[];
   vacancies: TeamVacancyView[];
   limits: TeamLimits;
+  lifecycle: TeamLifecycle;
 }
 
 export function toTeamView(parts: Awaited<ReturnType<ITeamsRepository['getTeamViewParts']>>): TeamView {
@@ -68,6 +70,13 @@ export function toTeamView(parts: Awaited<ReturnType<ITeamsRepository['getTeamVi
     status: v.status as 'Open' | 'Filled',
   }));
 
+  const eventStatus = parts.event.status ?? 'Published';
+  const eventEndDate = parts.event.end_date ?? '2099-01-01T00:00:00.000Z';
+  const lifecycle = deriveTeamLifecycle(parts.team, {
+    status: eventStatus,
+    end_date: eventEndDate,
+  });
+
   return {
     id: parts.team.id,
     eventId: parts.team.event_id,
@@ -87,5 +96,6 @@ export function toTeamView(parts: Awaited<ReturnType<ITeamsRepository['getTeamVi
       openSlots,
       remainingCapacity,
     },
+    lifecycle,
   };
 }

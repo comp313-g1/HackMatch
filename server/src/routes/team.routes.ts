@@ -12,6 +12,7 @@ import {
   validateCreateTeamBody,
   validateUpdateTeamBody,
   validateVacancyBody,
+  validateRemovalReasonBody,
 } from '../validators/team.validator.js';
 import {
   createTeamHandler,
@@ -22,6 +23,7 @@ import {
   updateVacancyHandler,
   removeVacancyHandler,
   disbandTeamHandler,
+  removeMemberHandler,
 } from '../controllers/team.controller.js';
 
 export const teamRouter = Router();
@@ -42,4 +44,13 @@ teamRouter.post('/:teamId/vacancies', ...participantAuth, validateTeamIdParams, 
 teamRouter.patch('/:teamId/vacancies/:vacancyId', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateVacancyBody, updateVacancyHandler);
 teamRouter.delete('/:teamId/vacancies/:vacancyId', ...participantAuth, validateTeamIdParams, requireTeamOwner, removeVacancyHandler);
 teamRouter.post('/:teamId/disband', ...participantAuth, validateTeamIdParams, requireTeamOwner, disbandTeamHandler);
+teamRouter.post(
+  '/:teamId/members/:participantId/remove',
+  ...participantAuth,
+  validateTeamIdParams,
+  requireTeamOwner,
+  requireJsonObjectBody,
+  validateRemovalReasonBody,
+  removeMemberHandler
+);
 
