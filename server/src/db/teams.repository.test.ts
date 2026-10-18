@@ -201,4 +201,42 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
     });
     expect(result).toEqual(mockVacancy);
   });
+
+  it('removeTeamVacancy calls remove_team_vacancy RPC and returns canceledRequests count', async () => {
+    const mockRpc = vi.fn().mockResolvedValue({
+      data: { vacancyId: 'v1', canceledRequests: 2 },
+      error: null,
+    });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      rpc: mockRpc,
+    } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.removeTeamVacancy('actor-1', sampleTeam.id, 'v1');
+    expect(mockRpc).toHaveBeenCalledWith('remove_team_vacancy', {
+      p_actor: 'actor-1',
+      p_team: sampleTeam.id,
+      p_vacancy: 'v1',
+    });
+    expect(result).toEqual({ vacancyId: 'v1', canceledRequests: 2 });
+  });
+
+  it('disbandTeam calls disband_team RPC and returns releasedMembers and canceledRequests counts', async () => {
+    const mockRpc = vi.fn().mockResolvedValue({
+      data: { releasedMembers: 3, canceledRequests: 4 },
+      error: null,
+    });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      rpc: mockRpc,
+    } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.disbandTeam('actor-1', sampleTeam.id);
+    expect(mockRpc).toHaveBeenCalledWith('disband_team', {
+      p_actor: 'actor-1',
+      p_team: sampleTeam.id,
+    });
+    expect(result).toEqual({ releasedMembers: 3, canceledRequests: 4 });
+  });
 });
+

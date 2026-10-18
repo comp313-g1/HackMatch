@@ -95,3 +95,38 @@ export async function updateVacancy(
     throw err;
   }
 }
+
+export async function removeVacancy(
+  actorId: string,
+  teamId: string,
+  vacancyId: string,
+  deps: { repo: ITeamsRepository } = { repo: teamsRepository }
+): Promise<{ canceledRequests: number; team: TeamView }> {
+  try {
+    const result = await deps.repo.removeTeamVacancy(actorId, teamId, vacancyId);
+    const parts = await deps.repo.getTeamViewParts(teamId);
+    return {
+      canceledRequests: result.canceledRequests,
+      team: toTeamView(parts),
+    };
+  } catch (err: unknown) {
+    const serviceError = toTeamServiceError(err);
+    if (serviceError) throw serviceError;
+    throw err;
+  }
+}
+
+export async function disbandTeam(
+  actorId: string,
+  teamId: string,
+  deps: { repo: ITeamsRepository } = { repo: teamsRepository }
+): Promise<{ releasedMembers: number; canceledRequests: number }> {
+  try {
+    return await deps.repo.disbandTeam(actorId, teamId);
+  } catch (err: unknown) {
+    const serviceError = toTeamServiceError(err);
+    if (serviceError) throw serviceError;
+    throw err;
+  }
+}
+

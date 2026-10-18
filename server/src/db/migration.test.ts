@@ -575,3 +575,56 @@ describe('0013_create_team_listing_functions.sql Migration DDL', () => {
   });
 });
 
+describe('0014_create_team_cancellation_functions.sql Migration DDL', () => {
+  const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0014_create_team_cancellation_functions.sql');
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('declares cancellation and disband functions with SECURITY DEFINER and search_path = public', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+remove_team_vacancy/i);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+disband_team/i);
+    const securityDefinerCount = (sql.match(/SECURITY\s+DEFINER/gi) || []).length;
+    expect(securityDefinerCount).toBeGreaterThanOrEqual(2);
+    expect(sql).toMatch(/SET\s+search_path\s*=\s*public/i);
+  });
+
+  it('scopes cancel statements strictly to vacancy_id/team_id and status = Pending', () => {
+    expect(sql).toMatch(/WHERE\s+vacancy_id\s*=\s*p_vacancy\s+AND\s+status\s*=\s*'Pending'/i);
+    expect(sql).toMatch(/WHERE\s+team_id\s*=\s*p_team\s+AND\s+status\s*=\s*'Pending'/i);
+  });
+
+  it('defines appropriate cancel reasons and dispatches notifications from the RETURNING set', () => {
+    expect(sql).toMatch(/cancel_reason\s*=\s*'SLOT_REMOVED'/i);
+    expect(sql).toMatch(/cancel_reason\s*=\s*'TEAM_DISBANDED'/i);
+    expect(sql).toMatch(/RETURNING\s+participant_id,\s*request_type/i);
+    expect(sql).toMatch(/INSERT\s+INTO\s+participant_notifications/i);
+    expect(sql).toMatch(/'REQUEST_CANCELED_SLOT_REMOVED'/i);
+    expect(sql).toMatch(/'REQUEST_CANCELED_TEAM_DISBANDED'/i);
+  });
+
+  it('marks all confirmed memberships as Released including the owner and notifies non-owner members', () => {
+    expect(sql).toMatch(/UPDATE\s+team_memberships\s+SET\s+status\s*=\s*'Released'/i);
+    expect(sql).toMatch(/WHERE\s+team_id\s*=\s*p_team\s+AND\s+status\s*=\s*'Confirmed'/i);
+    expect(sql).toMatch(/WHERE\s+r\.role\s*<>\s*'Owner'/i);
+  });
+
+  it('restores availability with NOT EXISTS confirmed check and contains no INSERT into event_availability', () => {
+    expect(sql).toMatch(/UPDATE\s+event_availability/i);
+    expect(sql).toMatch(/SET\s+is_looking\s*=\s*TRUE/i);
+    expect(sql).toMatch(/NOT\s+EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+team_memberships/i);
+    expect(sql).not.toMatch(/INSERT\s+INTO\s+event_availability/i);
+  });
+
+  it('secures functions from anon/public and grants execute to service_role', () => {
+    const revokeCount = (sql.match(/REVOKE\s+ALL\s+ON\s+FUNCTION/gi) || []).length;
+    const grantCount = (sql.match(/GRANT\s+EXECUTE\s+ON\s+FUNCTION/gi) || []).length;
+    expect(revokeCount).toBe(2);
+    expect(grantCount).toBe(2);
+  });
+});
+
+

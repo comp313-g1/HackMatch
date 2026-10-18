@@ -532,4 +532,106 @@ describe('Express Team Listing & Vacancy Endpoints (US-012 / #120)', () => {
       expect(response.body.code).toBe('VACANCY_NOT_FOUND');
     });
   });
+
+  describe('DELETE /api/teams/:teamId/vacancies/:vacancyId (Remove Vacancy)', () => {
+    it('removes vacancy and returns refreshed TeamView with 1 request canceled (singular)', async () => {
+      const removeSpy = vi.spyOn(teamsRepository, 'removeTeamVacancy').mockResolvedValue({ canceledRequests: 1 });
+      vi.spyOn(teamsRepository, 'getTeamViewParts').mockResolvedValue(sampleParts);
+
+      const response = await request(app)
+        .delete(`/api/teams/${sampleTeamId}/vacancies/${sampleVacancyId}`)
+        .set('Authorization', validTokenHeader);
+
+      expect(response.status).toBe(200);
+      expect(response.body.message).toBe('Slot removed. 1 pending request was canceled.');
+      expect(response.body.canceledRequests).toBe(1);
+      expect(response.body.team.id).toBe(sampleTeamId);
+      expect(removeSpy).toHaveBeenCalledWith(ownerParticipant.id, sampleTeamId, sampleVacancyId);
+    });
+
+    it('pluralizes message correctly for 0 or multiple canceled requests', async () => {
+      vi.spyOn(teamsRepository, 'removeTeamVacancy').mockResolvedValue({ canceledRequests: 0 });
+      vi.spyOn(teamsRepository, 'getTeamViewParts').mockResolvedValue(sampleParts);
+
+      const res0 = await request(app)
+        .delete(`/api/teams/${sampleTeamId}/vacancies/${sampleVacancyId}`)
+        .set('Authorization', validTokenHeader);
+
+      expect(res0.body.message).toBe('Slot removed. 0 pending requests were canceled.');
+
+      vi.spyOn(teamsRepository, 'removeTeamVacancy').mockResolvedValue({ canceledRequests: 3 });
+
+      const res3 = await request(app)
+        .delete(`/api/teams/${sampleTeamId}/vacancies/${sampleVacancyId}`)
+        .set('Authorization', validTokenHeader);
+
+      expect(res3.body.message).toBe('Slot removed. 3 pending requests were canceled.');
+    });
+
+    it('returns 409 VACANCY_NOT_OPEN when slot is already filled', async () => {
+      vi.spyOn(teamsRepository, 'removeTeamVacancy').mockRejectedValue({
+        message: 'VACANCY_NOT_OPEN',
+        code: 'P0001',
+      });
+
+      const response = await request(app)
+        .delete(`/api/teams/${sampleTeamId}/vacancies/${sampleVacancyId}`)
+        .set('Authorization', validTokenHeader);
+
+      expect(response.status).toBe(409);
+      expect(response.body.code).toBe('VACANCY_NOT_OPEN');
+    });
+
+    it('returns 404 VACANCY_NOT_FOUND when slot does not exist', async () => {
+      vi.spyOn(teamsRepository, 'removeTeamVacancy').mockRejectedValue({
+        message: 'VACANCY_NOT_FOUND',
+        code: 'P0001',
+      });
+
+      const response = await request(app)
+        .delete(`/api/teams/${sampleTeamId}/vacancies/${sampleVacancyId}`)
+        .set('Authorization', validTokenHeader);
+
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('VACANCY_NOT_FOUND');
+    });
+  });
+
+  describe('POST /api/teams/:teamId/disband (Disband Team)', () => {
+    it('disbands team and returns counts for released members and canceled requests', async () => {
+      const disbandSpy = vi.spyOn(teamsRepository, 'disbandTeam').mockResolvedValue({
+        releasedMembers: 2,
+        canceledRequests: 3,
+      });
+
+      const response = await request(app)
+        .post(`/api/teams/${sampleTeamId}/disband`)
+        .set('Authorization', validTokenHeader);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        message: 'Team disbanded.',
+        releasedMembers: 2,
+        canceledRequests: 3,
+      });
+      expect(disbandSpy).toHaveBeenCalledWith(ownerParticipant.id, sampleTeamId);
+    });
+
+    it('returns 409 TEAM_NOT_MUTABLE with reason when disband is attempted on already disbanded team', async () => {
+      vi.spyOn(teamsRepository, 'disbandTeam').mockRejectedValue({
+        message: 'TEAM_NOT_MUTABLE',
+        code: 'P0001',
+        detail: JSON.stringify({ reason: 'Disbanded' }),
+      });
+
+      const response = await request(app)
+        .post(`/api/teams/${sampleTeamId}/disband`)
+        .set('Authorization', validTokenHeader);
+
+      expect(response.status).toBe(409);
+      expect(response.body.code).toBe('TEAM_NOT_MUTABLE');
+      expect(response.body.details).toEqual({ reason: 'Disbanded' });
+    });
+  });
 });
+

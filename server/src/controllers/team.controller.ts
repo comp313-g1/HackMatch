@@ -6,6 +6,8 @@ import {
   updateListing,
   addVacancy,
   updateVacancy,
+  removeVacancy,
+  disbandTeam,
 } from '../services/teamManagement.js';
 import { toTeamView } from '../services/teamView.js';
 import { teamsRepository, type TeamListingPatch } from '../db/teams.repository.js';
@@ -157,3 +159,47 @@ export async function updateVacancyHandler(req: Request, res: Response, next: Ne
     handleControllerError(err, res, next);
   }
 }
+
+export async function removeVacancyHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const teamId = String(req.params.teamId);
+    const vacancyId = String(req.params.vacancyId);
+
+    const { canceledRequests, team } = await removeVacancy(actorId, teamId, vacancyId);
+
+    const requestText =
+      canceledRequests === 1
+        ? '1 pending request was canceled.'
+        : `${canceledRequests} pending requests were canceled.`;
+    const message = `Slot removed. ${requestText}`;
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({
+      message,
+      canceledRequests,
+      team,
+    });
+  } catch (err: unknown) {
+    handleControllerError(err, res, next);
+  }
+}
+
+export async function disbandTeamHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const teamId = String(req.params.teamId);
+
+    const { releasedMembers, canceledRequests } = await disbandTeam(actorId, teamId);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({
+      message: 'Team disbanded.',
+      releasedMembers,
+      canceledRequests,
+    });
+  } catch (err: unknown) {
+    handleControllerError(err, res, next);
+  }
+}
+

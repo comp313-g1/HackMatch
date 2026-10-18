@@ -66,6 +66,8 @@ describe('Team Ownership & Access Control Matrix (US-012 / Task 5 / #122)', () =
     vi.spyOn(teamsRepository, 'updateTeamListing').mockResolvedValue(sampleTeam);
     vi.spyOn(teamsRepository, 'addTeamVacancy').mockResolvedValue(sampleVacancy);
     vi.spyOn(teamsRepository, 'updateTeamVacancy').mockResolvedValue(sampleVacancy);
+    vi.spyOn(teamsRepository, 'removeTeamVacancy').mockResolvedValue({ canceledRequests: 0 });
+    vi.spyOn(teamsRepository, 'disbandTeam').mockResolvedValue({ releasedMembers: 1, canceledRequests: 0 });
   });
 
   describe('Table-driven OWNER_ONLY_ROUTES Matrix', () => {
@@ -150,6 +152,8 @@ describe('Team Ownership & Access Control Matrix (US-012 / Task 5 / #122)', () =
       const updateListingSpy = vi.spyOn(teamsRepository, 'updateTeamListing');
       const addVacancySpy = vi.spyOn(teamsRepository, 'addTeamVacancy');
       const updateVacancySpy = vi.spyOn(teamsRepository, 'updateTeamVacancy');
+      const removeVacancySpy = vi.spyOn(teamsRepository, 'removeTeamVacancy');
+      const disbandTeamSpy = vi.spyOn(teamsRepository, 'disbandTeam');
       const createTeamSpy = vi.spyOn(teamsRepository, 'createTeamWithOwner');
 
       vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(sampleTeamOther);
@@ -169,6 +173,8 @@ describe('Team Ownership & Access Control Matrix (US-012 / Task 5 / #122)', () =
       expect(updateListingSpy).not.toHaveBeenCalled();
       expect(addVacancySpy).not.toHaveBeenCalled();
       expect(updateVacancySpy).not.toHaveBeenCalled();
+      expect(removeVacancySpy).not.toHaveBeenCalled();
+      expect(disbandTeamSpy).not.toHaveBeenCalled();
       expect(createTeamSpy).not.toHaveBeenCalled();
     });
 

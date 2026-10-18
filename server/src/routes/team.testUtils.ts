@@ -197,4 +197,17 @@ export const OWNER_ONLY_ROUTES: OwnerOnlyRoute[] = [
     validPayload: { role: 'Backend', skills: ['Node.js'] },
     expectedStatus: 200,
   },
+  {
+    name: 'DELETE /api/teams/:teamId/vacancies/:vacancyId',
+    method: 'delete',
+    path: (teamId, vacancyId) =>
+      `/api/teams/${teamId}/vacancies/${vacancyId || sampleVacancyId}`,
+    expectedStatus: 200,
+  },
+  {
+    name: 'POST /api/teams/:teamId/disband',
+    method: 'post',
+    path: (teamId) => `/api/teams/${teamId}/disband`,
+    expectedStatus: 200,
+  },
 ];

@@ -5,6 +5,8 @@ import {
   updateListing,
   addVacancy,
   updateVacancy,
+  removeVacancy,
+  disbandTeam,
 } from './teamManagement.js';
 import { TeamServiceError } from './teamErrors.js';
 import type { ITeamsRepository } from '../db/teams.repository.js';
@@ -204,4 +206,82 @@ describe('teamManagement service unit tests (US-012 / #120)', () => {
       expect(view.id).toBe(teamId);
     });
   });
+
+  describe('removeVacancy', () => {
+    it('calls repo.removeTeamVacancy and returns canceledRequests with refreshed TeamView', async () => {
+      const mockRepo = {
+        removeTeamVacancy: vi.fn().mockResolvedValue({ canceledRequests: 2 }),
+        getTeamViewParts: vi.fn().mockResolvedValue(mockParts),
+      } as unknown as ITeamsRepository;
+
+      const result = await removeVacancy(actorId, teamId, vacancyId, { repo: mockRepo });
+      expect(mockRepo.removeTeamVacancy).toHaveBeenCalledWith(actorId, teamId, vacancyId);
+      expect(result.canceledRequests).toBe(2);
+      expect(result.team.id).toBe(teamId);
+    });
+
+    it('maps VACANCY_NOT_OPEN from repo to 409 TeamServiceError', async () => {
+      const mockRepo = {
+        removeTeamVacancy: vi.fn().mockRejectedValue({
+          message: 'VACANCY_NOT_OPEN',
+          code: 'P0001',
+        }),
+      } as unknown as ITeamsRepository;
+
+      await expect(removeVacancy(actorId, teamId, vacancyId, { repo: mockRepo })).rejects.toSatisfy((err: unknown) => {
+        expect(err).toBeInstanceOf(TeamServiceError);
+        expect((err as TeamServiceError).code).toBe('VACANCY_NOT_OPEN');
+        expect((err as TeamServiceError).status).toBe(409);
+        return true;
+      });
+    });
+
+    it('maps VACANCY_NOT_FOUND from repo to 404 TeamServiceError', async () => {
+      const mockRepo = {
+        removeTeamVacancy: vi.fn().mockRejectedValue({
+          message: 'VACANCY_NOT_FOUND',
+          code: 'P0001',
+        }),
+      } as unknown as ITeamsRepository;
+
+      await expect(removeVacancy(actorId, teamId, vacancyId, { repo: mockRepo })).rejects.toSatisfy((err: unknown) => {
+        expect(err).toBeInstanceOf(TeamServiceError);
+        expect((err as TeamServiceError).code).toBe('VACANCY_NOT_FOUND');
+        expect((err as TeamServiceError).status).toBe(404);
+        return true;
+      });
+    });
+  });
+
+  describe('disbandTeam', () => {
+    it('calls repo.disbandTeam and returns releasedMembers and canceledRequests counts', async () => {
+      const mockRepo = {
+        disbandTeam: vi.fn().mockResolvedValue({ releasedMembers: 3, canceledRequests: 1 }),
+      } as unknown as ITeamsRepository;
+
+      const result = await disbandTeam(actorId, teamId, { repo: mockRepo });
+      expect(mockRepo.disbandTeam).toHaveBeenCalledWith(actorId, teamId);
+      expect(result).toEqual({ releasedMembers: 3, canceledRequests: 1 });
+    });
+
+    it('maps TEAM_NOT_MUTABLE with details.reason on second disband (double disband 409)', async () => {
+      const mockRepo = {
+        disbandTeam: vi.fn().mockRejectedValue({
+          message: 'TEAM_NOT_MUTABLE',
+          code: 'P0001',
+          detail: JSON.stringify({ reason: 'Disbanded' }),
+        }),
+      } as unknown as ITeamsRepository;
+
+      await expect(disbandTeam(actorId, teamId, { repo: mockRepo })).rejects.toSatisfy((err: unknown) => {
+        expect(err).toBeInstanceOf(TeamServiceError);
+        const serviceErr = err as TeamServiceError;
+        expect(serviceErr.code).toBe('TEAM_NOT_MUTABLE');
+        expect(serviceErr.status).toBe(409);
+        expect(serviceErr.details).toEqual({ reason: 'Disbanded' });
+        return true;
+      });
+    });
+  });
 });
+

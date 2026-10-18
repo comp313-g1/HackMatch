@@ -45,6 +45,8 @@ export interface ITeamsRepository {
   updateTeamListing(actorId: string, teamId: string, patch: TeamListingPatch): Promise<Team>;
   addTeamVacancy(actorId: string, teamId: string, role: ParticipantPrimaryRole, skills: string[]): Promise<TeamVacancy>;
   updateTeamVacancy(actorId: string, teamId: string, vacancyId: string, role: ParticipantPrimaryRole, skills: string[]): Promise<TeamVacancy>;
+  removeTeamVacancy(actorId: string, teamId: string, vacancyId: string): Promise<{ canceledRequests: number }>;
+  disbandTeam(actorId: string, teamId: string): Promise<{ releasedMembers: number; canceledRequests: number }>;
 }
 
 export const teamsRepository: ITeamsRepository = {
@@ -222,5 +224,26 @@ export const teamsRepository: ITeamsRepository = {
     });
     if (error) throw error;
     return (data as { vacancy: TeamVacancy }).vacancy;
+  },
+
+  async removeTeamVacancy(actorId: string, teamId: string, vacancyId: string): Promise<{ canceledRequests: number }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('remove_team_vacancy', {
+      p_actor: actorId,
+      p_team: teamId,
+      p_vacancy: vacancyId,
+    });
+    if (error) throw error;
+    return data as { canceledRequests: number };
+  },
+
+  async disbandTeam(actorId: string, teamId: string): Promise<{ releasedMembers: number; canceledRequests: number }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('disband_team', {
+      p_actor: actorId,
+      p_team: teamId,
+    });
+    if (error) throw error;
+    return data as { releasedMembers: number; canceledRequests: number };
   },
 };

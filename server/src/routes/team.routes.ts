@@ -20,6 +20,8 @@ import {
   updateTeamHandler,
   addVacancyHandler,
   updateVacancyHandler,
+  removeVacancyHandler,
+  disbandTeamHandler,
 } from '../controllers/team.controller.js';
 
 export const teamRouter = Router();
@@ -38,3 +40,6 @@ teamRouter.get('/:teamId', ...participantAuth, validateTeamIdParams, requireTeam
 teamRouter.patch('/:teamId', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateUpdateTeamBody, updateTeamHandler);
 teamRouter.post('/:teamId/vacancies', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateVacancyBody, addVacancyHandler);
 teamRouter.patch('/:teamId/vacancies/:vacancyId', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateVacancyBody, updateVacancyHandler);
+teamRouter.delete('/:teamId/vacancies/:vacancyId', ...participantAuth, validateTeamIdParams, requireTeamOwner, removeVacancyHandler);
+teamRouter.post('/:teamId/disband', ...participantAuth, validateTeamIdParams, requireTeamOwner, disbandTeamHandler);
+
