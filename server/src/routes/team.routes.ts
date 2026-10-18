@@ -8,6 +8,9 @@ import {
   validateTeamIdParams,
   validateMyTeamQuery,
   requireJsonObjectBody,
+  validateCreateTeamBody,
+  validateUpdateTeamBody,
+  validateVacancyBody,
 } from '../validators/team.validator.js';
 import {
   createTeamHandler,
@@ -28,9 +31,9 @@ const participantAuth = [
   requireVerifiedParticipant,
 ];
 
-teamRouter.post('/', ...participantAuth, requireJsonObjectBody, createTeamHandler);
+teamRouter.post('/', ...participantAuth, requireJsonObjectBody, validateCreateTeamBody, createTeamHandler);
 teamRouter.get('/mine', ...participantAuth, validateMyTeamQuery, getMyTeamHandler);
 teamRouter.get('/:teamId', ...participantAuth, validateTeamIdParams, getTeamHandler);
-teamRouter.patch('/:teamId', ...participantAuth, validateTeamIdParams, requireJsonObjectBody, updateTeamHandler);
-teamRouter.post('/:teamId/vacancies', ...participantAuth, validateTeamIdParams, requireJsonObjectBody, addVacancyHandler);
-teamRouter.patch('/:teamId/vacancies/:vacancyId', ...participantAuth, validateTeamIdParams, requireJsonObjectBody, updateVacancyHandler);
+teamRouter.patch('/:teamId', ...participantAuth, validateTeamIdParams, requireJsonObjectBody, validateUpdateTeamBody, updateTeamHandler);
+teamRouter.post('/:teamId/vacancies', ...participantAuth, validateTeamIdParams, requireJsonObjectBody, validateVacancyBody, addVacancyHandler);
+teamRouter.patch('/:teamId/vacancies/:vacancyId', ...participantAuth, validateTeamIdParams, requireJsonObjectBody, validateVacancyBody, updateVacancyHandler);

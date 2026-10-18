@@ -143,7 +143,6 @@ describe('Express Team Listing & Vacancy Endpoints (US-012 / #120)', () => {
           goal: 'Project Completion',
           commitmentHours: 20,
           communicationLink: 'https://discord.gg/hackmatch',
-          ownerParticipantId: 'attacker-injected-id',
         });
 
       expect(response.status).toBe(201);
@@ -162,6 +161,52 @@ describe('Express Team Listing & Vacancy Endpoints (US-012 / #120)', () => {
       expect(response.body.team.owner_participant_id).toBeUndefined();
       expect(response.body.team.members[0].email).toBeUndefined();
       expect(response.body.team.members[0].firebase_uid).toBeUndefined();
+    });
+
+    it('rejects with 400 VALIDATION_ERROR and does not call repo when unknown key like ownerParticipantId is provided', async () => {
+      const createSpy = vi.spyOn(teamsRepository, 'createTeamWithOwner');
+
+      const response = await request(app)
+        .post('/api/teams')
+        .set('Authorization', validTokenHeader)
+        .send({
+          eventId: sampleEventId,
+          name: 'HackMatch Innovators',
+          pitch: 'Building accessible pair-programming platforms',
+          goal: 'Project Completion',
+          commitmentHours: 20,
+          communicationLink: 'https://discord.gg/hackmatch',
+          ownerParticipantId: 'attacker-injected-id',
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.errors.ownerParticipantId).toBe('This field cannot be set.');
+      expect(createSpy).not.toHaveBeenCalled();
+    });
+
+    it('rejects with 400 VALIDATION_ERROR and does not call repo when fields violate boundaries', async () => {
+      const createSpy = vi.spyOn(teamsRepository, 'createTeamWithOwner');
+
+      const response = await request(app)
+        .post('/api/teams')
+        .set('Authorization', validTokenHeader)
+        .send({
+          eventId: sampleEventId,
+          name: 'HackMatch Innovators',
+          pitch: 'a'.repeat(501),
+          goal: 'InvalidGoal',
+          commitmentHours: 168.1,
+          communicationLink: 'http://insecure.com',
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.errors.pitch).toBeDefined();
+      expect(response.body.errors.goal).toBeDefined();
+      expect(response.body.errors.commitmentHours).toBeDefined();
+      expect(response.body.errors.communicationLink).toBeDefined();
+      expect(createSpy).not.toHaveBeenCalled();
     });
 
     it('rejects with 400 VALIDATION_ERROR when request body is not a JSON object', async () => {
@@ -342,6 +387,34 @@ describe('Express Team Listing & Vacancy Endpoints (US-012 / #120)', () => {
       });
       expect(response.body.team.id).toBe(sampleTeamId);
     });
+
+    it('rejects with 400 VALIDATION_ERROR and does not call repo when no recognized fields are provided ({})', async () => {
+      const updateSpy = vi.spyOn(teamsRepository, 'updateTeamListing');
+
+      const response = await request(app)
+        .patch(`/api/teams/${sampleTeamId}`)
+        .set('Authorization', validTokenHeader)
+        .send({});
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.errors._form).toBe('No changes provided.');
+      expect(updateSpy).not.toHaveBeenCalled();
+    });
+
+    it('rejects with 400 VALIDATION_ERROR and does not call repo when forbidden keys are provided', async () => {
+      const updateSpy = vi.spyOn(teamsRepository, 'updateTeamListing');
+
+      const response = await request(app)
+        .patch(`/api/teams/${sampleTeamId}`)
+        .set('Authorization', validTokenHeader)
+        .send({ eventId: sampleEventId });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.errors.eventId).toBe('This field cannot be set.');
+      expect(updateSpy).not.toHaveBeenCalled();
+    });
   });
 
   describe('POST /api/teams/:teamId/vacancies (Add Vacancy)', () => {
@@ -364,7 +437,22 @@ describe('Express Team Listing & Vacancy Endpoints (US-012 / #120)', () => {
       expect(response.body.team.id).toBe(sampleTeamId);
     });
 
-    it('maps CAPACITY_EXCEEDED database error to 409', async () => {
+    it('rejects with 400 VALIDATION_ERROR and does not call repo when role is invalid or skills > 10', async () => {
+      const addSpy = vi.spyOn(teamsRepository, 'addTeamVacancy');
+
+      const response = await request(app)
+        .post(`/api/teams/${sampleTeamId}/vacancies`)
+        .set('Authorization', validTokenHeader)
+        .send({ role: 'Designer', skills: Array.from({ length: 11 }, (_, i) => `Skill${i}`) });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.errors.role).toBeDefined();
+      expect(response.body.errors.skills).toBeDefined();
+      expect(addSpy).not.toHaveBeenCalled();
+    });
+
+    it('maps CAPACITY_EXCEEDED database error to 409 with structured error, errors.vacancies, and limits', async () => {
       vi.spyOn(teamsRepository, 'addTeamVacancy').mockRejectedValue({
         message: 'CAPACITY_EXCEEDED',
         code: 'P0001',
@@ -378,7 +466,18 @@ describe('Express Team Listing & Vacancy Endpoints (US-012 / #120)', () => {
 
       expect(response.status).toBe(409);
       expect(response.body.code).toBe('CAPACITY_EXCEEDED');
-      expect(response.body.details).toEqual({ max: 4, confirmed: 3, open: 1 });
+      expect(response.body.error).toBe(
+        'This team can have at most 4 members including open slots. 3 confirmed + 1 open = 4.'
+      );
+      expect(response.body.errors).toEqual({
+        vacancies:
+          'This team can have at most 4 members including open slots. 3 confirmed + 1 open = 4.',
+      });
+      expect(response.body.limits).toEqual({
+        maxTeamSize: 4,
+        confirmedMembers: 3,
+        openSlots: 1,
+      });
     });
   });
 
@@ -401,6 +500,20 @@ describe('Express Team Listing & Vacancy Endpoints (US-012 / #120)', () => {
         ['React', 'Next.js']
       );
       expect(response.body.team.id).toBe(sampleTeamId);
+    });
+
+    it('rejects with 400 VALIDATION_ERROR and does not call repo when unknown keys are provided', async () => {
+      const updateSpy = vi.spyOn(teamsRepository, 'updateTeamVacancy');
+
+      const response = await request(app)
+        .patch(`/api/teams/${sampleTeamId}/vacancies/${sampleVacancyId}`)
+        .set('Authorization', validTokenHeader)
+        .send({ role: 'Frontend', ownerParticipantId: 'hacked' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.errors.ownerParticipantId).toBe('This field cannot be set.');
+      expect(updateSpy).not.toHaveBeenCalled();
     });
 
     it('returns 404 when vacancy is not found or not open', async () => {

@@ -16,6 +16,27 @@ function handleControllerError(err: unknown, res: Response, next: NextFunction):
   res.setHeader('Cache-Control', 'no-store');
   const serviceErr = toTeamServiceError(err);
   if (serviceErr) {
+    if (serviceErr.code === 'CAPACITY_EXCEEDED' && serviceErr.details) {
+      const max = (serviceErr.details.max as number) ?? 4;
+      const confirmed = (serviceErr.details.confirmed as number) ?? 0;
+      const open = (serviceErr.details.open as number) ?? 0;
+      const total = confirmed + open;
+      const errorMessage = `This team can have at most ${max} members including open slots. ${confirmed} confirmed + ${open} open = ${total}.`;
+      res.status(409).json({
+        code: 'CAPACITY_EXCEEDED',
+        error: errorMessage,
+        errors: {
+          vacancies: errorMessage,
+        },
+        limits: {
+          maxTeamSize: max,
+          confirmedMembers: confirmed,
+          openSlots: open,
+        },
+      });
+      return;
+    }
+
     res.status(serviceErr.status).json({
       error: serviceErr.message,
       code: serviceErr.code,
