@@ -10,6 +10,7 @@ import { authRouter } from './routes/auth.routes.js';
 import { actionsRouter } from './routes/actions.routes.js';
 import { accessRouter } from './routes/access.routes.js';
 import { profileRouter } from './routes/profile.routes.js';
+import { teamRouter } from './routes/team.routes.js';
 import { securityConfig } from './config/security.js';
 import { createRequireHttps } from './middleware/requireHttps.js';
 
@@ -43,6 +44,7 @@ app.use('/api', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/access', accessRouter);
 app.use('/api/profiles', profileRouter);
+app.use('/api/teams', teamRouter);
 app.use('/api', actionsRouter);
 
 // Fallback 404 handler
@@ -52,6 +54,7 @@ app.use((_req: Request, res: Response) => {
 
 // Centralized error handler
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('[SERVER ERROR]', err);
   const errWithStatus = err as Error & { status?: number; statusCode?: number };
   const status = errWithStatus.status || errWithStatus.statusCode || 500;
   const isDev = config.nodeEnv === 'development';
@@ -59,6 +62,6 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 
   res.status(status).json({
     error: defaultError,
-    ...(isDev ? { message: err.message } : {}),
+    ...(isDev ? { message: err.message, stack: err.stack } : {}),
   });
 });

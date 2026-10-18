@@ -266,3 +266,90 @@ export interface UpdateEventDTO {
   status?: EventStatus;
 }
 
+export type TeamGoal = 'Learning' | 'Project Completion' | 'Competitive';
+export type TeamRecruitmentStatus = 'Open' | 'Locked' | 'Disbanded';
+export type TeamMembershipRole = 'Owner' | 'Member';
+export type TeamMembershipStatus = 'Confirmed' | 'Removed' | 'Released';
+export type TeamVacancyStatus = 'Open' | 'Filled' | 'Removed';
+export type TeamRequestType = 'Invitation' | 'Application';
+export type TeamRequestStatus =
+  | 'Pending'
+  | 'Accepted'
+  | 'Declined'
+  | 'Withdrawn'
+  | 'Expired'
+  | 'Canceled';
+
+export interface Team {
+  id: string;
+  event_id: string;
+  owner_participant_id: string;
+  name: string;
+  pitch: string;
+  goal: TeamGoal;
+  commitment_hours: number;
+  communication_link: string | null;
+  recruitment_status: TeamRecruitmentStatus;
+  disbanded_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeamMembership {
+  id: string;
+  team_id: string;
+  event_id: string;
+  participant_id: string;
+  role: TeamMembershipRole;
+  status: TeamMembershipStatus;
+  removal_reason: string | null;
+  joined_at: string;
+  ended_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeamVacancy {
+  id: string;
+  team_id: string;
+  role: ParticipantPrimaryRole;
+  skills: string[];
+  status: TeamVacancyStatus;
+  removed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeamRequest {
+  id: string;
+  team_id: string;
+  event_id: string;
+  vacancy_id: string | null;
+  participant_id: string;
+  request_type: TeamRequestType;
+  status: TeamRequestStatus;
+  cancel_reason: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ParticipantNotification {
+  id: string;
+  participant_id: string;
+  team_id: string | null;
+  event_id: string | null;
+  type: string;
+  message: string;
+  created_at: string;
+  read_at: string | null;
+}
+
+export interface EventAvailability {
+  participant_id: string;
+  event_id: string;
+  is_looking: boolean;
+  created_at: string;
+  updated_at: string;
+}
+

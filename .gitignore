@@ -161,3 +161,5 @@ site_screenshots/
 # Developer scratchpad and local tasks
 brian_tasks/
 .workbuddy/*
+supabase/.branches/
+supabase/snippets/

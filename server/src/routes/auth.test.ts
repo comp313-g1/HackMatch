@@ -798,7 +798,6 @@ describe('Auth Routes (POST /api/auth/register)', () => {
       });
 
       const endpoints = [
-        '/api/teams',
         '/api/availability',
         '/api/applications',
         '/api/invitations/inv-123/accept',

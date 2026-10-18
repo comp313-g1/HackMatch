@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { applyActionCode } from 'firebase/auth';
+import { applyActionCode, onAuthStateChanged, getIdTokenResult, type User, type IdTokenResult } from 'firebase/auth';
 import App from './App';
 
 vi.mock('firebase/auth', async (importOriginal) => {
@@ -11,10 +11,21 @@ vi.mock('firebase/auth', async (importOriginal) => {
     applyActionCode: vi.fn(),
     checkActionCode: vi.fn(),
     signOut: vi.fn(),
-    onAuthStateChanged: vi.fn((_auth: unknown, cb: (user: null) => void) => {
+    getIdTokenResult: vi.fn(),
+    getIdToken: vi.fn().mockResolvedValue('mock-token'),
+    onAuthStateChanged: vi.fn((_auth: unknown, cb: (user: User | null) => void) => {
       cb(null);
       return () => {};
     }),
+  };
+});
+
+vi.mock('./components/teams/teamApi', async () => {
+  const actual = await vi.importActual<typeof import('./components/teams/teamApi')>('./components/teams/teamApi');
+  return {
+    ...actual,
+    fetchMyTeams: vi.fn().mockResolvedValue([]),
+    fetchMyTeam: vi.fn().mockResolvedValue(null),
   };
 });
 
@@ -31,9 +42,9 @@ describe('App Component (View Routing and Integration)', () => {
 
   it('renders the header with HackMatch branding', () => {
     render(<App />);
-    const heading = screen.getByRole('heading', { level: 1 });
-    expect(heading).toBeInTheDocument();
-    expect(heading).toHaveTextContent('HackMatch');
+    const brand = screen.getByRole('button', { name: /hackmatch home/i });
+    expect(brand).toBeInTheDocument();
+    expect(brand).toHaveTextContent('HackMatch');
   });
 
   it('renders the accessible skip-to-content link', () => {
@@ -49,10 +60,16 @@ describe('App Component (View Routing and Integration)', () => {
     expect(screen.getByRole('button', { name: /probe \/api\/health/i })).toBeInTheDocument();
   });
 
-  it('renders RegistrationForm by default when URL has no verification parameters', () => {
+  it('renders LandingPage by default when URL has no verification parameters', () => {
+    render(<App />);
+    expect(screen.getByRole('heading', { level: 1, name: /find your hackathon team/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 2, name: /create an account/i })).not.toBeInTheDocument();
+  });
+
+  it('renders RegistrationForm when URL contains view=register', () => {
+    window.history.pushState({}, '', '/?view=register');
     render(<App />);
     expect(screen.getByRole('heading', { level: 2, name: /create an account/i })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { level: 2, name: /email verification/i })).not.toBeInTheDocument();
   });
 
   it('renders EmailVerificationView when URL contains mode=verifyEmail', async () => {
@@ -115,6 +132,7 @@ describe('App Component (View Routing and Integration)', () => {
   });
 
   it('switches to verification view when RegistrationForm requests replacement link', async () => {
+    window.history.pushState({}, '', '/?view=register');
     const mockFetch = vi.fn().mockResolvedValueOnce({
       ok: true,
       status: 201,
@@ -171,9 +189,12 @@ describe('App Component (View Routing and Integration)', () => {
     expect(screen.getByText(/participant account verified! you can now sign in/i)).toBeInTheDocument();
   });
 
-  it('switches between create account and sign in via header nav', () => {
+  it('switches between landing, create account, and sign in via header nav and brand logo', () => {
     render(<App />);
 
+    expect(screen.getByRole('heading', { level: 1, name: /find your hackathon team/i })).toBeInTheDocument();
+
+    fireEvent.click(within(primaryNav()).getByRole('button', { name: /create account/i }));
     expect(within(primaryNav()).getByRole('button', { name: /create account/i })).toHaveAttribute(
       'aria-current',
       'page'
@@ -188,8 +209,8 @@ describe('App Component (View Routing and Integration)', () => {
     expect(within(screen.getByRole('main')).getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { level: 2, name: /create an account/i })).not.toBeInTheDocument();
 
-    fireEvent.click(within(primaryNav()).getByRole('button', { name: /create account/i }));
-    expect(screen.getByRole('heading', { level: 2, name: /create an account/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /hackmatch home/i }));
+    expect(screen.getByRole('heading', { level: 1, name: /find your hackathon team/i })).toBeInTheDocument();
   });
 
   it('does not show the account area to a signed-out visitor and links back to sign in', async () => {
@@ -229,4 +250,118 @@ describe('App Component (View Routing and Integration)', () => {
 
     expect(screen.getByRole('heading', { level: 2, name: /create an account/i })).toBeInTheDocument();
   });
+
+  it('renders Choose an event first alert when visiting ?view=team without valid eventId', async () => {
+    window.history.pushState({}, '', '/?view=team');
+
+    render(<App />);
+
+    expect(await screen.findByText(/you are not signed in/i)).toBeInTheDocument();
+  });
+
+  it('renders authenticated navigation (Profile, Teams, Sign out) and hides guest auth buttons when user is on account view', async () => {
+    window.history.pushState({}, '', '/?view=account');
+
+    render(<App />);
+
+    expect(within(primaryNav()).getByRole('button', { name: /^profile$/i })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
+    expect(within(primaryNav()).getByRole('button', { name: /^teams$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^sign out/i })).toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /^sign in$/i })).not.toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /create account/i })).not.toBeInTheDocument();
+  });
+
+  it('renders Teams button with active state in primary nav when viewing team', async () => {
+    window.history.pushState(
+      {},
+      '',
+      '/?view=team&eventId=123e4567-e89b-12d3-a456-426614174000'
+    );
+
+    render(<App />);
+
+    expect(within(primaryNav()).getByRole('button', { name: /^profile$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^teams$/i })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
+    expect(within(primaryNav()).getByRole('button', { name: /^sign out/i })).toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /^sign in$/i })).not.toBeInTheDocument();
+  });
+
+  it('toggles mobile menu when clicking menu button', () => {
+    render(<App />);
+
+    const menuBtn = screen.getByRole('button', { name: /open menu/i });
+    expect(menuBtn).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(menuBtn);
+    expect(menuBtn).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('region', { name: /mobile navigation/i })).toBeInTheDocument();
+
+    fireEvent.click(menuBtn);
+    expect(menuBtn).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('region', { name: /mobile navigation/i })).not.toBeInTheDocument();
+  });
+
+  it('renders the MFA gate when ?view=mfa is visited while signed out', async () => {
+    window.history.pushState({}, '', '/?view=mfa');
+    render(<App />);
+
+    expect(await screen.findByText(/you are not signed in/i)).toBeInTheDocument();
+    expect(within(screen.getByRole('main')).getByRole('button', { name: /go to sign in/i })).toBeInTheDocument();
+  });
+
+  it('transitions from mfa view to the participant landing page upon successful MFA verification', async () => {
+    window.history.pushState({}, '', '/?view=mfa');
+    const mockUser = {
+      uid: 'user-p1',
+      email: 't1comp313brian@gmail.com',
+      displayName: 'Brian',
+      getIdToken: vi.fn().mockResolvedValue('mock-token'),
+    } as unknown as User;
+
+    const mockOnAuthStateChanged = vi.mocked(onAuthStateChanged);
+    mockOnAuthStateChanged.mockImplementation(((_auth: unknown, cb: (u: User | null) => void) => {
+      cb(mockUser);
+      return () => {};
+    }) as unknown as typeof onAuthStateChanged);
+
+    const mockGetIdTokenResult = vi.mocked(getIdTokenResult);
+    mockGetIdTokenResult.mockResolvedValue({
+      claims: { auth_time: 1792000000, mfa_auth_time: 1792000000 },
+    } as unknown as IdTokenResult);
+
+    render(<App />);
+
+    // Post-MFA landing page should display hero and participant buttons
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /find your hackathon team/i })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^teams workspace$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /your profile/i })).toBeInTheDocument();
+    // And search / events directory section is visible on the participant landing page
+    expect(screen.getByRole('searchbox', { name: /search hackathons/i })).toBeInTheDocument();
+    expect(screen.getByText(/no events match your criteria/i)).toBeInTheDocument();
+
+    // Clicking Profile in header navigates to account view (SignedInPanel)
+    fireEvent.click(within(primaryNav()).getByRole('button', { name: /^profile$/i }));
+    expect(await screen.findByRole('heading', { level: 3, name: /you are signed in/i })).toBeInTheDocument();
+    expect(screen.getByText(/manage technical profile/i)).toBeInTheDocument();
+
+    // Clicking Teams in header navigates to MyTeamsPage view
+    fireEvent.click(within(primaryNav()).getByRole('button', { name: /^teams$/i }));
+    expect(await screen.findByRole('heading', { level: 1, name: /my teams/i })).toBeInTheDocument();
+    const createTeamBtns = screen.getAllByRole('button', { name: /create a team/i });
+    expect(createTeamBtns.length).toBeGreaterThan(0);
+
+    // Clicking Create a team navigates to CreateTeamPage
+    fireEvent.click(createTeamBtns[0]);
+    expect(await screen.findByRole('heading', { level: 1, name: /create a new team/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/team name/i)).toBeInTheDocument();
+  });
 });
+

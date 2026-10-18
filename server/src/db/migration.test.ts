@@ -417,3 +417,267 @@ describe('0010_add_participant_suspension.sql Migration DDL', () => {
   });
 });
 
+describe('0011_create_team_recruitment_tables.sql Migration DDL (US-012 / #118)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0011_create_team_recruitment_tables.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('enforces Row Level Security explicitly on all 6 recruitment tables', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+teams\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_memberships\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_vacancies\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_requests\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+participant_notifications\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+event_availability\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+  });
+
+  it('ensures team_memberships table schema guards profile.repository.ts areConfirmedTeammates query', () => {
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+team_memberships/i);
+    expect(sql).toMatch(/team_id\s+UUID\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/participant_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+participants\(id\)/i);
+    expect(sql).toMatch(/status\s+VARCHAR\(20\)\s+NOT\s+NULL\s+DEFAULT\s+'Confirmed'/i);
+    expect(sql).toMatch(/CHECK\s*\(\s*status\s+IN\s*\(\s*'Confirmed'\s*,\s*'Removed'\s*,\s*'Released'\s*\)\s*\)/i);
+  });
+
+  it('enforces FR-083 single confirmed membership per participant per event via partial unique index', () => {
+    expect(sql).toMatch(
+      /CREATE\s+UNIQUE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+uq_team_memberships_confirmed_per_event\s+ON\s+team_memberships\s*\(\s*event_id,\s*participant_id\s*\)\s+WHERE\s+status\s*=\s*'Confirmed'/i
+    );
+  });
+
+  it('enforces single confirmed owner per team and single pending invitation per invitee', () => {
+    expect(sql).toMatch(
+      /CREATE\s+UNIQUE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+uq_team_memberships_one_owner\s+ON\s+team_memberships\s*\(\s*team_id\s*\)\s+WHERE\s+role\s*=\s*'Owner'\s+AND\s+status\s*=\s*'Confirmed'/i
+    );
+    expect(sql).toMatch(
+      /CREATE\s+UNIQUE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+uq_team_requests_pending_invite\s+ON\s+team_requests\s*\(\s*team_id,\s*participant_id\s*\)\s+WHERE\s+request_type\s*=\s*'Invitation'\s+AND\s+status\s*=\s*'Pending'/i
+    );
+  });
+
+  it('enforces strict team domain constraints for pitch, goals, hours, status, and communication links', () => {
+    expect(sql).toMatch(/pitch\s+VARCHAR\(500\)\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/goal\s+VARCHAR\(30\)\s+NOT\s+NULL\s+CHECK\s*\(\s*goal\s+IN\s*\(\s*'Learning'\s*,\s*'Project Completion'\s*,\s*'Competitive'\s*\)\s*\)/i);
+    expect(sql).toMatch(/commitment_hours\s+NUMERIC\(4,1\)\s+NOT\s+NULL\s+CHECK\s*\(\s*commitment_hours\s*>=\s*0\s+AND\s+commitment_hours\s*<=\s*168\.0\s*\)/i);
+    expect(sql).toMatch(/recruitment_status\s+VARCHAR\(20\)\s+NOT\s+NULL\s+DEFAULT\s+'Open'/i);
+    expect(sql).toMatch(/CHECK\s*\(\s*recruitment_status\s+IN\s*\(\s*'Open'\s*,\s*'Locked'\s*,\s*'Disbanded'\s*\)\s*\)/i);
+    expect(sql).toMatch(/communication_link\s+VARCHAR\(2048\)\s+CHECK\s*\(\s*communication_link\s+IS\s+NULL\s+OR\s*\(\s*communication_link\s+LIKE\s+'https:\/\/%'/i);
+  });
+
+  it('preserves historical integrity: RESTRICT on participant deletion for teams and memberships', () => {
+    expect(sql).toMatch(/owner_participant_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+participants\(id\)\s+ON\s+DELETE\s+RESTRICT/i);
+    expect(sql).toMatch(/participant_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+participants\(id\)\s+ON\s+DELETE\s+RESTRICT/i);
+    expect(sql).toMatch(/CONSTRAINT\s+fk_team_memberships_team_event\s+FOREIGN\s+KEY\s*\(\s*team_id,\s*event_id\s*\)\s+REFERENCES\s+teams\s*\(\s*id,\s*event_id\s*\)\s+ON\s+DELETE\s+RESTRICT/i);
+  });
+
+  it('enforces vacancy skills cardinality constraint of at most 10 skills', () => {
+    expect(sql).toMatch(/cardinality\(skills\)\s*<=\s*10/i);
+  });
+
+  it('attaches automatic set_updated_at triggers across mutable tables', () => {
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_teams_updated_at/i);
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_team_memberships_updated_at/i);
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_team_vacancies_updated_at/i);
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_team_requests_updated_at/i);
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_event_availability_updated_at/i);
+  });
+});
+
+describe('0012_create_team_with_owner_function.sql Migration DDL', () => {
+  const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0012_create_team_with_owner_function.sql');
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('declares create_team_with_owner function with SECURITY DEFINER and search_path = public', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+create_team_with_owner/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/SET\s+search_path\s*=\s*public/i);
+  });
+
+  it('enforces serialisation locks: FOR UPDATE on participants and FOR SHARE on events', () => {
+    expect(sql).toMatch(/FROM\s+participants[\s\S]*?FOR\s+UPDATE/i);
+    expect(sql).toMatch(/FROM\s+events[\s\S]*?FOR\s+SHARE/i);
+  });
+
+  it('raises explicit domain exceptions with P0001 code for failure conditions', () => {
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'PARTICIPANT_NOT_ELIGIBLE'\s+USING\s+ERRCODE\s*=\s*'P0001'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'EVENT_NOT_FOUND'\s+USING\s+ERRCODE\s*=\s*'P0001'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'EVENT_NOT_RECRUITING'\s+USING\s+ERRCODE\s*=\s*'P0001'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'ALREADY_CONFIRMED_MEMBER'\s+USING\s+ERRCODE\s*=\s*'P0001'/i);
+  });
+
+  it('secures function from anon and public execution and grants only to service_role', () => {
+    expect(sql).toMatch(/REVOKE\s+ALL\s+ON\s+FUNCTION\s+create_team_with_owner[\s\S]*?FROM\s+PUBLIC,\s*anon,\s*authenticated/i);
+    expect(sql).toMatch(/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+create_team_with_owner[\s\S]*?TO\s+service_role/i);
+  });
+
+  it('updates participant event availability to false and cancels pending requests with OWNER_CREATED_TEAM', () => {
+    expect(sql).toMatch(/UPDATE\s+event_availability\s+SET\s+is_looking\s*=\s*FALSE/i);
+    expect(sql).toMatch(/cancel_reason\s*=\s*'OWNER_CREATED_TEAM'/i);
+  });
+});
+
+describe('0013_create_team_listing_functions.sql Migration DDL', () => {
+  const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0013_create_team_listing_functions.sql');
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('declares all four listing management functions with SECURITY DEFINER and search_path = public', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+lock_team_for_owner_mutation/i);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+update_team_listing/i);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+add_team_vacancy/i);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+update_team_vacancy/i);
+    const securityDefinerCount = (sql.match(/SECURITY\s+DEFINER/gi) || []).length;
+    expect(securityDefinerCount).toBeGreaterThanOrEqual(4);
+  });
+
+  it('enforces serialisation and status checks in lock_team_for_owner_mutation', () => {
+    expect(sql).toMatch(/FROM\s+teams[\s\S]*?FOR\s+UPDATE/i);
+    expect(sql).toMatch(/FROM\s+events[\s\S]*?FOR\s+SHARE/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'TEAM_NOT_FOUND'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'FORBIDDEN_NOT_TEAM_OWNER'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'TEAM_NOT_MUTABLE'/i);
+  });
+
+  it('allows explicit clearing of communication_link via JSONB existence operator', () => {
+    expect(sql).toMatch(/p_patch\s*\?\s*'communication_link'/i);
+  });
+
+  it('calculates capacity boundaries and raises CAPACITY_EXCEEDED with structured DETAIL in add_team_vacancy', () => {
+    expect(sql).toMatch(/SELECT\s+COALESCE\(\s*max_team_size,\s*4\s*\)/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'CAPACITY_EXCEEDED'/i);
+    expect(sql).toMatch(/DETAIL\s*=\s*jsonb_build_object\s*\(\s*'max'/i);
+  });
+
+  it('scopes vacancy update strictly to team_id and vacancy id', () => {
+    expect(sql).toMatch(/WHERE\s+id\s*=\s*p_vacancy\s+AND\s+team_id\s*=\s*p_team/i);
+  });
+
+  it('secures all four functions from public/anon access and grants only to service_role', () => {
+    const revokeCount = (sql.match(/REVOKE\s+ALL\s+ON\s+FUNCTION/gi) || []).length;
+    const grantCount = (sql.match(/GRANT\s+EXECUTE\s+ON\s+FUNCTION/gi) || []).length;
+    expect(revokeCount).toBe(4);
+    expect(grantCount).toBe(4);
+  });
+});
+
+describe('0014_create_team_cancellation_functions.sql Migration DDL', () => {
+  const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0014_create_team_cancellation_functions.sql');
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('declares cancellation and disband functions with SECURITY DEFINER and search_path = public', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+remove_team_vacancy/i);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+disband_team/i);
+    const securityDefinerCount = (sql.match(/SECURITY\s+DEFINER/gi) || []).length;
+    expect(securityDefinerCount).toBeGreaterThanOrEqual(2);
+    expect(sql).toMatch(/SET\s+search_path\s*=\s*public/i);
+  });
+
+  it('scopes cancel statements strictly to vacancy_id/team_id and status = Pending', () => {
+    expect(sql).toMatch(/WHERE\s+vacancy_id\s*=\s*p_vacancy\s+AND\s+status\s*=\s*'Pending'/i);
+    expect(sql).toMatch(/WHERE\s+team_id\s*=\s*p_team\s+AND\s+status\s*=\s*'Pending'/i);
+  });
+
+  it('defines appropriate cancel reasons and dispatches notifications from the RETURNING set', () => {
+    expect(sql).toMatch(/cancel_reason\s*=\s*'SLOT_REMOVED'/i);
+    expect(sql).toMatch(/cancel_reason\s*=\s*'TEAM_DISBANDED'/i);
+    expect(sql).toMatch(/RETURNING\s+participant_id,\s*request_type/i);
+    expect(sql).toMatch(/INSERT\s+INTO\s+participant_notifications/i);
+    expect(sql).toMatch(/'REQUEST_CANCELED_SLOT_REMOVED'/i);
+    expect(sql).toMatch(/'REQUEST_CANCELED_TEAM_DISBANDED'/i);
+  });
+
+  it('marks all confirmed memberships as Released including the owner and notifies non-owner members', () => {
+    expect(sql).toMatch(/UPDATE\s+team_memberships\s+SET\s+status\s*=\s*'Released'/i);
+    expect(sql).toMatch(/WHERE\s+team_id\s*=\s*p_team\s+AND\s+status\s*=\s*'Confirmed'/i);
+    expect(sql).toMatch(/WHERE\s+r\.role\s*<>\s*'Owner'/i);
+  });
+
+  it('restores availability with NOT EXISTS confirmed check and contains no INSERT into event_availability', () => {
+    expect(sql).toMatch(/UPDATE\s+event_availability/i);
+    expect(sql).toMatch(/SET\s+is_looking\s*=\s*TRUE/i);
+    expect(sql).toMatch(/NOT\s+EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+team_memberships/i);
+    expect(sql).not.toMatch(/INSERT\s+INTO\s+event_availability/i);
+  });
+
+  it('secures functions from anon/public and grants execute to service_role', () => {
+    const revokeCount = (sql.match(/REVOKE\s+ALL\s+ON\s+FUNCTION/gi) || []).length;
+    const grantCount = (sql.match(/GRANT\s+EXECUTE\s+ON\s+FUNCTION/gi) || []).length;
+    expect(revokeCount).toBe(2);
+    expect(grantCount).toBe(2);
+  });
+});
+
+describe('0015_create_team_member_removal_function.sql Migration DDL (US-012 / #124)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0015_create_team_member_removal_function.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('declares remove_team_member with SECURITY DEFINER and search_path = public', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+remove_team_member/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/SET\s+search_path\s*=\s*public/i);
+  });
+
+  it('uses lock_team_for_owner_mutation to enforce ownership and lifecycle checks', () => {
+    expect(sql).toMatch(/lock_team_for_owner_mutation\s*\(\s*p_actor\s*,\s*p_team\s*\)/i);
+  });
+
+  it('forbids owner self-removal with CANNOT_REMOVE_OWNER exception', () => {
+    expect(sql).toMatch(/IF\s+p_member\s*=\s*v_team\.owner_participant_id\s+THEN/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'CANNOT_REMOVE_OWNER'/i);
+  });
+
+  it('raises MEMBER_NOT_FOUND when target participant has no confirmed membership', () => {
+    expect(sql).toMatch(/WHERE\s+team_id\s*=\s*p_team\s+AND\s+participant_id\s*=\s*p_member\s+AND\s+status\s*=\s*'Confirmed'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'MEMBER_NOT_FOUND'/i);
+  });
+
+  it('marks membership Removed with removal_reason and dispatches notification', () => {
+    expect(sql).toMatch(/UPDATE\s+team_memberships\s+SET\s+status\s*=\s*'Removed'/i);
+    expect(sql).toMatch(/removal_reason\s*=\s*p_reason/i);
+    expect(sql).toMatch(/INSERT\s+INTO\s+participant_notifications/i);
+    expect(sql).toMatch(/'MEMBER_REMOVED'/i);
+  });
+
+  it('restores availability guarded by NOT EXISTS confirmed membership and does NOT update team_requests', () => {
+    expect(sql).toMatch(/UPDATE\s+event_availability/i);
+    expect(sql).toMatch(/SET\s+is_looking\s*=\s*TRUE/i);
+    expect(sql).toMatch(/NOT\s+EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+team_memberships/i);
+    expect(sql).not.toMatch(/UPDATE\s+team_requests/i);
+  });
+
+  it('secures function from anon/public and grants execute strictly to service_role', () => {
+    expect(sql).toMatch(/REVOKE\s+ALL\s+ON\s+FUNCTION\s+remove_team_member[\s\S]*?FROM\s+PUBLIC,\s*anon,\s*authenticated/i);
+    expect(sql).toMatch(/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+remove_team_member[\s\S]*?TO\s+service_role/i);
+  });
+});
+
+
+
