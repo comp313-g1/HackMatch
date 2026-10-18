@@ -349,6 +349,9 @@ export interface EventAvailability {
   participant_id: string;
   event_id: string;
   is_looking: boolean;
+  desired_role?: ParticipantPrimaryRole | null;
+  commitment_hours?: number | string | null;
+  goal?: TeamGoal | null;
   created_at: string;
   updated_at: string;
 }

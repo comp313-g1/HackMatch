@@ -10,6 +10,7 @@ import { authRouter } from './routes/auth.routes.js';
 import { actionsRouter } from './routes/actions.routes.js';
 import { accessRouter } from './routes/access.routes.js';
 import { profileRouter } from './routes/profile.routes.js';
+import { availabilityRouter } from './routes/availability.routes.js';
 import { teamRouter } from './routes/team.routes.js';
 import { securityConfig } from './config/security.js';
 import { createRequireHttps } from './middleware/requireHttps.js';
@@ -44,6 +45,7 @@ app.use('/api', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/access', accessRouter);
 app.use('/api/profiles', profileRouter);
+app.use('/api/availability', availabilityRouter);
 app.use('/api/teams', teamRouter);
 app.use('/api', actionsRouter);
 
