@@ -679,5 +679,71 @@ describe('0015_create_team_member_removal_function.sql Migration DDL (US-012 / #
   });
 });
 
+describe('0016_alter_event_availability_for_platform_pool.sql Migration DDL (US-011 / #US-286)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0016_alter_event_availability_for_platform_pool.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('seeds platform availability pool event with deterministic UUID', () => {
+    expect(sql).toMatch(/00000000-0000-4000-8000-000000000001/i);
+    expect(sql).toMatch(/Platform Availability Pool/i);
+    expect(sql).toMatch(/ON\s+CONFLICT\s*\(\s*id\s*\)\s+DO\s+NOTHING/i);
+  });
+
+  it('sets default event_id on event_availability table', () => {
+    expect(sql).toMatch(/ALTER\s+COLUMN\s+event_id\s+SET\s+DEFAULT\s+'00000000-0000-4000-8000-000000000001'::uuid/i);
+  });
+
+  it('adds desired_role, commitment_hours, and goal columns', () => {
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+desired_role\s+VARCHAR\(20\)/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+commitment_hours\s+NUMERIC\(4,1\)/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+goal\s+VARCHAR\(30\)/i);
+  });
+
+  it('enforces check constraints on desired_role, commitment_hours (0..168), and goal', () => {
+    expect(sql).toMatch(/chk_event_availability_desired_role/i);
+    expect(sql).toMatch(/chk_event_availability_commitment_hours/i);
+    expect(sql).toMatch(/chk_event_availability_goal/i);
+    expect(sql).toMatch(/commitment_hours\s*>=\s*0\s+AND\s+commitment_hours\s*<=\s*168/i);
+  });
+});
+
+describe('0017_auto_clear_availability_on_confirm.sql Migration DDL (US-011 / #US-287)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0017_auto_clear_availability_on_confirm.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('defines clear_participant_availability_on_confirmed_membership trigger function', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+clear_participant_availability_on_confirmed_membership/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/SET\s+search_path\s*=\s*public/i);
+  });
+
+  it('creates trigger on team_memberships for confirmed status updates/inserts', () => {
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trg_clear_availability_on_confirmed_membership/i);
+    expect(sql).toMatch(/AFTER\s+INSERT\s+OR\s+UPDATE\s+OF\s+status\s+ON\s+team_memberships/i);
+    expect(sql).toMatch(/WHEN\s*\(\s*NEW\.status\s*=\s*'Confirmed'\s*\)/i);
+  });
+
+  it('updates create_team_with_owner function to clear availability across all pools', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+create_team_with_owner/i);
+    expect(sql).toMatch(/UPDATE\s+event_availability[\s\S]*?SET\s+is_looking\s*=\s*FALSE[\s\S]*?WHERE\s+participant_id\s*=\s*p_owner_id[\s\S]*?AND\s+is_looking\s*=\s*TRUE/i);
+  });
+});
+
 
 
