@@ -417,3 +417,75 @@ describe('0010_add_participant_suspension.sql Migration DDL', () => {
   });
 });
 
+describe('0011_create_team_recruitment_tables.sql Migration DDL (US-012 / #118)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0011_create_team_recruitment_tables.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('enforces Row Level Security explicitly on all 6 recruitment tables', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+teams\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_memberships\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_vacancies\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_requests\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+participant_notifications\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+event_availability\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\s*;/i);
+  });
+
+  it('ensures team_memberships table schema guards profile.repository.ts areConfirmedTeammates query', () => {
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+team_memberships/i);
+    expect(sql).toMatch(/team_id\s+UUID\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/participant_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+participants\(id\)/i);
+    expect(sql).toMatch(/status\s+VARCHAR\(20\)\s+NOT\s+NULL\s+DEFAULT\s+'Confirmed'/i);
+    expect(sql).toMatch(/CHECK\s*\(\s*status\s+IN\s*\(\s*'Confirmed'\s*,\s*'Removed'\s*,\s*'Released'\s*\)\s*\)/i);
+  });
+
+  it('enforces FR-083 single confirmed membership per participant per event via partial unique index', () => {
+    expect(sql).toMatch(
+      /CREATE\s+UNIQUE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+uq_team_memberships_confirmed_per_event\s+ON\s+team_memberships\s*\(\s*event_id,\s*participant_id\s*\)\s+WHERE\s+status\s*=\s*'Confirmed'/i
+    );
+  });
+
+  it('enforces single confirmed owner per team and single pending invitation per invitee', () => {
+    expect(sql).toMatch(
+      /CREATE\s+UNIQUE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+uq_team_memberships_one_owner\s+ON\s+team_memberships\s*\(\s*team_id\s*\)\s+WHERE\s+role\s*=\s*'Owner'\s+AND\s+status\s*=\s*'Confirmed'/i
+    );
+    expect(sql).toMatch(
+      /CREATE\s+UNIQUE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+uq_team_requests_pending_invite\s+ON\s+team_requests\s*\(\s*team_id,\s*participant_id\s*\)\s+WHERE\s+request_type\s*=\s*'Invitation'\s+AND\s+status\s*=\s*'Pending'/i
+    );
+  });
+
+  it('enforces strict team domain constraints for pitch, goals, hours, status, and communication links', () => {
+    expect(sql).toMatch(/pitch\s+VARCHAR\(500\)\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/goal\s+VARCHAR\(30\)\s+NOT\s+NULL\s+CHECK\s*\(\s*goal\s+IN\s*\(\s*'Learning'\s*,\s*'Project Completion'\s*,\s*'Competitive'\s*\)\s*\)/i);
+    expect(sql).toMatch(/commitment_hours\s+NUMERIC\(4,1\)\s+NOT\s+NULL\s+CHECK\s*\(\s*commitment_hours\s*>=\s*0\s+AND\s+commitment_hours\s*<=\s*168\.0\s*\)/i);
+    expect(sql).toMatch(/recruitment_status\s+VARCHAR\(20\)\s+NOT\s+NULL\s+DEFAULT\s+'Open'/i);
+    expect(sql).toMatch(/CHECK\s*\(\s*recruitment_status\s+IN\s*\(\s*'Open'\s*,\s*'Locked'\s*,\s*'Disbanded'\s*\)\s*\)/i);
+    expect(sql).toMatch(/communication_link\s+VARCHAR\(2048\)\s+CHECK\s*\(\s*communication_link\s+IS\s+NULL\s+OR\s*\(\s*communication_link\s+LIKE\s+'https:\/\/%'/i);
+  });
+
+  it('preserves historical integrity: RESTRICT on participant deletion for teams and memberships', () => {
+    expect(sql).toMatch(/owner_participant_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+participants\(id\)\s+ON\s+DELETE\s+RESTRICT/i);
+    expect(sql).toMatch(/participant_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+participants\(id\)\s+ON\s+DELETE\s+RESTRICT/i);
+    expect(sql).toMatch(/CONSTRAINT\s+fk_team_memberships_team_event\s+FOREIGN\s+KEY\s*\(\s*team_id,\s*event_id\s*\)\s+REFERENCES\s+teams\s*\(\s*id,\s*event_id\s*\)\s+ON\s+DELETE\s+RESTRICT/i);
+  });
+
+  it('enforces vacancy skills cardinality constraint of at most 10 skills', () => {
+    expect(sql).toMatch(/cardinality\(skills\)\s*<=\s*10/i);
+  });
+
+  it('attaches automatic set_updated_at triggers across mutable tables', () => {
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_teams_updated_at/i);
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_team_memberships_updated_at/i);
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_team_vacancies_updated_at/i);
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_team_requests_updated_at/i);
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trigger_event_availability_updated_at/i);
+  });
+});
+
