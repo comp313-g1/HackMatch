@@ -489,3 +489,41 @@ describe('0011_create_team_recruitment_tables.sql Migration DDL (US-012 / #118)'
   });
 });
 
+describe('0012_create_team_with_owner_function.sql Migration DDL', () => {
+  const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0012_create_team_with_owner_function.sql');
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('declares create_team_with_owner function with SECURITY DEFINER and search_path = public', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+create_team_with_owner/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/SET\s+search_path\s*=\s*public/i);
+  });
+
+  it('enforces serialisation locks: FOR UPDATE on participants and FOR SHARE on events', () => {
+    expect(sql).toMatch(/FROM\s+participants[\s\S]*?FOR\s+UPDATE/i);
+    expect(sql).toMatch(/FROM\s+events[\s\S]*?FOR\s+SHARE/i);
+  });
+
+  it('raises explicit domain exceptions with P0001 code for failure conditions', () => {
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'PARTICIPANT_NOT_ELIGIBLE'\s+USING\s+ERRCODE\s*=\s*'P0001'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'EVENT_NOT_FOUND'\s+USING\s+ERRCODE\s*=\s*'P0001'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'EVENT_NOT_RECRUITING'\s+USING\s+ERRCODE\s*=\s*'P0001'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'ALREADY_CONFIRMED_MEMBER'\s+USING\s+ERRCODE\s*=\s*'P0001'/i);
+  });
+
+  it('secures function from anon and public execution and grants only to service_role', () => {
+    expect(sql).toMatch(/REVOKE\s+ALL\s+ON\s+FUNCTION\s+create_team_with_owner[\s\S]*?FROM\s+PUBLIC,\s*anon,\s*authenticated/i);
+    expect(sql).toMatch(/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+create_team_with_owner[\s\S]*?TO\s+service_role/i);
+  });
+
+  it('updates participant event availability to false and cancels pending requests with OWNER_CREATED_TEAM', () => {
+    expect(sql).toMatch(/UPDATE\s+event_availability\s+SET\s+is_looking\s*=\s*FALSE/i);
+    expect(sql).toMatch(/cancel_reason\s*=\s*'OWNER_CREATED_TEAM'/i);
+  });
+});
+
