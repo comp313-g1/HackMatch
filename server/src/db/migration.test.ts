@@ -563,6 +563,10 @@ describe('0013_create_team_listing_functions.sql Migration DDL', () => {
     expect(sql).toMatch(/DETAIL\s*=\s*jsonb_build_object\s*\(\s*'max'/i);
   });
 
+  it('scopes vacancy update strictly to team_id and vacancy id', () => {
+    expect(sql).toMatch(/WHERE\s+id\s*=\s*p_vacancy\s+AND\s+team_id\s*=\s*p_team/i);
+  });
+
   it('secures all four functions from public/anon access and grants only to service_role', () => {
     const revokeCount = (sql.match(/REVOKE\s+ALL\s+ON\s+FUNCTION/gi) || []).length;
     const grantCount = (sql.match(/GRANT\s+EXECUTE\s+ON\s+FUNCTION/gi) || []).length;

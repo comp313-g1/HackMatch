@@ -123,6 +123,7 @@ describe('Express Team Listing & Vacancy Endpoints (US-012 / #120)', () => {
     vi.restoreAllMocks();
     mockVerifyIdToken.mockResolvedValue(validDecodedToken);
     vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(ownerParticipant);
+    vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(sampleTeam);
   });
 
   describe('POST /api/teams (Team Creation)', () => {
