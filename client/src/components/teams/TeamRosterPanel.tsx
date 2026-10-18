@@ -37,6 +37,22 @@ export function TeamRosterPanel({
     }
   }, [confirmDisband]);
 
+  useEffect(() => {
+    if (!confirmDisband && !removingMemberId) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (confirmDisband) setConfirmDisband(false);
+        if (removingMemberId) {
+          setRemovingMemberId(null);
+          setRemovalReason('');
+          setRemovalError(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [confirmDisband, removingMemberId]);
+
   const isPanelDisabled = disabled || busy;
   const reasonCount = codePointLength(removalReason);
 

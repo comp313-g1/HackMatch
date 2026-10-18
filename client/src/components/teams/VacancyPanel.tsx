@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   TEAM_ROLES,
   type TeamView,
@@ -49,6 +49,17 @@ export function VacancyPanel({
     setFormError(null);
     setFieldErrors({});
   };
+
+  useEffect(() => {
+    if (!confirmRemoveId) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setConfirmRemoveId(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [confirmRemoveId]);
 
   const handleStartAdd = () => {
     resetForm();
