@@ -229,4 +229,13 @@ describe('App Component (View Routing and Integration)', () => {
 
     expect(screen.getByRole('heading', { level: 2, name: /create an account/i })).toBeInTheDocument();
   });
+
+  it('renders Choose an event first alert when visiting ?view=team without valid eventId', async () => {
+    window.history.pushState({}, '', '/?view=team');
+
+    render(<App />);
+
+    expect(await screen.findByText(/you are not signed in/i)).toBeInTheDocument();
+  });
 });
+

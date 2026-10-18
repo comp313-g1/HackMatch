@@ -6,9 +6,10 @@ import { PasswordRecoveryRequestForm } from './components/auth/PasswordRecoveryR
 import { PasswordResetForm } from './components/auth/PasswordResetForm';
 import { MfaGate } from './components/auth/MfaGate';
 import { SignedInPanel } from './components/auth/SignedInPanel';
+import { TeamWorkspace } from './components/teams/TeamWorkspace';
 import type { OtpChallenge } from './components/auth/providerSignIn';
 
-type View = 'register' | 'login' | 'verify' | 'account' | 'recover' | 'reset';
+type View = 'register' | 'login' | 'verify' | 'account' | 'recover' | 'reset' | 'team';
 
 const getInitialView = (): View => {
   if (typeof window === 'undefined') return 'register';
@@ -28,17 +29,26 @@ const getInitialView = (): View => {
   if (view === 'account') {
     return 'account';
   }
+  if (view === 'team') {
+    return 'team';
+  }
   if (view === 'recover' || view === 'forgot-password') {
     return 'recover';
   }
   return 'register';
 };
 
+
 export function App(): React.JSX.Element {
   const [currentView, setCurrentView] = useState<View>(getInitialView);
   const [verificationEmail, setVerificationEmail] = useState<string>('');
   const [recoveryEmail, setRecoveryEmail] = useState<string>('');
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
+  const [teamEventId] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    const params = new URLSearchParams(window.location.search);
+    return params.get('eventId') ?? '';
+  });
   const [otpChallenge, setOtpChallenge] = useState<OtpChallenge | null>(null);
   const [healthStatus, setHealthStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -178,7 +188,49 @@ export function App(): React.JSX.Element {
         )}
 
         {/* View Routing: Registration vs. Email Verification vs. Signed-in Account */}
-        {currentView === 'account' ? (
+        {currentView === 'team' ? (
+          <section aria-labelledby="team-heading">
+            <h2 id="team-heading" className="sr-only">
+              Team Recruitment
+            </h2>
+            <MfaGate
+              initialChallenge={otpChallenge}
+              onNavigateToSignIn={() => {
+                setStatusNotice(null);
+                setOtpChallenge(null);
+                setCurrentView('login');
+              }}
+            >
+              {() => {
+                const UUID_REGEX =
+                  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                if (!teamEventId || !UUID_REGEX.test(teamEventId.trim())) {
+                  return (
+                    <div
+                      role="alert"
+                      className="max-w-lg mx-auto p-6 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 space-y-4 text-center"
+                    >
+                      <h3 className="font-semibold text-sm">Choose an event first</h3>
+                      <p className="text-xs">
+                        To manage or create a team, select an active hackathon event first.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCurrentView('account');
+                        }}
+                        className="px-4 py-2 bg-forest text-white text-xs font-semibold rounded-md hover:bg-forest-800"
+                      >
+                        Back to Account
+                      </button>
+                    </div>
+                  );
+                }
+                return <TeamWorkspace eventId={teamEventId.trim()} />;
+              }}
+            </MfaGate>
+          </section>
+        ) : currentView === 'account' ? (
           <section aria-labelledby="account-heading">
             <h2 id="account-heading" className="sr-only">
               Your Account
