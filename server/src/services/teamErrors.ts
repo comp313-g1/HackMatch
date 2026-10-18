@@ -3,7 +3,12 @@ export type TeamErrorCode =
   | 'EVENT_NOT_RECRUITING'
   | 'ALREADY_CONFIRMED_MEMBER'
   | 'PARTICIPANT_NOT_ELIGIBLE'
-  | 'VALIDATION_ERROR';
+  | 'VALIDATION_ERROR'
+  | 'TEAM_NOT_FOUND'
+  | 'FORBIDDEN_NOT_TEAM_OWNER'
+  | 'TEAM_NOT_MUTABLE'
+  | 'CAPACITY_EXCEEDED'
+  | 'VACANCY_NOT_FOUND';
 
 export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message: string }> = {
   EVENT_NOT_FOUND: { status: 404, message: 'Event not found.' },
@@ -11,6 +16,11 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   ALREADY_CONFIRMED_MEMBER: { status: 409, message: 'You are already a confirmed member of a team in this event.' },
   PARTICIPANT_NOT_ELIGIBLE: { status: 403, message: 'Participant is not eligible to create a team.' },
   VALIDATION_ERROR: { status: 400, message: 'Validation failed.' },
+  TEAM_NOT_FOUND: { status: 404, message: 'Team not found.' },
+  FORBIDDEN_NOT_TEAM_OWNER: { status: 403, message: 'You are not the owner of this team.' },
+  TEAM_NOT_MUTABLE: { status: 409, message: 'Team recruitment is not open or event is concluded.' },
+  CAPACITY_EXCEEDED: { status: 409, message: 'Team capacity exceeded.' },
+  VACANCY_NOT_FOUND: { status: 404, message: 'Vacancy not found or not open.' },
 };
 
 export class TeamServiceError extends Error {

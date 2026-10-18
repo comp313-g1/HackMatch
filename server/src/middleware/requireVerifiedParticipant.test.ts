@@ -42,7 +42,6 @@ describe('requireVerifiedParticipant Middleware & Action Route Protections', () 
   };
 
   const protectedEndpoints = [
-    { method: 'post' as const, path: '/api/teams', expectedStatusOnSuccess: 201 },
     { method: 'post' as const, path: '/api/availability', expectedStatusOnSuccess: 200 },
     { method: 'post' as const, path: '/api/applications', expectedStatusOnSuccess: 201 },
     { method: 'post' as const, path: '/api/invitations/inv-123/accept', expectedStatusOnSuccess: 200 },
@@ -54,7 +53,7 @@ describe('requireVerifiedParticipant Middleware & Action Route Protections', () 
 
   describe('Test Case 1 & 2: Missing or malformed Authorization header', () => {
     it('rejects with 401 UNAUTHORIZED when Authorization header is missing', async () => {
-      const response = await request(app).post('/api/teams').send({});
+      const response = await request(app).post('/api/availability').send({});
 
       expect(response.status).toBe(401);
       expect(response.body).toEqual({
@@ -100,7 +99,7 @@ describe('requireVerifiedParticipant Middleware & Action Route Protections', () 
       mockVerifyIdToken.mockRejectedValue(authError);
 
       const response = await request(app)
-        .post('/api/teams')
+        .post('/api/availability')
         .set('Authorization', 'Bearer expired-token')
         .send({});
 
@@ -115,7 +114,7 @@ describe('requireVerifiedParticipant Middleware & Action Route Protections', () 
       mockVerifyIdToken.mockRejectedValue(new Error('Decoding Firebase ID token failed'));
 
       const response = await request(app)
-        .post('/api/teams')
+        .post('/api/availability')
         .set('Authorization', 'Bearer invalid-token')
         .send({});
 
@@ -133,7 +132,7 @@ describe('requireVerifiedParticipant Middleware & Action Route Protections', () 
       vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(null);
 
       const response = await request(app)
-        .post('/api/teams')
+        .post('/api/availability')
         .set('Authorization', 'Bearer valid-token-ghost-user')
         .send({});
 
@@ -194,7 +193,7 @@ describe('requireVerifiedParticipant Middleware & Action Route Protections', () 
       );
 
       const response = await request(app)
-        .post('/api/teams')
+        .post('/api/availability')
         .set('Authorization', 'Bearer valid-token')
         .send({});
 
@@ -215,12 +214,12 @@ describe('requireVerifiedParticipant Middleware & Action Route Protections', () 
       vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(verifiedParticipant);
 
       const response = await request(app)
-        .post('/api/teams')
+        .post('/api/availability')
         .set('Authorization', 'Bearer verified-participant-stale-jwt')
         .send({});
 
-      expect(response.status).toBe(201);
-      expect(response.body).toEqual({ message: 'Team created successfully' });
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ message: 'Availability declared' });
     });
   });
 });

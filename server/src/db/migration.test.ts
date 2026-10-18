@@ -527,3 +527,47 @@ describe('0012_create_team_with_owner_function.sql Migration DDL', () => {
   });
 });
 
+describe('0013_create_team_listing_functions.sql Migration DDL', () => {
+  const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0013_create_team_listing_functions.sql');
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('declares all four listing management functions with SECURITY DEFINER and search_path = public', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+lock_team_for_owner_mutation/i);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+update_team_listing/i);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+add_team_vacancy/i);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+update_team_vacancy/i);
+    const securityDefinerCount = (sql.match(/SECURITY\s+DEFINER/gi) || []).length;
+    expect(securityDefinerCount).toBeGreaterThanOrEqual(4);
+  });
+
+  it('enforces serialisation and status checks in lock_team_for_owner_mutation', () => {
+    expect(sql).toMatch(/FROM\s+teams[\s\S]*?FOR\s+UPDATE/i);
+    expect(sql).toMatch(/FROM\s+events[\s\S]*?FOR\s+SHARE/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'TEAM_NOT_FOUND'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'FORBIDDEN_NOT_TEAM_OWNER'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'TEAM_NOT_MUTABLE'/i);
+  });
+
+  it('allows explicit clearing of communication_link via JSONB existence operator', () => {
+    expect(sql).toMatch(/p_patch\s*\?\s*'communication_link'/i);
+  });
+
+  it('calculates capacity boundaries and raises CAPACITY_EXCEEDED with structured DETAIL in add_team_vacancy', () => {
+    expect(sql).toMatch(/SELECT\s+COALESCE\(\s*max_team_size,\s*4\s*\)/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'CAPACITY_EXCEEDED'/i);
+    expect(sql).toMatch(/DETAIL\s*=\s*jsonb_build_object\s*\(\s*'max'/i);
+  });
+
+  it('secures all four functions from public/anon access and grants only to service_role', () => {
+    const revokeCount = (sql.match(/REVOKE\s+ALL\s+ON\s+FUNCTION/gi) || []).length;
+    const grantCount = (sql.match(/GRANT\s+EXECUTE\s+ON\s+FUNCTION/gi) || []).length;
+    expect(revokeCount).toBe(4);
+    expect(grantCount).toBe(4);
+  });
+});
+

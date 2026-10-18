@@ -7,18 +7,10 @@ export const actionsRouter = Router();
  * Protected action routes enforcing US-001 AC 4, US-001-T5, and FR-002:
  * "Unverified accounts cannot declare availability, create teams, apply, or accept invitations."
  *
- * These route handlers act as protected entry points across the 4 pre-hackathon
+ * Note: Team creation (US-012) moved to team.routes.ts.
+ * The remaining route handlers act as protected entry points across pre-hackathon
  * recruitment scopes, delegating authorization to `requireVerifiedParticipant`.
  */
-
-// 1. Team creation (US-012 / AC 4)
-actionsRouter.post(
-  '/teams',
-  requireVerifiedParticipant,
-  (_req: Request, res: Response) => {
-    res.status(201).json({ message: 'Team created successfully' });
-  }
-);
 
 // 2. Availability declaration (US-011 / AC 4)
 actionsRouter.post(

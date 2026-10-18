@@ -1,0 +1,138 @@
+import type { Request, Response, NextFunction } from 'express';
+import { createTeam } from '../services/teamCreation.js';
+import {
+  getOwnerTeamView,
+  getMyTeamView,
+  updateListing,
+  addVacancy,
+  updateVacancy,
+} from '../services/teamManagement.js';
+import { toTeamView } from '../services/teamView.js';
+import { teamsRepository, type TeamListingPatch } from '../db/teams.repository.js';
+import { toTeamServiceError } from '../services/teamErrors.js';
+import type { TeamGoal, ParticipantPrimaryRole } from '../db/types.js';
+
+function handleControllerError(err: unknown, res: Response, next: NextFunction): void {
+  res.setHeader('Cache-Control', 'no-store');
+  const serviceErr = toTeamServiceError(err);
+  if (serviceErr) {
+    res.status(serviceErr.status).json({
+      error: serviceErr.message,
+      code: serviceErr.code,
+      ...(serviceErr.details ? { details: serviceErr.details } : {}),
+    });
+    return;
+  }
+  next(err);
+}
+
+export async function createTeamHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const { eventId, name, pitch, goal, commitmentHours, communicationLink } = req.body;
+
+    const { team } = await createTeam({
+      ownerParticipantId: actorId,
+      eventId: String(eventId || ''),
+      name: String(name || ''),
+      pitch: String(pitch || ''),
+      goal: goal as TeamGoal,
+      commitmentHours: Number(commitmentHours),
+      communicationLink: communicationLink ? String(communicationLink) : null,
+    });
+
+    const parts = await teamsRepository.getTeamViewParts(team.id);
+    const teamView = toTeamView(parts);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(201).json({ team: teamView });
+  } catch (err: unknown) {
+    handleControllerError(err, res, next);
+  }
+}
+
+export async function getMyTeamHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const eventId = String(req.query.eventId || '');
+
+    const team = await getMyTeamView(actorId, eventId);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({ team });
+  } catch (err: unknown) {
+    handleControllerError(err, res, next);
+  }
+}
+
+export async function getTeamHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const teamId = String(req.params.teamId);
+
+    const team = await getOwnerTeamView(actorId, teamId);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({ team });
+  } catch (err: unknown) {
+    handleControllerError(err, res, next);
+  }
+}
+
+export async function updateTeamHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const teamId = String(req.params.teamId);
+
+    const patch: TeamListingPatch = {};
+    if (typeof req.body.name === 'string') patch.name = req.body.name;
+    if (typeof req.body.pitch === 'string') patch.pitch = req.body.pitch;
+    if (typeof req.body.goal === 'string') patch.goal = req.body.goal as TeamGoal;
+    if (typeof req.body.commitmentHours === 'number') patch.commitmentHours = req.body.commitmentHours;
+    if (req.body.communicationLink !== undefined) {
+      patch.communicationLink = req.body.communicationLink === null ? null : String(req.body.communicationLink);
+    }
+
+    const team = await updateListing(actorId, teamId, patch);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({ team });
+  } catch (err: unknown) {
+    handleControllerError(err, res, next);
+  }
+}
+
+export async function addVacancyHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const teamId = String(req.params.teamId);
+
+    const role = req.body.role as ParticipantPrimaryRole;
+    const skills = Array.isArray(req.body.skills) ? (req.body.skills as string[]) : [];
+
+    const team = await addVacancy(actorId, teamId, { role, skills });
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({ team });
+  } catch (err: unknown) {
+    handleControllerError(err, res, next);
+  }
+}
+
+export async function updateVacancyHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const teamId = String(req.params.teamId);
+    const vacancyId = String(req.params.vacancyId);
+
+    const role = req.body.role as ParticipantPrimaryRole;
+    const skills = Array.isArray(req.body.skills) ? (req.body.skills as string[]) : [];
+
+    const team = await updateVacancy(actorId, teamId, vacancyId, { role, skills });
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({ team });
+  } catch (err: unknown) {
+    handleControllerError(err, res, next);
+  }
+}

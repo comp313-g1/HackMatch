@@ -45,12 +45,12 @@ describe('teamCreation service unit tests (US-012 / #119)', () => {
   };
 
   it('passes through successful team creation', async () => {
-    const mockRepo: ITeamsRepository = {
+    const mockRepo = {
       createTeamWithOwner: vi.fn().mockResolvedValue({
         team: sampleTeam,
         membership: sampleMembership,
       }),
-    };
+    } as unknown as ITeamsRepository;
 
     const result = await createTeam(sampleInput, { repo: mockRepo });
     expect(result).toEqual({ team: sampleTeam, membership: sampleMembership });
@@ -67,12 +67,12 @@ describe('teamCreation service unit tests (US-012 / #119)', () => {
 
   for (const { message, expectedStatus } of catalogTestCases) {
     it(`maps database error with message "${message}" to TeamServiceError with status ${expectedStatus}`, async () => {
-      const mockRepo: ITeamsRepository = {
+      const mockRepo = {
         createTeamWithOwner: vi.fn().mockRejectedValue({
           message,
           code: 'P0001',
         }),
-      };
+      } as unknown as ITeamsRepository;
 
       await expect(createTeam(sampleInput, { repo: mockRepo })).rejects.toSatisfy((err: unknown) => {
         expect(err).toBeInstanceOf(TeamServiceError);
@@ -85,13 +85,13 @@ describe('teamCreation service unit tests (US-012 / #119)', () => {
   }
 
   it('maps PostgreSQL 23505 unique violation on uq_team_memberships_confirmed_per_event to ALREADY_CONFIRMED_MEMBER', async () => {
-    const mockRepo: ITeamsRepository = {
+    const mockRepo = {
       createTeamWithOwner: vi.fn().mockRejectedValue({
         code: '23505',
         message: 'duplicate key value violates unique constraint "uq_team_memberships_confirmed_per_event"',
         details: 'Key (event_id, participant_id)=(...) already exists.',
       }),
-    };
+    } as unknown as ITeamsRepository;
 
     await expect(createTeam(sampleInput, { repo: mockRepo })).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(TeamServiceError);
@@ -105,12 +105,12 @@ describe('teamCreation service unit tests (US-012 / #119)', () => {
   const postgresValidationCodes = ['23514', '22001', '22003', '22P02'];
   for (const code of postgresValidationCodes) {
     it(`maps PostgreSQL error code ${code} to VALIDATION_ERROR with status 400`, async () => {
-      const mockRepo: ITeamsRepository = {
+      const mockRepo = {
         createTeamWithOwner: vi.fn().mockRejectedValue({
           code,
           message: 'constraint or value length error',
         }),
-      };
+      } as unknown as ITeamsRepository;
 
       await expect(createTeam(sampleInput, { repo: mockRepo })).rejects.toSatisfy((err: unknown) => {
         expect(err).toBeInstanceOf(TeamServiceError);
@@ -124,9 +124,9 @@ describe('teamCreation service unit tests (US-012 / #119)', () => {
 
   it('re-throws unmapped errors like ECONNRESET or unknown database errors directly without mapping', async () => {
     const unknownErr = new Error('ECONNRESET');
-    const mockRepo: ITeamsRepository = {
+    const mockRepo = {
       createTeamWithOwner: vi.fn().mockRejectedValue(unknownErr),
-    };
+    } as unknown as ITeamsRepository;
 
     await expect(createTeam(sampleInput, { repo: mockRepo })).rejects.toBe(unknownErr);
   });
