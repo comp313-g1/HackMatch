@@ -30,7 +30,10 @@ import {
   listOpenTeamsHandler,
 } from '../controllers/team.controller.js';
 import { getVacancyRecommendationsHandler } from '../controllers/recommendations.controller.js';
-import { issueInvitationHandler } from '../controllers/invitations.controller.js';
+import {
+  issueInvitationHandler,
+  listTeamInvitationsHandler,
+} from '../controllers/invitations.controller.js';
 
 export const teamRouter = Router();
 
@@ -54,6 +57,13 @@ teamRouter.get(
   validateTeamIdParams,
   requireTeamOwner,
   getVacancyRecommendationsHandler
+);
+teamRouter.get(
+  '/:teamId/invitations',
+  ...participantAuth,
+  validateTeamIdParams,
+  requireTeamOwner,
+  listTeamInvitationsHandler
 );
 teamRouter.post(
   '/:teamId/invitations',

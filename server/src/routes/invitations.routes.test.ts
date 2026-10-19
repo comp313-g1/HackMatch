@@ -169,3 +169,77 @@ describe('POST /api/teams/:teamId/invitations (US-017 / FR-048)', () => {
     expect(res.body.code).toBe('INVITEE_NOT_AVAILABLE');
   });
 });
+
+describe('GET /api/teams/:teamId/invitations (US-017 / #162)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockVerifyIdToken.mockResolvedValue(validOwnerDecodedToken);
+    vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(ownerParticipant);
+    vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(sampleTeam);
+  });
+
+  it('rejects unauthenticated requests with 401', async () => {
+    const res = await request(app).get(invitePath);
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects non-owners with 403 FORBIDDEN_NOT_TEAM_OWNER', async () => {
+    mockVerifyIdToken.mockResolvedValue(validOtherDecodedToken);
+    vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(otherParticipant);
+
+    const res = await request(app).get(invitePath).set('Authorization', otherTokenHeader);
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN_NOT_TEAM_OWNER');
+  });
+
+  it('returns empty outbound list for the owner', async () => {
+    vi.spyOn(teamsRepository, 'listTeamInvitations').mockResolvedValue([]);
+
+    const res = await request(app).get(invitePath).set('Authorization', validTokenHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.body.empty).toBe(true);
+    expect(res.body.invitations).toEqual([]);
+    expect(res.body.message).toMatch(/No invitations yet/i);
+  });
+
+  it('returns outbound invitations for the owner (happy path)', async () => {
+    const expiresAt = '2026-10-21T15:00:00.000Z';
+    vi.spyOn(teamsRepository, 'listTeamInvitations').mockResolvedValue([
+      {
+        invitation: {
+          id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          team_id: sampleTeamId,
+          event_id: sampleEventId,
+          vacancy_id: sampleVacancyId,
+          participant_id: otherParticipant.id,
+          request_type: 'Invitation',
+          status: 'Pending',
+          cancel_reason: null,
+          resolved_at: null,
+          expires_at: expiresAt,
+          created_at: '2026-10-19T15:00:00.000Z',
+          updated_at: '2026-10-19T15:00:00.000Z',
+        },
+        inviteeHandle: 'other_dev',
+        inviteeDisplayName: 'Other Participant',
+        vacancyRole: 'Frontend',
+        teamName: 'HackMatch Innovators',
+      },
+    ]);
+
+    const res = await request(app).get(invitePath).set('Authorization', validTokenHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.empty).toBe(false);
+    expect(res.body.invitations).toHaveLength(1);
+    expect(res.body.invitations[0]).toMatchObject({
+      inviteeHandle: 'other_dev',
+      vacancyRole: 'Frontend',
+      status: 'Pending',
+      expiresAt,
+    });
+  });
+});

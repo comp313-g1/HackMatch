@@ -3,6 +3,7 @@ import type { TeamView } from './teamTypes';
 import { fetchMyTeam, TeamApiError, AuthRequiredError } from './teamApi';
 import { TeamListingForm } from './TeamListingForm';
 import { VacancyPanel } from './VacancyPanel';
+import { OwnerInvitationsPanel } from './OwnerInvitationsPanel';
 import { TeamRosterPanel } from './TeamRosterPanel';
 
 export interface TeamWorkspaceProps {
@@ -218,6 +219,12 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
             onChanged={(updated) => {
               setTeam(updated);
             }}
+          />
+
+          <OwnerInvitationsPanel
+            teamId={team.id}
+            vacancies={team.vacancies}
+            disabled={isLocked}
           />
 
           <TeamRosterPanel

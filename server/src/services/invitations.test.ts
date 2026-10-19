@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { issueInvitation } from './invitations.js';
+import { issueInvitation, listOwnerInvitations } from './invitations.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import { TeamServiceError } from './teamErrors.js';
 import {
@@ -8,6 +8,7 @@ import {
   sampleTeamId,
   sampleVacancyId,
   sampleEventId,
+  sampleTeam,
 } from '../routes/team.testUtils.js';
 
 describe('issueInvitation (US-017 / FR-048)', () => {
@@ -94,5 +95,65 @@ describe('issueInvitation (US-017 / FR-048)', () => {
         inviteeParticipantId: otherParticipant.id,
       })
     ).rejects.toMatchObject({ code: 'DUPLICATE_PENDING_INVITATION', status: 409 });
+  });
+});
+
+describe('listOwnerInvitations (US-017 / #162)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns empty list for owner with no invitations', async () => {
+    vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(sampleTeam);
+    vi.spyOn(teamsRepository, 'listTeamInvitations').mockResolvedValue([]);
+
+    const result = await listOwnerInvitations(ownerParticipant.id, sampleTeamId);
+
+    expect(result.empty).toBe(true);
+    expect(result.invitations).toEqual([]);
+    expect(result.message).toMatch(/No invitations yet/i);
+  });
+
+  it('denies non-owners', async () => {
+    vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(sampleTeam);
+
+    await expect(listOwnerInvitations(otherParticipant.id, sampleTeamId)).rejects.toMatchObject({
+      code: 'FORBIDDEN_NOT_TEAM_OWNER',
+    });
+  });
+
+  it('flags Pending rows past expires_at via expiredByClock', async () => {
+    vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(sampleTeam);
+    vi.spyOn(teamsRepository, 'listTeamInvitations').mockResolvedValue([
+      {
+        invitation: {
+          id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          team_id: sampleTeamId,
+          event_id: sampleEventId,
+          vacancy_id: sampleVacancyId,
+          participant_id: otherParticipant.id,
+          request_type: 'Invitation',
+          status: 'Pending',
+          cancel_reason: null,
+          resolved_at: null,
+          expires_at: '2026-10-18T00:00:00.000Z',
+          created_at: '2026-10-16T00:00:00.000Z',
+          updated_at: '2026-10-16T00:00:00.000Z',
+        },
+        inviteeHandle: 'other_dev',
+        inviteeDisplayName: 'Other',
+        vacancyRole: 'Frontend',
+        teamName: 'HackMatch Innovators',
+      },
+    ]);
+
+    const result = await listOwnerInvitations(
+      ownerParticipant.id,
+      sampleTeamId,
+      new Date('2026-10-19T12:00:00.000Z')
+    );
+
+    expect(result.invitations[0].status).toBe('Pending');
+    expect(result.invitations[0].expiredByClock).toBe(true);
   });
 });

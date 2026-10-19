@@ -80,6 +80,16 @@ export interface ITeamsRepository {
     vacancyRole: string;
     teamName: string;
   }>;
+  /** Owner outbound invitations for a team (US-017). */
+  listTeamInvitations(teamId: string): Promise<
+    Array<{
+      invitation: TeamRequest;
+      inviteeHandle: string | null;
+      inviteeDisplayName: string;
+      vacancyRole: string | null;
+      teamName: string;
+    }>
+  >;
   findOpenTeamRecords(options: { withMemberIdentities: boolean }): Promise<OpenTeamRecord[]>;
 }
 
@@ -385,6 +395,78 @@ export const teamsRepository: ITeamsRepository = {
       vacancyRole: payload.vacancyRole,
       teamName: payload.teamName,
     };
+  },
+
+  async listTeamInvitations(teamId: string): Promise<
+    Array<{
+      invitation: TeamRequest;
+      inviteeHandle: string | null;
+      inviteeDisplayName: string;
+      vacancyRole: string | null;
+      teamName: string;
+    }>
+  > {
+    const client = getSupabaseClient();
+    const { data: teamRow, error: teamErr } = await client
+      .from('teams')
+      .select('id, name')
+      .eq('id', teamId)
+      .maybeSingle();
+    if (teamErr) throw teamErr;
+    if (!teamRow) return [];
+
+    const { data: rows, error } = await client
+      .from('team_requests')
+      .select('*, vacancy:team_vacancies(role)')
+      .eq('team_id', teamId)
+      .eq('request_type', 'Invitation')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    const inviteeIds = [...new Set((rows || []).map((r: { participant_id: string }) => r.participant_id))];
+    const profileById = new Map<string, { handle: string | null; full_name: string }>();
+
+    if (inviteeIds.length > 0) {
+      const { data: participants, error: partErr } = await client
+        .from('participants')
+        .select('id, full_name')
+        .in('id', inviteeIds);
+      if (partErr) throw partErr;
+
+      const { data: profiles, error: profileErr } = await client
+        .from('participant_profiles')
+        .select('participant_id, handle')
+        .in('participant_id', inviteeIds);
+      if (profileErr) throw profileErr;
+
+      const handleById = new Map(
+        (profiles || []).map((p: { participant_id: string; handle: string | null }) => [
+          p.participant_id,
+          p.handle,
+        ])
+      );
+      for (const p of participants || []) {
+        const row = p as { id: string; full_name: string };
+        profileById.set(row.id, {
+          handle: handleById.get(row.id) ?? null,
+          full_name: row.full_name,
+        });
+      }
+    }
+
+    return (rows || []).map((row: Record<string, unknown>) => {
+      const vacancy = row.vacancy as { role?: string } | null;
+      const invitation = { ...row } as TeamRequest & { vacancy?: unknown };
+      delete (invitation as { vacancy?: unknown }).vacancy;
+      const profile = profileById.get(invitation.participant_id);
+      return {
+        invitation,
+        inviteeHandle: profile?.handle ?? null,
+        inviteeDisplayName: profile?.full_name ?? 'Participant',
+        vacancyRole: vacancy?.role ?? null,
+        teamName: (teamRow as { name: string }).name,
+      };
+    });
   },
 
   async findOpenTeamRecords(options: { withMemberIdentities: boolean }): Promise<OpenTeamRecord[]> {

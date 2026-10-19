@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { issueInvitation } from '../services/invitations.js';
+import { issueInvitation, listOwnerInvitations } from '../services/invitations.js';
 import { toTeamServiceError } from '../services/teamErrors.js';
 
 function handleInvitationError(err: unknown, res: Response, next: NextFunction): void {
@@ -44,6 +44,27 @@ export async function issueInvitationHandler(
 
     res.setHeader('Cache-Control', 'no-store');
     res.status(201).json({ invitation });
+  } catch (err: unknown) {
+    handleInvitationError(err, res, next);
+  }
+}
+
+/**
+ * GET /api/teams/:teamId/invitations
+ * Owner-only outbound invitation list (US-017 / #162).
+ */
+export async function listTeamInvitationsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const teamId = String(req.params.teamId || '').trim();
+    const result = await listOwnerInvitations(actorId, teamId);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json(result);
   } catch (err: unknown) {
     handleInvitationError(err, res, next);
   }

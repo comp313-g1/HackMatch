@@ -59,6 +59,32 @@ function toView(
   };
 }
 
+export interface OwnerInvitationListItem {
+  id: string;
+  teamId: string;
+  eventId: string;
+  vacancyId: string | null;
+  inviteeParticipantId: string;
+  inviteeHandle: string | null;
+  inviteeDisplayName: string;
+  status: TeamRequest['status'];
+  requestType: 'Invitation';
+  expiresAt: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  vacancyRole: string | null;
+  teamName: string;
+  /** True when Pending but clock expiry has passed (cleanup may lag). */
+  expiredByClock: boolean;
+}
+
+export interface OwnerInvitationsListResult {
+  teamId: string;
+  invitations: OwnerInvitationListItem[];
+  empty: boolean;
+  message: string | null;
+}
+
 /**
  * Owner issues a slot-specific Pending invitation (FR-049).
  * Same authorization/eligibility path for recommendation and direct entry points (FR-048).
@@ -83,4 +109,58 @@ export async function issueInvitation(input: IssueInvitationInput): Promise<Issu
     if (mapped) throw mapped;
     throw err;
   }
+}
+
+/**
+ * Owner-only outbound invitation list (US-017 / #162).
+ * requireTeamOwner on the route is the primary gate; service double-checks ownership.
+ */
+export async function listOwnerInvitations(
+  actorParticipantId: string,
+  teamId: string,
+  now: Date = new Date()
+): Promise<OwnerInvitationsListResult> {
+  const team = await teamsRepository.findTeamById(teamId);
+  if (!team) {
+    throw new TeamServiceError('TEAM_NOT_FOUND');
+  }
+  if (team.owner_participant_id !== actorParticipantId) {
+    throw new TeamServiceError('FORBIDDEN_NOT_TEAM_OWNER');
+  }
+
+  const rows = await teamsRepository.listTeamInvitations(teamId);
+  const invitations: OwnerInvitationListItem[] = rows.map((row) => {
+    const expiresAt = row.invitation.expires_at;
+    const expiredByClock =
+      row.invitation.status === 'Pending' &&
+      (!expiresAt || Date.parse(expiresAt) <= now.getTime());
+
+    return {
+      id: row.invitation.id,
+      teamId: row.invitation.team_id,
+      eventId: row.invitation.event_id,
+      vacancyId: row.invitation.vacancy_id,
+      inviteeParticipantId: row.invitation.participant_id,
+      inviteeHandle: row.inviteeHandle,
+      inviteeDisplayName: row.inviteeDisplayName,
+      status: row.invitation.status,
+      requestType: 'Invitation',
+      expiresAt,
+      createdAt: row.invitation.created_at,
+      resolvedAt: row.invitation.resolved_at,
+      vacancyRole: row.vacancyRole,
+      teamName: row.teamName,
+      expiredByClock,
+    };
+  });
+
+  return {
+    teamId,
+    invitations,
+    empty: invitations.length === 0,
+    message:
+      invitations.length === 0
+        ? 'No invitations yet. Invite a Looking-for-Team candidate to an open slot.'
+        : null,
+  };
 }
