@@ -786,4 +786,52 @@ describe('0018_create_team_invitation_issuance.sql Migration DDL (US-017 / FR-04
   });
 });
 
+describe('0019_complete_team_invitation_model.sql Migration DDL (US-017 / #161)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0019_complete_team_invitation_model.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('requires vacancy_id on Pending Invitation rows', () => {
+    expect(sql).toMatch(/chk_team_requests_pending_invite_requires_vacancy/i);
+    expect(sql).toMatch(
+      /request_type\s*=\s*'Invitation'[\s\S]*?status\s*=\s*'Pending'[\s\S]*?vacancy_id\s+IS\s+NULL/i
+    );
+  });
+
+  it('indexes Pending invitation expiry and invitation status lookups', () => {
+    expect(sql).toMatch(/idx_team_requests_pending_invite_expires/i);
+    expect(sql).toMatch(/idx_team_requests_invitee_invitation_status/i);
+    expect(sql).toMatch(/idx_team_requests_team_invitation_status/i);
+  });
+
+  it('defines validity and expiry helper functions with service_role grants', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+team_invitation_is_currently_valid/i);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+mark_team_invitation_expired_if_due/i);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+expire_due_team_invitations/i);
+    expect(sql).toMatch(/expires_at\s*<=\s*now\(\)/i);
+    expect(sql).toMatch(/status\s*=\s*'Expired'/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+team_invitation_is_currently_valid\s*\(\s*UUID\s*\)\s+TO\s+service_role/i
+    );
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+mark_team_invitation_expired_if_due\s*\(\s*UUID\s*\)\s+TO\s+service_role/i
+    );
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+expire_due_team_invitations\s*\(\s*INTEGER\s*\)\s+TO\s+service_role/i
+    );
+  });
+
+  it('writes basic status alerts when marking invitations Expired', () => {
+    expect(sql).toMatch(/team_invitation_expired/i);
+    expect(sql).toMatch(/INSERT\s+INTO\s+participant_notifications/i);
+  });
+});
+
 

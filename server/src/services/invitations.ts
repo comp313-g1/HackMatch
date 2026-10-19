@@ -5,11 +5,12 @@
  * Expiry is 48 hours from issuance; acceptance revalidation is a later US-019 concern.
  */
 
+import { INVITATION_TTL_HOURS } from '../db/invitationModel.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import type { TeamRequest } from '../db/types.js';
 import { TeamServiceError, toTeamServiceError } from './teamErrors.js';
 
-export const INVITATION_TTL_HOURS = 48;
+export { INVITATION_TTL_HOURS };
 
 export interface IssueInvitationInput {
   actorParticipantId: string;
