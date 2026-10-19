@@ -15,6 +15,7 @@
     "test:us004": "vitest run src/db/migration.test.ts src/db/mfa.repository.test.ts src/utils/otp.test.ts src/utils/rateLimiter.test.ts src/middleware/requireMfa.test.ts src/validators/auth.validator.test.ts src/routes/mfa.integration.test.ts",
     "test:us004-otp": "vitest run src/utils/otp.test.ts src/utils/mfaOtpEmail.test.ts src/services/issueMfaOtp.test.ts src/services/verifyMfaOtp.test.ts src/routes/mfaChallenge.test.ts src/routes/mfaVerify.test.ts src/routes/session.test.ts",
     "test:us012": "vitest run src/db/migration.test.ts src/db/teams.repository.test.ts src/services/teamCreation.test.ts src/services/teamManagement.test.ts src/services/teamView.test.ts src/services/teamLifecycle.test.ts src/validators/team.validator.test.ts src/middleware/requireTeamOwner.test.ts src/routes/team.routes.test.ts src/routes/team.ownership.test.ts src/routes/team.lifecycle.test.ts src/middleware/requireVerifiedParticipant.test.ts",
+    "test:us015": "vitest run src/services/compatibilityScoring.test.ts src/services/compatibilityScoring.bounds.test.ts src/services/recommendationEligibility.test.ts src/services/recommendations.test.ts src/services/scoreExplanation.test.ts src/validators/compatibilityScore.validator.test.ts src/db/teams.repository.test.ts src/routes/scoring.routes.test.ts src/routes/recommendations.routes.test.ts src/routes/recommendations.integration.test.ts",
     "test:coverage": "vitest run --coverage",
     "admin:provision": "tsx src/scripts/provisionAdmin.ts",
     "db:start": "supabase start --workdir ..",
