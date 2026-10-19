@@ -16,6 +16,12 @@ interface CompatibilityRankListProps {
   unranked?: boolean;
   /** Set false when a parent already shows the degraded notice. */
   showUnrankedBanner?: boolean;
+  /** FR-048: open US-017 invite draft for an eligible candidate. */
+  onInvite?: (candidate: CompatibilityRankListItem) => void;
+  /** Participant ids that already have a pending invite from this session. */
+  invitedParticipantIds?: ReadonlySet<string>;
+  /** Participant id whose invite draft is open. */
+  invitingParticipantId?: string | null;
 }
 
 /**
@@ -27,6 +33,9 @@ export function CompatibilityRankList({
   emptyMessage = 'No eligible candidates to rank.',
   unranked = false,
   showUnrankedBanner = true,
+  onInvite,
+  invitedParticipantIds,
+  invitingParticipantId = null,
 }: CompatibilityRankListProps) {
   if (candidates.length === 0) {
     return (
@@ -48,14 +57,35 @@ export function CompatibilityRankList({
           Scores unavailable — showing eligible candidates without ranking.
         </p>
       ) : null}
-      <ol start={1} className="list-decimal list-inside space-y-1.5 font-medium text-forest-900">
-        {candidates.map((c) => (
-          <li key={c.participantId}>
-            {unranked
-              ? c.handle?.trim() || c.displayName
-              : formatRankedCandidateLine(c)}
-          </li>
-        ))}
+      <ol start={1} className="list-none space-y-2 font-medium text-forest-900">
+        {candidates.map((c) => {
+          const alreadyInvited = invitedParticipantIds?.has(c.participantId) ?? false;
+          const isDrafting = invitingParticipantId === c.participantId;
+          const line = unranked
+            ? c.handle?.trim() || c.displayName
+            : formatRankedCandidateLine(c);
+
+          return (
+            <li
+              key={c.participantId}
+              className="flex flex-wrap items-center justify-between gap-2"
+              data-testid={`rank-row-${c.participantId}`}
+            >
+              <span>{line}</span>
+              {onInvite ? (
+                <button
+                  type="button"
+                  onClick={() => onInvite(c)}
+                  disabled={alreadyInvited || isDrafting}
+                  className="px-2.5 py-1 text-xs font-semibold text-forest-900 border border-forest-300 rounded bg-white hover:bg-forest-50 disabled:opacity-50"
+                  data-testid={`invite-candidate-${c.participantId}`}
+                >
+                  {alreadyInvited ? 'Invited' : isDrafting ? 'Inviting…' : 'Invite'}
+                </button>
+              ) : null}
+            </li>
+          );
+        })}
       </ol>
     </div>
   );

@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
-import { CompatibilityRankList } from './CompatibilityRankList';
+import { CompatibilityRankList, type CompatibilityRankListItem } from './CompatibilityRankList';
+import { InviteFromRecommendationForm } from './InviteFromRecommendationForm';
 import { ScoreContributionsPanel } from './ScoreContributionsPanel';
 import {
   EMPTY_RECOMMENDATIONS_MESSAGE,
@@ -12,6 +13,7 @@ import {
   type RecommendationCandidate,
   type RecommendationsResponse,
 } from './recommendationsApi';
+import type { IssuedInvitation } from './invitationsApi';
 
 export interface RecommendationPanelProps {
   teamId: string;
@@ -25,6 +27,7 @@ type LoadState = 'idle' | 'loading' | 'success' | 'error';
 
 /**
  * Owner-facing US-015 recommendation list with empty and NR-016 degraded fallback states.
+ * Eligible rows open the US-017 invitation draft (FR-048).
  */
 export function RecommendationPanel({
   teamId,
@@ -36,6 +39,9 @@ export function RecommendationPanel({
   const [result, setResult] = useState<RecommendationsResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [inviteDraftId, setInviteDraftId] = useState<string | null>(null);
+  const [invitedIds, setInvitedIds] = useState<Set<string>>(() => new Set());
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoadState('loading');
@@ -62,8 +68,30 @@ export function RecommendationPanel({
 
   const selected: RecommendationCandidate | null =
     result?.candidates.find((c) => c.participantId === selectedId) ?? null;
+  const inviteCandidate: RecommendationCandidate | null =
+    result?.candidates.find((c) => c.participantId === inviteDraftId) ?? null;
   const isDegraded = result?.status === 'degraded';
   const exclusionNote = formatExclusionSummary(result?.exclusions);
+
+  const openInvite = (candidate: CompatibilityRankListItem) => {
+    setInviteSuccess(null);
+    setInviteDraftId(candidate.participantId);
+    setSelectedId(candidate.participantId);
+  };
+
+  const handleInviteSuccess = (invitation: IssuedInvitation) => {
+    const name =
+      inviteCandidate?.handle?.trim() ||
+      inviteCandidate?.displayName ||
+      'Candidate';
+    setInvitedIds((prev) => new Set(prev).add(invitation.inviteeParticipantId));
+    setInviteDraftId(null);
+    setInviteSuccess(
+      `Invitation sent to ${name} for the ${invitation.vacancyRole} slot. Expires ${new Date(
+        invitation.expiresAt
+      ).toLocaleString()}.`
+    );
+  };
 
   return (
     <section
@@ -144,6 +172,9 @@ export function RecommendationPanel({
             unranked={isDegraded}
             showUnrankedBanner={!isDegraded || !result.degradedNotice}
             emptyMessage={EMPTY_RECOMMENDATIONS_MESSAGE}
+            onInvite={openInvite}
+            invitedParticipantIds={invitedIds}
+            invitingParticipantId={inviteDraftId}
             candidates={result.candidates.map((c) => ({
               participantId: c.participantId,
               displayName: c.displayName,
@@ -153,6 +184,31 @@ export function RecommendationPanel({
               score: c.score,
             }))}
           />
+
+          {inviteSuccess ? (
+            <div
+              role="status"
+              className="p-2 text-xs text-forest-900 bg-forest-50 border border-forest-200 rounded"
+              data-testid="invite-success"
+            >
+              {inviteSuccess}
+            </div>
+          ) : null}
+
+          {inviteCandidate ? (
+            <InviteFromRecommendationForm
+              teamId={teamId}
+              vacancyId={vacancyId}
+              vacancyLabel={vacancyLabel}
+              candidate={{
+                participantId: inviteCandidate.participantId,
+                displayName: inviteCandidate.displayName,
+                handle: inviteCandidate.handle,
+              }}
+              onCancel={() => setInviteDraftId(null)}
+              onSuccess={handleInviteSuccess}
+            />
+          ) : null}
 
           {!isDegraded && result.candidates.length > 1 ? (
             <div>

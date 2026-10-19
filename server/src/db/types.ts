@@ -330,6 +330,8 @@ export interface TeamRequest {
   status: TeamRequestStatus;
   cancel_reason: string | null;
   resolved_at: string | null;
+  /** Set for Invitation rows (48h TTL). Null for Application rows. */
+  expires_at: string | null;
   created_at: string;
   updated_at: string;
 }

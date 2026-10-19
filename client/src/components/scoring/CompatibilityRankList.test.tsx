@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { CompatibilityRankList } from './CompatibilityRankList';
 
 describe('CompatibilityRankList', () => {
@@ -49,5 +49,27 @@ describe('CompatibilityRankList', () => {
     expect(screen.getByText(/without ranking/i)).toBeInTheDocument();
     expect(screen.getByText('amy')).toBeInTheDocument();
     expect(screen.queryByTestId('tie-break-notice')).not.toBeInTheDocument();
+  });
+
+  it('fires onInvite when Invite is clicked (FR-048)', () => {
+    const onInvite = vi.fn();
+    render(
+      <CompatibilityRankList
+        onInvite={onInvite}
+        candidates={[
+          {
+            participantId: 'p1',
+            rank: 1,
+            displayScore: '66.7',
+            handle: 'mj',
+            displayName: 'MJ',
+          },
+        ]}
+      />
+    );
+    fireEvent.click(screen.getByTestId('invite-candidate-p1'));
+    expect(onInvite).toHaveBeenCalledWith(
+      expect.objectContaining({ participantId: 'p1', handle: 'mj' })
+    );
   });
 });

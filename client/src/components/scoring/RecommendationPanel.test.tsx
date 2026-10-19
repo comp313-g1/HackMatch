@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { RecommendationPanel } from './RecommendationPanel';
 import * as recommendationsApi from './recommendationsApi';
+import * as invitationsApi from './invitationsApi';
 import type { RecommendationsResponse } from './recommendationsApi';
 
 vi.mock('./recommendationsApi', async () => {
@@ -15,7 +16,16 @@ vi.mock('./recommendationsApi', async () => {
   };
 });
 
+vi.mock('./invitationsApi', async () => {
+  const actual = await vi.importActual<typeof import('./invitationsApi')>('./invitationsApi');
+  return {
+    ...actual,
+    issueTeamInvitation: vi.fn(),
+  };
+});
+
 const fetchMock = vi.mocked(recommendationsApi.fetchVacancyRecommendations);
+const inviteMock = vi.mocked(invitationsApi.issueTeamInvitation);
 
 const baseExclusions = {
   inactive: 0,
@@ -98,6 +108,7 @@ function rankedResponse(
 describe('RecommendationPanel (US-015 list / empty / fallback)', () => {
   beforeEach(() => {
     fetchMock.mockReset();
+    inviteMock.mockReset();
   });
 
   it('loads ranked list and shows score contributions on success', async () => {
@@ -192,5 +203,82 @@ describe('RecommendationPanel (US-015 list / empty / fallback)', () => {
     });
     expect(screen.getByText(/not the owner/i)).toBeInTheDocument();
     expect(screen.getByText(/were kept/i)).toBeInTheDocument();
+  });
+
+  it('opens US-017 invite draft from eligible candidate and succeeds (FR-048)', async () => {
+    fetchMock.mockResolvedValue(rankedResponse());
+    inviteMock.mockResolvedValue({
+      id: 'inv-1',
+      teamId: 't1',
+      eventId: 'e1',
+      vacancyId: 'v1',
+      inviteeParticipantId: 'p1',
+      status: 'Pending',
+      requestType: 'Invitation',
+      expiresAt: '2026-10-21T12:00:00.000Z',
+      createdAt: '2026-10-19T12:00:00.000Z',
+      teamName: 'Team',
+      vacancyRole: 'Frontend',
+      source: 'recommendation',
+      notice: 'Pending invitation created.',
+    });
+
+    render(
+      <RecommendationPanel teamId="t1" vacancyId="v1" vacancyLabel="Frontend slot" />
+    );
+    fireEvent.click(screen.getByTestId('load-recommendations'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('invite-candidate-p1')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('invite-candidate-p1'));
+
+    expect(screen.getByTestId('invite-from-recommendation')).toBeInTheDocument();
+    expect(screen.getByTestId('invite-draft-candidate')).toHaveTextContent('amy');
+    expect(screen.getByTestId('invite-draft-slot')).toHaveTextContent('Frontend slot');
+
+    fireEvent.click(screen.getByTestId('confirm-invitation'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('invite-success')).toBeInTheDocument();
+    });
+    expect(inviteMock).toHaveBeenCalledWith('t1', {
+      vacancyId: 'v1',
+      inviteeParticipantId: 'p1',
+      source: 'recommendation',
+    });
+    expect(screen.getByTestId('recommendation-results')).toBeInTheDocument();
+    expect(screen.getByTestId('invite-candidate-p1')).toHaveTextContent('Invited');
+  });
+
+  it('keeps recommendation list and invite draft on invitation failure', async () => {
+    fetchMock.mockResolvedValue(rankedResponse());
+    inviteMock.mockRejectedValue(
+      new invitationsApi.InvitationsApiError(
+        409,
+        'DUPLICATE_PENDING_INVITATION',
+        undefined,
+        undefined,
+        'A pending invitation already exists for this candidate on this team.'
+      )
+    );
+
+    render(
+      <RecommendationPanel teamId="t1" vacancyId="v1" vacancyLabel="Frontend slot" />
+    );
+    fireEvent.click(screen.getByTestId('load-recommendations'));
+    await waitFor(() => {
+      expect(screen.getByTestId('invite-candidate-p1')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('invite-candidate-p1'));
+    fireEvent.click(screen.getByTestId('confirm-invitation'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('invite-error')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/pending invitation already exists/i)).toBeInTheDocument();
+    expect(screen.getByText(/draft were kept/i)).toBeInTheDocument();
+    expect(screen.getByTestId('recommendation-results')).toBeInTheDocument();
+    expect(screen.getByTestId('invite-from-recommendation')).toBeInTheDocument();
   });
 });

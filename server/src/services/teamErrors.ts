@@ -13,7 +13,13 @@ export type TeamErrorCode =
   | 'MEMBER_NOT_FOUND'
   | 'CANNOT_REMOVE_OWNER'
   | 'RECOMMENDATIONS_FORBIDDEN'
-  | 'SLOT_NOT_OPEN_FOR_RECOMMENDATIONS';
+  | 'SLOT_NOT_OPEN_FOR_RECOMMENDATIONS'
+  | 'CANNOT_INVITE_SELF'
+  | 'INVITEE_NOT_ELIGIBLE'
+  | 'INVITEE_NOT_AVAILABLE'
+  | 'INVITEE_ALREADY_CONFIRMED'
+  | 'DUPLICATE_PENDING_INVITATION'
+  | 'SLOT_PENDING_INVITATION_EXISTS';
 
 export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message: string }> = {
   EVENT_NOT_FOUND: { status: 404, message: 'Event not found.' },
@@ -36,6 +42,27 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   SLOT_NOT_OPEN_FOR_RECOMMENDATIONS: {
     status: 409,
     message: 'Recommendations require an open vacancy on a recruiting team in an active event.',
+  },
+  CANNOT_INVITE_SELF: { status: 400, message: 'You cannot invite yourself to your own team.' },
+  INVITEE_NOT_ELIGIBLE: {
+    status: 409,
+    message: 'This candidate is not eligible for an invitation (inactive, unverified, or suspended).',
+  },
+  INVITEE_NOT_AVAILABLE: {
+    status: 409,
+    message: 'This candidate is not Looking for Team and cannot be invited.',
+  },
+  INVITEE_ALREADY_CONFIRMED: {
+    status: 409,
+    message: 'This candidate is already confirmed on a team for this event.',
+  },
+  DUPLICATE_PENDING_INVITATION: {
+    status: 409,
+    message: 'A pending invitation already exists for this candidate on this team.',
+  },
+  SLOT_PENDING_INVITATION_EXISTS: {
+    status: 409,
+    message: 'This open slot already has a pending invitation.',
   },
 };
 
@@ -93,6 +120,12 @@ export function toTeamServiceError(err: unknown): TeamServiceError | null {
         combined.includes('team_memberships')
       ) {
         return new TeamServiceError('ALREADY_CONFIRMED_MEMBER');
+      }
+      if (combined.includes('uq_team_requests_pending_invite_per_slot')) {
+        return new TeamServiceError('SLOT_PENDING_INVITATION_EXISTS');
+      }
+      if (combined.includes('uq_team_requests_pending_invite')) {
+        return new TeamServiceError('DUPLICATE_PENDING_INVITATION');
       }
     }
 

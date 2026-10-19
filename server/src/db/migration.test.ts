@@ -745,5 +745,45 @@ describe('0017_auto_clear_availability_on_confirm.sql Migration DDL (US-011 / #U
   });
 });
 
+describe('0018_create_team_invitation_issuance.sql Migration DDL (US-017 / FR-048)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0018_create_team_invitation_issuance.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('adds expires_at and requires it for Invitation rows', () => {
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+expires_at\s+TIMESTAMPTZ/i);
+    expect(sql).toMatch(/chk_team_requests_invitation_expiry/i);
+    expect(sql).toMatch(/request_type\s*<>\s*'Invitation'\s+OR\s+expires_at\s+IS\s+NOT\s+NULL/i);
+  });
+
+  it('enforces one pending invitation per vacancy slot', () => {
+    expect(sql).toMatch(
+      /CREATE\s+UNIQUE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+uq_team_requests_pending_invite_per_slot\s+ON\s+team_requests\s*\(\s*vacancy_id\s*\)/i
+    );
+  });
+
+  it('defines issue_team_invitation with 48-hour expiry and service_role grant', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+issue_team_invitation/i);
+    expect(sql).toMatch(/INTERVAL\s+'48 hours'/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+issue_team_invitation\s*\(\s*UUID\s*,\s*UUID\s*,\s*UUID\s*,\s*UUID\s*\)\s+TO\s+service_role/i
+    );
+  });
+
+  it('raises domain exceptions for eligibility and duplicate quotas', () => {
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'INVITEE_NOT_AVAILABLE'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'INVITEE_ALREADY_CONFIRMED'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'DUPLICATE_PENDING_INVITATION'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'SLOT_PENDING_INVITATION_EXISTS'/i);
+  });
+});
 
 
