@@ -239,10 +239,9 @@ export async function listOpenTeamsHandler(req: Request, res: Response, next: Ne
   try {
     res.setHeader('Cache-Control', 'no-store');
     const query = res.locals.openTeamsQuery as OpenTeamsQuery;
-    const viewer: OpenTeamsViewer = {
-      category: 'PART',
-      participantId: req.participant!.id,
-    };
+    const viewer: OpenTeamsViewer = req.participant
+      ? { category: 'PART', participantId: req.participant.id }
+      : { category: 'VISITOR' };
     const result = await listOpenTeams(query, viewer);
     res.status(200).json(result);
   } catch (err: unknown) {

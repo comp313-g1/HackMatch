@@ -5,6 +5,7 @@ import { requireActiveAccount } from '../middleware/requireActiveAccount.js';
 import { requireParticipantRole } from '../middleware/requireRole.js';
 import { requireVerifiedParticipant } from '../middleware/requireVerifiedParticipant.js';
 import { requireTeamOwner } from '../middleware/requireTeamOwner.js';
+import { optionalParticipantAuth } from '../middleware/optionalParticipantAuth.js';
 import {
   validateTeamIdParams,
   validateMyTeamQuery,
@@ -38,7 +39,7 @@ const participantAuth = [
   requireVerifiedParticipant,
 ];
 
-teamRouter.get('/', ...participantAuth, validateOpenTeamsQuery, listOpenTeamsHandler);
+teamRouter.get('/', optionalParticipantAuth, validateOpenTeamsQuery, listOpenTeamsHandler);
 teamRouter.post('/', ...participantAuth, requireJsonObjectBody, validateCreateTeamBody, createTeamHandler);
 teamRouter.get('/mine', ...participantAuth, validateMyTeamQuery, getMyTeamHandler);
 teamRouter.get('/:teamId', ...participantAuth, validateTeamIdParams, requireTeamOwner, getTeamHandler);

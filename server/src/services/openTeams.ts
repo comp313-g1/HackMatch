@@ -3,7 +3,9 @@ import { teamsRepository, type ITeamsRepository, type OpenTeamRecord } from '../
 import { deriveTeamLifecycle } from './teamLifecycle.js';
 import type { OpenTeamsQuery } from '../validators/openTeams.validator.js';
 
-export type OpenTeamsViewer = { category: 'PART'; participantId: string };
+export type OpenTeamsViewer =
+  | { category: 'PART'; participantId: string }
+  | { category: 'VISITOR' };
 
 export interface OpenTeamPartCard {
   id: string;
@@ -18,6 +20,19 @@ export interface OpenTeamPartCard {
   vacancies: Array<{ id: string; role: ParticipantPrimaryRole; skills: string[] }>;
   createdAt: string;
 }
+
+export interface OpenTeamVisitorPreview {
+  displayLabel: 'Recruiting team';
+  goal: TeamGoal;
+  commitmentHours: number;
+  confirmedMembers: number;
+  openSlots: number;
+  vacancies: Array<{ role: ParticipantPrimaryRole; skills: string[] }>;
+}
+
+export type OpenTeamsResponse =
+  | { viewer: 'PART'; total: number; teams: OpenTeamPartCard[] }
+  | { viewer: 'VISITOR'; total: number; teams: OpenTeamVisitorPreview[] };
 
 export interface OpenTeamsDeps {
   repo: Pick<ITeamsRepository, 'findOpenTeamRecords'>;
@@ -127,22 +142,50 @@ export function toPartCard(r: OpenTeamRecord, viewerId: string): OpenTeamPartCar
 }
 
 /**
- * Main service method to list open teams for PART viewers.
+ * Pure projection allow-list for unauthenticated VISITOR previews.
+ * Strictly excludes: id, name, pitch, members, isViewerMember, communicationLink, and vacancy id.
+ */
+export function toVisitorPreview(r: OpenTeamRecord): OpenTeamVisitorPreview {
+  return {
+    displayLabel: 'Recruiting team',
+    goal: r.team.goal,
+    commitmentHours: Number(r.team.commitment_hours),
+    confirmedMembers: r.members.length,
+    openSlots: r.openVacancies.length,
+    vacancies: r.openVacancies.map((v) => ({
+      role: v.role,
+      skills: [...v.skills],
+    })),
+  };
+}
+
+/**
+ * Main service method to list open teams for either PART or VISITOR viewers.
  */
 export async function listOpenTeams(
   q: OpenTeamsQuery,
   viewer: OpenTeamsViewer,
   deps: OpenTeamsDeps = { repo: teamsRepository },
   now: Date = new Date()
-): Promise<{ viewer: 'PART'; total: number; teams: OpenTeamPartCard[] }> {
-  const records = await deps.repo.findOpenTeamRecords({ withMemberIdentities: true });
+): Promise<OpenTeamsResponse> {
+  const withMemberIdentities = viewer.category === 'PART';
+  const records = await deps.repo.findOpenTeamRecords({ withMemberIdentities });
   const filtered = filterOpenTeams(records, q, now);
   const total = filtered.length;
   const capped = filtered.slice(0, OPEN_TEAMS_RESPONSE_CAP);
-  const teams = capped.map((r) => toPartCard(r, viewer.participantId));
 
+  if (viewer.category === 'PART') {
+    const teams = capped.map((r) => toPartCard(r, viewer.participantId));
+    return {
+      viewer: 'PART',
+      total,
+      teams,
+    };
+  }
+
+  const teams = capped.map((r) => toVisitorPreview(r));
   return {
-    viewer: 'PART',
+    viewer: 'VISITOR',
     total,
     teams,
   };
