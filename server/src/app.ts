@@ -12,6 +12,7 @@ import { accessRouter } from './routes/access.routes.js';
 import { profileRouter } from './routes/profile.routes.js';
 import { availabilityRouter } from './routes/availability.routes.js';
 import { teamRouter } from './routes/team.routes.js';
+import { scoringRouter } from './routes/scoring.routes.js';
 import { securityConfig } from './config/security.js';
 import { createRequireHttps } from './middleware/requireHttps.js';
 
@@ -47,6 +48,7 @@ app.use('/api/access', accessRouter);
 app.use('/api/profiles', profileRouter);
 app.use('/api/availability', availabilityRouter);
 app.use('/api/teams', teamRouter);
+app.use('/api/scoring', scoringRouter);
 app.use('/api', actionsRouter);
 
 // Fallback 404 handler
