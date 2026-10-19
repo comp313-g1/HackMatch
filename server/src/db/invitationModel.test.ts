@@ -22,6 +22,7 @@ describe('US-017 invitation model contract (#161)', () => {
   const base = readMigration('0011_create_team_recruitment_tables.sql');
   const expiryIssuance = readMigration('0018_create_team_invitation_issuance.sql');
   const model = readMigration('0019_complete_team_invitation_model.sql');
+  const quotas = readMigration('0020_enforce_invitation_pending_quotas.sql');
 
   it('defines Pending default and full invitation status domain on team_requests', () => {
     expect(base).toMatch(/status\s+VARCHAR\(20\)\s+NOT\s+NULL\s+DEFAULT\s+'Pending'/i);
@@ -38,10 +39,12 @@ describe('US-017 invitation model contract (#161)', () => {
     expect(model).toMatch(/team_invitation_is_currently_valid/i);
   });
 
-  it('enforces pending quotas per invitee/team and per slot', () => {
+  it('enforces pending quotas per invitee/team and per slot (#164 / FR-050)', () => {
     expect(base).toMatch(/uq_team_requests_pending_invite/i);
     expect(expiryIssuance).toMatch(/uq_team_requests_pending_invite_per_slot/i);
     expect(model).toMatch(/chk_team_requests_pending_invite_requires_vacancy/i);
+    expect(quotas).toMatch(/RAISE\s+EXCEPTION\s+'DUPLICATE_PENDING_INVITATION'/i);
+    expect(quotas).toMatch(/RAISE\s+EXCEPTION\s+'SLOT_PENDING_INVITATION_EXISTS'/i);
   });
 
   it('enables RLS on team_requests (no anon public policies in recruitment DDL)', () => {

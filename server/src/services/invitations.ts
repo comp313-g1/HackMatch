@@ -12,6 +12,10 @@ import {
   assertInvitationIssuanceContext,
   type InvitationEligibilityDeps,
 } from './invitationEligibility.js';
+import {
+  assertInvitationQuotas,
+  type InvitationQuotaDeps,
+} from './invitationQuota.js';
 import { TeamServiceError, toTeamServiceError } from './teamErrors.js';
 
 export { INVITATION_TTL_HOURS };
@@ -89,14 +93,20 @@ export interface OwnerInvitationsListResult {
   message: string | null;
 }
 
+export interface IssueInvitationDeps {
+  eligibility?: Partial<InvitationEligibilityDeps>;
+  quotas?: Partial<InvitationQuotaDeps>;
+}
+
 /**
  * Owner issues a slot-specific Pending invitation (FR-049).
  * Express preflight (#163) validates availability, team/event mutability, and open slot;
- * Postgres RPC re-checks the same rules atomically.
+ * #164 / FR-050 enforces one Pending per slot and per invitee/team before the RPC;
+ * Postgres unique indexes + RPC re-check quotas atomically.
  */
 export async function issueInvitation(
   input: IssueInvitationInput,
-  eligibilityDeps?: Partial<InvitationEligibilityDeps>
+  deps?: IssueInvitationDeps
 ): Promise<IssuedInvitationView> {
   const source = input.source ?? 'direct';
 
@@ -107,7 +117,16 @@ export async function issueInvitation(
       vacancyId: input.vacancyId,
       inviteeParticipantId: input.inviteeParticipantId,
     },
-    eligibilityDeps
+    deps?.eligibility
+  );
+
+  await assertInvitationQuotas(
+    {
+      teamId: input.teamId,
+      vacancyId: input.vacancyId,
+      inviteeParticipantId: input.inviteeParticipantId,
+    },
+    deps?.quotas
   );
 
   try {

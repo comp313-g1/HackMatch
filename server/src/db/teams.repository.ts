@@ -80,6 +80,15 @@ export interface ITeamsRepository {
     vacancyRole: string;
     teamName: string;
   }>;
+  /**
+   * US-017 / #164 pending-quota probe: existing Pending invite for invitee/team
+   * and/or for the vacancy slot (may be the same row).
+   */
+  findPendingInvitationConflicts(
+    teamId: string,
+    vacancyId: string,
+    inviteeParticipantId: string
+  ): Promise<{ byInvitee: TeamRequest | null; bySlot: TeamRequest | null }>;
   /** Owner outbound invitations for a team (US-017). */
   listTeamInvitations(teamId: string): Promise<
     Array<{
@@ -395,6 +404,28 @@ export const teamsRepository: ITeamsRepository = {
       vacancyRole: payload.vacancyRole,
       teamName: payload.teamName,
     };
+  },
+
+  async findPendingInvitationConflicts(
+    teamId: string,
+    vacancyId: string,
+    inviteeParticipantId: string
+  ): Promise<{ byInvitee: TeamRequest | null; bySlot: TeamRequest | null }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('team_requests')
+      .select('*')
+      .eq('team_id', teamId)
+      .eq('request_type', 'Invitation')
+      .eq('status', 'Pending')
+      .or(`participant_id.eq.${inviteeParticipantId},vacancy_id.eq.${vacancyId}`);
+    if (error) throw error;
+
+    const rows = (data || []) as TeamRequest[];
+    const byInvitee =
+      rows.find((r) => r.participant_id === inviteeParticipantId) ?? null;
+    const bySlot = rows.find((r) => r.vacancy_id === vacancyId) ?? null;
+    return { byInvitee, bySlot };
   },
 
   async listTeamInvitations(teamId: string): Promise<

@@ -229,4 +229,74 @@ describe('OwnerInvitationsPanel (US-017 / #162)', () => {
     expect(screen.getByTestId('invite-participant-input')).toHaveValue(inviteeId);
     expect(screen.getByTestId('owner-invite-form')).toBeInTheDocument();
   });
+
+  it('keeps draft and shows vacancy field error when slot already has Pending (#164)', async () => {
+    fetchMock.mockResolvedValue({
+      teamId: 't1',
+      invitations: [],
+      empty: true,
+      message: 'No invitations yet.',
+    });
+    issueMock.mockRejectedValue(
+      new invitationsApi.TeamInvitationsApiError(
+        409,
+        'SLOT_PENDING_INVITATION_EXISTS',
+        {
+          vacancyId: 'This open slot already has a pending invitation.',
+        },
+        undefined,
+        'This open slot already has a pending invitation.'
+      )
+    );
+
+    render(<OwnerInvitationsPanel teamId="t1" vacancies={[openVacancy]} />);
+    await waitFor(() => expect(screen.getByTestId('send-invitation')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByTestId('invite-participant-input'), {
+      target: { value: inviteeId },
+    });
+    fireEvent.click(screen.getByTestId('send-invitation'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('invite-form-error')).toHaveTextContent(
+        /already has a pending invitation/i
+      );
+    });
+    expect(screen.getAllByText(/already has a pending invitation/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByTestId('invite-participant-input')).toHaveValue(inviteeId);
+    expect(screen.getByTestId('invite-vacancy-select')).toHaveValue(openVacancy.id);
+  });
+
+  it('labels open slots that already have a Pending invitation (#164)', async () => {
+    fetchMock.mockResolvedValue({
+      teamId: 't1',
+      invitations: [
+        {
+          id: 'inv-pending',
+          teamId: 't1',
+          eventId: 'e1',
+          vacancyId: openVacancy.id,
+          inviteeParticipantId: inviteeId,
+          inviteeHandle: 'mj',
+          inviteeDisplayName: 'MJ',
+          status: 'Pending',
+          requestType: 'Invitation',
+          expiresAt: '2026-10-21T12:00:00.000Z',
+          createdAt: '2026-10-19T12:00:00.000Z',
+          resolvedAt: null,
+          vacancyRole: 'Frontend',
+          teamName: 'Team',
+          expiredByClock: false,
+        },
+      ],
+      empty: false,
+      message: null,
+    });
+
+    render(<OwnerInvitationsPanel teamId="t1" vacancies={[openVacancy]} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('invite-vacancy-select')).toHaveTextContent(/pending invite/i);
+    });
+  });
 });

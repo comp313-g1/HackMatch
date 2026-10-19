@@ -43,6 +43,8 @@ function mockEligibleIssuanceContext(overrides?: {
   eventStatus?: 'Published' | 'Archived' | 'Disabled';
   isLooking?: boolean;
   confirmedIds?: string[];
+  byInvitee?: { id: string } | null;
+  bySlot?: { id: string } | null;
 }): void {
   vi.spyOn(teamsRepository, 'getTeamViewParts').mockResolvedValue({
     ...sampleParts,
@@ -60,6 +62,10 @@ function mockEligibleIssuanceContext(overrides?: {
   vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue(
     overrides?.confirmedIds ?? [ownerParticipant.id]
   );
+  vi.spyOn(teamsRepository, 'findPendingInvitationConflicts').mockResolvedValue({
+    byInvitee: (overrides?.byInvitee as never) ?? null,
+    bySlot: (overrides?.bySlot as never) ?? null,
+  });
   vi.spyOn(participantsRepository, 'findById').mockResolvedValue(otherParticipant);
   vi.spyOn(availabilityRepository, 'findByParticipantId').mockResolvedValue({
     participantId: otherParticipant.id,
@@ -256,11 +262,11 @@ describe('POST /api/teams/:teamId/invitations (US-017 / FR-048 / #163)', () => {
     expect(res.body.errors.inviteeParticipantId).toBeTruthy();
   });
 
-  it('returns 409 when a pending invite already exists for the invitee', async () => {
-    vi.spyOn(teamsRepository, 'issueTeamInvitation').mockRejectedValue({
-      message: 'DUPLICATE_PENDING_INVITATION',
-      code: 'P0001',
+  it('returns 409 + invitee field error when invitee already has Pending on team (#164)', async () => {
+    mockEligibleIssuanceContext({
+      byInvitee: { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' },
     });
+    const issueSpy = vi.spyOn(teamsRepository, 'issueTeamInvitation');
 
     const res = await request(app)
       .post(invitePath)
@@ -273,7 +279,29 @@ describe('POST /api/teams/:teamId/invitations (US-017 / FR-048 / #163)', () => {
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('DUPLICATE_PENDING_INVITATION');
-    expect(res.body.errors.inviteeParticipantId).toBeTruthy();
+    expect(res.body.errors.inviteeParticipantId).toMatch(/pending invitation already exists/i);
+    expect(issueSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 + vacancy field error when slot already has Pending invite (#164 / T2)', async () => {
+    mockEligibleIssuanceContext({
+      bySlot: { id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' },
+    });
+    const issueSpy = vi.spyOn(teamsRepository, 'issueTeamInvitation');
+
+    const res = await request(app)
+      .post(invitePath)
+      .set('Authorization', validTokenHeader)
+      .send({
+        vacancyId: sampleVacancyId,
+        inviteeParticipantId: otherParticipant.id,
+        source: 'direct',
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('SLOT_PENDING_INVITATION_EXISTS');
+    expect(res.body.errors.vacancyId).toMatch(/already has a pending invitation/i);
+    expect(issueSpy).not.toHaveBeenCalled();
   });
 });
 

@@ -43,6 +43,12 @@ export function OwnerInvitationsPanel({
   }>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
+
+  const pendingVacancyIds = new Set(
+    invitations
+      .filter((inv) => inv.status === 'Pending' && !inv.expiredByClock && inv.vacancyId)
+      .map((inv) => inv.vacancyId as string)
+  );
   const [submitting, setSubmitting] = useState(false);
 
   const loadList = useCallback(async () => {
@@ -161,8 +167,9 @@ export function OwnerInvitationsPanel({
         data-testid="owner-invite-form"
       >
         <p className="text-xs text-ink-muted">
-          Send a Pending invitation to an open slot. It expires in 48 hours and does not reserve the
-          slot against applications.
+          Send a Pending invitation to an open slot. Only one Pending invite is allowed per slot and
+          per invitee on this team. It expires in 48 hours and does not reserve the slot against
+          applications.
         </p>
 
         <div>
@@ -184,6 +191,7 @@ export function OwnerInvitationsPanel({
                 <option key={v.id} value={v.id}>
                   {v.role}
                   {v.skills.length ? ` (${v.skills.slice(0, 3).join(', ')})` : ''}
+                  {pendingVacancyIds.has(v.id) ? ' — pending invite' : ''}
                 </option>
               ))
             )}

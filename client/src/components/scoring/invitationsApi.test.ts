@@ -115,4 +115,34 @@ describe('issueTeamInvitation (FR-048)', () => {
       },
     });
   });
+
+  it('surfaces #164 slot-quota field errors when a Pending invite already occupies the slot', async () => {
+    authFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 'SLOT_PENDING_INVITATION_EXISTS',
+          error: 'This open slot already has a pending invitation.',
+          errors: {
+            vacancyId: 'This open slot already has a pending invitation.',
+          },
+        }),
+        { status: 409 }
+      )
+    );
+
+    await expect(
+      issueTeamInvitation('t1', {
+        vacancyId: 'v1',
+        inviteeParticipantId: 'p2',
+        source: 'direct',
+      })
+    ).rejects.toMatchObject({
+      name: 'InvitationsApiError',
+      code: 'SLOT_PENDING_INVITATION_EXISTS',
+      status: 409,
+      errors: {
+        vacancyId: expect.stringMatching(/pending invitation/i),
+      },
+    });
+  });
 });

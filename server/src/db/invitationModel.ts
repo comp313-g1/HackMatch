@@ -1,8 +1,11 @@
 /**
  * US-017 / #161 invitation model contract (PostgreSQL team_requests subset).
  *
- * Source of truth: migrations 0011 (base), 0018 (expires_at + issuance), 0019 (model helpers).
+ * Source of truth: migrations 0011 (base + invitee/team pending unique),
+ * 0018 (expires_at + per-slot pending unique + issuance), 0019 (model helpers),
+ * 0020 (explicit FR-050 quota checks in issue_team_invitation).
  * Pending invitations do not confirm membership or reserve capacity against applications.
+ * Quotas (#164 / FR-050): at most one Pending per vacancy slot and one Pending per invitee/team.
  */
 
 import type { TeamRequestStatus } from './types.js';

@@ -834,4 +834,34 @@ describe('0019_complete_team_invitation_model.sql Migration DDL (US-017 / #161)'
   });
 });
 
+describe('0020_enforce_invitation_pending_quotas.sql Migration DDL (US-017 / #164)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0020_enforce_invitation_pending_quotas.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('replaces issue_team_invitation with explicit invitee/team and per-slot Pending checks', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+issue_team_invitation/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'DUPLICATE_PENDING_INVITATION'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'SLOT_PENDING_INVITATION_EXISTS'/i);
+    expect(sql).toMatch(
+      /request_type\s*=\s*'Invitation'\s+AND\s+status\s*=\s*'Pending'/i
+    );
+  });
+
+  it('keeps unique_violation mapping and service_role execute grant', () => {
+    expect(sql).toMatch(/WHEN\s+unique_violation\s+THEN/i);
+    expect(sql).toMatch(/uq_team_requests_pending_invite_per_slot/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+issue_team_invitation\s*\(\s*UUID\s*,\s*UUID\s*,\s*UUID\s*,\s*UUID\s*\)\s+TO\s+service_role/i
+    );
+  });
+});
+
 
