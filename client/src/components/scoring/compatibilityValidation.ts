@@ -134,8 +134,8 @@ export function validateCompatibilityScoreForms(
   };
 }
 
-/** One-decimal display helper matching FR-043 (server remains authoritative for ranking). */
-export function formatCompatibilityDisplayScore(score: number): string {
-  const bounded = Math.min(100, Math.max(0, score));
-  return bounded.toFixed(1);
-}
+export {
+  formatCompatibilityDisplayScore,
+  boundCompatibilityScore,
+  isCompatibilityScoreInBounds,
+} from './compatibilityRanking';

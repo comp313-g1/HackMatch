@@ -16,6 +16,10 @@ import { TEAM_GOALS, TEAM_MAX_COMMITMENT_HOURS } from '../validators/team.valida
 export const ROLE_MATCH_MULTIPLIER = 1.2;
 export const SCORE_COMPONENT_WEIGHT = 1 / 3;
 
+/** FR-043: composite scores are bounded to this closed interval. */
+export const COMPATIBILITY_SCORE_MIN = 0;
+export const COMPATIBILITY_SCORE_MAX = 100;
+
 /** Goals that are adjacent (G = 0.5) under FR-045. */
 const GOAL_ADJACENCY: ReadonlyArray<readonly [TeamGoal, TeamGoal]> = [
   ['Learning', 'Project Completion'],
@@ -92,6 +96,11 @@ export interface CompatibilityScoreFieldErrors {
 export interface RankableCompatibilityResult extends CompatibilityScoreResult {
   displayHandle: string;
   internalId: string;
+}
+
+/** Ranked row with 1-based position after FR-043 tie-breaking (internalId never for display). */
+export interface RankedCompatibilityResult extends RankableCompatibilityResult {
+  rank: number;
 }
 
 function normalizeTag(tag: string): string {
@@ -231,10 +240,27 @@ export function computeHoursAlignment(
   return { h: Math.min(candidateHours / requestedHours, 1), missing: false };
 }
 
-/** FR-043: display one decimal place without changing the ranking value. */
+/**
+ * FR-043: clamp a composite score into [0, 100].
+ * Non-finite values (NaN / ±Infinity) become 0 so rankings never receive invalid numbers.
+ */
+export function boundCompatibilityScore(score: number): number {
+  if (!Number.isFinite(score)) {
+    return COMPATIBILITY_SCORE_MIN;
+  }
+  return Math.min(COMPATIBILITY_SCORE_MAX, Math.max(COMPATIBILITY_SCORE_MIN, score));
+}
+
+export function isCompatibilityScoreInBounds(score: number): boolean {
+  return Number.isFinite(score) && score >= COMPATIBILITY_SCORE_MIN && score <= COMPATIBILITY_SCORE_MAX;
+}
+
+/**
+ * FR-043: one-decimal display string without changing the unrounded ranking value.
+ * Always derived from a bounded score so UI never shows values outside 0.0–100.0.
+ */
 export function formatCompatibilityDisplayScore(score: number): string {
-  const bounded = Math.min(100, Math.max(0, score));
-  return bounded.toFixed(1);
+  return boundCompatibilityScore(score).toFixed(1);
 }
 
 /**
@@ -331,8 +357,8 @@ export function computeCompatibilityScore(
     hours: hoursPart.h,
   };
 
-  const score = 100 * (components.skill + components.goal + components.hours) * SCORE_COMPONENT_WEIGHT;
-  const boundedScore = Math.min(100, Math.max(0, score));
+  const rawScore = 100 * (components.skill + components.goal + components.hours) * SCORE_COMPONENT_WEIGHT;
+  const boundedScore = boundCompatibilityScore(rawScore);
 
   const requiredCount = (slot.requiredSkills ?? []).filter(
     (t) => typeof t === 'string' && t.trim().length > 0
@@ -371,21 +397,37 @@ export function computeCompatibilityScore(
 }
 
 /**
- * FR-043 ranking: higher unrounded score first, then display handle (case-insensitive),
- * then internal identifier. Stable for identical inputs.
+ * FR-043 ranking comparator:
+ * 1) higher unrounded score (after bounding to 0–100)
+ * 2) display handle (case-insensitive)
+ * 3) internal identifier (never shown in UI)
+ * Stable for identical inputs.
  */
 export function compareCompatibilityResults(
   a: RankableCompatibilityResult,
   b: RankableCompatibilityResult
 ): number {
-  if (a.score !== b.score) {
-    return b.score - a.score;
+  const scoreA = boundCompatibilityScore(a.score);
+  const scoreB = boundCompatibilityScore(b.score);
+  if (scoreA !== scoreB) {
+    return scoreB - scoreA;
   }
-  const handleCmp = a.displayHandle.localeCompare(b.displayHandle, 'en', {
+  const handleCmp = (a.displayHandle || '').localeCompare(b.displayHandle || '', 'en', {
     sensitivity: 'base',
   });
   if (handleCmp !== 0) return handleCmp;
-  return a.internalId.localeCompare(b.internalId, 'en');
+  return (a.internalId || '').localeCompare(b.internalId || '', 'en');
+}
+
+/**
+ * Sorts candidates with FR-043 tie-breaking and assigns 1-based `rank`.
+ * Does not expose internalId as a display field — callers should omit it from API DTOs.
+ */
+export function sortWithCompatibilityRanks<T extends RankableCompatibilityResult>(
+  results: readonly T[]
+): Array<T & { rank: number }> {
+  const sorted = [...results].sort(compareCompatibilityResults);
+  return sorted.map((row, index) => ({ ...row, rank: index + 1 }));
 }
 
 function throwValidationErrors(errors: CompatibilityScoreFieldErrors): never {
@@ -407,7 +449,7 @@ export function rankCandidatesByCompatibility(
   candidates: ReadonlyArray<
     CandidateScoringInput & { displayHandle?: string | null; internalId: string }
   >
-): RankableCompatibilityResult[] {
+): RankedCompatibilityResult[] {
   // Slot-only shape check (candidate fields may be intentionally sparse → score 0).
   const slotCheck = validateCompatibilityScoreInputs(slot, {
     primaryRole: null,
@@ -432,5 +474,5 @@ export function rankCandidatesByCompatibility(
     };
   });
 
-  return ranked.sort(compareCompatibilityResults);
+  return sortWithCompatibilityRanks(ranked);
 }

@@ -144,6 +144,9 @@ describe('getRecommendationsForOpenSlot', () => {
     expect(result.empty).toBe(false);
     expect(result.candidates).toHaveLength(1);
     expect(result.candidates[0].displayScore).toBe('70.0');
+    expect(result.candidates[0].score).toBeGreaterThanOrEqual(0);
+    expect(result.candidates[0].score).toBeLessThanOrEqual(100);
+    expect(result.candidates[0].rank).toBe(1);
     expect(result.candidates[0].contributions?.skill).toMatch(/Matched 2 of 4/);
     expect(result.candidates[0].participantId).toBe(otherId);
     expect(result.notice).toMatch(/self-declared/);
@@ -370,5 +373,7 @@ describe('getRecommendationsForOpenSlot', () => {
     );
 
     expect(result.candidates.map((c) => c.handle)).toEqual(['amy', 'zoe']);
+    expect(result.candidates.map((c) => c.rank)).toEqual([1, 2]);
+    expect(result.candidates.every((c) => c.score === 100)).toBe(true);
   });
 });

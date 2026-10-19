@@ -24,8 +24,9 @@ import {
   type AvailabilityServiceDeps,
 } from './availability.service.js';
 import {
-  compareCompatibilityResults,
+  boundCompatibilityScore,
   computeCompatibilityScore,
+  sortWithCompatibilityRanks,
   type CandidateScoringInput,
   type CompatibilityScoreResult,
   type RankableCompatibilityResult,
@@ -73,7 +74,9 @@ export interface RankedRecommendationCandidate {
   skills: string[];
   commitmentHours: number | null;
   goal: string | null;
-  /** Present when scoring succeeded. */
+  /** 1-based position after FR-043 score + handle + id tie-break. Omitted when degraded/unranked. */
+  rank?: number;
+  /** Present when scoring succeeded. Always in [0, 100]; displayScore is one decimal. */
   displayScore?: string;
   score?: number;
   components?: { skill: number; goal: number; hours: number };
@@ -202,12 +205,14 @@ function toUnrankedCard(c: AvailableCandidateCard): RankedRecommendationCandidat
 
 function toRankedCard(
   c: AvailableCandidateCard,
-  scored: RankableCompatibilityResult
+  scored: RankableCompatibilityResult & { rank: number }
 ): RankedRecommendationCandidate {
+  const score = boundCompatibilityScore(scored.score);
   return {
     ...toUnrankedCard(c),
+    rank: scored.rank,
     displayScore: scored.displayScore,
-    score: scored.score,
+    score,
     components: scored.components,
     matchedSkills: scored.matchedSkills,
     roleMatched: scored.roleMatched,
@@ -329,20 +334,25 @@ export async function getRecommendationsForOpenSlot(
           card,
           ranked: {
             ...scored,
+            score: boundCompatibilityScore(scored.score),
             displayHandle: (card.handle ?? card.displayName ?? '').trim(),
             internalId: card.participantId,
           },
         };
       });
 
-    scoredEntries.sort((a, b) => compareCompatibilityResults(a.ranked, b.ranked));
+    const withRanks = sortWithCompatibilityRanks(scoredEntries.map((e) => e.ranked));
+    const cardById = new Map(scoredEntries.map((e) => [e.ranked.internalId, e.card]));
 
     return {
       status: 'ok',
       teamId,
       vacancyId,
       slot: slotView,
-      candidates: scoredEntries.map(({ card, ranked }) => toRankedCard(card, ranked)),
+      candidates: withRanks.map((ranked) => {
+        const card = cardById.get(ranked.internalId)!;
+        return toRankedCard(card, ranked);
+      }),
       empty: false,
       message: null,
       notice: SELF_DECLARED_RECOMMENDATION_NOTICE,
