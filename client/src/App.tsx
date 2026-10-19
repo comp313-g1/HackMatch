@@ -14,9 +14,22 @@ import { TeamWorkspace } from './components/teams/TeamWorkspace';
 import { MyTeamsPage } from './components/teams/MyTeamsPage';
 import { CreateTeamPage } from './components/teams/CreateTeamPage';
 import { LookingForTeamPage } from './components/LookingForTeamPage';
+import { OpenTeamsBoard } from './components/teams/OpenTeamsBoard';
 import type { OtpChallenge } from './components/auth/providerSignIn';
 
-type View = 'landing' | 'register' | 'login' | 'mfa' | 'verify' | 'account' | 'recover' | 'reset' | 'team' | 'create-team' | 'looking';
+type View =
+  | 'landing'
+  | 'register'
+  | 'login'
+  | 'mfa'
+  | 'verify'
+  | 'account'
+  | 'recover'
+  | 'reset'
+  | 'team'
+  | 'create-team'
+  | 'looking'
+  | 'browse-teams';
 
 const getInitialView = (): View => {
   if (typeof window === 'undefined') return 'landing';
@@ -50,6 +63,9 @@ const getInitialView = (): View => {
   }
   if (view === 'register' || view === 'signup') {
     return 'register';
+  }
+  if (view === 'browse-teams' || view === 'open-teams') {
+    return 'browse-teams';
   }
   return 'landing';
 };
@@ -163,6 +179,12 @@ export function App(): React.JSX.Element {
     setCurrentView('looking');
   };
 
+  const goToBrowseTeams = () => {
+    setStatusNotice(null);
+    setIsMobileMenuOpen(false);
+    setCurrentView('browse-teams');
+  };
+
   const isAuthenticated =
     Boolean(currentUser) ||
     currentView === 'account' ||
@@ -213,6 +235,18 @@ export function App(): React.JSX.Element {
               className="text-sm font-medium text-ink-muted hover:text-forest-800 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream"
             >
               Browse Events
+            </button>
+            <button
+              type="button"
+              onClick={goToBrowseTeams}
+              aria-current={currentView === 'browse-teams' ? 'page' : undefined}
+              className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
+                currentView === 'browse-teams'
+                  ? 'text-forest-900 font-semibold'
+                  : 'text-ink-muted hover:text-forest-800'
+              }`}
+            >
+              Browse Teams
             </button>
 
             {isAuthenticated ? (
@@ -361,6 +395,13 @@ export function App(): React.JSX.Element {
               className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
             >
               Browse Events
+            </button>
+            <button
+              type="button"
+              onClick={goToBrowseTeams}
+              className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
+            >
+              Browse Teams
             </button>
             {isAuthenticated ? (
               <>
@@ -526,6 +567,14 @@ export function App(): React.JSX.Element {
               onBackToLanding={goToLanding}
             />
           </section>
+        ) : currentView === 'browse-teams' ? (
+          <OpenTeamsBoard
+            currentUser={currentUser}
+            onNavigateToSignIn={goToLogin}
+            onApply={(target) =>
+              setStatusNotice(`Applying to "${target.teamName}" (${target.role}) will be available with US-018.`)
+            }
+          />
         ) : currentView === 'account' ? (
           <section aria-labelledby="account-heading">
             <h2 id="account-heading" className="sr-only">
