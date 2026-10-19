@@ -59,19 +59,21 @@ vi.mock('../config/firebase.js', () => {
   };
 });
 
+import type { AvailableCandidateCard } from '../services/availability.service.js';
+
 const recPath = `/api/teams/${sampleTeamId}/vacancies/${sampleVacancyId}/recommendations`;
 
-const eligibleCandidate = {
+const eligibleCandidate: AvailableCandidateCard = {
   participantId: otherParticipant.id,
   displayName: 'Other Participant',
   handle: 'other_dev',
   institution: null,
-  primaryRole: 'Frontend' as const,
-  desiredRole: 'Frontend' as const,
+  primaryRole: 'Frontend',
+  desiredRole: 'Frontend',
   commitmentHours: 10,
-  goal: 'Project Completion' as const,
+  goal: 'Project Completion',
   skills: ['React', 'TypeScript'],
-  portfolioLinks: [] as string[],
+  portfolioLinks: [],
   updatedAt: '2026-10-18T00:00:00.000Z',
 };
 
@@ -103,7 +105,7 @@ function mockOwnerTeamContext(overrides?: {
 }
 
 function mockEligiblePool(
-  candidates: Array<typeof eligibleCandidate> = [eligibleCandidate]
+  candidates: AvailableCandidateCard[] = [eligibleCandidate]
 ): void {
   vi.spyOn(availabilityService, 'listAvailableCandidates').mockResolvedValue(candidates);
   vi.spyOn(participantsRepository, 'findById').mockImplementation(async (id: string) => {
