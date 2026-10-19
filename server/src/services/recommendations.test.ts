@@ -148,7 +148,14 @@ describe('getRecommendationsForOpenSlot', () => {
     expect(result.candidates[0].score).toBeLessThanOrEqual(100);
     expect(result.candidates[0].rank).toBe(1);
     expect(result.candidates[0].contributions?.skill).toMatch(/Matched 2 of 4/);
+    expect(result.candidates[0].explanation?.items).toHaveLength(3);
+    expect(result.candidates[0].explanation?.items.map((i) => i.label)).toEqual([
+      'Skills',
+      'Goal',
+      'Hours',
+    ]);
     expect(result.candidates[0].participantId).toBe(otherId);
+    expect(JSON.stringify(result.candidates[0])).not.toMatch(/internalId/i);
     expect(result.notice).toMatch(/self-declared/);
     expect(result.slot.role).toBe('Frontend');
     expect(result.exclusions.totalExcluded).toBe(0);

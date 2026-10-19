@@ -4,12 +4,15 @@ import {
   type CandidateScoringInput,
   type SlotScoringInput,
 } from '../services/compatibilityScoring.js';
+import {
+  assertPublicExplanationSafe,
+  buildPublicScoreExplanation,
+  omitInternalIdentifierFields,
+} from '../services/scoreExplanation.js';
 
 /**
  * POST /api/scoring/compatibility
- * Dry-run FR-043–045 scoring for a slot ↔ candidate pair (US-015 scoring-rules task).
- * Returns explainable contributions; never invents missing inputs (scores them as 0).
- * Full recommendation ranking/eligibility is a separate US-015 service task.
+ * Dry-run FR-043–045 scoring with FR-047 explainable contributions (no internal ids).
  */
 export async function previewCompatibilityScore(
   req: Request,
@@ -24,19 +27,23 @@ export async function previewCompatibilityScore(
     };
 
     const result = computeCompatibilityScore(slot, candidate);
+    const explanation = buildPublicScoreExplanation(result);
+    assertPublicExplanationSafe(explanation);
 
-    res.status(200).json({
-      status: 'ok',
-      score: result.score,
-      displayScore: result.displayScore,
+    const payload = omitInternalIdentifierFields({
+      status: 'ok' as const,
+      score: explanation.score,
+      displayScore: explanation.displayScore,
       components: result.components,
-      matchedSkills: result.matchedSkills,
-      roleMatched: result.roleMatched,
-      hadMissingInput: result.hadMissingInput,
-      contributions: result.contributions,
-      notice:
-        'Scores use self-declared skills, role, goal, and hours. Compatibility is a recommendation aid, not a probability of team success.',
+      matchedSkills: explanation.matchedSkills,
+      roleMatched: explanation.roleMatched,
+      hadMissingInput: explanation.hadMissingInput,
+      contributions: explanation.contributions,
+      explanation,
+      notice: explanation.notice,
     });
+
+    res.status(200).json(payload);
   } catch (err) {
     next(err);
   }

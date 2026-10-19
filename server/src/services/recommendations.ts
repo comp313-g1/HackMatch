@@ -37,6 +37,13 @@ import {
   partitionRecommendationCandidates,
   type RecommendationExclusionSummary,
 } from './recommendationEligibility.js';
+import {
+  SELF_DECLARED_SCORE_NOTICE,
+  assertPublicExplanationSafe,
+  buildPublicScoreExplanation,
+  omitInternalIdentifierFields,
+  type PublicScoreExplanation,
+} from './scoreExplanation.js';
 import { TeamServiceError } from './teamErrors.js';
 
 export {
@@ -48,8 +55,7 @@ export {
   EXCLUSION_EMPTY_HINT,
 } from './recommendationEligibility.js';
 
-export const SELF_DECLARED_RECOMMENDATION_NOTICE =
-  'Scores use self-declared skills, role, goal, and hours. Compatibility is a recommendation aid, not a probability of team success.';
+export const SELF_DECLARED_RECOMMENDATION_NOTICE = SELF_DECLARED_SCORE_NOTICE;
 
 export const EMPTY_RECOMMENDATIONS_MESSAGE =
   `No eligible candidates found for this open slot. ${EXCLUSION_EMPTY_HINT}`;
@@ -83,6 +89,8 @@ export interface RankedRecommendationCandidate {
   matchedSkills?: string[];
   roleMatched?: boolean;
   contributions?: { skill: string; goal: string; hours: string };
+  /** FR-047 structured explanation (no internal ranking ids). */
+  explanation?: PublicScoreExplanation;
 }
 
 export interface RecommendationsResult {
@@ -208,16 +216,23 @@ function toRankedCard(
   scored: RankableCompatibilityResult & { rank: number }
 ): RankedRecommendationCandidate {
   const score = boundCompatibilityScore(scored.score);
-  return {
+  const explanation = buildPublicScoreExplanation(scored, {
+    notice: SELF_DECLARED_RECOMMENDATION_NOTICE,
+  });
+  assertPublicExplanationSafe(explanation);
+
+  // Never attach ranking-only internalId to the public candidate DTO.
+  return omitInternalIdentifierFields({
     ...toUnrankedCard(c),
     rank: scored.rank,
     displayScore: scored.displayScore,
     score,
     components: scored.components,
-    matchedSkills: scored.matchedSkills,
-    roleMatched: scored.roleMatched,
-    contributions: scored.contributions,
-  };
+    matchedSkills: explanation.matchedSkills,
+    roleMatched: explanation.roleMatched,
+    contributions: explanation.contributions,
+    explanation,
+  });
 }
 
 async function buildRevalidationExtras(

@@ -89,6 +89,13 @@ describe('POST /api/scoring/compatibility (US-015 FR-043–045)', () => {
       hours: expect.closeTo(0.5, 5),
     });
     expect(res.body.contributions.skill).toMatch(/Matched 2 of 4/);
+    expect(res.body.explanation.items).toHaveLength(3);
+    expect(res.body.explanation.items.map((i: { label: string }) => i.label)).toEqual([
+      'Skills',
+      'Goal',
+      'Hours',
+    ]);
+    expect(JSON.stringify(res.body)).not.toMatch(/"internalId"/i);
     expect(res.body.hadMissingInput).toBe(false);
     expect(res.body.notice).toMatch(/self-declared/);
   });

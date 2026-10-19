@@ -121,6 +121,8 @@ describe('GET /api/teams/:teamId/vacancies/:vacancyId/recommendations (US-015)',
     expect(res.body.status).toBe('ok');
     expect(res.body.candidates[0].displayScore).toBe('70.0');
     expect(res.body.candidates[0].contributions.skill).toMatch(/Matched 2 of 4/);
+    expect(res.body.candidates[0].explanation.items).toHaveLength(3);
+    expect(JSON.stringify(res.body)).not.toMatch(/"internalId"/i);
     expect(res.body.empty).toBe(false);
     expect(res.body.exclusions).toEqual({
       inactive: 0,
