@@ -29,7 +29,7 @@ export function ScoreContributionsPanel({
 }: ScoreContributionsPanelProps) {
   if (errorMessage) {
     return (
-      <div role="alert" data-testid="score-contributions-error">
+      <div role="alert" data-testid="score-contributions-error" className="text-xs text-red-800 space-y-1">
         <p>{errorMessage}</p>
         <p>Your previous entries were kept.</p>
       </div>
@@ -49,20 +49,23 @@ export function ScoreContributionsPanel({
 
   if (rows.length === 0) {
     return (
-      <div role="status" data-testid="score-contributions-empty">
+      <div role="status" data-testid="score-contributions-empty" className="text-xs text-ink-muted">
         <p>{emptyMessage}</p>
       </div>
     );
   }
 
   return (
-    <div data-testid="score-contributions-panel">
+    <div
+      data-testid="score-contributions-panel"
+      className="rounded border border-cream-200 bg-white p-3 text-xs text-ink space-y-2"
+    >
       {displayScore ? (
         <p>
           Compatibility score: <strong>{displayScore}</strong>
         </p>
       ) : null}
-      <ul>
+      <ul className="space-y-1.5 list-disc list-inside">
         {rows.map((row) => (
           <li key={row.component}>
             <strong>{row.label}</strong>
@@ -70,7 +73,11 @@ export function ScoreContributionsPanel({
           </li>
         ))}
       </ul>
-      {notice ? <p data-testid="score-contributions-notice">{notice}</p> : null}
+      {notice ? (
+        <p data-testid="score-contributions-notice" className="text-ink-muted">
+          {notice}
+        </p>
+      ) : null}
     </div>
   );
 }
