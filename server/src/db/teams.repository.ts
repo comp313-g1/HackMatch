@@ -6,6 +6,7 @@ import type {
   TeamVacancy,
   TeamMembershipRole,
   ParticipantPrimaryRole,
+  TeamRequest,
 } from './types.js';
 
 export interface CreateTeamWithOwnerInput {
@@ -44,6 +45,8 @@ export interface ITeamsRepository {
   findTeamById(teamId: string): Promise<Team | null>;
   findConfirmedTeamIdForParticipant(participantId: string, eventId: string): Promise<string | null>;
   findConfirmedTeamIdsForParticipant(participantId: string): Promise<string[]>;
+  /** FR-046: participant ids with Confirmed membership in the event (any team). */
+  listConfirmedParticipantIdsForEvent(eventId: string): Promise<string[]>;
   getTeamViewParts(teamId: string): Promise<{
     team: Team;
     event: {
@@ -66,6 +69,17 @@ export interface ITeamsRepository {
   removeTeamVacancy(actorId: string, teamId: string, vacancyId: string): Promise<{ canceledRequests: number }>;
   disbandTeam(actorId: string, teamId: string): Promise<{ releasedMembers: number; canceledRequests: number }>;
   removeTeamMember(actorId: string, teamId: string, memberParticipantId: string, reason: string): Promise<{ availabilityRestored: boolean }>;
+  issueTeamInvitation(
+    actorId: string,
+    teamId: string,
+    vacancyId: string,
+    inviteeParticipantId: string
+  ): Promise<{
+    invitation: TeamRequest;
+    expiresAt: string;
+    vacancyRole: string;
+    teamName: string;
+  }>;
   findOpenTeamRecords(options: { withMemberIdentities: boolean }): Promise<OpenTeamRecord[]>;
 }
 
@@ -154,6 +168,18 @@ export const teamsRepository: ITeamsRepository = {
 
     if (error) throw error;
     return (data || []).map((row: { team_id: string }) => row.team_id);
+  },
+
+  async listConfirmedParticipantIdsForEvent(eventId: string): Promise<string[]> {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('team_memberships')
+      .select('participant_id')
+      .eq('event_id', eventId)
+      .eq('status', 'Confirmed');
+
+    if (error) throw error;
+    return [...new Set((data || []).map((row: { participant_id: string }) => row.participant_id))];
   },
 
   async getTeamViewParts(teamId: string): Promise<{
@@ -326,6 +352,39 @@ export const teamsRepository: ITeamsRepository = {
     });
     if (error) throw error;
     return data as { availabilityRestored: boolean };
+  },
+
+  async issueTeamInvitation(
+    actorId: string,
+    teamId: string,
+    vacancyId: string,
+    inviteeParticipantId: string
+  ): Promise<{
+    invitation: TeamRequest;
+    expiresAt: string;
+    vacancyRole: string;
+    teamName: string;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('issue_team_invitation', {
+      p_actor: actorId,
+      p_team: teamId,
+      p_vacancy: vacancyId,
+      p_invitee: inviteeParticipantId,
+    });
+    if (error) throw error;
+    const payload = data as {
+      invitation: TeamRequest;
+      expiresAt: string;
+      vacancyRole: string;
+      teamName: string;
+    };
+    return {
+      invitation: payload.invitation,
+      expiresAt: payload.expiresAt,
+      vacancyRole: payload.vacancyRole,
+      teamName: payload.teamName,
+    };
   },
 
   async findOpenTeamRecords(options: { withMemberIdentities: boolean }): Promise<OpenTeamRecord[]> {

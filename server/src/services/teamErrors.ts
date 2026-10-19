@@ -11,7 +11,15 @@ export type TeamErrorCode =
   | 'VACANCY_NOT_FOUND'
   | 'VACANCY_NOT_OPEN'
   | 'MEMBER_NOT_FOUND'
-  | 'CANNOT_REMOVE_OWNER';
+  | 'CANNOT_REMOVE_OWNER'
+  | 'RECOMMENDATIONS_FORBIDDEN'
+  | 'SLOT_NOT_OPEN_FOR_RECOMMENDATIONS'
+  | 'CANNOT_INVITE_SELF'
+  | 'INVITEE_NOT_ELIGIBLE'
+  | 'INVITEE_NOT_AVAILABLE'
+  | 'INVITEE_ALREADY_CONFIRMED'
+  | 'DUPLICATE_PENDING_INVITATION'
+  | 'SLOT_PENDING_INVITATION_EXISTS';
 
 export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message: string }> = {
   EVENT_NOT_FOUND: { status: 404, message: 'Event not found.' },
@@ -27,6 +35,35 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   VACANCY_NOT_OPEN: { status: 409, message: 'Vacancy is not open and cannot be removed or modified.' },
   MEMBER_NOT_FOUND: { status: 404, message: 'Confirmed member not found on this team.' },
   CANNOT_REMOVE_OWNER: { status: 409, message: 'Team owner cannot be removed. To step down, disband the team.' },
+  RECOMMENDATIONS_FORBIDDEN: {
+    status: 403,
+    message: 'Only the team owner can request candidate recommendations for an open slot.',
+  },
+  SLOT_NOT_OPEN_FOR_RECOMMENDATIONS: {
+    status: 409,
+    message: 'Recommendations require an open vacancy on a recruiting team in an active event.',
+  },
+  CANNOT_INVITE_SELF: { status: 400, message: 'You cannot invite yourself to your own team.' },
+  INVITEE_NOT_ELIGIBLE: {
+    status: 409,
+    message: 'This candidate is not eligible for an invitation (inactive, unverified, or suspended).',
+  },
+  INVITEE_NOT_AVAILABLE: {
+    status: 409,
+    message: 'This candidate is not Looking for Team and cannot be invited.',
+  },
+  INVITEE_ALREADY_CONFIRMED: {
+    status: 409,
+    message: 'This candidate is already confirmed on a team for this event.',
+  },
+  DUPLICATE_PENDING_INVITATION: {
+    status: 409,
+    message: 'A pending invitation already exists for this candidate on this team.',
+  },
+  SLOT_PENDING_INVITATION_EXISTS: {
+    status: 409,
+    message: 'This open slot already has a pending invitation.',
+  },
 };
 
 export class TeamServiceError extends Error {
@@ -83,6 +120,12 @@ export function toTeamServiceError(err: unknown): TeamServiceError | null {
         combined.includes('team_memberships')
       ) {
         return new TeamServiceError('ALREADY_CONFIRMED_MEMBER');
+      }
+      if (combined.includes('uq_team_requests_pending_invite_per_slot')) {
+        return new TeamServiceError('SLOT_PENDING_INVITATION_EXISTS');
+      }
+      if (combined.includes('uq_team_requests_pending_invite')) {
+        return new TeamServiceError('DUPLICATE_PENDING_INVITATION');
       }
     }
 

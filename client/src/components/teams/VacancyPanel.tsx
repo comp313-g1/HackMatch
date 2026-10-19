@@ -7,6 +7,7 @@ import {
 } from './teamTypes';
 import { validateVacancyForm } from './teamValidation';
 import { addVacancy, updateVacancy, removeVacancy, TeamApiError, AuthRequiredError } from './teamApi';
+import { RecommendationPanel } from '../scoring/RecommendationPanel';
 
 export interface VacancyPanelProps {
   teamId: string;
@@ -297,91 +298,99 @@ export function VacancyPanel({
             const isRemoving = confirmRemoveId === vacancy.id;
 
             return (
-              <li
-                key={vacancy.id}
-                className="py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm text-forest-900">
-                      {vacancy.role}
-                    </span>
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        vacancy.status === 'Open'
-                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                          : 'bg-cream-100 text-ink-muted'
-                      }`}
-                    >
-                      {vacancy.status}
-                    </span>
+              <li key={vacancy.id} className="py-4 space-y-1">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm text-forest-900">
+                        {vacancy.role}
+                      </span>
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                          vacancy.status === 'Open'
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            : 'bg-cream-100 text-ink-muted'
+                        }`}
+                      >
+                        {vacancy.status}
+                      </span>
+                    </div>
+
+                    {vacancy.skills.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {vacancy.skills.map((skill) => (
+                          <span
+                            key={skill}
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-normal bg-cream-100 text-ink-muted"
+                          >
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
-                  {vacancy.skills.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {vacancy.skills.map((skill) => (
-                        <span
-                          key={skill}
-                          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-normal bg-cream-100 text-ink-muted"
+                  {isRemoving ? (
+                    <div
+                      role="alertdialog"
+                      aria-labelledby={`remove-slot-title-${vacancy.id}`}
+                      className="p-3 bg-red-50 border border-red-200 rounded-md text-xs space-y-2"
+                    >
+                      <p id={`remove-slot-title-${vacancy.id}`} className="text-red-900 font-medium">
+                        Remove this open slot? Any pending requests for it will be canceled.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleConfirmRemove(vacancy.id)}
+                          disabled={isPanelDisabled}
+                          className="px-3 py-1 bg-red-600 text-white font-semibold rounded hover:bg-red-700 disabled:opacity-50"
                         >
-                          {skill}
-                        </span>
-                      ))}
+                          {busy ? 'Removing...' : 'Confirm Remove'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmRemoveId(null)}
+                          disabled={isPanelDisabled}
+                          className="px-3 py-1 bg-white border border-cream-300 text-ink rounded hover:bg-cream-100 disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                      <button
+                        type="button"
+                        onClick={() => handleStartEdit(vacancy)}
+                        disabled={isPanelDisabled}
+                        className="px-3 py-1 text-xs font-medium text-forest-800 bg-white border border-cream-200 rounded hover:bg-cream-50 disabled:opacity-50"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          resetForm();
+                          setConfirmRemoveId(vacancy.id);
+                        }}
+                        disabled={isPanelDisabled}
+                        className="px-3 py-1 text-xs font-medium text-red-700 bg-white border border-red-200 rounded hover:bg-red-50 disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
                     </div>
                   )}
                 </div>
 
-                {isRemoving ? (
-                  <div
-                    role="alertdialog"
-                    aria-labelledby={`remove-slot-title-${vacancy.id}`}
-                    className="p-3 bg-red-50 border border-red-200 rounded-md text-xs space-y-2"
-                  >
-                    <p id={`remove-slot-title-${vacancy.id}`} className="text-red-900 font-medium">
-                      Remove this open slot? Any pending requests for it will be canceled.
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleConfirmRemove(vacancy.id)}
-                        disabled={isPanelDisabled}
-                        className="px-3 py-1 bg-red-600 text-white font-semibold rounded hover:bg-red-700 disabled:opacity-50"
-                      >
-                        {busy ? 'Removing...' : 'Confirm Remove'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmRemoveId(null)}
-                        disabled={isPanelDisabled}
-                        className="px-3 py-1 bg-white border border-cream-300 text-ink rounded hover:bg-cream-100 disabled:opacity-50"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 self-end sm:self-auto">
-                    <button
-                      type="button"
-                      onClick={() => handleStartEdit(vacancy)}
-                      disabled={isPanelDisabled}
-                      className="px-3 py-1 text-xs font-medium text-forest-800 bg-white border border-cream-200 rounded hover:bg-cream-50 disabled:opacity-50"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        resetForm();
-                        setConfirmRemoveId(vacancy.id);
-                      }}
-                      disabled={isPanelDisabled}
-                      className="px-3 py-1 text-xs font-medium text-red-700 bg-white border border-red-200 rounded hover:bg-red-50 disabled:opacity-50"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
+                {vacancy.status === 'Open' && !disabled ? (
+                  <RecommendationPanel
+                    teamId={teamId}
+                    vacancyId={vacancy.id}
+                    vacancyLabel={`${vacancy.role} slot`}
+                    enabled
+                  />
+                ) : null}
               </li>
             );
           })}

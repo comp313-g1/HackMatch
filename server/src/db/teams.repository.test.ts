@@ -238,5 +238,30 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
     });
     expect(result).toEqual({ releasedMembers: 3, canceledRequests: 4 });
   });
+
+  it('listConfirmedParticipantIdsForEvent selects Confirmed memberships for the event (FR-046)', async () => {
+    const eventId = sampleInput.eventId;
+    const ownerId = sampleInput.ownerParticipantId;
+    const otherId = 'p2000000-0000-4000-8000-000000000002';
+    const eqStatus = vi.fn().mockResolvedValue({
+      data: [{ participant_id: ownerId }, { participant_id: otherId }, { participant_id: ownerId }],
+      error: null,
+    });
+    const eqEvent = vi.fn().mockReturnValue({ eq: eqStatus });
+    const select = vi.fn().mockReturnValue({ eq: eqEvent });
+    const from = vi.fn().mockReturnValue({ select });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      from,
+    } as unknown as SupabaseClient);
+
+    const ids = await teamsRepository.listConfirmedParticipantIdsForEvent(eventId);
+
+    expect(from).toHaveBeenCalledWith('team_memberships');
+    expect(select).toHaveBeenCalledWith('participant_id');
+    expect(eqEvent).toHaveBeenCalledWith('event_id', eventId);
+    expect(eqStatus).toHaveBeenCalledWith('status', 'Confirmed');
+    expect(ids).toEqual([ownerId, otherId]);
+  });
 });
 
