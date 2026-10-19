@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
+import { revalidateInvitationForAcceptance } from '../services/invitationAcceptance.js';
 import { issueInvitation, listOwnerInvitations } from '../services/invitations.js';
 import { TEAM_ERROR_CATALOG, toTeamServiceError, type TeamErrorCode } from '../services/teamErrors.js';
 
@@ -17,6 +18,10 @@ function fieldErrorsForInvitationCode(
     case 'DUPLICATE_PENDING_INVITATION':
     case 'CANNOT_INVITE_SELF':
       return { inviteeParticipantId: message };
+    case 'INVITATION_EXPIRED':
+    case 'INVITATION_NOT_ACCEPTABLE':
+    case 'INVITATION_NOT_FOUND':
+      return { invitationId: message };
     default:
       return undefined;
   }
@@ -87,6 +92,55 @@ export async function listTeamInvitationsHandler(
 
     res.setHeader('Cache-Control', 'no-store');
     res.status(200).json(result);
+  } catch (err: unknown) {
+    handleInvitationError(err, res, next);
+  }
+}
+
+/**
+ * POST /api/invitations/:id/accept
+ * US-017 / #165 / FR-051 — acceptance-time revalidation (48h expiry, slot/team/event).
+ * Does not confirm membership yet (US-019 / FR-056); returns eligible when checks pass.
+ */
+export async function revalidateInvitationAcceptanceHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const invitationId = String(req.params.id || '').trim();
+    if (!invitationId) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(400).json({
+        error: 'Invitation id is required.',
+        code: 'VALIDATION_ERROR',
+        errors: { invitationId: 'Invitation id is required.' },
+      });
+      return;
+    }
+
+    const result = await revalidateInvitationForAcceptance({
+      actorParticipantId: actorId,
+      invitationId,
+    });
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({
+      eligible: true,
+      invitation: {
+        id: result.invitation.id,
+        teamId: result.invitation.team_id,
+        eventId: result.invitation.event_id,
+        vacancyId: result.invitation.vacancy_id,
+        inviteeParticipantId: result.invitation.participant_id,
+        status: result.invitation.status,
+        expiresAt: result.expiresAt,
+        teamName: result.teamName,
+        vacancyRole: result.vacancyRole,
+      },
+      notice: result.notice,
+    });
   } catch (err: unknown) {
     handleInvitationError(err, res, next);
   }

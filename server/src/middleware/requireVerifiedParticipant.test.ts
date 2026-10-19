@@ -18,6 +18,31 @@ vi.mock('../config/firebase.js', () => ({
   _resetFirebaseInstances: vi.fn(),
 }));
 
+// Accept route now runs #165 revalidation; keep middleware tests focused on auth gates.
+vi.mock('../services/invitationAcceptance.js', () => ({
+  revalidateInvitationForAcceptance: vi.fn().mockResolvedValue({
+    eligible: true,
+    invitation: {
+      id: 'inv-123',
+      team_id: 't1',
+      event_id: 'e1',
+      vacancy_id: 'v1',
+      participant_id: '11111111-1111-4111-8111-111111111111',
+      request_type: 'Invitation',
+      status: 'Pending',
+      expires_at: '2099-01-01T00:00:00.000Z',
+      cancel_reason: null,
+      resolved_at: null,
+      created_at: '2026-10-19T00:00:00.000Z',
+      updated_at: '2026-10-19T00:00:00.000Z',
+    },
+    expiresAt: '2099-01-01T00:00:00.000Z',
+    teamName: 'Team',
+    vacancyRole: 'Frontend',
+    notice: 'Invitation is still valid within its 48-hour window.',
+  }),
+}));
+
 describe('requireVerifiedParticipant Middleware & Action Route Protections', () => {
   const verifiedParticipant: Participant = {
     id: '11111111-1111-4111-8111-111111111111',

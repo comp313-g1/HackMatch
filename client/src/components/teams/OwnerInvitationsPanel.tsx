@@ -136,8 +136,18 @@ export function OwnerInvitationsPanel({
   };
 
   const displayStatus = (inv: OwnerInvitationListItem): string => {
-    if (inv.expiredByClock && inv.status === 'Pending') return 'Expired (due)';
+    if (inv.status === 'Expired' || (inv.expiredByClock && inv.status === 'Pending')) {
+      return 'Expired';
+    }
     return inv.status;
+  };
+
+  const expiryLabel = (inv: OwnerInvitationListItem): string => {
+    if (!inv.expiresAt) return 'No expiry on record';
+    if (inv.status === 'Expired' || inv.expiredByClock) {
+      return 'Expired after 48 hours — acceptance is rejected';
+    }
+    return `Expires ${new Date(inv.expiresAt).toLocaleString()} (48h window)`;
   };
 
   return (
@@ -298,8 +308,10 @@ export function OwnerInvitationsPanel({
                   ) : null}
                 </p>
                 <p className="text-ink-muted">
-                  Status: <span data-testid={`invitation-status-${inv.id}`}>{displayStatus(inv)}</span>
-                  {inv.expiresAt ? ` · Expires ${new Date(inv.expiresAt).toLocaleString()}` : ''}
+                  Status:{' '}
+                  <span data-testid={`invitation-status-${inv.id}`}>{displayStatus(inv)}</span>
+                  {' · '}
+                  <span data-testid={`invitation-expiry-${inv.id}`}>{expiryLabel(inv)}</span>
                 </p>
               </div>
             </li>

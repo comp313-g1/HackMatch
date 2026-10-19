@@ -19,7 +19,11 @@ export type TeamErrorCode =
   | 'INVITEE_NOT_AVAILABLE'
   | 'INVITEE_ALREADY_CONFIRMED'
   | 'DUPLICATE_PENDING_INVITATION'
-  | 'SLOT_PENDING_INVITATION_EXISTS';
+  | 'SLOT_PENDING_INVITATION_EXISTS'
+  | 'INVITATION_NOT_FOUND'
+  | 'INVITATION_EXPIRED'
+  | 'INVITATION_NOT_ACCEPTABLE'
+  | 'FORBIDDEN_NOT_INVITEE';
 
 export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message: string }> = {
   EVENT_NOT_FOUND: { status: 404, message: 'Event not found.' },
@@ -66,6 +70,20 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   SLOT_PENDING_INVITATION_EXISTS: {
     status: 409,
     message: 'This open slot already has a pending invitation.',
+  },
+  INVITATION_NOT_FOUND: { status: 404, message: 'Invitation not found.' },
+  INVITATION_EXPIRED: {
+    status: 409,
+    message:
+      'This invitation has expired after 48 hours and can no longer be accepted.',
+  },
+  INVITATION_NOT_ACCEPTABLE: {
+    status: 409,
+    message: 'This invitation is no longer acceptable (canceled, declined, or otherwise closed).',
+  },
+  FORBIDDEN_NOT_INVITEE: {
+    status: 403,
+    message: 'Only the invited participant can accept this invitation.',
   },
 };
 

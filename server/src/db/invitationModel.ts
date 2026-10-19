@@ -3,9 +3,11 @@
  *
  * Source of truth: migrations 0011 (base + invitee/team pending unique),
  * 0018 (expires_at + per-slot pending unique + issuance), 0019 (model helpers),
- * 0020 (explicit FR-050 quota checks in issue_team_invitation).
+ * 0020 (explicit FR-050 quota checks in issue_team_invitation),
+ * 0021 (FR-051 acceptance-time revalidation + event recruiting validity).
  * Pending invitations do not confirm membership or reserve capacity against applications.
  * Quotas (#164 / FR-050): at most one Pending per vacancy slot and one Pending per invitee/team.
+ * Expiry (#165 / FR-051): acceptance fails at/after expires_at even if cleanup lagged.
  */
 
 import type { TeamRequestStatus } from './types.js';

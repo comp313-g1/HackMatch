@@ -864,4 +864,35 @@ describe('0020_enforce_invitation_pending_quotas.sql Migration DDL (US-017 / #16
   });
 });
 
+describe('0021_invitation_acceptance_revalidation.sql Migration DDL (US-017 / #165)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0021_invitation_acceptance_revalidation.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('strengthens validity with event recruiting checks and expiry-before-cleanup', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+team_invitation_is_currently_valid/i);
+    expect(sql).toMatch(/expires_at\s*<=\s*now\(\)/i);
+    expect(sql).toMatch(/v_event_status\s*<>\s*'Published'/i);
+  });
+
+  it('defines revalidate_team_invitation_for_acceptance with Expired and slot failures', () => {
+    expect(sql).toMatch(
+      /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+revalidate_team_invitation_for_acceptance/i
+    );
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'INVITATION_EXPIRED'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'VACANCY_NOT_OPEN'/i);
+    expect(sql).toMatch(/mark_team_invitation_expired_if_due/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+revalidate_team_invitation_for_acceptance\s*\(\s*UUID\s*,\s*UUID\s*\)\s+TO\s+service_role/i
+    );
+  });
+});
+
 

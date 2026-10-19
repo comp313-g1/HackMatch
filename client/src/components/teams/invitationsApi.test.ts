@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchTeamInvitations, issueTeamInvitation } from './invitationsApi';
+import {
+  fetchTeamInvitations,
+  issueTeamInvitation,
+  revalidateInvitationAcceptance,
+} from './invitationsApi';
 
 const authFetchMock = vi.fn();
 
@@ -72,5 +76,60 @@ describe('teams invitationsApi (US-017 / #162)', () => {
     );
     expect(invitation.status).toBe('Pending');
     expect(invitation.source).toBe('direct');
+  });
+
+  it('POSTs acceptance-time revalidation and returns eligible (#165)', async () => {
+    authFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          eligible: true,
+          invitation: {
+            id: 'inv-1',
+            teamId: 't1',
+            eventId: 'e1',
+            vacancyId: 'v1',
+            inviteeParticipantId: 'p1',
+            status: 'Pending',
+            expiresAt: '2026-10-21T00:00:00.000Z',
+            teamName: 'Team',
+            vacancyRole: 'Frontend',
+          },
+          notice: 'Invitation is still valid within its 48-hour window.',
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await revalidateInvitationAcceptance('inv-1');
+    expect(authFetchMock).toHaveBeenCalledWith(
+      '/api/invitations/inv-1/accept',
+      expect.objectContaining({ method: 'POST' })
+    );
+    expect(result.eligible).toBe(true);
+  });
+
+  it('surfaces INVITATION_EXPIRED field errors when past 48h (#165 / T3)', async () => {
+    authFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 'INVITATION_EXPIRED',
+          error: 'This invitation has expired after 48 hours and can no longer be accepted.',
+          errors: {
+            invitationId:
+              'This invitation has expired after 48 hours and can no longer be accepted.',
+          },
+        }),
+        { status: 409 }
+      )
+    );
+
+    await expect(revalidateInvitationAcceptance('inv-1')).rejects.toMatchObject({
+      name: 'TeamInvitationsApiError',
+      code: 'INVITATION_EXPIRED',
+      status: 409,
+      errors: {
+        invitationId: expect.stringMatching(/expired/i),
+      },
+    });
   });
 });

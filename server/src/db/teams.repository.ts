@@ -89,6 +89,12 @@ export interface ITeamsRepository {
     vacancyId: string,
     inviteeParticipantId: string
   ): Promise<{ byInvitee: TeamRequest | null; bySlot: TeamRequest | null }>;
+  /** Load a single Invitation row (US-017 / #165 acceptance revalidation). */
+  findInvitationById(invitationId: string): Promise<TeamRequest | null>;
+  /** Persist Expired when past expires_at (FR-051); restores pending quotas. */
+  markInvitationExpiredIfDue(
+    invitationId: string
+  ): Promise<{ invitation: TeamRequest; changed: boolean }>;
   /** Owner outbound invitations for a team (US-017). */
   listTeamInvitations(teamId: string): Promise<
     Array<{
@@ -426,6 +432,33 @@ export const teamsRepository: ITeamsRepository = {
       rows.find((r) => r.participant_id === inviteeParticipantId) ?? null;
     const bySlot = rows.find((r) => r.vacancy_id === vacancyId) ?? null;
     return { byInvitee, bySlot };
+  },
+
+  async findInvitationById(invitationId: string): Promise<TeamRequest | null> {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('team_requests')
+      .select('*')
+      .eq('id', invitationId)
+      .eq('request_type', 'Invitation')
+      .maybeSingle();
+    if (error) throw error;
+    return (data as TeamRequest | null) ?? null;
+  },
+
+  async markInvitationExpiredIfDue(
+    invitationId: string
+  ): Promise<{ invitation: TeamRequest; changed: boolean }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('mark_team_invitation_expired_if_due', {
+      p_invitation: invitationId,
+    });
+    if (error) throw error;
+    const payload = data as { invitation: TeamRequest; changed: boolean };
+    return {
+      invitation: payload.invitation,
+      changed: Boolean(payload.changed),
+    };
   },
 
   async listTeamInvitations(teamId: string): Promise<

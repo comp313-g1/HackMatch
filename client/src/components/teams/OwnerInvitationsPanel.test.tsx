@@ -267,6 +267,42 @@ describe('OwnerInvitationsPanel (US-017 / #162)', () => {
     expect(screen.getByTestId('invite-vacancy-select')).toHaveValue(openVacancy.id);
   });
 
+  it('shows Expired acceptance rejection copy when clock TTL has passed (#165)', async () => {
+    fetchMock.mockResolvedValue({
+      teamId: 't1',
+      invitations: [
+        {
+          id: 'inv-expired',
+          teamId: 't1',
+          eventId: 'e1',
+          vacancyId: openVacancy.id,
+          inviteeParticipantId: inviteeId,
+          inviteeHandle: 'mj',
+          inviteeDisplayName: 'MJ',
+          status: 'Pending',
+          requestType: 'Invitation',
+          expiresAt: '2026-10-18T12:00:00.000Z',
+          createdAt: '2026-10-16T12:00:00.000Z',
+          resolvedAt: null,
+          vacancyRole: 'Frontend',
+          teamName: 'Team',
+          expiredByClock: true,
+        },
+      ],
+      empty: false,
+      message: null,
+    });
+
+    render(<OwnerInvitationsPanel teamId="t1" vacancies={[openVacancy]} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('invitation-status-inv-expired')).toHaveTextContent('Expired');
+    });
+    expect(screen.getByTestId('invitation-expiry-inv-expired')).toHaveTextContent(
+      /acceptance is rejected/i
+    );
+  });
+
   it('labels open slots that already have a Pending invitation (#164)', async () => {
     fetchMock.mockResolvedValue({
       teamId: 't1',

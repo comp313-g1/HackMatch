@@ -131,3 +131,35 @@ export async function issueTeamInvitation(
   );
   return data.invitation;
 }
+
+export interface AcceptanceRevalidationResult {
+  eligible: true;
+  invitation: {
+    id: string;
+    teamId: string;
+    eventId: string;
+    vacancyId: string | null;
+    inviteeParticipantId: string;
+    status: string;
+    expiresAt: string;
+    teamName: string;
+    vacancyRole: string | null;
+  };
+  notice: string;
+}
+
+/**
+ * POST /api/invitations/:id/accept — US-017 / #165 acceptance-time revalidation.
+ * Rejects expired / unusable invitations; does not confirm membership yet (US-019).
+ */
+export async function revalidateInvitationAcceptance(
+  invitationId: string
+): Promise<AcceptanceRevalidationResult> {
+  return authCall(() =>
+    authFetch(`/api/invitations/${encodeURIComponent(invitationId)}/accept`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+  );
+}
