@@ -9,14 +9,47 @@ import {
   sampleVacancyId,
   sampleEventId,
   sampleTeam,
+  sampleParts,
+  sampleVacancy,
 } from '../routes/team.testUtils.js';
 
-describe('issueInvitation (US-017 / FR-048)', () => {
+function passingEligibilityDeps() {
+  return {
+    teamsRepo: {
+      findTeamById: vi.fn().mockResolvedValue(sampleTeam),
+      getTeamViewParts: vi.fn().mockResolvedValue({
+        ...sampleParts,
+        event: {
+          max_team_size: 4,
+          status: 'Published' as const,
+          end_date: '2099-01-01T00:00:00.000Z',
+        },
+        vacancies: [sampleVacancy],
+      }),
+      listConfirmedParticipantIdsForEvent: vi.fn().mockResolvedValue([ownerParticipant.id]),
+    },
+    participantsRepo: {
+      findById: vi.fn().mockResolvedValue(otherParticipant),
+    },
+    availabilityRepo: {
+      findByParticipantId: vi.fn().mockResolvedValue({
+        participantId: otherParticipant.id,
+        isLooking: true,
+        desiredRole: 'Frontend' as const,
+        commitmentHours: 10,
+        goal: 'Learning' as const,
+        updatedAt: null,
+      }),
+    },
+  };
+}
+
+describe('issueInvitation (US-017 / FR-048 / #163)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('returns Pending invitation view with recommendation source', async () => {
+  it('returns Pending invitation view with recommendation source (happy path)', async () => {
     const expiresAt = '2026-10-21T12:00:00.000Z';
     vi.spyOn(teamsRepository, 'issueTeamInvitation').mockResolvedValue({
       invitation: {
@@ -38,13 +71,16 @@ describe('issueInvitation (US-017 / FR-048)', () => {
       teamName: 'HackMatch Innovators',
     });
 
-    const view = await issueInvitation({
-      actorParticipantId: ownerParticipant.id,
-      teamId: sampleTeamId,
-      vacancyId: sampleVacancyId,
-      inviteeParticipantId: otherParticipant.id,
-      source: 'recommendation',
-    });
+    const view = await issueInvitation(
+      {
+        actorParticipantId: ownerParticipant.id,
+        teamId: sampleTeamId,
+        vacancyId: sampleVacancyId,
+        inviteeParticipantId: otherParticipant.id,
+        source: 'recommendation',
+      },
+      passingEligibilityDeps()
+    );
 
     expect(teamsRepository.issueTeamInvitation).toHaveBeenCalledWith(
       ownerParticipant.id,
@@ -61,14 +97,70 @@ describe('issueInvitation (US-017 / FR-048)', () => {
   it('rejects self-invite before repository call', async () => {
     const spy = vi.spyOn(teamsRepository, 'issueTeamInvitation');
     await expect(
-      issueInvitation({
-        actorParticipantId: ownerParticipant.id,
-        teamId: sampleTeamId,
-        vacancyId: sampleVacancyId,
-        inviteeParticipantId: ownerParticipant.id,
-        source: 'recommendation',
-      })
+      issueInvitation(
+        {
+          actorParticipantId: ownerParticipant.id,
+          teamId: sampleTeamId,
+          vacancyId: sampleVacancyId,
+          inviteeParticipantId: ownerParticipant.id,
+          source: 'recommendation',
+        },
+        passingEligibilityDeps()
+      )
     ).rejects.toMatchObject({ code: 'CANNOT_INVITE_SELF' });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('blocks issuance when invitee is not Looking for Team (#163)', async () => {
+    const spy = vi.spyOn(teamsRepository, 'issueTeamInvitation');
+    const deps = passingEligibilityDeps();
+    deps.availabilityRepo.findByParticipantId.mockResolvedValue({
+      participantId: otherParticipant.id,
+      isLooking: false,
+      desiredRole: 'Frontend',
+      commitmentHours: 10,
+      goal: 'Learning',
+      updatedAt: null,
+    });
+
+    await expect(
+      issueInvitation(
+        {
+          actorParticipantId: ownerParticipant.id,
+          teamId: sampleTeamId,
+          vacancyId: sampleVacancyId,
+          inviteeParticipantId: otherParticipant.id,
+        },
+        deps
+      )
+    ).rejects.toMatchObject({ code: 'INVITEE_NOT_AVAILABLE', status: 409 });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('blocks issuance when vacancy is filled (#163)', async () => {
+    const spy = vi.spyOn(teamsRepository, 'issueTeamInvitation');
+    const deps = passingEligibilityDeps();
+    deps.teamsRepo.getTeamViewParts.mockResolvedValue({
+      ...sampleParts,
+      event: {
+        max_team_size: 4,
+        status: 'Published',
+        end_date: '2099-01-01T00:00:00.000Z',
+      },
+      vacancies: [{ ...sampleVacancy, status: 'Filled' }],
+    });
+
+    await expect(
+      issueInvitation(
+        {
+          actorParticipantId: ownerParticipant.id,
+          teamId: sampleTeamId,
+          vacancyId: sampleVacancyId,
+          inviteeParticipantId: otherParticipant.id,
+        },
+        deps
+      )
+    ).rejects.toMatchObject({ code: 'VACANCY_NOT_OPEN' });
     expect(spy).not.toHaveBeenCalled();
   });
 
@@ -79,21 +171,15 @@ describe('issueInvitation (US-017 / FR-048)', () => {
     });
 
     await expect(
-      issueInvitation({
-        actorParticipantId: ownerParticipant.id,
-        teamId: sampleTeamId,
-        vacancyId: sampleVacancyId,
-        inviteeParticipantId: otherParticipant.id,
-      })
-    ).rejects.toBeInstanceOf(TeamServiceError);
-
-    await expect(
-      issueInvitation({
-        actorParticipantId: ownerParticipant.id,
-        teamId: sampleTeamId,
-        vacancyId: sampleVacancyId,
-        inviteeParticipantId: otherParticipant.id,
-      })
+      issueInvitation(
+        {
+          actorParticipantId: ownerParticipant.id,
+          teamId: sampleTeamId,
+          vacancyId: sampleVacancyId,
+          inviteeParticipantId: otherParticipant.id,
+        },
+        passingEligibilityDeps()
+      )
     ).rejects.toMatchObject({ code: 'DUPLICATE_PENDING_INVITATION', status: 409 });
   });
 });

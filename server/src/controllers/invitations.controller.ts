@@ -1,15 +1,37 @@
 import type { Request, Response, NextFunction } from 'express';
 import { issueInvitation, listOwnerInvitations } from '../services/invitations.js';
-import { toTeamServiceError } from '../services/teamErrors.js';
+import { TEAM_ERROR_CATALOG, toTeamServiceError, type TeamErrorCode } from '../services/teamErrors.js';
+
+function fieldErrorsForInvitationCode(
+  code: TeamErrorCode
+): Record<string, string> | undefined {
+  const message = TEAM_ERROR_CATALOG[code]?.message ?? 'Validation failed.';
+  switch (code) {
+    case 'VACANCY_NOT_FOUND':
+    case 'VACANCY_NOT_OPEN':
+    case 'SLOT_PENDING_INVITATION_EXISTS':
+      return { vacancyId: message };
+    case 'INVITEE_NOT_ELIGIBLE':
+    case 'INVITEE_NOT_AVAILABLE':
+    case 'INVITEE_ALREADY_CONFIRMED':
+    case 'DUPLICATE_PENDING_INVITATION':
+    case 'CANNOT_INVITE_SELF':
+      return { inviteeParticipantId: message };
+    default:
+      return undefined;
+  }
+}
 
 function handleInvitationError(err: unknown, res: Response, next: NextFunction): void {
   res.setHeader('Cache-Control', 'no-store');
   const serviceErr = toTeamServiceError(err);
   if (serviceErr) {
+    const errors = fieldErrorsForInvitationCode(serviceErr.code);
     res.status(serviceErr.status).json({
       error: serviceErr.message,
       code: serviceErr.code,
       ...(serviceErr.details ? { details: serviceErr.details } : {}),
+      ...(errors ? { errors } : {}),
     });
     return;
   }

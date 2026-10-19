@@ -8,6 +8,10 @@
 import { INVITATION_TTL_HOURS } from '../db/invitationModel.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import type { TeamRequest } from '../db/types.js';
+import {
+  assertInvitationIssuanceContext,
+  type InvitationEligibilityDeps,
+} from './invitationEligibility.js';
 import { TeamServiceError, toTeamServiceError } from './teamErrors.js';
 
 export { INVITATION_TTL_HOURS };
@@ -87,14 +91,24 @@ export interface OwnerInvitationsListResult {
 
 /**
  * Owner issues a slot-specific Pending invitation (FR-049).
- * Same authorization/eligibility path for recommendation and direct entry points (FR-048).
+ * Express preflight (#163) validates availability, team/event mutability, and open slot;
+ * Postgres RPC re-checks the same rules atomically.
  */
-export async function issueInvitation(input: IssueInvitationInput): Promise<IssuedInvitationView> {
+export async function issueInvitation(
+  input: IssueInvitationInput,
+  eligibilityDeps?: Partial<InvitationEligibilityDeps>
+): Promise<IssuedInvitationView> {
   const source = input.source ?? 'direct';
 
-  if (input.actorParticipantId === input.inviteeParticipantId) {
-    throw new TeamServiceError('CANNOT_INVITE_SELF');
-  }
+  await assertInvitationIssuanceContext(
+    {
+      actorParticipantId: input.actorParticipantId,
+      teamId: input.teamId,
+      vacancyId: input.vacancyId,
+      inviteeParticipantId: input.inviteeParticipantId,
+    },
+    eligibilityDeps
+  );
 
   try {
     const result = await teamsRepository.issueTeamInvitation(

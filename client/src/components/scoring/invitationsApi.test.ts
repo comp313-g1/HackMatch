@@ -85,4 +85,34 @@ describe('issueTeamInvitation (FR-048)', () => {
       status: 409,
     });
   });
+
+  it('surfaces #163 field errors for open-slot and availability failures', async () => {
+    authFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 'VACANCY_NOT_OPEN',
+          error: 'This vacancy is not open. Invitations require an open slot.',
+          errors: {
+            vacancyId: 'This vacancy is not open. Invitations require an open slot.',
+          },
+        }),
+        { status: 409 }
+      )
+    );
+
+    await expect(
+      issueTeamInvitation('t1', {
+        vacancyId: 'v1',
+        inviteeParticipantId: 'p1',
+        source: 'recommendation',
+      })
+    ).rejects.toMatchObject({
+      name: 'InvitationsApiError',
+      code: 'VACANCY_NOT_OPEN',
+      status: 409,
+      errors: {
+        vacancyId: expect.stringMatching(/open slot/i),
+      },
+    });
+  });
 });

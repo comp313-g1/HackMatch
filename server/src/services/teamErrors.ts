@@ -32,7 +32,10 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   TEAM_NOT_MUTABLE: { status: 409, message: 'Team recruitment is not open or event is concluded.' },
   CAPACITY_EXCEEDED: { status: 409, message: 'Team capacity exceeded.' },
   VACANCY_NOT_FOUND: { status: 404, message: 'Vacancy not found or not open.' },
-  VACANCY_NOT_OPEN: { status: 409, message: 'Vacancy is not open and cannot be removed or modified.' },
+  VACANCY_NOT_OPEN: {
+    status: 409,
+    message: 'This vacancy is not open. Invitations require an open slot.',
+  },
   MEMBER_NOT_FOUND: { status: 404, message: 'Confirmed member not found on this team.' },
   CANNOT_REMOVE_OWNER: { status: 409, message: 'Team owner cannot be removed. To step down, disband the team.' },
   RECOMMENDATIONS_FORBIDDEN: {

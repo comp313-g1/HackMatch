@@ -3,6 +3,7 @@ import request from 'supertest';
 import { app } from '../app.js';
 import { participantsRepository } from '../db/participants.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
+import { availabilityRepository } from '../repositories/availability.repository.js';
 import {
   ownerParticipant,
   otherParticipant,
@@ -10,6 +11,8 @@ import {
   sampleVacancyId,
   sampleEventId,
   sampleTeam,
+  sampleParts,
+  sampleVacancy,
   validOwnerDecodedToken,
   validOtherDecodedToken,
   validTokenHeader,
@@ -34,12 +37,47 @@ vi.mock('../config/firebase.js', () => {
 
 const invitePath = `/api/teams/${sampleTeamId}/invitations`;
 
-describe('POST /api/teams/:teamId/invitations (US-017 / FR-048)', () => {
+function mockEligibleIssuanceContext(overrides?: {
+  vacancyStatus?: 'Open' | 'Filled';
+  recruitment_status?: 'Open' | 'Locked' | 'Disbanded';
+  eventStatus?: 'Published' | 'Archived' | 'Disabled';
+  isLooking?: boolean;
+  confirmedIds?: string[];
+}): void {
+  vi.spyOn(teamsRepository, 'getTeamViewParts').mockResolvedValue({
+    ...sampleParts,
+    team: {
+      ...sampleTeam,
+      recruitment_status: overrides?.recruitment_status ?? 'Open',
+    },
+    event: {
+      max_team_size: 4,
+      status: overrides?.eventStatus ?? 'Published',
+      end_date: '2099-01-01T00:00:00.000Z',
+    },
+    vacancies: [{ ...sampleVacancy, status: overrides?.vacancyStatus ?? 'Open' }],
+  });
+  vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue(
+    overrides?.confirmedIds ?? [ownerParticipant.id]
+  );
+  vi.spyOn(participantsRepository, 'findById').mockResolvedValue(otherParticipant);
+  vi.spyOn(availabilityRepository, 'findByParticipantId').mockResolvedValue({
+    participantId: otherParticipant.id,
+    isLooking: overrides?.isLooking ?? true,
+    desiredRole: 'Frontend',
+    commitmentHours: 10,
+    goal: 'Learning',
+    updatedAt: null,
+  });
+}
+
+describe('POST /api/teams/:teamId/invitations (US-017 / FR-048 / #163)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockVerifyIdToken.mockResolvedValue(validOwnerDecodedToken);
     vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(ownerParticipant);
     vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(sampleTeam);
+    mockEligibleIssuanceContext();
   });
 
   it('rejects unauthenticated requests with 401', async () => {
@@ -131,6 +169,93 @@ describe('POST /api/teams/:teamId/invitations (US-017 / FR-048)', () => {
     );
   });
 
+  it('returns 409 + vacancyId field error when slot is not open (#163)', async () => {
+    mockEligibleIssuanceContext({ vacancyStatus: 'Filled' });
+    const issueSpy = vi.spyOn(teamsRepository, 'issueTeamInvitation');
+
+    const res = await request(app)
+      .post(invitePath)
+      .set('Authorization', validTokenHeader)
+      .send({
+        vacancyId: sampleVacancyId,
+        inviteeParticipantId: otherParticipant.id,
+        source: 'direct',
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('VACANCY_NOT_OPEN');
+    expect(res.body.errors.vacancyId).toMatch(/open slot/i);
+    expect(issueSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when team is locked (#163 / US-017-T5)', async () => {
+    mockEligibleIssuanceContext({ recruitment_status: 'Locked' });
+
+    const res = await request(app)
+      .post(invitePath)
+      .set('Authorization', validTokenHeader)
+      .send({
+        vacancyId: sampleVacancyId,
+        inviteeParticipantId: otherParticipant.id,
+        source: 'direct',
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('TEAM_NOT_MUTABLE');
+  });
+
+  it('returns 409 when event is not recruiting (#163)', async () => {
+    mockEligibleIssuanceContext({ eventStatus: 'Archived' });
+
+    const res = await request(app)
+      .post(invitePath)
+      .set('Authorization', validTokenHeader)
+      .send({
+        vacancyId: sampleVacancyId,
+        inviteeParticipantId: otherParticipant.id,
+        source: 'direct',
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('EVENT_NOT_RECRUITING');
+  });
+
+  it('returns 409 + invitee field error when invitee is not Looking for Team (#163)', async () => {
+    mockEligibleIssuanceContext({ isLooking: false });
+
+    const res = await request(app)
+      .post(invitePath)
+      .set('Authorization', validTokenHeader)
+      .send({
+        vacancyId: sampleVacancyId,
+        inviteeParticipantId: otherParticipant.id,
+        source: 'direct',
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('INVITEE_NOT_AVAILABLE');
+    expect(res.body.errors.inviteeParticipantId).toMatch(/Looking for Team/i);
+  });
+
+  it('returns 409 when invitee is already confirmed for the event (#163)', async () => {
+    mockEligibleIssuanceContext({
+      confirmedIds: [ownerParticipant.id, otherParticipant.id],
+    });
+
+    const res = await request(app)
+      .post(invitePath)
+      .set('Authorization', validTokenHeader)
+      .send({
+        vacancyId: sampleVacancyId,
+        inviteeParticipantId: otherParticipant.id,
+        source: 'direct',
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('INVITEE_ALREADY_CONFIRMED');
+    expect(res.body.errors.inviteeParticipantId).toBeTruthy();
+  });
+
   it('returns 409 when a pending invite already exists for the invitee', async () => {
     vi.spyOn(teamsRepository, 'issueTeamInvitation').mockRejectedValue({
       message: 'DUPLICATE_PENDING_INVITATION',
@@ -148,25 +273,7 @@ describe('POST /api/teams/:teamId/invitations (US-017 / FR-048)', () => {
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('DUPLICATE_PENDING_INVITATION');
-  });
-
-  it('returns 409 when invitee is not Looking for Team', async () => {
-    vi.spyOn(teamsRepository, 'issueTeamInvitation').mockRejectedValue({
-      message: 'INVITEE_NOT_AVAILABLE',
-      code: 'P0001',
-    });
-
-    const res = await request(app)
-      .post(invitePath)
-      .set('Authorization', validTokenHeader)
-      .send({
-        vacancyId: sampleVacancyId,
-        inviteeParticipantId: otherParticipant.id,
-        source: 'recommendation',
-      });
-
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe('INVITEE_NOT_AVAILABLE');
+    expect(res.body.errors.inviteeParticipantId).toBeTruthy();
   });
 });
 

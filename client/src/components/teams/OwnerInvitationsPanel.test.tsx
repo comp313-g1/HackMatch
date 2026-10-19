@@ -194,4 +194,39 @@ describe('OwnerInvitationsPanel (US-017 / #162)', () => {
     expect(screen.getByText(/were kept/i)).toBeInTheDocument();
     expect(screen.getByTestId('owner-invite-form')).toBeInTheDocument();
   });
+
+  it('maps #163 eligibility field errors and keeps draft values', async () => {
+    fetchMock.mockResolvedValue({
+      teamId: 't1',
+      invitations: [],
+      empty: true,
+      message: 'No invitations yet.',
+    });
+    issueMock.mockRejectedValue(
+      new invitationsApi.TeamInvitationsApiError(
+        409,
+        'INVITEE_NOT_AVAILABLE',
+        {
+          inviteeParticipantId:
+            'This candidate is not Looking for Team and cannot be invited.',
+        },
+        undefined,
+        'This candidate is not Looking for Team and cannot be invited.'
+      )
+    );
+
+    render(<OwnerInvitationsPanel teamId="t1" vacancies={[openVacancy]} />);
+    await waitFor(() => expect(screen.getByTestId('send-invitation')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByTestId('invite-participant-input'), {
+      target: { value: inviteeId },
+    });
+    fireEvent.click(screen.getByTestId('send-invitation'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('invite-form-error')).toHaveTextContent(/Looking for Team/i);
+    });
+    expect(screen.getByTestId('invite-participant-input')).toHaveValue(inviteeId);
+    expect(screen.getByTestId('owner-invite-form')).toBeInTheDocument();
+  });
 });
