@@ -3,6 +3,7 @@ import request from 'supertest';
 import { app } from '../app.js';
 import { participantsRepository } from '../db/participants.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
+import { availabilityRepository } from '../repositories/availability.repository.js';
 import * as availabilityService from '../services/availability.service.js';
 import { EMPTY_RECOMMENDATIONS_MESSAGE } from '../services/recommendations.js';
 import {
@@ -103,6 +104,15 @@ describe('GET /api/teams/:teamId/vacancies/:vacancyId/recommendations (US-015)',
         updatedAt: '2026-10-18T00:00:00.000Z',
       },
     ]);
+    vi.spyOn(participantsRepository, 'findById').mockResolvedValue(otherParticipant);
+    vi.spyOn(availabilityRepository, 'findByParticipantId').mockResolvedValue({
+      participantId: otherParticipant.id,
+      isLooking: true,
+      desiredRole: 'Frontend',
+      commitmentHours: 10,
+      goal: 'Project Completion',
+      updatedAt: '2026-10-18T00:00:00.000Z',
+    });
 
     const res = await request(app).get(recPath).set('Authorization', validTokenHeader);
 
@@ -112,6 +122,13 @@ describe('GET /api/teams/:teamId/vacancies/:vacancyId/recommendations (US-015)',
     expect(res.body.candidates[0].displayScore).toBe('70.0');
     expect(res.body.candidates[0].contributions.skill).toMatch(/Matched 2 of 4/);
     expect(res.body.empty).toBe(false);
+    expect(res.body.exclusions).toEqual({
+      inactive: 0,
+      unavailable: 0,
+      confirmed: 0,
+      owner: 0,
+      totalExcluded: 0,
+    });
   });
 
   it('returns empty success payload when no eligible candidates remain', async () => {
@@ -123,6 +140,45 @@ describe('GET /api/teams/:teamId/vacancies/:vacancyId/recommendations (US-015)',
     expect(res.body.empty).toBe(true);
     expect(res.body.candidates).toEqual([]);
     expect(res.body.message).toBe(EMPTY_RECOMMENDATIONS_MESSAGE);
+    expect(res.body.message).toMatch(/Looking for Team/);
+  });
+
+  it('excludes confirmed event participants from ranked results', async () => {
+    vi.spyOn(availabilityService, 'listAvailableCandidates').mockResolvedValue([
+      {
+        participantId: otherParticipant.id,
+        displayName: 'Other Participant',
+        handle: 'other_dev',
+        institution: null,
+        primaryRole: 'Frontend',
+        desiredRole: 'Frontend',
+        commitmentHours: 10,
+        goal: 'Project Completion',
+        skills: ['React', 'TypeScript'],
+        portfolioLinks: [],
+        updatedAt: '2026-10-18T00:00:00.000Z',
+      },
+    ]);
+    vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue([
+      ownerParticipant.id,
+      otherParticipant.id,
+    ]);
+    vi.spyOn(participantsRepository, 'findById').mockResolvedValue(otherParticipant);
+    vi.spyOn(availabilityRepository, 'findByParticipantId').mockResolvedValue({
+      participantId: otherParticipant.id,
+      isLooking: true,
+      desiredRole: 'Frontend',
+      commitmentHours: 10,
+      goal: 'Project Completion',
+      updatedAt: null,
+    });
+
+    const res = await request(app).get(recPath).set('Authorization', validTokenHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.empty).toBe(true);
+    expect(res.body.exclusions.confirmed).toBe(1);
+    expect(res.body.candidates).toEqual([]);
   });
 
   it('returns 409 when vacancy is not open', async () => {

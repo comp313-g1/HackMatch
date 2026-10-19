@@ -7,7 +7,7 @@ import {
 } from './recommendations.js';
 import { TeamServiceError } from './teamErrors.js';
 import type { AvailableCandidateCard } from './availability.service.js';
-import type { Team, TeamVacancy } from '../db/types.js';
+import type { Participant, Team, TeamVacancy } from '../db/types.js';
 
 const ownerId = '11111111-1111-4111-8111-111111111111';
 const otherId = '22222222-2222-4222-8222-222222222222';
@@ -68,6 +68,39 @@ function candidate(
   };
 }
 
+function activePart(id: string): Participant {
+  return {
+    id,
+    firebase_uid: `fb-${id.slice(0, 8)}`,
+    email: `${id.slice(0, 8)}@example.com`,
+    full_name: 'Participant',
+    role: 'PART',
+    is_verified: true,
+    is_suspended: false,
+    created_at: '2026-10-18T00:00:00.000Z',
+    updated_at: '2026-10-18T00:00:00.000Z',
+  };
+}
+
+/** Shared deps that skip live revalidation unless a test opts in. */
+function baseRecDeps(
+  teamsRepo: {
+    getTeamViewParts: ReturnType<typeof vi.fn>;
+    listConfirmedParticipantIdsForEvent: ReturnType<typeof vi.fn>;
+  },
+  listCandidates: () => Promise<AvailableCandidateCard[]>,
+  extra: Partial<Parameters<typeof getRecommendationsForOpenSlot>[3]> = {}
+) {
+  return {
+    teamsRepo,
+    listCandidates,
+    revalidateEligibility: false as const,
+    participantsRepo: { findById: vi.fn() },
+    availabilityRepo: { findByParticipantId: vi.fn() },
+    ...extra,
+  };
+}
+
 describe('filterEligibleRecommendationCandidates', () => {
   it('excludes the owner and confirmed event participants', () => {
     const pool = [
@@ -100,10 +133,12 @@ describe('getRecommendationsForOpenSlot', () => {
       listConfirmedParticipantIdsForEvent: vi.fn().mockResolvedValue([ownerId]),
     };
 
-    const result = await getRecommendationsForOpenSlot(ownerId, teamId, vacancyId, {
-      teamsRepo,
-      listCandidates: async () => [candidate(otherId)],
-    });
+    const result = await getRecommendationsForOpenSlot(
+      ownerId,
+      teamId,
+      vacancyId,
+      baseRecDeps(teamsRepo, async () => [candidate(otherId)])
+    );
 
     expect(result.status).toBe('ok');
     expect(result.empty).toBe(false);
@@ -113,6 +148,7 @@ describe('getRecommendationsForOpenSlot', () => {
     expect(result.candidates[0].participantId).toBe(otherId);
     expect(result.notice).toMatch(/self-declared/);
     expect(result.slot.role).toBe('Frontend');
+    expect(result.exclusions.totalExcluded).toBe(0);
   });
 
   it('returns empty state when no eligible candidates remain', async () => {
@@ -126,14 +162,63 @@ describe('getRecommendationsForOpenSlot', () => {
       listConfirmedParticipantIdsForEvent: vi.fn().mockResolvedValue([ownerId, otherId]),
     };
 
-    const result = await getRecommendationsForOpenSlot(ownerId, teamId, vacancyId, {
-      teamsRepo,
-      listCandidates: async () => [candidate(otherId)],
-    });
+    const result = await getRecommendationsForOpenSlot(
+      ownerId,
+      teamId,
+      vacancyId,
+      baseRecDeps(teamsRepo, async () => [candidate(otherId)])
+    );
 
     expect(result.empty).toBe(true);
     expect(result.candidates).toEqual([]);
     expect(result.message).toBe(EMPTY_RECOMMENDATIONS_MESSAGE);
+    expect(result.exclusions.confirmed).toBe(1);
+  });
+
+  it('revalidates and drops suspended or not-looking candidates (FR-046)', async () => {
+    const teamsRepo = {
+      getTeamViewParts: vi.fn().mockResolvedValue({
+        team: baseTeam(),
+        event: { max_team_size: 4, status: 'Published', end_date: '2099-01-01T00:00:00.000Z' },
+        members: [],
+        vacancies: [openVacancy()],
+      }),
+      listConfirmedParticipantIdsForEvent: vi.fn().mockResolvedValue([ownerId]),
+    };
+
+    const suspendedId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+    const notLookingId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab';
+
+    const result = await getRecommendationsForOpenSlot(ownerId, teamId, vacancyId, {
+      teamsRepo,
+      listCandidates: async () => [
+        candidate(otherId),
+        candidate(suspendedId),
+        candidate(notLookingId),
+      ],
+      revalidateEligibility: true,
+      participantsRepo: {
+        findById: vi.fn(async (id: string) => {
+          if (id === suspendedId) return { ...activePart(id), is_suspended: true };
+          return activePart(id);
+        }),
+      },
+      availabilityRepo: {
+        findByParticipantId: vi.fn(async (id: string) => ({
+          participantId: id,
+          isLooking: id !== notLookingId,
+          desiredRole: 'Frontend' as const,
+          commitmentHours: 10,
+          goal: 'Project Completion' as const,
+          updatedAt: null,
+        })),
+      },
+    });
+
+    expect(result.candidates.map((c) => c.participantId)).toEqual([otherId]);
+    expect(result.exclusions.inactive).toBe(1);
+    expect(result.exclusions.unavailable).toBe(1);
+    expect(result.exclusions.totalExcluded).toBe(2);
   });
 
   it('denies non-owners at the service layer', async () => {
@@ -148,10 +233,12 @@ describe('getRecommendationsForOpenSlot', () => {
     };
 
     await expect(
-      getRecommendationsForOpenSlot(otherId, teamId, vacancyId, {
-        teamsRepo,
-        listCandidates: async () => [],
-      })
+      getRecommendationsForOpenSlot(
+        otherId,
+        teamId,
+        vacancyId,
+        baseRecDeps(teamsRepo, async () => [])
+      )
     ).rejects.toMatchObject({ code: 'RECOMMENDATIONS_FORBIDDEN' } satisfies Partial<TeamServiceError>);
   });
 
@@ -167,10 +254,12 @@ describe('getRecommendationsForOpenSlot', () => {
     };
 
     await expect(
-      getRecommendationsForOpenSlot(ownerId, teamId, vacancyId, {
-        teamsRepo,
-        listCandidates: async () => [],
-      })
+      getRecommendationsForOpenSlot(
+        ownerId,
+        teamId,
+        vacancyId,
+        baseRecDeps(teamsRepo, async () => [])
+      )
     ).rejects.toMatchObject({ code: 'VACANCY_NOT_FOUND' });
   });
 
@@ -186,10 +275,12 @@ describe('getRecommendationsForOpenSlot', () => {
     };
 
     await expect(
-      getRecommendationsForOpenSlot(ownerId, teamId, vacancyId, {
-        teamsRepo,
-        listCandidates: async () => [],
-      })
+      getRecommendationsForOpenSlot(
+        ownerId,
+        teamId,
+        vacancyId,
+        baseRecDeps(teamsRepo, async () => [])
+      )
     ).rejects.toMatchObject({ code: 'SLOT_NOT_OPEN_FOR_RECOMMENDATIONS' });
   });
 
@@ -205,10 +296,12 @@ describe('getRecommendationsForOpenSlot', () => {
     };
 
     await expect(
-      getRecommendationsForOpenSlot(ownerId, teamId, vacancyId, {
-        teamsRepo,
-        listCandidates: async () => [],
-      })
+      getRecommendationsForOpenSlot(
+        ownerId,
+        teamId,
+        vacancyId,
+        baseRecDeps(teamsRepo, async () => [])
+      )
     ).rejects.toMatchObject({ code: 'SLOT_NOT_OPEN_FOR_RECOMMENDATIONS' });
   });
 
@@ -223,13 +316,16 @@ describe('getRecommendationsForOpenSlot', () => {
       listConfirmedParticipantIdsForEvent: vi.fn().mockResolvedValue([ownerId]),
     };
 
-    const result = await getRecommendationsForOpenSlot(ownerId, teamId, vacancyId, {
-      teamsRepo,
-      listCandidates: async () => [candidate(otherId)],
-      computeScore: () => {
-        throw new Error('scoring exploded');
-      },
-    });
+    const result = await getRecommendationsForOpenSlot(
+      ownerId,
+      teamId,
+      vacancyId,
+      baseRecDeps(teamsRepo, async () => [candidate(otherId)], {
+        computeScore: () => {
+          throw new Error('scoring exploded');
+        },
+      })
+    );
 
     expect(result.status).toBe('degraded');
     expect(result.degradedNotice).toBe(SCORING_DEGRADED_NOTICE);
@@ -266,10 +362,12 @@ describe('getRecommendationsForOpenSlot', () => {
       goal: 'Learning',
     });
 
-    const result = await getRecommendationsForOpenSlot(ownerId, teamId, vacancyId, {
-      teamsRepo,
-      listCandidates: async () => [zoe, amy],
-    });
+    const result = await getRecommendationsForOpenSlot(
+      ownerId,
+      teamId,
+      vacancyId,
+      baseRecDeps(teamsRepo, async () => [zoe, amy])
+    );
 
     expect(result.candidates.map((c) => c.handle)).toEqual(['amy', 'zoe']);
   });

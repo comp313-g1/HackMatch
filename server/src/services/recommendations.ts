@@ -4,13 +4,20 @@
  * Authorization: only the team owner may request recommendations for an Open vacancy
  * on a recruiting team whose event is still Published and not past end_date.
  * Scoring uses FR-043–045; missing inputs score 0. Ranking ties use handle then id.
+ * FR-046 exclusions: inactive, not Looking for Team, confirmed for event (revalidated).
  * Response contributions never expose internal ranking ids as display fields (FR-047).
  * NR-016: scoring failure falls back to an unranked eligible list with a notice.
  */
 
 import type { ITeamsRepository } from '../db/teams.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
-import type { ParticipantPrimaryRole, Team, TeamVacancy } from '../db/types.js';
+import { participantsRepository } from '../db/participants.repository.js';
+import type { Participant, ParticipantPrimaryRole, Team, TeamVacancy } from '../db/types.js';
+import {
+  availabilityRepository,
+  type IAvailabilityRepository,
+  type PlatformAvailabilityRecord,
+} from '../repositories/availability.repository.js';
 import {
   listAvailableCandidates,
   type AvailableCandidateCard,
@@ -24,13 +31,27 @@ import {
   type RankableCompatibilityResult,
   type SlotScoringInput,
 } from './compatibilityScoring.js';
+import {
+  EXCLUSION_EMPTY_HINT,
+  partitionRecommendationCandidates,
+  type RecommendationExclusionSummary,
+} from './recommendationEligibility.js';
 import { TeamServiceError } from './teamErrors.js';
+
+export {
+  filterEligibleRecommendationCandidates,
+  evaluateRecommendationEligibility,
+  evaluateParticipantActivity,
+  evaluateAvailabilityLooking,
+  partitionRecommendationCandidates,
+  EXCLUSION_EMPTY_HINT,
+} from './recommendationEligibility.js';
 
 export const SELF_DECLARED_RECOMMENDATION_NOTICE =
   'Scores use self-declared skills, role, goal, and hours. Compatibility is a recommendation aid, not a probability of team success.';
 
 export const EMPTY_RECOMMENDATIONS_MESSAGE =
-  'No eligible candidates found for this open slot.';
+  `No eligible candidates found for this open slot. ${EXCLUSION_EMPTY_HINT}`;
 
 export const SCORING_DEGRADED_NOTICE =
   'Scores are temporarily unavailable. Showing eligible candidates without ranking.';
@@ -70,6 +91,8 @@ export interface RecommendationsResult {
   empty: boolean;
   message: string | null;
   notice: string;
+  /** FR-046 exclusion tallies (user-visible outcome summary; no PII of excluded users). */
+  exclusions: RecommendationExclusionSummary;
   /** Set when status === 'degraded' (NR-016). */
   degradedNotice?: string;
 }
@@ -81,6 +104,10 @@ export interface RecommendationsServiceDeps {
   >;
   listCandidates: (deps?: AvailabilityServiceDeps) => Promise<AvailableCandidateCard[]>;
   availabilityDeps?: AvailabilityServiceDeps;
+  participantsRepo: Pick<typeof participantsRepository, 'findById'>;
+  availabilityRepo: Pick<IAvailabilityRepository, 'findByParticipantId'>;
+  /** When false, skip per-candidate revalidation (tests only). Default true. */
+  revalidateEligibility?: boolean;
   /** Optional clock for tests (event end_date checks). */
   now?: () => Date;
   /** Injectable scorer for NR-016 degraded-path tests. */
@@ -91,11 +118,14 @@ export interface RecommendationsServiceDeps {
 }
 
 /** Lazy defaults so Vitest spies on repository/availability exports still apply. */
-function resolveDeps(deps?: RecommendationsServiceDeps): RecommendationsServiceDeps {
+function resolveDeps(deps?: Partial<RecommendationsServiceDeps>): RecommendationsServiceDeps {
   return {
     teamsRepo: deps?.teamsRepo ?? teamsRepository,
     listCandidates: deps?.listCandidates ?? listAvailableCandidates,
     availabilityDeps: deps?.availabilityDeps,
+    participantsRepo: deps?.participantsRepo ?? participantsRepository,
+    availabilityRepo: deps?.availabilityRepo ?? availabilityRepository,
+    revalidateEligibility: deps?.revalidateEligibility ?? true,
     now: deps?.now,
     computeScore: deps?.computeScore ?? computeCompatibilityScore,
   };
@@ -185,34 +215,48 @@ function toRankedCard(
   };
 }
 
-/**
- * Filters the Looking-for-Team pool for FR-046 baseline eligibility used by this service.
- * Deeper exclusion refinements may extend this in a follow-up US-015 task.
- */
-export function filterEligibleRecommendationCandidates(
-  candidates: AvailableCandidateCard[],
-  options: {
-    eventId: string;
-    ownerParticipantId: string;
-    confirmedParticipantIds: ReadonlySet<string>;
-  }
-): AvailableCandidateCard[] {
-  void options.eventId;
-  return candidates.filter((c) => {
-    if (c.participantId === options.ownerParticipantId) return false;
-    if (options.confirmedParticipantIds.has(c.participantId)) return false;
-    return true;
-  });
+async function buildRevalidationExtras(
+  pool: AvailableCandidateCard[],
+  deps: RecommendationsServiceDeps
+): Promise<
+  Map<
+    string,
+    {
+      participant: Participant | null;
+      availability: PlatformAvailabilityRecord | null;
+    }
+  >
+> {
+  const map = new Map<
+    string,
+    {
+      participant: Participant | null;
+      availability: PlatformAvailabilityRecord | null;
+    }
+  >();
+
+  await Promise.all(
+    pool.map(async (card) => {
+      const [participant, availability] = await Promise.all([
+        deps.participantsRepo.findById(card.participantId),
+        deps.availabilityRepo.findByParticipantId(card.participantId),
+      ]);
+      map.set(card.participantId, { participant, availability });
+    })
+  );
+
+  return map;
 }
 
 /**
  * Loads an open slot for the owner and returns ranked compatible candidates.
+ * Applies FR-046 exclusions with optional per-candidate revalidation.
  */
 export async function getRecommendationsForOpenSlot(
   actorParticipantId: string,
   teamId: string,
   vacancyId: string,
-  partialDeps?: RecommendationsServiceDeps
+  partialDeps?: Partial<RecommendationsServiceDeps>
 ): Promise<RecommendationsResult> {
   const deps = resolveDeps(partialDeps);
   const now = deps.now ? deps.now() : new Date();
@@ -234,11 +278,24 @@ export async function getRecommendationsForOpenSlot(
   );
 
   const pool = await deps.listCandidates(deps.availabilityDeps);
-  const eligible = filterEligibleRecommendationCandidates(pool, {
-    eventId: parts.team.event_id,
-    ownerParticipantId: parts.team.owner_participant_id,
-    confirmedParticipantIds: confirmedIds,
-  });
+
+  const extras =
+    deps.revalidateEligibility && pool.length > 0
+      ? await buildRevalidationExtras(pool, deps)
+      : undefined;
+
+  const partitioned = partitionRecommendationCandidates(
+    pool,
+    {
+      eventId: parts.team.event_id,
+      ownerParticipantId: parts.team.owner_participant_id,
+      confirmedParticipantIds: confirmedIds,
+    },
+    extras
+  );
+
+  const eligible = partitioned.eligible;
+  const exclusions = partitioned.summary;
 
   if (eligible.length === 0) {
     return {
@@ -250,6 +307,7 @@ export async function getRecommendationsForOpenSlot(
       empty: true,
       message: EMPTY_RECOMMENDATIONS_MESSAGE,
       notice: SELF_DECLARED_RECOMMENDATION_NOTICE,
+      exclusions,
     };
   }
 
@@ -260,7 +318,6 @@ export async function getRecommendationsForOpenSlot(
     const scoredEntries: Array<{ card: AvailableCandidateCard; ranked: RankableCompatibilityResult }> =
       eligible.map((card) => {
         const scored = scoreFn(slotInput, {
-          // FR-044 role match uses declared primary role; fall back to desired role when unset.
           primaryRole: card.primaryRole ?? card.desiredRole,
           skills: card.skills,
           commitmentHours: card.commitmentHours,
@@ -289,9 +346,9 @@ export async function getRecommendationsForOpenSlot(
       empty: false,
       message: null,
       notice: SELF_DECLARED_RECOMMENDATION_NOTICE,
+      exclusions,
     };
   } catch {
-    // NR-016: never fabricate scores; return unranked eligible list with notice.
     return {
       status: 'degraded',
       teamId,
@@ -301,6 +358,7 @@ export async function getRecommendationsForOpenSlot(
       empty: false,
       message: null,
       notice: SELF_DECLARED_RECOMMENDATION_NOTICE,
+      exclusions,
       degradedNotice: SCORING_DEGRADED_NOTICE,
     };
   }
