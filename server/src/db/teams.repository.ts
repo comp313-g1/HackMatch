@@ -44,6 +44,8 @@ export interface ITeamsRepository {
   findTeamById(teamId: string): Promise<Team | null>;
   findConfirmedTeamIdForParticipant(participantId: string, eventId: string): Promise<string | null>;
   findConfirmedTeamIdsForParticipant(participantId: string): Promise<string[]>;
+  /** FR-046: participant ids with Confirmed membership in the event (any team). */
+  listConfirmedParticipantIdsForEvent(eventId: string): Promise<string[]>;
   getTeamViewParts(teamId: string): Promise<{
     team: Team;
     event: {
@@ -154,6 +156,18 @@ export const teamsRepository: ITeamsRepository = {
 
     if (error) throw error;
     return (data || []).map((row: { team_id: string }) => row.team_id);
+  },
+
+  async listConfirmedParticipantIdsForEvent(eventId: string): Promise<string[]> {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('team_memberships')
+      .select('participant_id')
+      .eq('event_id', eventId)
+      .eq('status', 'Confirmed');
+
+    if (error) throw error;
+    return [...new Set((data || []).map((row: { participant_id: string }) => row.participant_id))];
   },
 
   async getTeamViewParts(teamId: string): Promise<{

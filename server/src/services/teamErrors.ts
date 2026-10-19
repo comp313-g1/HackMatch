@@ -11,7 +11,9 @@ export type TeamErrorCode =
   | 'VACANCY_NOT_FOUND'
   | 'VACANCY_NOT_OPEN'
   | 'MEMBER_NOT_FOUND'
-  | 'CANNOT_REMOVE_OWNER';
+  | 'CANNOT_REMOVE_OWNER'
+  | 'RECOMMENDATIONS_FORBIDDEN'
+  | 'SLOT_NOT_OPEN_FOR_RECOMMENDATIONS';
 
 export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message: string }> = {
   EVENT_NOT_FOUND: { status: 404, message: 'Event not found.' },
@@ -27,6 +29,14 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   VACANCY_NOT_OPEN: { status: 409, message: 'Vacancy is not open and cannot be removed or modified.' },
   MEMBER_NOT_FOUND: { status: 404, message: 'Confirmed member not found on this team.' },
   CANNOT_REMOVE_OWNER: { status: 409, message: 'Team owner cannot be removed. To step down, disband the team.' },
+  RECOMMENDATIONS_FORBIDDEN: {
+    status: 403,
+    message: 'Only the team owner can request candidate recommendations for an open slot.',
+  },
+  SLOT_NOT_OPEN_FOR_RECOMMENDATIONS: {
+    status: 409,
+    message: 'Recommendations require an open vacancy on a recruiting team in an active event.',
+  },
 };
 
 export class TeamServiceError extends Error {

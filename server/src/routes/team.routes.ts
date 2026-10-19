@@ -28,6 +28,7 @@ import {
   removeMemberHandler,
   listOpenTeamsHandler,
 } from '../controllers/team.controller.js';
+import { getVacancyRecommendationsHandler } from '../controllers/recommendations.controller.js';
 
 export const teamRouter = Router();
 
@@ -45,6 +46,13 @@ teamRouter.get('/mine', ...participantAuth, validateMyTeamQuery, getMyTeamHandle
 teamRouter.get('/:teamId', ...participantAuth, validateTeamIdParams, requireTeamOwner, getTeamHandler);
 teamRouter.patch('/:teamId', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateUpdateTeamBody, updateTeamHandler);
 teamRouter.post('/:teamId/vacancies', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateVacancyBody, addVacancyHandler);
+teamRouter.get(
+  '/:teamId/vacancies/:vacancyId/recommendations',
+  ...participantAuth,
+  validateTeamIdParams,
+  requireTeamOwner,
+  getVacancyRecommendationsHandler
+);
 teamRouter.patch('/:teamId/vacancies/:vacancyId', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateVacancyBody, updateVacancyHandler);
 teamRouter.delete('/:teamId/vacancies/:vacancyId', ...participantAuth, validateTeamIdParams, requireTeamOwner, removeVacancyHandler);
 teamRouter.post('/:teamId/disband', ...participantAuth, validateTeamIdParams, requireTeamOwner, disbandTeamHandler);
