@@ -14,6 +14,8 @@ import {
 import { toTeamView } from '../services/teamView.js';
 import { teamsRepository, type TeamListingPatch } from '../db/teams.repository.js';
 import { toTeamServiceError } from '../services/teamErrors.js';
+import { listOpenTeams, type OpenTeamsViewer } from '../services/openTeams.js';
+import type { OpenTeamsQuery } from '../validators/openTeams.validator.js';
 import type { TeamGoal, ParticipantPrimaryRole } from '../db/types.js';
 
 function handleControllerError(err: unknown, res: Response, next: NextFunction): void {
@@ -228,6 +230,20 @@ export async function removeMemberHandler(req: Request, res: Response, next: Nex
       availabilityRestored,
       team,
     });
+  } catch (err: unknown) {
+    handleControllerError(err, res, next);
+  }
+}
+
+export async function listOpenTeamsHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const query = res.locals.openTeamsQuery as OpenTeamsQuery;
+    const viewer: OpenTeamsViewer = req.participant
+      ? { category: 'PART', participantId: req.participant.id }
+      : { category: 'VISITOR' };
+    const result = await listOpenTeams(query, viewer);
+    res.status(200).json(result);
   } catch (err: unknown) {
     handleControllerError(err, res, next);
   }

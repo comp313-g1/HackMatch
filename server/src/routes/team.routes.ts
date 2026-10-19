@@ -5,6 +5,7 @@ import { requireActiveAccount } from '../middleware/requireActiveAccount.js';
 import { requireParticipantRole } from '../middleware/requireRole.js';
 import { requireVerifiedParticipant } from '../middleware/requireVerifiedParticipant.js';
 import { requireTeamOwner } from '../middleware/requireTeamOwner.js';
+import { optionalParticipantAuth } from '../middleware/optionalParticipantAuth.js';
 import {
   validateTeamIdParams,
   validateMyTeamQuery,
@@ -14,6 +15,7 @@ import {
   validateVacancyBody,
   validateRemovalReasonBody,
 } from '../validators/team.validator.js';
+import { validateOpenTeamsQuery } from '../validators/openTeams.validator.js';
 import {
   createTeamHandler,
   getMyTeamHandler,
@@ -24,6 +26,7 @@ import {
   removeVacancyHandler,
   disbandTeamHandler,
   removeMemberHandler,
+  listOpenTeamsHandler,
 } from '../controllers/team.controller.js';
 
 export const teamRouter = Router();
@@ -36,6 +39,7 @@ const participantAuth = [
   requireVerifiedParticipant,
 ];
 
+teamRouter.get('/', optionalParticipantAuth, validateOpenTeamsQuery, listOpenTeamsHandler);
 teamRouter.post('/', ...participantAuth, requireJsonObjectBody, validateCreateTeamBody, createTeamHandler);
 teamRouter.get('/mine', ...participantAuth, validateMyTeamQuery, getMyTeamHandler);
 teamRouter.get('/:teamId', ...participantAuth, validateTeamIdParams, requireTeamOwner, getTeamHandler);
