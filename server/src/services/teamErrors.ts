@@ -71,7 +71,7 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   },
   INVITEE_ALREADY_CONFIRMED: {
     status: 409,
-    message: 'This candidate is already confirmed on a team for this event.',
+    message: 'This candidate is already a confirmed member of this team.',
   },
   DUPLICATE_PENDING_INVITATION: {
     status: 409,

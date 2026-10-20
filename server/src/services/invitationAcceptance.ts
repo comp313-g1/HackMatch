@@ -15,7 +15,6 @@ import { teamsRepository } from '../db/teams.repository.js';
 import type { Participant, Team, TeamRequest, TeamVacancy } from '../db/types.js';
 import type { IParticipantRepository } from '../db/participants.repository.js';
 import { participantsRepository } from '../db/participants.repository.js';
-import { deriveTeamLifecycle } from './teamLifecycle.js';
 import { TeamServiceError } from './teamErrors.js';
 
 export type AcceptanceRevalidationFailure =
@@ -77,14 +76,10 @@ export function evaluateAcceptanceSlotStillOpen(
 
 export function evaluateAcceptanceTeamAndEvent(
   team: Pick<Team, 'recruitment_status'>,
-  event: { status: 'Published' | 'Archived' | 'Disabled'; end_date: string },
-  now: Date = new Date()
+  _event?: { status: 'Published' | 'Archived' | 'Disabled'; end_date: string } | null,
+  _now?: Date
 ): AcceptanceRevalidationDecision {
-  const lifecycle = deriveTeamLifecycle(team, event, now);
-  if (!lifecycle.mutable) {
-    if (lifecycle.reason === 'EventNotRecruiting') {
-      return { ok: false, code: 'EVENT_NOT_RECRUITING' };
-    }
+  if (team.recruitment_status !== 'Open') {
     return { ok: false, code: 'TEAM_NOT_MUTABLE' };
   }
   return { ok: true, code: null };
@@ -115,8 +110,13 @@ export interface InvitationAcceptanceDeps {
     | 'findInvitationById'
     | 'markInvitationExpiredIfDue'
     | 'getTeamViewParts'
-    | 'listConfirmedParticipantIdsForEvent'
-  >;
+  > &
+    Partial<
+      Pick<
+        ITeamsRepository,
+        'listConfirmedParticipantIdsForTeam' | 'listConfirmedParticipantIdsForEvent'
+      >
+    >;
   participantsRepo: Pick<IParticipantRepository, 'findById'>;
   now?: () => Date;
 }
@@ -186,7 +186,7 @@ export async function revalidateInvitationForAcceptance(
   const teamEvent = evaluateAcceptanceTeamAndEvent(parts.team, eventMeta, now);
   if (!teamEvent.ok && teamEvent.code) {
     throw new TeamServiceError(teamEvent.code, {
-      reason: deriveTeamLifecycle(parts.team, eventMeta, now).reason,
+      recruitment_status: parts.team.recruitment_status,
     });
   }
 
@@ -204,10 +204,23 @@ export async function revalidateInvitationForAcceptance(
     throw new TeamServiceError(account.code);
   }
 
-  const confirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForEvent(
-    invitation.event_id
-  );
-  if (confirmedIds.includes(input.actorParticipantId)) {
+  const memberIdsFromView = (parts.members ?? []).map((m) => m.participant_id);
+  let repoTeamConfirmedIds: string[] = [];
+  if (deps.teamsRepo.listConfirmedParticipantIdsForTeam) {
+    try {
+      repoTeamConfirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForTeam(invitation.team_id);
+    } catch (err) {
+      if (deps.teamsRepo.listConfirmedParticipantIdsForEvent) {
+        repoTeamConfirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForEvent(invitation.event_id);
+      } else {
+        throw err;
+      }
+    }
+  } else if (deps.teamsRepo.listConfirmedParticipantIdsForEvent) {
+    repoTeamConfirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForEvent(invitation.event_id);
+  }
+  const confirmedIds = new Set<string>([...memberIdsFromView, ...repoTeamConfirmedIds]);
+  if (confirmedIds.has(input.actorParticipantId)) {
     throw new TeamServiceError('INVITEE_ALREADY_CONFIRMED');
   }
 
@@ -218,6 +231,6 @@ export async function revalidateInvitationForAcceptance(
     teamName: parts.team.name,
     vacancyRole: vacancy?.role ?? null,
     notice:
-      'Invitation is still valid within its 48-hour window. Slot, team, and event checks passed at acceptance time.',
+      'Invitation is still valid within its 48-hour window. Slot and team checks passed at acceptance time.',
   };
 }

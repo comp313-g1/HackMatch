@@ -13,7 +13,6 @@ import { participantsRepository } from '../db/participants.repository.js';
 import type { Participant, Team, TeamVacancy } from '../db/types.js';
 import type { IAvailabilityRepository } from '../repositories/availability.repository.js';
 import { availabilityRepository } from '../repositories/availability.repository.js';
-import { deriveTeamLifecycle } from './teamLifecycle.js';
 import { TeamServiceError } from './teamErrors.js';
 
 export type InvitationEligibilityFailure =
@@ -82,18 +81,13 @@ export function evaluateOpenSlot(
 export function evaluateOwnerAndTeamMutable(
   actorParticipantId: string,
   team: Pick<Team, 'owner_participant_id' | 'recruitment_status'>,
-  event: { status: 'Published' | 'Archived' | 'Disabled'; end_date: string },
-  now: Date = new Date()
+  _event?: { status: 'Published' | 'Archived' | 'Disabled'; end_date: string } | null,
+  _now?: Date
 ): InvitationEligibilityDecision {
   if (team.owner_participant_id !== actorParticipantId) {
     return { ok: false, code: 'FORBIDDEN_NOT_TEAM_OWNER' };
   }
-
-  const lifecycle = deriveTeamLifecycle(team, event, now);
-  if (!lifecycle.mutable) {
-    if (lifecycle.reason === 'EventNotRecruiting') {
-      return { ok: false, code: 'EVENT_NOT_RECRUITING' };
-    }
+  if (team.recruitment_status !== 'Open') {
     return { ok: false, code: 'TEAM_NOT_MUTABLE' };
   }
   return { ok: true, code: null };
@@ -109,8 +103,14 @@ export interface InvitationIssuanceContextInput {
 export interface InvitationEligibilityDeps {
   teamsRepo: Pick<
     ITeamsRepository,
-    'getTeamViewParts' | 'listConfirmedParticipantIdsForEvent' | 'findTeamById'
-  >;
+    'getTeamViewParts' | 'findTeamById'
+  > &
+    Partial<
+      Pick<
+        ITeamsRepository,
+        'listConfirmedParticipantIdsForTeam' | 'listConfirmedParticipantIdsForEvent'
+      >
+    >;
   participantsRepo: Pick<IParticipantRepository, 'findById'>;
   availabilityRepo: Pick<IAvailabilityRepository, 'findByParticipantId'>;
   now?: () => Date;
@@ -154,7 +154,7 @@ export async function assertInvitationIssuanceContext(
   );
   if (!ownerDecision.ok && ownerDecision.code) {
     throw new TeamServiceError(ownerDecision.code, {
-      reason: deriveTeamLifecycle(parts.team, eventMeta, now).reason,
+      recruitment_status: parts.team.recruitment_status,
     });
   }
 
@@ -178,9 +178,24 @@ export async function assertInvitationIssuanceContext(
     throw new TeamServiceError(lookingDecision.code);
   }
 
-  const confirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForEvent(parts.team.event_id);
+  const memberIdsFromView = (parts.members ?? []).map((m) => m.participant_id);
+  let repoTeamConfirmedIds: string[] = [];
+  if (deps.teamsRepo.listConfirmedParticipantIdsForTeam) {
+    try {
+      repoTeamConfirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForTeam(input.teamId);
+    } catch (err) {
+      if (deps.teamsRepo.listConfirmedParticipantIdsForEvent) {
+        repoTeamConfirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForEvent(parts.team.event_id);
+      } else {
+        throw err;
+      }
+    }
+  } else if (deps.teamsRepo.listConfirmedParticipantIdsForEvent) {
+    repoTeamConfirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForEvent(parts.team.event_id);
+  }
+  const confirmedIds = new Set<string>([...memberIdsFromView, ...repoTeamConfirmedIds]);
   const confirmedDecision = evaluateInviteeNotConfirmed(
-    confirmedIds.includes(input.inviteeParticipantId)
+    confirmedIds.has(input.inviteeParticipantId)
   );
   if (!confirmedDecision.ok && confirmedDecision.code) {
     throw new TeamServiceError(confirmedDecision.code);

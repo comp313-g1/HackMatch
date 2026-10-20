@@ -211,8 +211,28 @@ describe('POST /api/teams/:teamId/invitations (US-017 / FR-048 / #163)', () => {
     expect(res.body.code).toBe('TEAM_NOT_MUTABLE');
   });
 
-  it('returns 409 when event is not recruiting (#163)', async () => {
+  it('allows invitation issuance when event is archived as long as team is Open (US-017 event-free)', async () => {
     mockEligibleIssuanceContext({ eventStatus: 'Archived' });
+    vi.spyOn(teamsRepository, 'issueTeamInvitation').mockResolvedValue({
+      invitation: {
+        id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        team_id: sampleTeamId,
+        event_id: sampleEventId,
+        vacancy_id: sampleVacancyId,
+        participant_id: otherParticipant.id,
+        request_type: 'Invitation',
+        status: 'Pending',
+        cancel_reason: null,
+        resolved_at: null,
+        expires_at: '2026-10-21T15:00:00.000Z',
+        message: null,
+        created_at: '2026-10-19T15:00:00.000Z',
+        updated_at: '2026-10-19T15:00:00.000Z',
+      },
+      expiresAt: '2026-10-21T15:00:00.000Z',
+      vacancyRole: 'Frontend',
+      teamName: 'HackMatch Innovators',
+    });
 
     const res = await request(app)
       .post(invitePath)
@@ -223,8 +243,8 @@ describe('POST /api/teams/:teamId/invitations (US-017 / FR-048 / #163)', () => {
         source: 'direct',
       });
 
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe('EVENT_NOT_RECRUITING');
+    expect(res.status).toBe(201);
+    expect(res.body.invitation.status).toBe('Pending');
   });
 
   it('returns 409 + invitee field error when invitee is not Looking for Team (#163)', async () => {
