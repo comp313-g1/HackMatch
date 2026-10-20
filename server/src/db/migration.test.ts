@@ -187,7 +187,9 @@ describe('0036_lock_team.sql atomic roster lock (#208 / US-022 / FR-066)', () =>
     expect(sql).toMatch(/locked_at\s*=\s*v_locked_at/i);
     expect(sql).toMatch(/cancel_reason\s*=\s*'TEAM_LOCKED'/i);
     expect(sql).toMatch(/status\s*=\s*'Canceled'/i);
+    expect(sql).toMatch(/resolved_at\s*=\s*now\(\)/i);
     expect(sql).toMatch(/REQUEST_CANCELED_TEAM_LOCKED/i);
+    expect(sql).toMatch(/WHERE\s+team_id\s*=\s*p_team[\s\S]*?AND\s+status\s*=\s*'Pending'/i);
   });
 
   it('updates leave_team to take the shared team advisory lock before FOR UPDATE', () => {

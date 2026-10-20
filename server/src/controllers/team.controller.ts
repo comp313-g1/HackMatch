@@ -15,6 +15,7 @@ import {
 } from '../services/teamManagement.js';
 import { toTeamView } from '../services/teamView.js';
 import { validateRosterLockForOwner } from '../services/rosterLockValidation.js';
+import { canceledRequestsLockMessage } from '../services/lockCancel.js';
 import { teamsRepository, type TeamListingPatch } from '../db/teams.repository.js';
 import { toTeamServiceError } from '../services/teamErrors.js';
 import { listOpenTeams, type OpenTeamsViewer } from '../services/openTeams.js';
@@ -248,10 +249,7 @@ export async function lockTeamHandler(req: Request, res: Response, next: NextFun
 
     const result = await lockTeam(actorId, teamId);
 
-    const requestText =
-      result.canceledRequests === 1
-        ? '1 pending request was canceled.'
-        : `${result.canceledRequests} pending requests were canceled.`;
+    const requestText = canceledRequestsLockMessage(result.canceledRequests);
 
     res.setHeader('Cache-Control', 'no-store');
     res.status(200).json({

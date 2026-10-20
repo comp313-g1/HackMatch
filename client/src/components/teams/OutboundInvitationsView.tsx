@@ -1,5 +1,6 @@
 import React from 'react';
 import type { OwnerInvitationListItem } from './invitationsApi';
+import { cancelReasonLabel } from './requestCancelReason';
 
 export type InvitationListState = 'loading' | 'success' | 'error';
 
@@ -105,6 +106,14 @@ export function OutboundInvitationsView({
                   {' · '}
                   <span data-testid={`invitation-expiry-${inv.id}`}>{expiryLabel(inv)}</span>
                 </p>
+                {cancelReasonLabel(inv.cancelReason) ? (
+                  <p
+                    className="text-amber-900/90"
+                    data-testid={`invitation-cancel-reason-${inv.id}`}
+                  >
+                    {cancelReasonLabel(inv.cancelReason)}
+                  </p>
+                ) : null}
               </div>
               {inv.status === 'Pending' && !inv.expiredByClock ? (
                 <button

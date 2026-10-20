@@ -47,6 +47,8 @@ export interface OwnerInvitationListItem {
   resolvedAt: string | null;
   vacancyRole: string | null;
   teamName: string;
+  /** Set when Canceled/Declined — e.g. TEAM_LOCKED after roster lock (#209). */
+  cancelReason: string | null;
   expiredByClock: boolean;
 }
 

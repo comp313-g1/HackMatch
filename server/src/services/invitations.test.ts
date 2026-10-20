@@ -308,6 +308,37 @@ describe('listOwnerInvitations (US-017 / #162)', () => {
     expect(result.invitations[0].status).toBe('Pending');
     expect(result.invitations[0].expiredByClock).toBe(true);
   });
+
+  it('exposes TEAM_LOCKED cancelReason after roster lock (#209)', async () => {
+    vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(sampleTeam);
+    vi.spyOn(teamsRepository, 'listTeamInvitations').mockResolvedValue([
+      {
+        invitation: {
+          id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          team_id: sampleTeamId,
+          event_id: sampleEventId,
+          vacancy_id: sampleVacancyId,
+          participant_id: otherParticipant.id,
+          request_type: 'Invitation',
+          status: 'Canceled',
+          cancel_reason: 'TEAM_LOCKED',
+          resolved_at: '2026-10-20T15:30:00.000Z',
+          expires_at: '2026-10-22T00:00:00.000Z',
+          message: null,
+          created_at: '2026-10-18T00:00:00.000Z',
+          updated_at: '2026-10-20T15:30:00.000Z',
+        },
+        inviteeHandle: 'other_dev',
+        inviteeDisplayName: 'Other',
+        vacancyRole: 'Frontend',
+        teamName: 'HackMatch Innovators',
+      },
+    ]);
+
+    const result = await listOwnerInvitations(ownerParticipant.id, sampleTeamId);
+    expect(result.invitations[0].status).toBe('Canceled');
+    expect(result.invitations[0].cancelReason).toBe('TEAM_LOCKED');
+  });
 });
 
 describe('cancelInvitation (US-017 / #166 / FR-052)', () => {

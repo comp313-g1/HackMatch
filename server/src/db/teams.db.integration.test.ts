@@ -795,6 +795,127 @@ describe.skipIf(isGated)('US-012 Real Postgres Integration Suite (Lifecycle & Co
     expect(inv2Err?.code).toBe('23505');
   });
 
+  // Scenario 12: Lock cancels Pending invitations + applications (US-022 / #209)
+  it('Scenario 12: lock_team cancels Pending invitations and applications with TEAM_LOCKED', async () => {
+    const owner = await createTestParticipant('sc12-owner');
+    const member = await createTestParticipant('sc12-member');
+    const invitee = await createTestParticipant('sc12-invitee');
+    const applicant = await createTestParticipant('sc12-applicant');
+    const acceptedInvitee = await createTestParticipant('sc12-accepted');
+    const event = await createTestEvent('sc12-event', { max_team_size: 4 });
+
+    const { data: teamRes, error: teamErr } = await supabase.rpc('create_team_with_owner', {
+      p_owner_id: owner.id,
+      p_event_id: event.id,
+      p_name: `${PREFIX} Lock Cancel Team`,
+      p_pitch: 'Testing cancel-on-lock for invitations and applications.',
+      p_goal: 'Project Completion',
+      p_commitment_hours: 12,
+    });
+    expect(teamErr).toBeNull();
+    const teamId = teamRes.team.id;
+
+    await supabase.from('team_memberships').insert({
+      team_id: teamId,
+      event_id: event.id,
+      participant_id: member.id,
+      role: 'Member',
+      status: 'Confirmed',
+    });
+
+    const { data: vacRes } = await supabase.rpc('add_team_vacancy', {
+      p_actor: owner.id,
+      p_team: teamId,
+      p_role: 'Frontend',
+      p_skills: ['React'],
+    });
+    const vacancyId = vacRes.vacancy.id;
+
+    await supabase.from('team_requests').insert([
+      {
+        team_id: teamId,
+        event_id: event.id,
+        vacancy_id: vacancyId,
+        participant_id: invitee.id,
+        request_type: 'Invitation',
+        status: 'Pending',
+      },
+      {
+        team_id: teamId,
+        event_id: event.id,
+        vacancy_id: vacancyId,
+        participant_id: applicant.id,
+        request_type: 'Application',
+        status: 'Pending',
+      },
+      {
+        team_id: teamId,
+        event_id: event.id,
+        vacancy_id: vacancyId,
+        participant_id: acceptedInvitee.id,
+        request_type: 'Invitation',
+        status: 'Accepted',
+      },
+    ]);
+
+    const { data: lockRes, error: lockErr } = await supabase.rpc('lock_team', {
+      p_actor: owner.id,
+      p_team: teamId,
+    });
+    expect(lockErr).toBeNull();
+    expect(lockRes.canceledRequests).toBe(2);
+    expect(lockRes.memberCount).toBe(2);
+    expect(lockRes.lockedAt).toBeTruthy();
+
+    const { data: teamRow } = await supabase
+      .from('teams')
+      .select('recruitment_status, locked_at')
+      .eq('id', teamId)
+      .single();
+    expect(teamRow?.recruitment_status).toBe('Locked');
+    expect(teamRow?.locked_at).toBeTruthy();
+
+    const { data: inviteRow } = await supabase
+      .from('team_requests')
+      .select('status, cancel_reason, resolved_at')
+      .eq('participant_id', invitee.id)
+      .single();
+    expect(inviteRow?.status).toBe('Canceled');
+    expect(inviteRow?.cancel_reason).toBe('TEAM_LOCKED');
+    expect(inviteRow?.resolved_at).toBeTruthy();
+
+    const { data: appRow } = await supabase
+      .from('team_requests')
+      .select('status, cancel_reason, resolved_at')
+      .eq('participant_id', applicant.id)
+      .single();
+    expect(appRow?.status).toBe('Canceled');
+    expect(appRow?.cancel_reason).toBe('TEAM_LOCKED');
+    expect(appRow?.resolved_at).toBeTruthy();
+
+    const { data: acceptedRow } = await supabase
+      .from('team_requests')
+      .select('status, cancel_reason')
+      .eq('participant_id', acceptedInvitee.id)
+      .single();
+    expect(acceptedRow?.status).toBe('Accepted');
+    expect(acceptedRow?.cancel_reason).toBeNull();
+
+    const { data: cancelAlerts } = await supabase
+      .from('participant_notifications')
+      .select('type, participant_id')
+      .eq('team_id', teamId)
+      .eq('type', 'REQUEST_CANCELED_TEAM_LOCKED');
+    expect((cancelAlerts || []).length).toBe(2);
+
+    // Unauthorized: non-owner cannot lock
+    const { error: nonOwnerErr } = await supabase.rpc('lock_team', {
+      p_actor: member.id,
+      p_team: teamId,
+    });
+    expect(nonOwnerErr?.message).toMatch(/FORBIDDEN_NOT_TEAM_OWNER|ALREADY_LOCKED/);
+  });
+
   // Scenario 11: Direct-anon denial verifies REVOKE permissions
   it('Scenario 11: Calling team functions directly with anon key client is denied', async () => {
     const anonKey = process.env.SUPABASE_ANON_KEY || 'fake-anon-key';
