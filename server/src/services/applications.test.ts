@@ -44,7 +44,16 @@ function passingEligibility(overrides?: {
   };
 }
 
-describe('submitApplication (US-018 / #172 / #173)', () => {
+function passingQuotas(pendingCount = 0) {
+  return {
+    teamsRepo: {
+      findTeamById: vi.fn().mockResolvedValue(sampleTeam),
+      countPendingApplicationsForEvent: vi.fn().mockResolvedValue(pendingCount),
+    },
+  };
+}
+
+describe('submitApplication (US-018 / #172 / #173 / #174)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
@@ -79,7 +88,7 @@ describe('submitApplication (US-018 / #172 / #173)', () => {
         vacancyId: sampleVacancyId,
         message: 'Interested in Frontend',
       },
-      { eligibility: passingEligibility() }
+      { eligibility: passingEligibility(), quotas: passingQuotas(1) }
     );
 
     expect(view).toMatchObject({
@@ -109,7 +118,7 @@ describe('submitApplication (US-018 / #172 / #173)', () => {
           vacancyId: sampleVacancyId,
           message: null,
         },
-        { eligibility: passingEligibility({ vacancyStatus: 'Filled' }) }
+        { eligibility: passingEligibility({ vacancyStatus: 'Filled' }), quotas: passingQuotas() }
       )
     ).rejects.toMatchObject({ code: 'VACANCY_NOT_OPEN', status: 409 });
     expect(rpcSpy).not.toHaveBeenCalled();
@@ -126,7 +135,10 @@ describe('submitApplication (US-018 / #172 / #173)', () => {
           vacancyId: sampleVacancyId,
           message: null,
         },
-        { eligibility: passingEligibility({ recruitment_status: 'Locked' }) }
+        {
+          eligibility: passingEligibility({ recruitment_status: 'Locked' }),
+          quotas: passingQuotas(),
+        }
       )
     ).rejects.toMatchObject({ code: 'TEAM_NOT_MUTABLE', status: 409 });
     expect(rpcSpy).not.toHaveBeenCalled();
@@ -147,9 +159,31 @@ describe('submitApplication (US-018 / #172 / #173)', () => {
           eligibility: passingEligibility({
             confirmedIds: [ownerParticipant.id, otherParticipant.id],
           }),
+          quotas: passingQuotas(),
         }
       )
     ).rejects.toMatchObject({ code: 'APPLICANT_ALREADY_CONFIRMED', status: 409 });
+    expect(rpcSpy).not.toHaveBeenCalled();
+  });
+
+  it('blocks 4th Pending application in Express quota preflight before RPC (#174 / T4)', async () => {
+    const rpcSpy = vi.spyOn(teamsRepository, 'submitTeamApplication');
+
+    await expect(
+      submitApplication(
+        {
+          actorParticipantId: otherParticipant.id,
+          teamId: sampleTeamId,
+          vacancyId: sampleVacancyId,
+          message: null,
+        },
+        { eligibility: passingEligibility(), quotas: passingQuotas(3) }
+      )
+    ).rejects.toMatchObject({
+      code: 'APPLICATION_PENDING_LIMIT',
+      status: 409,
+      details: expect.objectContaining({ limit: 3, pendingCount: 3 }),
+    });
     expect(rpcSpy).not.toHaveBeenCalled();
   });
 
@@ -168,7 +202,7 @@ describe('submitApplication (US-018 / #172 / #173)', () => {
           vacancyId: sampleVacancyId,
           message: null,
         },
-        { eligibility: passingEligibility() }
+        { eligibility: passingEligibility(), quotas: passingQuotas(2) }
       )
     ).rejects.toMatchObject({
       code: 'APPLICATION_PENDING_LIMIT',
@@ -192,7 +226,7 @@ describe('submitApplication (US-018 / #172 / #173)', () => {
           vacancyId: sampleVacancyId,
           message: null,
         },
-        { eligibility: passingEligibility() }
+        { eligibility: passingEligibility(), quotas: passingQuotas(0) }
       )
     ).rejects.toMatchObject({
       code: 'DUPLICATE_PENDING_APPLICATION',
@@ -211,7 +245,10 @@ describe('submitApplication (US-018 / #172 / #173)', () => {
           vacancyId: sampleVacancyId,
           message: null,
         },
-        { eligibility: passingEligibility({ applicant: ownerParticipant }) }
+        {
+          eligibility: passingEligibility({ applicant: ownerParticipant }),
+          quotas: passingQuotas(),
+        }
       )
     ).rejects.toMatchObject({
       code: 'CANNOT_APPLY_TO_OWN_TEAM',

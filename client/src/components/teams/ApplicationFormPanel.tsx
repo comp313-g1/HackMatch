@@ -79,7 +79,18 @@ export function ApplicationFormPanel({
       if (err instanceof AuthRequiredError) {
         setSubmitError('You need to sign in to submit an application.');
       } else if (err instanceof ApplicationsApiError) {
-        setSubmitError(err.message || 'Could not submit application.');
+        if (err.code === 'APPLICATION_PENDING_LIMIT') {
+          setSubmitError(
+            err.message ||
+              'You already have 3 pending applications for this event. Withdraw one or wait for a decision before applying again.'
+          );
+        } else if (err.code === 'DUPLICATE_PENDING_APPLICATION') {
+          setSubmitError(
+            err.message || 'You already have a pending application for this team.'
+          );
+        } else {
+          setSubmitError(err.message || 'Could not submit application.');
+        }
         if (err.errors) {
           setFieldErrors({
             message: err.errors.message,

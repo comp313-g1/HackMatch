@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   APPLICATION_MESSAGE_MAX_LENGTH,
+  MAX_PENDING_APPLICATIONS_PER_EVENT,
   isApplicationMessageTooLong,
   normalizeApplicationMessage,
   submitTeamApplication,
@@ -115,6 +116,34 @@ describe('applicationsApi (US-018 / #171)', () => {
       name: 'ApplicationsApiError',
       code: 'DUPLICATE_PENDING_APPLICATION',
       status: 409,
+    });
+  });
+
+  it('surfaces APPLICATION_PENDING_LIMIT with details (#174 / FR-054)', async () => {
+    expect(MAX_PENDING_APPLICATIONS_PER_EVENT).toBe(3);
+
+    authFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 'APPLICATION_PENDING_LIMIT',
+          error: 'You already have 3 pending applications for this event.',
+          errors: {
+            _form: 'You already have 3 pending applications for this event.',
+          },
+          details: { limit: 3, pendingCount: 3 },
+        }),
+        { status: 409 }
+      )
+    );
+
+    await expect(
+      submitTeamApplication('t1', { vacancyId: 'v1', message: 'Still want in' })
+    ).rejects.toMatchObject({
+      name: 'ApplicationsApiError',
+      code: 'APPLICATION_PENDING_LIMIT',
+      status: 409,
+      details: { limit: 3, pendingCount: 3 },
+      message: expect.stringMatching(/3 pending/i),
     });
   });
 });

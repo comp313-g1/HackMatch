@@ -61,6 +61,29 @@ describe('ApplicationForm (US-018 / #171)', () => {
     expect(screen.getByTestId('application-form-slot')).toHaveTextContent(/Frontend/i);
     expect(screen.getByTestId('application-message-count')).toHaveTextContent(/5 \/ 250/i);
   });
+
+  it('shows FR-054 per-event pending quota hint (#174)', () => {
+    render(
+      <ApplicationForm
+        target={target}
+        message=""
+        fieldErrors={{}}
+        submitError={null}
+        successNotice={null}
+        submitting={false}
+        onMessageChange={() => {}}
+        onSubmit={(e) => e.preventDefault()}
+        onCancel={() => {}}
+      />
+    );
+
+    expect(screen.getByTestId('application-form-quota-hint')).toHaveTextContent(
+      /at most 3 pending applications per event/i
+    );
+    expect(screen.getByTestId('application-form-quota-hint')).toHaveTextContent(
+      /other events have separate limits/i
+    );
+  });
 });
 
 describe('ApplicationFormPanel (US-018 / #171)', () => {
@@ -117,7 +140,7 @@ describe('ApplicationFormPanel (US-018 / #171)', () => {
     expect(screen.getByTestId('application-message-input')).toHaveValue('');
   });
 
-  it('keeps message draft when API returns field/quota errors', async () => {
+  it('keeps message draft when API returns APPLICATION_PENDING_LIMIT (#174 / NR-017)', async () => {
     submitMock.mockRejectedValue(
       new applicationsApi.ApplicationsApiError(
         409,

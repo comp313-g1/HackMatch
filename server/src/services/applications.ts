@@ -1,6 +1,7 @@
 /**
- * US-018 / #172–#173 team application submission.
+ * US-018 / #172–#174 team application submission.
  * Express preflight (#173) enforces verified PART, unlocked team, open slot, one-team;
+ * Express quota preflight (#174) enforces 3 Pending per PART/event;
  * atomic pending-count / duplicate checks live in submit_team_application (FR-054 / FR-053).
  */
 import { teamsRepository } from '../db/teams.repository.js';
@@ -9,6 +10,10 @@ import {
   assertApplicationSubmissionContext,
   type ApplicationEligibilityDeps,
 } from './applicationEligibility.js';
+import {
+  assertApplicationQuotas,
+  type ApplicationQuotaDeps,
+} from './applicationQuota.js';
 import { TeamServiceError, toTeamServiceError } from './teamErrors.js';
 
 export interface SubmitApplicationInput {
@@ -20,6 +25,7 @@ export interface SubmitApplicationInput {
 
 export interface SubmitApplicationDeps {
   eligibility?: Partial<ApplicationEligibilityDeps>;
+  quotas?: Partial<ApplicationQuotaDeps>;
 }
 
 export interface SubmittedApplicationView {
@@ -65,9 +71,9 @@ function toView(
 }
 
 /**
- * Verified PART applies to an open vacancy (FR-053 / #173).
- * Express preflight validates eligibility; Postgres RPC re-checks and enforces
- * atomic 3-pending-per-event and duplicate-team quotas (FR-054).
+ * Verified PART applies to an open vacancy (FR-053 / #173 / #174).
+ * Express preflight validates eligibility and 3-pending-per-event quota;
+ * Postgres RPC re-checks atomically (FR-054).
  */
 export async function submitApplication(
   input: SubmitApplicationInput,
@@ -80,6 +86,14 @@ export async function submitApplication(
       vacancyId: input.vacancyId,
     },
     deps?.eligibility
+  );
+
+  await assertApplicationQuotas(
+    {
+      actorParticipantId: input.actorParticipantId,
+      teamId: input.teamId,
+    },
+    deps?.quotas
   );
 
   try {

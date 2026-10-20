@@ -42,6 +42,7 @@ function mockEligibleApplyContext(overrides?: {
   vacancyStatus?: 'Open' | 'Filled' | 'Removed';
   recruitment_status?: 'Open' | 'Locked' | 'Disbanded';
   confirmedIds?: string[];
+  pendingCountForEvent?: number;
 }): void {
   vi.spyOn(participantsRepository, 'findById').mockResolvedValue(otherParticipant);
   vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(sampleTeam);
@@ -60,6 +61,9 @@ function mockEligibleApplyContext(overrides?: {
   });
   vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue(
     overrides?.confirmedIds ?? [ownerParticipant.id]
+  );
+  vi.spyOn(teamsRepository, 'countPendingApplicationsForEvent').mockResolvedValue(
+    overrides?.pendingCountForEvent ?? 0
   );
 }
 
@@ -169,12 +173,9 @@ describe('POST /api/teams/:teamId/applications (US-018 / #172 / #173)', () => {
     );
   });
 
-  it('returns 409 APPLICATION_PENDING_LIMIT when RPC enforces 3-pending cap (FR-054)', async () => {
-    vi.spyOn(teamsRepository, 'submitTeamApplication').mockRejectedValue({
-      message: 'APPLICATION_PENDING_LIMIT',
-      code: 'P0001',
-      detail: JSON.stringify({ limit: 3, pendingCount: 3 }),
-    });
+  it('returns 409 APPLICATION_PENDING_LIMIT from Express quota preflight (#174 / T4)', async () => {
+    mockEligibleApplyContext({ pendingCountForEvent: 3 });
+    const rpcSpy = vi.spyOn(teamsRepository, 'submitTeamApplication');
 
     const res = await request(app)
       .post(applyPath)
@@ -184,6 +185,8 @@ describe('POST /api/teams/:teamId/applications (US-018 / #172 / #173)', () => {
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('APPLICATION_PENDING_LIMIT');
     expect(res.body.errors._form).toMatch(/3 pending/i);
+    expect(res.body.details).toMatchObject({ limit: 3, pendingCount: 3 });
+    expect(rpcSpy).not.toHaveBeenCalled();
   });
 
   it('returns 409 DUPLICATE_PENDING_APPLICATION for second pending on same team', async () => {

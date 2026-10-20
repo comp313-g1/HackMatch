@@ -5,6 +5,9 @@ export { AuthRequiredError };
 /** FR-053 / R-02 — optional applicant message max length (mirrors server applicationModel). */
 export const APPLICATION_MESSAGE_MAX_LENGTH = 250;
 
+/** FR-054 / US-018 — concurrent Pending Review apps per PART per event. */
+export const MAX_PENDING_APPLICATIONS_PER_EVENT = 3;
+
 export class ApplicationsApiError extends Error {
   constructor(
     readonly status: number,

@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   APPLICATION_MESSAGE_MAX_LENGTH,
+  MAX_PENDING_APPLICATIONS_PER_EVENT,
   normalizeApplicationMessage,
 } from './applicationsApi';
 import type { OpenTeamApplyTarget } from './openTeamsApi';
@@ -71,10 +72,11 @@ export function ApplicationForm({
         </button>
       </div>
 
-      <p className="text-xs text-ink-muted">
+      <p className="text-xs text-ink-muted" data-testid="application-form-quota-hint">
         Submit a Pending Review application for an open slot. An optional message of at most{' '}
-        {APPLICATION_MESSAGE_MAX_LENGTH} characters may be included. You may hold at most 3 pending
-        applications per event.
+        {APPLICATION_MESSAGE_MAX_LENGTH} characters may be included. You may hold at most{' '}
+        {MAX_PENDING_APPLICATIONS_PER_EVENT} pending applications per event; other events have
+        separate limits.
       </p>
 
       <dl className="text-xs text-ink space-y-1.5 rounded-md border border-cream-200 bg-cream-50/40 p-3">
