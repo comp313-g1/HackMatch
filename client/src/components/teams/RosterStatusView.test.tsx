@@ -125,11 +125,11 @@ describe('RosterStatusView (US-019 / #185)', () => {
         }}
       />
     );
-    expect(screen.getByTestId('roster-lifecycle-note')).toHaveTextContent(/locked/i);
-    expect(screen.queryByTestId('roster-locked-at')).not.toBeInTheDocument();
+    expect(screen.getByTestId('roster-lifecycle-note')).toHaveTextContent(/roster locked/i);
+    expect(screen.queryByTestId('locked-roster-locked-at')).not.toBeInTheDocument();
   });
 
-  it('shows server lock timestamp when Locked and lockedAt is set (#206)', () => {
+  it('shows server lock timestamp when Locked and lockedAt is set (#206 / #211)', () => {
     render(
       <RosterStatusView
         team={{
@@ -142,6 +142,7 @@ describe('RosterStatusView (US-019 / #185)', () => {
       />
     );
     expect(screen.getByTestId('roster-recruitment-status')).toHaveTextContent('Locked');
-    expect(screen.getByTestId('roster-locked-at')).toHaveTextContent(/locked at/i);
+    expect(screen.getByTestId('locked-roster-locked-at')).toHaveTextContent(/locked at/i);
+    expect(screen.getByTestId('locked-roster-badge')).toBeInTheDocument();
   });
 });

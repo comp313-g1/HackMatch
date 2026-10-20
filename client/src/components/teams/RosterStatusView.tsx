@@ -1,5 +1,6 @@
 import React from 'react';
 import type { TeamView, TeamMemberView, TeamVacancyView } from './teamTypes';
+import { LockedRosterBadge } from './LockedRosterBadge';
 
 export type RosterStatusViewState = 'loading' | 'success' | 'empty' | 'error';
 
@@ -195,30 +196,33 @@ export function RosterStatusView({
             </p>
           ) : null}
         </div>
-        <span
-          className={`inline-flex items-center px-2.5 py-1 rounded text-[11px] font-semibold border ${statusBadgeClass(recruitmentStatus)}`}
-          data-testid="roster-recruitment-status"
-        >
-          {recruitmentStatus}
-        </span>
+        {recruitmentStatus === 'Locked' ? (
+          <span data-testid="roster-recruitment-status">
+            <LockedRosterBadge lockedAt={team?.lockedAt ?? null} variant="badge" />
+          </span>
+        ) : (
+          <span
+            className={`inline-flex items-center px-2.5 py-1 rounded text-[11px] font-semibold border ${statusBadgeClass(recruitmentStatus)}`}
+            data-testid="roster-recruitment-status"
+          >
+            {recruitmentStatus}
+          </span>
+        )}
       </div>
 
-      {lifecycle && !lifecycle.mutable && lifecycle.reason ? (
+      {lifecycle && !lifecycle.mutable && lifecycle.reason === 'Locked' ? (
+        <div data-testid="roster-lifecycle-note">
+          <LockedRosterBadge lockedAt={team?.lockedAt ?? null} variant="note" />
+        </div>
+      ) : lifecycle && !lifecycle.mutable && lifecycle.reason ? (
         <div
           role="note"
           className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-3 py-2"
           data-testid="roster-lifecycle-note"
         >
-          {lifecycle.reason === 'Locked'
-            ? 'Roster is locked. Membership changes are closed.'
-            : lifecycle.reason === 'Disbanded'
-              ? 'This team was disbanded.'
-              : 'Event recruitment has ended. Roster changes are closed.'}
-          {lifecycle.reason === 'Locked' && team?.lockedAt ? (
-            <span className="block mt-1 text-amber-800/90" data-testid="roster-locked-at">
-              Locked at {new Date(team.lockedAt).toLocaleString()}
-            </span>
-          ) : null}
+          {lifecycle.reason === 'Disbanded'
+            ? 'This team was disbanded.'
+            : 'Event recruitment has ended. Roster changes are closed.'}
         </div>
       ) : null}
 

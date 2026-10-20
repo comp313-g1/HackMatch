@@ -8,8 +8,10 @@ import { TeamRosterPanel } from './TeamRosterPanel';
 import { LeaveTeamPanel } from './LeaveTeamPanel';
 import { RosterStatusView } from './RosterStatusView';
 import { OwnerApplicationsPanel } from './OwnerApplicationsPanel';
-import { RosterLockValidationPanel } from './RosterLockValidationPanel';
+import { ConfirmLockRosterPanel } from './ConfirmLockRosterPanel';
+import { LockedRosterBadge } from './LockedRosterBadge';
 import { POST_LOCK_UI_NOTICE } from './postLockGuards';
+import { canceledRequestsOnLockNotice } from './requestCancelReason';
 
 export interface TeamWorkspaceProps {
   eventId: string;
@@ -192,6 +194,10 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
           </div>
         )}
 
+        {isLocked && team.lifecycle?.reason === 'Locked' ? (
+          <LockedRosterBadge lockedAt={team.lockedAt} variant="badge" />
+        ) : null}
+
         <RosterStatusView
           team={team}
           viewState="success"
@@ -224,8 +230,16 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
         </div>
       )}
 
-      {/* Lifecycle Read-Only Notice */}
-      {isLocked && lifecycleNotice && (
+      {/* Lifecycle Read-Only Notice / locked badge (#211) */}
+      {isLocked && team.lifecycle?.reason === 'Locked' ? (
+        <div
+          className="flex flex-wrap items-center gap-3"
+          data-testid="owner-locked-roster-banner"
+        >
+          <LockedRosterBadge lockedAt={team.lockedAt} variant="badge" />
+          <p className="text-sm text-amber-900">{POST_LOCK_UI_NOTICE}</p>
+        </div>
+      ) : isLocked && lifecycleNotice ? (
         <div
           role="note"
           className="p-4 bg-amber-50 border border-amber-200 text-amber-900 text-sm rounded-lg flex items-center gap-3"
@@ -235,7 +249,7 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
           </span>
           <span>{lifecycleNotice}</span>
         </div>
-      )}
+      ) : null}
 
       {/* Responsive layout: 1 col on mobile, 2 cols on lg+ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
@@ -340,11 +354,17 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
             }}
           />
 
-          <RosterLockValidationPanel
+          <ConfirmLockRosterPanel
             teamId={team.id}
             members={team.members}
             disabled={isLocked}
+            lockedAt={team.lockedAt}
             refreshKey={invitationsRefreshKey}
+            onLocked={({ team: lockedTeam, canceledRequests, message }) => {
+              setTeam(lockedTeam);
+              const cancelNotice = canceledRequestsOnLockNotice(canceledRequests);
+              setStatusNotice(message || `Roster locked. ${cancelNotice}`);
+            }}
           />
 
           <TeamRosterPanel

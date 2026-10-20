@@ -11,6 +11,7 @@ vi.mock('./teamApi', async () => {
     ...actual,
     fetchMyTeam: vi.fn(),
     validateTeamLock: vi.fn(),
+    lockTeam: vi.fn(),
   };
 });
 
@@ -156,7 +157,7 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
       expect(screen.getByDisplayValue('HackMatch Innovators')).toBeInTheDocument();
       expect(screen.getByText('Recruiting Roles & Open Slots')).toBeInTheDocument();
       expect(screen.getByText('Team Roster')).toBeInTheDocument();
-      expect(screen.getByTestId('roster-lock-validation-panel')).toBeInTheDocument();
+      expect(screen.getByTestId('confirm-lock-roster-panel')).toBeInTheDocument();
       expect(screen.getAllByText('Ada Lovelace').length).toBeGreaterThanOrEqual(1);
     });
   });
@@ -214,12 +215,13 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
     render(<TeamWorkspace eventId="e-123" />);
 
     await waitFor(() => {
-      const note = screen.getByRole('note');
-      expect(note).toHaveTextContent(/roster is locked/i);
-      expect(note).toHaveTextContent(/leaving/i);
-      expect(note).toHaveTextContent(/slot edits/i);
-      expect(note).toHaveTextContent(/disbanding/i);
-      expect(note).toHaveTextContent(/locked at/i);
+      expect(screen.getByTestId('owner-locked-roster-banner')).toBeInTheDocument();
+      expect(screen.getByTestId('locked-roster-badge')).toHaveTextContent(/locked/i);
+      expect(screen.getByTestId('owner-locked-roster-banner')).toHaveTextContent(
+        /leaving, member removals/i
+      );
+      expect(screen.getByTestId('confirm-lock-roster-panel')).toBeInTheDocument();
+      expect(screen.getByTestId('locked-roster-status-note')).toHaveTextContent(/locked at/i);
       expect(screen.getByRole('button', { name: /save changes/i })).toBeDisabled();
       expect(screen.getByRole('button', { name: /\+ add open slot/i })).toBeDisabled();
       expect(screen.getByRole('button', { name: /disband team/i })).toBeDisabled();
