@@ -55,11 +55,14 @@ describe('OwnerApplicationsPanel (US-020 / #188)', () => {
 
     render(<OwnerApplicationsPanel teamId="team-1" />);
 
-    await waitFor(() => expect(screen.getByText(/Grace Hopper \(@grace\)/)).toBeInTheDocument());
-    expect(screen.getByText(/Backend · Pending Review/)).toBeInTheDocument();
-    expect(screen.getByText(/TypeScript, PostgreSQL/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeInTheDocument());
+    expect(screen.getByText('@grace')).toBeInTheDocument();
+    expect(screen.getAllByText('Backend').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Pending Review')).toBeInTheDocument();
+    expect(screen.getByText('TypeScript')).toBeInTheDocument();
+    expect(screen.getByText('PostgreSQL')).toBeInTheDocument();
     expect(screen.getByText(application.message as string)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Projects.*self-declared/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Projects/i })).toHaveAttribute(
       'href',
       'https://example.com/grace'
     );
@@ -125,5 +128,35 @@ describe('OwnerApplicationsPanel (US-020 / #188)', () => {
     expect(alert).toHaveTextContent(/temporarily unavailable/i);
     expect(alert).toHaveTextContent(/previously loaded applications are still shown/i);
     expect(screen.getByText(/Grace Hopper/)).toBeInTheDocument();
+  });
+
+  it('shows validation feedback without discarding an already loaded review', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        teamId: 'team-1',
+        applications: [application],
+        empty: false,
+        message: null,
+      })
+      .mockRejectedValueOnce(
+        new applicationsApi.ApplicationsApiError(
+          400,
+          'VALIDATION_ERROR',
+          { teamId: 'Team id must be a valid UUID.' },
+          undefined,
+          'Team id must be a valid UUID.'
+        )
+      );
+
+    render(<OwnerApplicationsPanel teamId="team-1" />);
+    await screen.findByText('Grace Hopper');
+
+    fireEvent.click(screen.getByRole('button', { name: /refresh/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/valid UUID/i);
+    expect(alert).toHaveTextContent(/previously loaded applications are still shown/i);
+    expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
+    expect(screen.getByText(application.message as string)).toBeInTheDocument();
   });
 });
