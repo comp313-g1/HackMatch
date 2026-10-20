@@ -54,10 +54,13 @@ describe('App Component (View Routing and Integration)', () => {
     expect(skipLink).toHaveAttribute('href', '#main-content');
   });
 
-  it('renders the main landmark and health probe button', () => {
+  it('renders the main landmark and production-safe footer', () => {
     render(<App />);
     expect(screen.getByRole('main')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /probe \/api\/health/i })).toBeInTheDocument();
+    const footer = screen.getByRole('contentinfo');
+    expect(within(footer).getByText('HackMatch')).toBeInTheDocument();
+    expect(within(footer).queryByText(/COMP 313 Project 2/i)).not.toBeInTheDocument();
+    expect(within(footer).queryByRole('button', { name: /probe \/api\/health/i })).not.toBeInTheDocument();
   });
 
   it('renders LandingPage by default when URL has no verification parameters', () => {

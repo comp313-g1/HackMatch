@@ -498,38 +498,6 @@ export function LandingPage({
         </div>
       </section>
 
-      {/* Floating Role Preview Badge from wireframe */}
-      <div className="fixed bottom-4 left-4 z-40 print:hidden">
-        <div className="relative">
-          <div
-            className="flex items-center gap-2 rounded-full border border-cream-200 bg-white/95 px-3 py-2 shadow-md backdrop-blur text-xs"
-            aria-label="Role preview status"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-forest shrink-0"
-              aria-hidden="true"
-            >
-              <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-            <span className="text-ink-muted">
-              Preview as{' '}
-              <span className="font-semibold text-forest-900">
-                {currentUser ? 'Participant' : 'Visitor'}
-              </span>
-            </span>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
