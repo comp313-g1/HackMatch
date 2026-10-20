@@ -28,7 +28,7 @@ const openVacancy: TeamVacancyView = {
 
 const inviteeId = '22222222-2222-4222-8222-222222222222';
 
-describe('OwnerInvitationsPanel (US-017 / #162)', () => {
+describe('OwnerInvitationsPanel (US-017 / #167 invite form + invitation view)', () => {
   beforeEach(() => {
     fetchMock.mockReset();
     issueMock.mockReset();
@@ -428,6 +428,150 @@ describe('OwnerInvitationsPanel (US-017 / #162)', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('invite-vacancy-select')).toHaveTextContent(/pending invite/i);
+    });
+  });
+
+  it('shows empty-slot and locked messaging without clearing the form shell (#167)', async () => {
+    fetchMock.mockResolvedValue({
+      teamId: 't1',
+      invitations: [],
+      empty: true,
+      message: 'No invitations yet.',
+    });
+
+    render(<OwnerInvitationsPanel teamId="t1" vacancies={[]} disabled />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('invite-form-no-slots')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('invite-form-locked')).toHaveTextContent(/locked/i);
+    expect(screen.getByTestId('send-invitation')).toBeDisabled();
+    expect(screen.getByTestId('owner-invite-form')).toBeInTheDocument();
+  });
+
+  it('shows loading then refreshes outbound view when refreshKey changes (#167)', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        teamId: 't1',
+        invitations: [],
+        empty: true,
+        message: 'No invitations yet.',
+      })
+      .mockResolvedValueOnce({
+        teamId: 't1',
+        invitations: [
+          {
+            id: 'inv-from-rec',
+            teamId: 't1',
+            eventId: 'e1',
+            vacancyId: openVacancy.id,
+            inviteeParticipantId: inviteeId,
+            inviteeHandle: 'mj',
+            inviteeDisplayName: 'MJ',
+            status: 'Pending',
+            requestType: 'Invitation',
+            expiresAt: '2026-10-21T12:00:00.000Z',
+            createdAt: '2026-10-19T12:00:00.000Z',
+            resolvedAt: null,
+            vacancyRole: 'Frontend',
+            teamName: 'Team',
+            expiredByClock: false,
+          },
+        ],
+        empty: false,
+        message: null,
+      });
+
+    const { rerender } = render(
+      <OwnerInvitationsPanel teamId="t1" vacancies={[openVacancy]} refreshKey={0} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('invitations-empty')).toBeInTheDocument();
+    });
+
+    rerender(<OwnerInvitationsPanel teamId="t1" vacancies={[openVacancy]} refreshKey={1} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('invitation-row-inv-from-rec')).toBeInTheDocument();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps prior invitation rows visible while a refresh is in flight (NR-017)', async () => {
+    let resolveSecond: ((value: invitationsApi.OwnerInvitationsListResponse) => void) | undefined;
+    fetchMock
+      .mockResolvedValueOnce({
+        teamId: 't1',
+        invitations: [
+          {
+            id: 'inv-keep',
+            teamId: 't1',
+            eventId: 'e1',
+            vacancyId: openVacancy.id,
+            inviteeParticipantId: inviteeId,
+            inviteeHandle: 'mj',
+            inviteeDisplayName: 'MJ',
+            status: 'Pending',
+            requestType: 'Invitation',
+            expiresAt: '2026-10-21T12:00:00.000Z',
+            createdAt: '2026-10-19T12:00:00.000Z',
+            resolvedAt: null,
+            vacancyRole: 'Frontend',
+            teamName: 'Team',
+            expiredByClock: false,
+          },
+        ],
+        empty: false,
+        message: null,
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecond = resolve;
+          })
+      );
+
+    render(<OwnerInvitationsPanel teamId="t1" vacancies={[openVacancy]} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('invitation-row-inv-keep')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('refresh-invitations'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('invitations-refreshing')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('invitation-row-inv-keep')).toBeInTheDocument();
+
+    resolveSecond?.({
+      teamId: 't1',
+      invitations: [
+        {
+          id: 'inv-keep',
+          teamId: 't1',
+          eventId: 'e1',
+          vacancyId: openVacancy.id,
+          inviteeParticipantId: inviteeId,
+          inviteeHandle: 'mj',
+          inviteeDisplayName: 'MJ',
+          status: 'Pending',
+          requestType: 'Invitation',
+          expiresAt: '2026-10-21T12:00:00.000Z',
+          createdAt: '2026-10-19T12:00:00.000Z',
+          resolvedAt: null,
+          vacancyRole: 'Frontend',
+          teamName: 'Team',
+          expiredByClock: false,
+        },
+      ],
+      empty: false,
+      message: null,
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('invitations-refreshing')).not.toBeInTheDocument();
     });
   });
 });

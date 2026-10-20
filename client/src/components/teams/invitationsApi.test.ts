@@ -18,7 +18,7 @@ vi.mock('../../config/authFetch', () => ({
   },
 }));
 
-describe('teams invitationsApi (US-017 / #162)', () => {
+describe('teams invitationsApi (US-017 / #167 shared client)', () => {
   beforeEach(() => {
     authFetchMock.mockReset();
   });
@@ -125,7 +125,7 @@ describe('teams invitationsApi (US-017 / #162)', () => {
     );
 
     await expect(revalidateInvitationAcceptance('inv-1')).rejects.toMatchObject({
-      name: 'TeamInvitationsApiError',
+      name: 'InvitationsApiError',
       code: 'INVITATION_EXPIRED',
       status: 409,
       errors: {

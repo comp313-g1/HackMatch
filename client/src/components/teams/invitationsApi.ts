@@ -2,6 +2,7 @@ import { authFetch, AuthRequiredError } from '../../config/authFetch';
 
 export { AuthRequiredError };
 
+/** Shared invitation API error (US-017). Scoring UI aliases this as InvitationsApiError. */
 export class TeamInvitationsApiError extends Error {
   constructor(
     readonly status: number,
@@ -12,6 +13,20 @@ export class TeamInvitationsApiError extends Error {
   ) {
     super(message || code);
     this.name = 'TeamInvitationsApiError';
+  }
+}
+
+/** Alias for recommendation invite flows (FR-048) that expect this class name. */
+export class InvitationsApiError extends TeamInvitationsApiError {
+  constructor(
+    status: number,
+    code: string,
+    errors?: Record<string, string | undefined>,
+    details?: Record<string, unknown>,
+    message?: string
+  ) {
+    super(status, code, errors, details, message);
+    this.name = 'InvitationsApiError';
   }
 }
 
@@ -80,7 +95,7 @@ async function parseOrThrow<T>(res: Response): Promise<T> {
     // Non-JSON
   }
 
-  throw new TeamInvitationsApiError(
+  throw new InvitationsApiError(
     res.status,
     errBody.code || 'UNKNOWN_ERROR',
     errBody.errors,
@@ -95,7 +110,7 @@ async function authCall<T>(call: () => Promise<Response>): Promise<T> {
     res = await call();
   } catch (err: unknown) {
     if (err instanceof AuthRequiredError) throw err;
-    throw new TeamInvitationsApiError(
+    throw new InvitationsApiError(
       0,
       'NETWORK',
       { _form: 'Network error. Your invitation form values have been kept.' },

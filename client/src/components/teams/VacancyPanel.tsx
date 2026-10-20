@@ -15,6 +15,8 @@ export interface VacancyPanelProps {
   limits: TeamLimits;
   disabled: boolean;
   onChanged: (t: TeamView) => void;
+  /** Fired when a recommendation invite succeeds so the invitations panel can refresh. */
+  onInvitationIssued?: () => void;
 }
 
 const inputClass =
@@ -26,6 +28,7 @@ export function VacancyPanel({
   limits,
   disabled,
   onChanged,
+  onInvitationIssued,
 }: VacancyPanelProps): React.JSX.Element {
   const [isAdding, setIsAdding] = useState<boolean>(false);
   const [editingVacancyId, setEditingVacancyId] = useState<string | null>(null);
@@ -389,6 +392,7 @@ export function VacancyPanel({
                     vacancyId={vacancy.id}
                     vacancyLabel={`${vacancy.role} slot`}
                     enabled
+                    onInvitationIssued={onInvitationIssued}
                   />
                 ) : null}
               </li>
