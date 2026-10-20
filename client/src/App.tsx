@@ -15,6 +15,8 @@ import { MyTeamsPage } from './components/teams/MyTeamsPage';
 import { CreateTeamPage } from './components/teams/CreateTeamPage';
 import { LookingForTeamPage } from './components/LookingForTeamPage';
 import { OpenTeamsBoard } from './components/teams/OpenTeamsBoard';
+import { ApplicationFormPanel } from './components/teams/ApplicationFormPanel';
+import type { OpenTeamApplyTarget } from './components/teams/openTeamsApi';
 import type { OtpChallenge } from './components/auth/providerSignIn';
 
 type View =
@@ -76,6 +78,7 @@ export function App(): React.JSX.Element {
   const [verificationEmail, setVerificationEmail] = useState<string>('');
   const [recoveryEmail, setRecoveryEmail] = useState<string>('');
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
+  const [applyTarget, setApplyTarget] = useState<OpenTeamApplyTarget | null>(null);
   const [teamEventId, setTeamEventId] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
     const params = new URLSearchParams(window.location.search);
@@ -568,13 +571,21 @@ export function App(): React.JSX.Element {
             />
           </section>
         ) : currentView === 'browse-teams' ? (
-          <OpenTeamsBoard
-            currentUser={currentUser}
-            onNavigateToSignIn={goToLogin}
-            onApply={(target) =>
-              setStatusNotice(`Applying to "${target.teamName}" (${target.role}) will be available with US-018.`)
-            }
-          />
+          <>
+            <ApplicationFormPanel
+              target={applyTarget}
+              onClose={() => setApplyTarget(null)}
+              onSuccess={(notice) => setStatusNotice(notice)}
+            />
+            <OpenTeamsBoard
+              currentUser={currentUser}
+              onNavigateToSignIn={goToLogin}
+              onApply={(target) => {
+                setStatusNotice(null);
+                setApplyTarget(target);
+              }}
+            />
+          </>
         ) : currentView === 'account' ? (
           <section aria-labelledby="account-heading">
             <h2 id="account-heading" className="sr-only">
