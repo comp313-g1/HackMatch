@@ -80,6 +80,19 @@ export interface ITeamsRepository {
     vacancyRole: string;
     teamName: string;
   }>;
+  /** US-018 / #172 applicant submission via submit_team_application (atomic FR-054). */
+  submitTeamApplication(
+    actorId: string,
+    teamId: string,
+    vacancyId: string,
+    message: string | null
+  ): Promise<{
+    application: TeamRequest;
+    vacancyRole: string;
+    teamName: string;
+    pendingCountForEvent: number;
+    notice: string;
+  }>;
   /**
    * US-017 / #164 pending-quota probe: existing Pending invite for invitee/team
    * and/or for the vacancy slot (may be the same row).
@@ -422,6 +435,42 @@ export const teamsRepository: ITeamsRepository = {
       expiresAt: payload.expiresAt,
       vacancyRole: payload.vacancyRole,
       teamName: payload.teamName,
+    };
+  },
+
+  async submitTeamApplication(
+    actorId: string,
+    teamId: string,
+    vacancyId: string,
+    message: string | null
+  ): Promise<{
+    application: TeamRequest;
+    vacancyRole: string;
+    teamName: string;
+    pendingCountForEvent: number;
+    notice: string;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('submit_team_application', {
+      p_actor: actorId,
+      p_team: teamId,
+      p_vacancy: vacancyId,
+      p_message: message,
+    });
+    if (error) throw error;
+    const payload = data as {
+      application: TeamRequest;
+      vacancyRole: string;
+      teamName: string;
+      pendingCountForEvent: number;
+      notice: string;
+    };
+    return {
+      application: payload.application,
+      vacancyRole: payload.vacancyRole,
+      teamName: payload.teamName,
+      pendingCountForEvent: payload.pendingCountForEvent,
+      notice: payload.notice,
     };
   },
 
