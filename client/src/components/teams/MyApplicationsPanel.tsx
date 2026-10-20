@@ -104,7 +104,7 @@ export function MyApplicationsPanel({
           </h3>
           <p className="text-xs text-ink-muted mt-1">
             Inspect Pending Review status and withdraw before a decision. Withdrawal notifies the
-            team owner and frees one pending slot for that event.
+            team owner and frees one slot toward your 3-application platform limit.
           </p>
         </div>
         <button

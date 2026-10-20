@@ -5,14 +5,17 @@ export { AuthRequiredError };
 /** FR-053 / R-02 — optional applicant message max length (mirrors server applicationModel). */
 export const APPLICATION_MESSAGE_MAX_LENGTH = 250;
 
-/** FR-054 / US-018 — concurrent Pending Review apps per PART per event. */
-export const MAX_PENDING_APPLICATIONS_PER_EVENT = 3;
+/** US-018 — concurrent Pending Review apps per PART across the platform. */
+export const MAX_PENDING_APPLICATIONS = 3;
+
+/** FR-054 / US-018 — legacy alias for concurrent Pending Review apps. */
+export const MAX_PENDING_APPLICATIONS_PER_EVENT = MAX_PENDING_APPLICATIONS;
 
 export const DUPLICATE_PENDING_APPLICATION_MESSAGE =
   'You already have a pending application for this team. Withdraw it or wait for a decision before applying again.';
 
 export const APPLICATION_PENDING_LIMIT_MESSAGE =
-  'You already have 3 pending applications for this event. Withdraw one or wait for a decision before applying again.';
+  'You already have 3 pending applications across the platform. Withdraw one or wait for a decision before applying again.';
 
 export class ApplicationsApiError extends Error {
   constructor(
@@ -28,7 +31,8 @@ export class ApplicationsApiError extends Error {
 }
 
 export interface SubmitApplicationPayload {
-  vacancyId: string;
+  vacancyId?: string;
+  slotId?: string;
   /** Optional pitch; omit or null when empty. Max 250 characters when set. */
   message?: string | null;
 }
@@ -36,8 +40,9 @@ export interface SubmitApplicationPayload {
 export interface SubmittedApplication {
   id: string;
   teamId: string;
-  eventId: string;
+  eventId?: string;
   vacancyId: string | null;
+  slotId?: string | null;
   applicantParticipantId: string;
   status: string;
   requestType: 'Application';
@@ -45,6 +50,7 @@ export interface SubmittedApplication {
   createdAt: string;
   teamName: string;
   vacancyRole: string;
+  pendingCount?: number;
   pendingCountForEvent?: number;
   notice: string;
 }
@@ -119,12 +125,13 @@ export async function submitTeamApplication(
   payload: SubmitApplicationPayload
 ): Promise<SubmittedApplication> {
   const message = normalizeApplicationMessage(payload.message);
+  const vacancyId = payload.vacancyId ?? payload.slotId ?? '';
   const data = await authCall<{ application: SubmittedApplication } | SubmittedApplication>(() =>
     authFetch(`/api/teams/${encodeURIComponent(teamId)}/applications`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        vacancyId: payload.vacancyId,
+        vacancyId,
         message,
       }),
     })
@@ -139,8 +146,9 @@ export async function submitTeamApplication(
 export interface MyApplicationListItem {
   id: string;
   teamId: string;
-  eventId: string;
+  eventId?: string;
   vacancyId: string | null;
+  slotId?: string | null;
   applicantParticipantId: string;
   status: string;
   statusLabel: string;
@@ -170,8 +178,9 @@ export interface WithdrawnApplicationResult {
   application: {
     id: string;
     teamId: string;
-    eventId: string;
+    eventId?: string;
     vacancyId: string | null;
+    slotId?: string | null;
     applicantParticipantId: string;
     status: string;
     statusLabel: string;
@@ -186,6 +195,18 @@ export interface WithdrawnApplicationResult {
   idempotent: boolean;
   alerts: ApplicationStatusAlert[];
   notice: string;
+}
+
+export function formatApplicationSubmitError(err: unknown): string {
+  if (err instanceof ApplicationsApiError) {
+    if (err.errors?._form) return err.errors._form;
+    if (err.code === 'APPLICATION_PENDING_LIMIT') return APPLICATION_PENDING_LIMIT_MESSAGE;
+    if (err.code === 'DUPLICATE_PENDING_APPLICATION') return DUPLICATE_PENDING_APPLICATION_MESSAGE;
+    if (err.code === 'APPLICANT_ALREADY_CONFIRMED') return 'You are already a confirmed member of this team.';
+    return err.message;
+  }
+  if (err instanceof Error) return err.message;
+  return 'Failed to submit application.';
 }
 
 /** GET /api/applications/mine — applicant status list (US-018 / #175). */

@@ -8,6 +8,7 @@ import {
 
 export interface ApplicationFieldErrors {
   vacancyId?: string;
+  slotId?: string;
   message?: string;
   body?: string;
   _form?: string;
@@ -16,10 +17,11 @@ export interface ApplicationFieldErrors {
 
 export interface SubmitApplicationInputSanitized {
   vacancyId: string;
+  slotId?: string;
   message: string | null;
 }
 
-const ALLOWED_KEYS = new Set(['vacancyId', 'message']);
+const ALLOWED_KEYS = new Set(['vacancyId', 'slotId', 'message']);
 
 /**
  * Validates POST /api/teams/:teamId/applications body (US-018 / #172 / FR-053).
@@ -43,8 +45,23 @@ export function validateSubmitApplicationInput(raw: unknown): {
   }
 
   const vacancyIdRaw = record.vacancyId;
-  if (typeof vacancyIdRaw !== 'string' || !UUID_REGEX.test(vacancyIdRaw.trim())) {
+  const slotIdRaw = record.slotId;
+
+  if (vacancyIdRaw !== undefined && slotIdRaw !== undefined) {
+    if (String(vacancyIdRaw).trim() !== String(slotIdRaw).trim()) {
+      errors.vacancyId = 'vacancyId and slotId must match if both are provided.';
+    }
+  }
+
+  const targetIdRaw = vacancyIdRaw ?? slotIdRaw;
+  if (targetIdRaw === undefined) {
     errors.vacancyId = 'vacancyId must be a valid UUID.';
+  } else if (typeof targetIdRaw !== 'string' || !UUID_REGEX.test(targetIdRaw.trim())) {
+    if (vacancyIdRaw !== undefined) {
+      errors.vacancyId = 'vacancyId must be a valid UUID.';
+    } else {
+      errors.slotId = 'slotId must be a valid UUID.';
+    }
   }
 
   let message: string | null = null;
@@ -62,10 +79,12 @@ export function validateSubmitApplicationInput(raw: unknown): {
     return { errors, sanitized: null };
   }
 
+  const resolvedId = String(targetIdRaw).trim();
   return {
     errors: {},
     sanitized: {
-      vacancyId: String(vacancyIdRaw).trim(),
+      vacancyId: resolvedId,
+      slotId: resolvedId,
       message,
     },
   };
