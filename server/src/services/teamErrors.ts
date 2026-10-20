@@ -24,7 +24,16 @@ export type TeamErrorCode =
   | 'INVITATION_EXPIRED'
   | 'INVITATION_NOT_ACCEPTABLE'
   | 'INVITATION_NOT_CANCELABLE'
-  | 'FORBIDDEN_NOT_INVITEE';
+  | 'FORBIDDEN_NOT_INVITEE'
+  | 'CANNOT_APPLY_TO_OWN_TEAM'
+  | 'APPLICANT_NOT_ELIGIBLE'
+  | 'APPLICANT_ALREADY_CONFIRMED'
+  | 'APPLICATION_MESSAGE_TOO_LONG'
+  | 'DUPLICATE_PENDING_APPLICATION'
+  | 'APPLICATION_PENDING_LIMIT'
+  | 'APPLICATION_NOT_FOUND'
+  | 'APPLICATION_NOT_WITHDRAWABLE'
+  | 'FORBIDDEN_NOT_APPLICANT';
 
 export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message: string }> = {
   EVENT_NOT_FOUND: { status: 404, message: 'Event not found.' },
@@ -39,7 +48,7 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   VACANCY_NOT_FOUND: { status: 404, message: 'Vacancy not found or not open.' },
   VACANCY_NOT_OPEN: {
     status: 409,
-    message: 'This vacancy is not open. Invitations require an open slot.',
+    message: 'This vacancy is not open. Applications and invitations require an open slot.',
   },
   MEMBER_NOT_FOUND: { status: 404, message: 'Confirmed member not found on this team.' },
   CANNOT_REMOVE_OWNER: { status: 409, message: 'Team owner cannot be removed. To step down, disband the team.' },
@@ -89,6 +98,41 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   FORBIDDEN_NOT_INVITEE: {
     status: 403,
     message: 'Only the invited participant can accept this invitation.',
+  },
+  CANNOT_APPLY_TO_OWN_TEAM: {
+    status: 400,
+    message: 'You cannot apply to a team you own.',
+  },
+  APPLICANT_NOT_ELIGIBLE: {
+    status: 403,
+    message: 'You are not eligible to apply (inactive, unverified, or suspended).',
+  },
+  APPLICANT_ALREADY_CONFIRMED: {
+    status: 409,
+    message: 'You are already a confirmed member of a team for this event.',
+  },
+  APPLICATION_MESSAGE_TOO_LONG: {
+    status: 400,
+    message: 'Message must be at most 250 characters.',
+  },
+  DUPLICATE_PENDING_APPLICATION: {
+    status: 409,
+    message:
+      'You already have a pending application for this team. Withdraw it or wait for a decision before applying again.',
+  },
+  APPLICATION_PENDING_LIMIT: {
+    status: 409,
+    message:
+      'You already have 3 pending applications for this event. Withdraw one or wait for a decision before applying again.',
+  },
+  APPLICATION_NOT_FOUND: { status: 404, message: 'Application not found.' },
+  APPLICATION_NOT_WITHDRAWABLE: {
+    status: 409,
+    message: 'Only Pending Review applications can be withdrawn.',
+  },
+  FORBIDDEN_NOT_APPLICANT: {
+    status: 403,
+    message: 'Only the applicant can withdraw this application.',
   },
 };
 
@@ -149,6 +193,9 @@ export function toTeamServiceError(err: unknown): TeamServiceError | null {
       }
       if (combined.includes('uq_team_requests_pending_invite_per_slot')) {
         return new TeamServiceError('SLOT_PENDING_INVITATION_EXISTS');
+      }
+      if (combined.includes('uq_team_requests_pending_application')) {
+        return new TeamServiceError('DUPLICATE_PENDING_APPLICATION');
       }
       if (combined.includes('uq_team_requests_pending_invite')) {
         return new TeamServiceError('DUPLICATE_PENDING_INVITATION');

@@ -34,6 +34,8 @@ import {
   issueInvitationHandler,
   listTeamInvitationsHandler,
 } from '../controllers/invitations.controller.js';
+import { submitApplicationHandler } from '../controllers/applications.controller.js';
+import { validateSubmitApplicationBody } from '../validators/application.validator.js';
 
 export const teamRouter = Router();
 
@@ -73,6 +75,14 @@ teamRouter.post(
   requireJsonObjectBody,
   validateIssueInvitationBody,
   issueInvitationHandler
+);
+teamRouter.post(
+  '/:teamId/applications',
+  ...participantAuth,
+  validateTeamIdParams,
+  requireJsonObjectBody,
+  validateSubmitApplicationBody,
+  submitApplicationHandler
 );
 teamRouter.patch('/:teamId/vacancies/:vacancyId', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateVacancyBody, updateVacancyHandler);
 teamRouter.delete('/:teamId/vacancies/:vacancyId', ...participantAuth, validateTeamIdParams, requireTeamOwner, removeVacancyHandler);

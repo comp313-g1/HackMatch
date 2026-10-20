@@ -24,6 +24,7 @@ function pendingRow(overrides: Partial<TeamRequest> = {}): TeamRequest {
     cancel_reason: null,
     resolved_at: null,
     expires_at: '2026-10-21T12:00:00.000Z',
+    message: null,
     created_at: '2026-10-19T12:00:00.000Z',
     updated_at: '2026-10-19T12:00:00.000Z',
     ...overrides,

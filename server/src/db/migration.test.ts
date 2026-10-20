@@ -921,4 +921,104 @@ describe('0022_cancel_team_invitation.sql Migration DDL (US-017 / #166)', () => 
   });
 });
 
+describe('0024_withdraw_team_application.sql Migration DDL (US-018 / #175)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0024_withdraw_team_application.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('defines withdraw_team_application with applicant check, idempotency, and alerts', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+withdraw_team_application/i);
+    expect(sql).toMatch(/FORBIDDEN_NOT_APPLICANT/i);
+    expect(sql).toMatch(/APPLICATION_NOT_WITHDRAWABLE/i);
+    expect(sql).toMatch(/APPLICANT_WITHDRAWN/i);
+    expect(sql).toMatch(/idempotent/i);
+    expect(sql).toMatch(/team_application_withdrawn/i);
+    expect(sql).toMatch(/INSERT\s+INTO\s+participant_notifications/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+withdraw_team_application\s*\(\s*UUID\s*,\s*UUID\s*\)\s+TO\s+service_role/i
+    );
+  });
+});
+
+describe('0023_create_team_application_model.sql Migration DDL (US-018 / #170)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0023_create_team_application_model.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('adds message column, Pending Application vacancy CHECK, and quota indexes', () => {
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+message\s+VARCHAR\(250\)/i);
+    expect(sql).toMatch(/chk_team_requests_application_message_length/i);
+    expect(sql).toMatch(/chk_team_requests_pending_application_requires_vacancy/i);
+    expect(sql).toMatch(/uq_team_requests_pending_application/i);
+    expect(sql).toMatch(/idx_team_requests_pending_application_per_event/i);
+    expect(sql).toMatch(/idx_team_requests_applicant_application_status/i);
+    expect(sql).toMatch(/idx_team_requests_team_application_status/i);
+  });
+
+  it('defines submit_team_application with atomic limit/duplicate checks and service_role grant', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+submit_team_application/i);
+    expect(sql).toMatch(/v_pending_count\s*>=\s*3/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'APPLICATION_PENDING_LIMIT'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'DUPLICATE_PENDING_APPLICATION'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'APPLICATION_MESSAGE_TOO_LONG'/i);
+    expect(sql).toMatch(/request_type\s*,\s*[\s\S]*'Application'/i);
+    expect(sql).toMatch(/expires_at[\s\S]*NULL/i);
+    expect(sql).toMatch(/team_application_submitted/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+submit_team_application\s*\(\s*UUID\s*,\s*UUID\s*,\s*UUID\s*,\s*TEXT\s*\)\s+TO\s+service_role/i
+    );
+  });
+});
+
+describe('0025_prioritize_application_submission_errors.sql Migration DDL (US-018 / #176)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0025_prioritize_application_submission_errors.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('replaces submit_team_application and preserves service-role-only execution', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+submit_team_application/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/REVOKE\s+ALL[\s\S]*FROM\s+PUBLIC\s*,\s*anon\s*,\s*authenticated/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+submit_team_application\s*\(\s*UUID\s*,\s*UUID\s*,\s*UUID\s*,\s*TEXT\s*\)\s+TO\s+service_role/i
+    );
+  });
+
+  it('checks duplicate Pending Application before the broader event limit', () => {
+    const duplicateCheck = sql.indexOf("RAISE EXCEPTION 'DUPLICATE_PENDING_APPLICATION'");
+    const quotaCheck = sql.indexOf("RAISE EXCEPTION 'APPLICATION_PENDING_LIMIT'");
+
+    expect(duplicateCheck).toBeGreaterThan(-1);
+    expect(quotaCheck).toBeGreaterThan(-1);
+    expect(duplicateCheck).toBeLessThan(quotaCheck);
+    expect(sql).toMatch(/'teamId'\s*,\s*p_team/i);
+    expect(sql).toMatch(/'existingApplicationId'\s*,\s*v_duplicate_application_id/i);
+  });
+
+  it('retains the unique-index race fallback and actionable quota details', () => {
+    expect(sql).toMatch(/WHEN\s+unique_violation[\s\S]*DUPLICATE_PENDING_APPLICATION/i);
+    expect(sql).toMatch(/v_pending_count\s*>=\s*3/i);
+    expect(sql).toMatch(/'limit'\s*,\s*3/i);
+    expect(sql).toMatch(/'pendingCount'\s*,\s*v_pending_count/i);
+    expect(sql).toMatch(/'eventId'\s*,\s*v_team\.event_id/i);
+  });
+});
+
 
