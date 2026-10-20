@@ -258,4 +258,3 @@ describe('POST /api/applications/:applicationId/approve (US-020 / #190 / #191 / 
     expect(JSON.stringify(res.body)).not.toContain('do-not-leak');
   });
 });
-

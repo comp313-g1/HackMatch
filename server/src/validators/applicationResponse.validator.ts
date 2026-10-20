@@ -20,4 +20,3 @@ export function validateApplicationIdParam(
   req.params.applicationId = applicationId;
   next();
 }
-

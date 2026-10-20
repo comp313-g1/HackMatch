@@ -267,4 +267,3 @@ describe('approveApplication (US-020 / #190 / #191 / #193 / FR-061)', () => {
     ).rejects.toBe(failure);
   });
 });
-

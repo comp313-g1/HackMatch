@@ -284,4 +284,3 @@ GRANT EXECUTE ON FUNCTION approve_team_application(UUID, UUID)
 
 COMMENT ON FUNCTION approve_team_application(UUID, UUID) IS
   'US-020 / #190: owner-only atomic application approval with current eligibility, capacity, vacancy, and one-team-per-event checks.';
-

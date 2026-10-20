@@ -143,4 +143,3 @@ describe('ApplicationReviewCard (US-020 / #189 / #194 / FR-060)', () => {
     expect(screen.getByRole('button', { name: /approve application/i })).toBeDisabled();
   });
 });
-

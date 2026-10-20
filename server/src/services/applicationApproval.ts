@@ -138,4 +138,3 @@ export async function approveApplication(
     throw err;
   }
 }
-
