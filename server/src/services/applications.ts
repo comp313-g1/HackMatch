@@ -34,8 +34,9 @@ export interface SubmitApplicationDeps {
 export interface SubmittedApplicationView {
   id: string;
   teamId: string;
-  eventId: string;
+  eventId?: string;
   vacancyId: string | null;
+  slotId?: string | null;
   applicantParticipantId: string;
   status: TeamRequest['status'];
   requestType: 'Application';
@@ -43,6 +44,7 @@ export interface SubmittedApplicationView {
   createdAt: string;
   teamName: string;
   vacancyRole: string;
+  pendingCount?: number;
   pendingCountForEvent: number;
   notice: string;
 }
@@ -52,6 +54,7 @@ function toView(
   meta: {
     vacancyRole: string;
     teamName: string;
+    pendingCount?: number;
     pendingCountForEvent: number;
     notice: string;
   }
@@ -61,6 +64,7 @@ function toView(
     teamId: application.team_id,
     eventId: application.event_id,
     vacancyId: application.vacancy_id,
+    slotId: application.vacancy_id,
     applicantParticipantId: application.participant_id,
     status: application.status,
     requestType: 'Application',
@@ -68,6 +72,7 @@ function toView(
     createdAt: application.created_at,
     teamName: meta.teamName,
     vacancyRole: meta.vacancyRole,
+    pendingCount: meta.pendingCount ?? meta.pendingCountForEvent,
     pendingCountForEvent: meta.pendingCountForEvent,
     notice: meta.notice,
   };
@@ -109,6 +114,7 @@ export async function submitApplication(
     return toView(result.application, {
       vacancyRole: result.vacancyRole,
       teamName: result.teamName,
+      pendingCount: result.pendingCount ?? result.pendingCountForEvent,
       pendingCountForEvent: result.pendingCountForEvent,
       notice: result.notice,
     });
@@ -128,8 +134,9 @@ export function applicationStatusLabel(status: string): string {
 export interface MyApplicationListItem {
   id: string;
   teamId: string;
-  eventId: string;
+  eventId?: string;
   vacancyId: string | null;
+  slotId?: string | null;
   applicantParticipantId: string;
   status: TeamRequest['status'];
   /** Human-readable status for ordinary views (Pending → Pending Review). */
@@ -163,6 +170,7 @@ export async function listMyApplications(
     teamId: row.application.team_id,
     eventId: row.application.event_id,
     vacancyId: row.application.vacancy_id,
+    slotId: row.application.vacancy_id,
     applicantParticipantId: row.application.participant_id,
     status: row.application.status,
     statusLabel: applicationStatusLabel(row.application.status),
@@ -196,8 +204,9 @@ export interface WithdrawnApplicationResult {
   application: {
     id: string;
     teamId: string;
-    eventId: string;
+    eventId?: string;
     vacancyId: string | null;
+    slotId?: string | null;
     applicantParticipantId: string;
     status: TeamRequest['status'];
     statusLabel: string;
@@ -235,6 +244,7 @@ export async function withdrawApplication(
         teamId: app.team_id,
         eventId: app.event_id,
         vacancyId: app.vacancy_id,
+        slotId: app.vacancy_id,
         applicantParticipantId: app.participant_id,
         status: app.status,
         statusLabel: applicationStatusLabel(app.status),
