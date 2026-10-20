@@ -21,6 +21,185 @@ describe('Supabase migration ordering', () => {
   });
 });
 
+describe('0031_approve_team_application.sql atomic approval DDL (#190)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0031_approve_team_application.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('creates a service-role-only security-definer approval function', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+approve_team_application/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/REVOKE\s+ALL[\s\S]*FROM\s+PUBLIC\s*,\s*anon\s*,\s*authenticated/i);
+    expect(sql).toMatch(/GRANT\s+EXECUTE[\s\S]*TO\s+service_role/i);
+  });
+
+  it('serializes participant-event and team placement with the invitation lock keys', () => {
+    expect(sql).toMatch(/pg_advisory_xact_lock[\s\S]*hackmatch:accept:participant-event/i);
+    expect(sql).toMatch(/pg_advisory_xact_lock[\s\S]*hackmatch:accept:team/i);
+  });
+
+  it('revalidates owner, pending state, recruiting state, applicant, slot, and capacity', () => {
+    expect(sql).toMatch(/owner_participant_id\s*<>\s*p_actor/i);
+    expect(sql).toMatch(/v_req\.status\s*<>\s*'Pending'/i);
+    expect(sql).toMatch(/v_team\.recruitment_status\s*<>\s*'Open'/i);
+    expect(sql).toMatch(/v_event\.status\s*<>\s*'Published'/i);
+    expect(sql).toMatch(/v_applicant\.is_verified\s+IS\s+NOT\s+TRUE/i);
+    expect(sql).toMatch(/v_vacancy\.status\s*<>\s*'Open'/i);
+    expect(sql).toMatch(/v_member_count\s*>=\s*v_max_team_size/i);
+    expect(sql).toMatch(/uq_team_memberships_confirmed_per_event|unique_violation/i);
+  });
+
+  it('commits availability, membership, vacancy, request, and applicant alert together', () => {
+    expect(sql).toMatch(/UPDATE\s+event_availability[\s\S]*event_id\s*=\s*v_team\.event_id/i);
+    expect(sql).toMatch(/INSERT\s+INTO\s+team_memberships/i);
+    expect(sql).toMatch(/UPDATE\s+team_vacancies[\s\S]*status\s*=\s*'Filled'/i);
+    expect(sql).toMatch(/UPDATE\s+team_requests[\s\S]*status\s*=\s*'Accepted'/i);
+    expect(sql).toMatch(/team_application_approved/i);
+  });
+});
+
+describe('0032_cancel_competing_requests_after_approval.sql cascade DDL (#191)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0032_cancel_competing_requests_after_approval.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('wraps #190 approval behind a secured service-role-only entry point', () => {
+    expect(sql).toMatch(
+      /ALTER\s+FUNCTION\s+approve_team_application[\s\S]*?RENAME\s+TO\s+approve_team_application_without_cascade/i
+    );
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+approve_team_application/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+approve_team_application_without_cascade[\s\S]*?service_role/i
+    );
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+approve_team_application[\s\S]*?TO\s+service_role/i
+    );
+  });
+
+  it('runs the competing-request cascade in the approval transaction', () => {
+    const approvalCall = sql.indexOf(
+      'approve_team_application_without_cascade(p_actor, p_application)'
+    );
+    const cascadeCall = sql.indexOf('cancel_competing_requests_on_placement(');
+
+    expect(approvalCall).toBeGreaterThan(-1);
+    expect(cascadeCall).toBeGreaterThan(approvalCall);
+    expect(sql).toMatch(/'cascade'\s*,\s*v_cascade/i);
+    expect(sql).toMatch(/'notice'[\s\S]*competing pending requests were cleared/i);
+  });
+
+  it('passes winner, participant, event, team, vacancy, and capacity state', () => {
+    expect(sql).toMatch(/p_application\s*,[\s\S]*participant_id[\s\S]*event_id[\s\S]*team_id[\s\S]*vacancy_id[\s\S]*v_team_now_full/i);
+    expect(sql).toMatch(/memberCount[\s\S]*>=\s*[\s\S]*maxTeamSize/i);
+  });
+});
+
+describe('0033_decline_team_application.sql decline DDL (#192)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0033_decline_team_application.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('creates a secured service-role-only decline function', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+decline_team_application/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/SET\s+search_path\s*=\s*public/i);
+    expect(sql).toMatch(
+      /REVOKE\s+ALL[\s\S]*?FROM\s+PUBLIC\s*,\s*anon\s*,\s*authenticated/i
+    );
+    expect(sql).toMatch(/GRANT\s+EXECUTE[\s\S]*?TO\s+service_role/i);
+  });
+
+  it('locks the Application and requires its owner and Pending state', () => {
+    expect(sql).toMatch(/request_type\s*=\s*'Application'[\s\S]*?FOR\s+UPDATE/i);
+    expect(sql).toMatch(/owner_participant_id\s*<>\s*p_actor/i);
+    expect(sql).toMatch(/FORBIDDEN_NOT_TEAM_OWNER/i);
+    expect(sql).toMatch(/v_req\.status\s*<>\s*'Pending'/i);
+    expect(sql).toMatch(/APPLICATION_NOT_DECLINABLE/i);
+  });
+
+  it('declines, releases pending quota, and creates applicant and owner alerts', () => {
+    expect(sql).toMatch(/status\s*=\s*'Declined'/i);
+    expect(sql).toMatch(/cancel_reason\s*=\s*'OWNER_DECLINED'/i);
+    expect(sql).toMatch(/team_application_declined/i);
+    expect(sql).toMatch(/'audience'\s*,\s*'applicant'/i);
+    expect(sql).toMatch(/'audience'\s*,\s*'owner'/i);
+    expect(sql).toMatch(/'pendingQuotaReleased'\s*,\s*TRUE/i);
+  });
+
+  it('reports unchanged roster, vacancy, capacity, and availability without mutating them', () => {
+    expect(sql).toMatch(/'availabilityChanged'\s*,\s*FALSE/i);
+    expect(sql).toMatch(/'membershipChanged'\s*,\s*FALSE/i);
+    expect(sql).toMatch(/'vacancyChanged'\s*,\s*FALSE/i);
+    expect(sql).toMatch(/'capacityChanged'\s*,\s*FALSE/i);
+    expect(sql).not.toMatch(/UPDATE\s+team_memberships/i);
+    expect(sql).not.toMatch(/UPDATE\s+team_vacancies/i);
+    expect(sql).not.toMatch(/UPDATE\s+event_availability/i);
+  });
+});
+
+describe('0034_idempotent_application_decisions.sql decision wrappers (#193)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0034_idempotent_application_decisions.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('hides both one-shot functions behind secured service-role wrappers', () => {
+    expect(sql).toMatch(
+      /ALTER\s+FUNCTION\s+approve_team_application[\s\S]*?RENAME\s+TO\s+approve_team_application_once/i
+    );
+    expect(sql).toMatch(
+      /ALTER\s+FUNCTION\s+decline_team_application[\s\S]*?RENAME\s+TO\s+decline_team_application_once/i
+    );
+    expect(sql).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+approve_team_application_once[\s\S]*?service_role/i
+    );
+    expect(sql).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+decline_team_application_once[\s\S]*?service_role/i
+    );
+    expect(sql.match(/SECURITY\s+DEFINER/gi)).toHaveLength(2);
+    expect(sql.match(/GRANT\s+EXECUTE[\s\S]*?TO\s+service_role/gi)).toHaveLength(2);
+  });
+
+  it('returns same-decision approval and decline outcomes without replaying writes', () => {
+    expect(sql).toMatch(/v_req\.status\s*=\s*'Accepted'[\s\S]*?v_idempotent\s*:=\s*TRUE/i);
+    expect(sql).toMatch(/v_req\.status\s*=\s*'Declined'[\s\S]*?v_idempotent\s*:=\s*TRUE/i);
+    expect(sql).toMatch(/'changed'\s*,\s*FALSE/gi);
+    expect(sql).toMatch(/'idempotent'\s*,\s*TRUE/gi);
+    expect(sql).toMatch(/'alerts'\s*,\s*jsonb_build_array\(\)/i);
+    expect(sql).toMatch(/'eventInvitationsCanceled'\s*,\s*0/i);
+    expect(sql).not.toMatch(/INSERT\s+INTO/i);
+    expect(sql).not.toMatch(/UPDATE\s+(team_requests|team_memberships|team_vacancies|event_availability)/i);
+  });
+
+  it('returns explicit existing-outcome conflicts for opposite or stale decisions', () => {
+    expect(sql).toMatch(/APPLICATION_DECISION_CONFLICT/i);
+    expect(sql).toMatch(/'requestedDecision'\s*,\s*'approve'/i);
+    expect(sql).toMatch(/'requestedDecision'\s*,\s*'decline'/i);
+    expect(sql).toMatch(/'existingOutcome'\s*,\s*v_req\.status/i);
+    expect(sql).toMatch(/'resolvedAt'\s*,\s*v_req\.resolved_at/i);
+    expect(sql).toMatch(/'retryable'\s*,\s*FALSE/i);
+  });
+
+  it('re-reads state after a concurrent one-shot conflict before deciding the outcome', () => {
+    expect(sql).toMatch(/approve_team_application_once\(p_actor,\s*p_application\)/i);
+    expect(sql).toMatch(/decline_team_application_once\(p_actor,\s*p_application\)/i);
+    expect(sql.match(/WHEN\s+SQLSTATE\s+'P0001'/gi)).toHaveLength(2);
+    expect(
+      sql.match(
+        /SELECT\s+\*\s+INTO\s+v_req[\s\S]*?request_type\s*=\s*'Application'/gi
+      )?.length ?? 0
+    ).toBeGreaterThanOrEqual(4);
+  });
+});
+
 describe('0001_create_participants_table.sql Migration DDL', () => {
   const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0001_create_participants_table.sql');
   const sql = fs.readFileSync(migrationPath, 'utf-8');

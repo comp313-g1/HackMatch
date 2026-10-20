@@ -6,8 +6,11 @@ import { requireParticipantRole } from '../middleware/requireRole.js';
 import { requireVerifiedParticipant } from '../middleware/requireVerifiedParticipant.js';
 import {
   listMyApplicationsHandler,
+  approveApplicationHandler,
+  declineApplicationHandler,
   withdrawApplicationHandler,
 } from '../controllers/applications.controller.js';
+import { validateApplicationIdParam } from '../validators/applicationResponse.validator.js';
 
 /**
  * Applicant-scoped application routes (US-018 / #175).
@@ -24,6 +27,18 @@ const participantAuth = [
 ];
 
 applicationsRouter.get('/mine', ...participantAuth, listMyApplicationsHandler);
+applicationsRouter.post(
+  '/:applicationId/approve',
+  ...participantAuth,
+  validateApplicationIdParam,
+  approveApplicationHandler
+);
+applicationsRouter.post(
+  '/:applicationId/decline',
+  ...participantAuth,
+  validateApplicationIdParam,
+  declineApplicationHandler
+);
 applicationsRouter.post(
   '/:applicationId/withdraw',
   ...participantAuth,
