@@ -635,8 +635,11 @@ describe.skipIf(isGated)('US-012 Real Postgres Integration Suite (Lifecycle & Co
     });
     const vacancyId = vacRes.vacancy.id;
 
-    // Lock recruitment
-    await supabase.from('teams').update({ recruitment_status: 'Locked' }).eq('id', teamId);
+    // Lock recruitment (status + server lock timestamp — US-022 / #206)
+    await supabase
+      .from('teams')
+      .update({ recruitment_status: 'Locked', locked_at: new Date().toISOString() })
+      .eq('id', teamId);
 
     // Snapshot before
     const { data: snapBefore } = await supabase.from('teams').select('*').eq('id', teamId).single();

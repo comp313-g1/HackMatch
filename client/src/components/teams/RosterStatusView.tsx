@@ -214,6 +214,11 @@ export function RosterStatusView({
             : lifecycle.reason === 'Disbanded'
               ? 'This team was disbanded.'
               : 'Event recruitment has ended. Roster changes are closed.'}
+          {lifecycle.reason === 'Locked' && team?.lockedAt ? (
+            <span className="block mt-1 text-amber-800/90" data-testid="roster-locked-at">
+              Locked at {new Date(team.lockedAt).toLocaleString()}
+            </span>
+          ) : null}
         </div>
       ) : null}
 

@@ -57,6 +57,7 @@ export const sampleTeam: Team = {
   commitment_hours: 20.0,
   communication_link: 'https://discord.gg/hackmatch',
   recruitment_status: 'Open',
+  locked_at: null,
   disbanded_at: null,
   created_at: '2026-10-18T10:00:00.000Z',
   updated_at: '2026-10-18T10:00:00.000Z',
@@ -72,6 +73,7 @@ export const sampleTeamOther: Team = {
   commitment_hours: 15.0,
   communication_link: null,
   recruitment_status: 'Open',
+  locked_at: null,
   disbanded_at: null,
   created_at: '2026-10-18T10:00:00.000Z',
   updated_at: '2026-10-18T10:00:00.000Z',
@@ -87,6 +89,7 @@ export const sampleTeamEvent2: Team = {
   commitment_hours: 30.0,
   communication_link: null,
   recruitment_status: 'Open',
+  locked_at: null,
   disbanded_at: null,
   created_at: '2026-10-18T10:00:00.000Z',
   updated_at: '2026-10-18T10:00:00.000Z',
@@ -219,4 +222,5 @@ export const OWNER_ONLY_ROUTES: OwnerOnlyRoute[] = [
     expectedStatus: 200,
   },
 ];
+
 

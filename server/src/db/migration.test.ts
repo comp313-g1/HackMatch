@@ -144,6 +144,41 @@ describe('0033_decline_team_application.sql decline DDL (#192)', () => {
   });
 });
 
+describe('0035_add_team_roster_lock_fields.sql roster lock timestamp (#206 / US-022 / FR-066)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0035_add_team_roster_lock_fields.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(100);
+  });
+
+  it('adds teams.locked_at as a nullable timestamptz server lock timestamp', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+teams/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+locked_at\s+TIMESTAMPTZ/i);
+  });
+
+  it('ties Locked recruitment_status to a non-null locked_at (and forbids locked_at otherwise)', () => {
+    expect(sql).toMatch(/chk_teams_locked_at_matches_status/i);
+    expect(sql).toMatch(
+      /recruitment_status\s*=\s*'Locked'\s+AND\s+locked_at\s+IS\s+NOT\s+NULL/i
+    );
+    expect(sql).toMatch(
+      /recruitment_status\s*<>\s*'Locked'\s+AND\s+locked_at\s+IS\s+NULL/i
+    );
+  });
+
+  it('indexes locked teams for lock-timestamp lookups', () => {
+    expect(sql).toMatch(
+      /CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_teams_locked_at\s+ON\s+teams\s*\(\s*locked_at\s*\)/i
+    );
+    expect(sql).toMatch(/WHERE\s+locked_at\s+IS\s+NOT\s+NULL/i);
+  });
+});
+
 describe('0034_idempotent_application_decisions.sql decision wrappers (#193)', () => {
   const migrationPath = path.resolve(
     __dirname,

@@ -31,6 +31,7 @@ describe('requireTeamOwner middleware unit tests (US-012 / #122)', () => {
     commitment_hours: 20,
     communication_link: null,
     recruitment_status: 'Open',
+    locked_at: null,
     disbanded_at: null,
     created_at: '2026-10-18T00:00:00.000Z',
     updated_at: '2026-10-18T00:00:00.000Z',
@@ -129,3 +130,4 @@ describe('requireTeamOwner middleware unit tests (US-012 / #122)', () => {
     expect(mockNext).toHaveBeenCalledWith(dbError);
   });
 });
+

@@ -23,6 +23,7 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
     commitmentHours: 20,
     communicationLink: 'https://discord.gg/test',
     recruitmentStatus: 'Open',
+    lockedAt: null,
     createdAt: '2026-10-18T10:00:00.000Z',
     updatedAt: '2026-10-18T10:00:00.000Z',
     members: [
@@ -180,13 +181,14 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
     const lockedTeam: TeamView = {
       ...sampleTeam,
       recruitmentStatus: 'Locked',
+      lockedAt: '2026-10-19T15:30:00.000Z',
       lifecycle: {
         mutable: false,
         reason: 'Locked',
       },
-    viewerRole: 'Owner',
-    viewerParticipantId: 'p-1',
-    canLeave: false,
+      viewerRole: 'Owner',
+      viewerParticipantId: 'p-1',
+      canLeave: false,
     };
 
     vi.mocked(teamApi.fetchMyTeam).mockResolvedValueOnce(lockedTeam);
@@ -196,6 +198,7 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
     await waitFor(() => {
       const note = screen.getByRole('note');
       expect(note).toHaveTextContent(/team recruitment is locked/i);
+      expect(note).toHaveTextContent(/locked at/i);
       expect(screen.getByRole('button', { name: /save changes/i })).toBeDisabled();
       expect(screen.getByRole('button', { name: /disband team/i })).toBeDisabled();
     });

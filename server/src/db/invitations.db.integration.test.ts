@@ -601,7 +601,7 @@ describe.skipIf(isGated)('US-017 Invitation Model Postgres Suite (#161)', () => 
 
     const { error: lockErr } = await supabase
       .from('teams')
-      .update({ recruitment_status: 'Locked' })
+      .update({ recruitment_status: 'Locked', locked_at: new Date().toISOString() })
       .eq('id', teamId);
     expect(lockErr).toBeNull();
 
@@ -883,7 +883,10 @@ describe.skipIf(isGated)('US-017 Invitation Model Postgres Suite (#161)', () => 
       status: 'Confirmed',
     });
 
-    await supabase.from('teams').update({ recruitment_status: 'Locked' }).eq('id', teamId);
+    await supabase
+      .from('teams')
+      .update({ recruitment_status: 'Locked', locked_at: new Date().toISOString() })
+      .eq('id', teamId);
 
     const { error: leaveErr } = await supabase.rpc('leave_team', {
       p_actor: member.id,

@@ -160,8 +160,11 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
   const getLifecycleNotice = () => {
     if (!team.lifecycle || team.lifecycle.mutable) return null;
     switch (team.lifecycle.reason) {
-      case 'Locked':
-        return 'Team recruitment is locked. Editing and slot management are disabled.';
+      case 'Locked': {
+        const base = 'Team recruitment is locked. Editing and slot management are disabled.';
+        if (!team.lockedAt) return base;
+        return `${base} Locked at ${new Date(team.lockedAt).toLocaleString()}.`;
+      }
       case 'Disbanded':
         return 'This team has been disbanded. All recruitment and editing are closed.';
       case 'EventNotRecruiting':

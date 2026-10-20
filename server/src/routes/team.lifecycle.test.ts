@@ -162,10 +162,11 @@ describe('Team Lifecycle Lock Matrix & Member Removal (US-012 / Task 7 / #124)',
   });
 
   describe('Read-only view retains access when lifecycle is not mutable', () => {
-    it('returns 200 with lifecycle.mutable=false and reason="Locked" for Locked teams', async () => {
+    it('returns 200 with lifecycle.mutable=false, reason="Locked", and lockedAt for Locked teams (#206)', async () => {
+      const lockedAt = '2026-10-19T16:00:00.000Z';
       vi.spyOn(teamsRepository, 'getTeamViewParts').mockResolvedValue({
         ...sampleParts,
-        team: { ...sampleTeam, recruitment_status: 'Locked' },
+        team: { ...sampleTeam, recruitment_status: 'Locked', locked_at: lockedAt },
         event: { max_team_size: 4, status: 'Published', end_date: '2099-01-01T00:00:00.000Z' },
       });
 
@@ -179,6 +180,8 @@ describe('Team Lifecycle Lock Matrix & Member Removal (US-012 / Task 7 / #124)',
         reason: 'Locked',
       });
       expect(res.body.team.recruitmentStatus).toBe('Locked');
+      expect(res.body.team.lockedAt).toBe(lockedAt);
+      expect(res.body.team.locked_at).toBeUndefined();
     });
 
     it('returns 200 with lifecycle.mutable=false and reason="Disbanded" for Disbanded teams', async () => {

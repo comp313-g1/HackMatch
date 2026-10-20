@@ -25,6 +25,7 @@ describe('teamCreation service unit tests (US-012 / #119)', () => {
     commitment_hours: sampleInput.commitmentHours,
     communication_link: sampleInput.communicationLink,
     recruitment_status: 'Open',
+    locked_at: null,
     disbanded_at: null,
     created_at: '2026-10-18T10:00:00.000Z',
     updated_at: '2026-10-18T10:00:00.000Z',
@@ -131,3 +132,4 @@ describe('teamCreation service unit tests (US-012 / #119)', () => {
     await expect(createTeam(sampleInput, { repo: mockRepo })).rejects.toBe(unknownErr);
   });
 });
+

@@ -71,6 +71,7 @@ describe('GET /api/teams Open Teams Browse & Visitor Privacy (US-013 / Task 4)',
       commitment_hours: 20.0,
       communication_link: 'https://discord.gg/hackmatch-secret-link',
       recruitment_status: 'Open',
+      locked_at: null,
       disbanded_at: null,
       created_at: '2026-10-18T10:00:00.000Z',
       updated_at: '2026-10-18T10:00:00.000Z',
@@ -329,3 +330,4 @@ describe('GET /api/teams Open Teams Browse & Visitor Privacy (US-013 / Task 4)',
     });
   });
 });
+

@@ -30,6 +30,7 @@ describe('US-012 Client Integration Suite (TeamWorkspace & Lifecycle)', () => {
       commitmentHours: 25.5,
       communicationLink: 'https://discord.gg/hack-pioneers',
       recruitmentStatus: 'Open',
+      lockedAt: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       limits: {

@@ -53,6 +53,8 @@ export interface TeamView {
   commitmentHours: number;
   communicationLink: string | null;
   recruitmentStatus: TeamRecruitmentStatus;
+  /** Server-recorded roster lock timestamp when Locked (US-022 / FR-066 / #206). */
+  lockedAt: string | null;
   createdAt: string;
   updatedAt: string;
   members: TeamMemberView[];
