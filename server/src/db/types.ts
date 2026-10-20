@@ -362,3 +362,30 @@ export interface EventAvailability {
   updated_at: string;
 }
 
+/** US-026 / FR-075 moderation queue target kinds. */
+export type ModerationTargetType = 'team' | 'profile' | 'url';
+
+export type ModerationCaseStatus = 'Open' | 'Dismissed' | 'Resolved';
+
+export interface ModerationCase {
+  id: string;
+  target_type: ModerationTargetType;
+  target_id: string;
+  reason: string;
+  status: ModerationCaseStatus;
+  created_by: string;
+  report_count: number;
+  flagged_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateModerationCaseDTO {
+  target_type: ModerationTargetType;
+  target_id: string;
+  reason: string;
+  created_by: string;
+  flagged_url?: string | null;
+  report_count?: number;
+}
+
