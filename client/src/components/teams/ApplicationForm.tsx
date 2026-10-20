@@ -76,7 +76,8 @@ export function ApplicationForm({
       <p className="text-xs text-ink-muted" data-testid="application-form-quota-hint">
         Submit a Pending Review application for an open slot. An optional message of at most{' '}
         {APPLICATION_MESSAGE_MAX_LENGTH} characters may be included. You may hold at most{' '}
-        {MAX_PENDING_APPLICATIONS_PER_EVENT} pending applications across the platform at a time (at most 3 pending applications per event; other events have separate limits). Withdraw a pending application to free a slot.
+        {MAX_PENDING_APPLICATIONS_PER_EVENT} pending applications across the platform at a time.
+        Withdraw a pending application to free a slot.
       </p>
 
       <dl className="text-xs text-ink space-y-1.5 rounded-md border border-cream-200 bg-cream-50/40 p-3">

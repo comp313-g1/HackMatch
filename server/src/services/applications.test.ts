@@ -40,6 +40,9 @@ function passingEligibility(overrides?: {
         },
         vacancies: [{ ...sampleVacancy, status: overrides?.vacancyStatus ?? 'Open' }],
       }),
+      listConfirmedParticipantIdsForTeam: vi
+        .fn()
+        .mockResolvedValue(overrides?.confirmedIds ?? [ownerParticipant.id]),
       listConfirmedParticipantIdsForEvent: vi
         .fn()
         .mockResolvedValue(overrides?.confirmedIds ?? [ownerParticipant.id]),
@@ -58,6 +61,7 @@ function passingQuotas(
     teamsRepo: {
       findTeamById: vi.fn().mockResolvedValue(sampleTeam),
       findPendingApplicationForTeam: vi.fn().mockResolvedValue(duplicate),
+      countPendingApplicationsForParticipant: vi.fn().mockResolvedValue(pendingCount),
       countPendingApplicationsForEvent: vi.fn().mockResolvedValue(pendingCount),
     },
   };
@@ -105,8 +109,10 @@ describe('submitApplication (US-018 / #172 / #173 / #174)', () => {
       status: 'Pending',
       requestType: 'Application',
       vacancyId: sampleVacancyId,
+      slotId: sampleVacancyId,
       applicantParticipantId: otherParticipant.id,
       message: 'Interested in Frontend',
+      pendingCount: 1,
       pendingCountForEvent: 1,
     });
     expect(rpcSpy).toHaveBeenCalledWith(

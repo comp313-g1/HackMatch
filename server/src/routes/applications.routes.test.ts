@@ -59,8 +59,14 @@ function mockEligibleApplyContext(overrides?: {
     },
     vacancies: [{ ...sampleVacancy, status: overrides?.vacancyStatus ?? 'Open' }],
   });
+  vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue(
+    overrides?.confirmedIds ?? [ownerParticipant.id]
+  );
   vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue(
     overrides?.confirmedIds ?? [ownerParticipant.id]
+  );
+  vi.spyOn(teamsRepository, 'countPendingApplicationsForParticipant').mockResolvedValue(
+    overrides?.pendingCountForEvent ?? 0
   );
   vi.spyOn(teamsRepository, 'countPendingApplicationsForEvent').mockResolvedValue(
     overrides?.pendingCountForEvent ?? 0
@@ -172,6 +178,59 @@ describe('POST /api/teams/:teamId/applications (US-018 / #172 / #173)', () => {
       sampleVacancyId,
       'Ready to contribute'
     );
+  });
+
+  it('accepts slotId alias for vacancyId in request body', async () => {
+    vi.spyOn(teamsRepository, 'submitTeamApplication').mockResolvedValue({
+      application: {
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        team_id: sampleTeamId,
+        event_id: sampleEventId,
+        vacancy_id: sampleVacancyId,
+        participant_id: otherParticipant.id,
+        request_type: 'Application',
+        status: 'Pending',
+        cancel_reason: null,
+        resolved_at: null,
+        expires_at: null,
+        message: null,
+        created_at: '2026-10-19T15:00:00.000Z',
+        updated_at: '2026-10-19T15:00:00.000Z',
+      },
+      vacancyRole: 'Frontend',
+      teamName: 'HackMatch Innovators',
+      pendingCountForEvent: 1,
+      notice: 'Pending Review application created.',
+    });
+
+    const res = await request(app)
+      .post(applyPath)
+      .set('Authorization', otherTokenHeader)
+      .send({
+        slotId: sampleVacancyId,
+      });
+
+    expect(res.status).toBe(201);
+    expect(teamsRepository.submitTeamApplication).toHaveBeenCalledWith(
+      otherParticipant.id,
+      sampleTeamId,
+      sampleVacancyId,
+      null
+    );
+  });
+
+  it('rejects eventId in request body as unknown field', async () => {
+    const res = await request(app)
+      .post(applyPath)
+      .set('Authorization', otherTokenHeader)
+      .send({
+        vacancyId: sampleVacancyId,
+        eventId: sampleEventId,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+    expect(res.body.errors.eventId).toBeTruthy();
   });
 
   it('returns 409 APPLICATION_PENDING_LIMIT from Express quota preflight (#174 / T4)', async () => {
