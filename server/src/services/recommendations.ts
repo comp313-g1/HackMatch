@@ -277,11 +277,20 @@ export async function getRecommendationsForOpenSlot(
   };
 
   const memberIdsFromView = (parts.members ?? []).map((m) => m.participant_id);
-  const repoTeamConfirmedIds = deps.teamsRepo.listConfirmedParticipantIdsForTeam
-    ? await deps.teamsRepo.listConfirmedParticipantIdsForTeam(teamId)
-    : deps.teamsRepo.listConfirmedParticipantIdsForEvent
-      ? await deps.teamsRepo.listConfirmedParticipantIdsForEvent(parts.team.event_id)
-      : [];
+  let repoTeamConfirmedIds: string[] = [];
+  if (deps.teamsRepo.listConfirmedParticipantIdsForTeam) {
+    try {
+      repoTeamConfirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForTeam(teamId);
+    } catch (err) {
+      if (deps.teamsRepo.listConfirmedParticipantIdsForEvent) {
+        repoTeamConfirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForEvent(parts.team.event_id);
+      } else {
+        throw err;
+      }
+    }
+  } else if (deps.teamsRepo.listConfirmedParticipantIdsForEvent) {
+    repoTeamConfirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForEvent(parts.team.event_id);
+  }
   const confirmedIds = new Set<string>([...memberIdsFromView, ...repoTeamConfirmedIds]);
 
   const pool = await deps.listCandidates(deps.availabilityDeps);

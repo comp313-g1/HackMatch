@@ -58,6 +58,9 @@ describe('GET /api/teams/:teamId/vacancies/:vacancyId/recommendations (US-015)',
         },
       ],
     });
+    vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([
+      ownerParticipant.id,
+    ]);
     vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue([
       ownerParticipant.id,
     ]);
@@ -160,6 +163,10 @@ describe('GET /api/teams/:teamId/vacancies/:vacancyId/recommendations (US-015)',
         portfolioLinks: [],
         updatedAt: '2026-10-18T00:00:00.000Z',
       },
+    ]);
+    vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([
+      ownerParticipant.id,
+      otherParticipant.id,
     ]);
     vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue([
       ownerParticipant.id,

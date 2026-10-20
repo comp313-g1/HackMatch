@@ -99,6 +99,9 @@ function mockOwnerTeamContext(overrides?: {
     },
     vacancies: overrides?.vacancies ?? [frSlotVacancy],
   });
+  vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([
+    ownerParticipant.id,
+  ]);
   vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue([
     ownerParticipant.id,
   ]);
@@ -208,6 +211,10 @@ describe('US-015 Recommendations Integration Suite (scoring, permissions, exclus
   describe('US-015-T3: exclusions (not Looking for Team / confirmed / inactive)', () => {
     it('excludes candidates already confirmed for the event and reports exclusion counts', async () => {
       mockEligiblePool();
+      vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([
+        ownerParticipant.id,
+        otherParticipant.id,
+      ]);
       vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue([
         ownerParticipant.id,
         otherParticipant.id,
