@@ -342,6 +342,121 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
     expect(result).toEqual(application);
   });
 
+  it('listTeamApplications queries only Pending Applications newest-first and projects permitted profile data (#188)', async () => {
+    const applicantId = 'p2000000-0000-4000-8000-000000000002';
+    const application = {
+      id: 'a1000000-0000-4000-8000-000000000001',
+      team_id: sampleTeam.id,
+      event_id: sampleTeam.event_id,
+      vacancy_id: 'v1000000-0000-4000-8000-000000000001',
+      participant_id: applicantId,
+      request_type: 'Application',
+      status: 'Pending',
+      message: 'Ready to contribute',
+      cancel_reason: null,
+      resolved_at: null,
+      expires_at: null,
+      created_at: '2026-10-20T16:00:00.000Z',
+      updated_at: '2026-10-20T16:00:00.000Z',
+      vacancy: { role: 'Backend' },
+    };
+
+    const requestOrder = vi.fn().mockResolvedValue({ data: [application], error: null });
+    const requestStatus = vi.fn().mockReturnValue({ order: requestOrder });
+    const requestType = vi.fn().mockReturnValue({ eq: requestStatus });
+    const requestTeam = vi.fn().mockReturnValue({ eq: requestType });
+    const teamMaybeSingle = vi.fn().mockResolvedValue({
+      data: { id: sampleTeam.id, name: sampleTeam.name },
+      error: null,
+    });
+    const profileIn = vi.fn().mockResolvedValue({
+      data: [
+        {
+          participant_id: applicantId,
+          handle: 'backend_dev',
+          primary_role: 'Backend',
+          institution: 'George Brown College',
+        },
+      ],
+      error: null,
+    });
+    const participantIn = vi.fn().mockResolvedValue({
+      data: [{ id: applicantId, full_name: 'Grace Hopper' }],
+      error: null,
+    });
+    const skillOrder = vi.fn().mockResolvedValue({
+      data: [{ participant_id: applicantId, skill_name: 'PostgreSQL' }],
+      error: null,
+    });
+    const portfolioOrder = vi.fn().mockResolvedValue({
+      data: [
+        {
+          participant_id: applicantId,
+          url: 'https://example.com/grace',
+          label: 'Projects',
+        },
+      ],
+      error: null,
+    });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'teams') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({ maybeSingle: teamMaybeSingle }),
+          }),
+        };
+      }
+      if (table === 'team_requests') {
+        return { select: vi.fn().mockReturnValue({ eq: requestTeam }) };
+      }
+      if (table === 'participants') {
+        return { select: vi.fn().mockReturnValue({ in: participantIn }) };
+      }
+      if (table === 'participant_profiles') {
+        return { select: vi.fn().mockReturnValue({ in: profileIn }) };
+      }
+      if (table === 'participant_skills') {
+        return {
+          select: vi.fn().mockReturnValue({
+            in: vi.fn().mockReturnValue({ order: skillOrder }),
+          }),
+        };
+      }
+      return {
+        select: vi.fn().mockReturnValue({
+          in: vi.fn().mockReturnValue({ order: portfolioOrder }),
+        }),
+      };
+    });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      from,
+    } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.listTeamApplications(sampleTeam.id);
+
+    expect(requestTeam).toHaveBeenCalledWith('team_id', sampleTeam.id);
+    expect(requestType).toHaveBeenCalledWith('request_type', 'Application');
+    expect(requestStatus).toHaveBeenCalledWith('status', 'Pending');
+    expect(requestOrder).toHaveBeenCalledWith('created_at', { ascending: false });
+    expect(result).toEqual([
+      expect.objectContaining({
+        vacancyRole: 'Backend',
+        teamName: sampleTeam.name,
+        applicant: {
+          displayName: 'Grace Hopper',
+          handle: 'backend_dev',
+          primaryRole: 'Backend',
+          institution: 'George Brown College',
+          skills: ['PostgreSQL'],
+          portfolios: [{ url: 'https://example.com/grace', label: 'Projects' }],
+        },
+      }),
+    ]);
+    expect(result[0].application).not.toHaveProperty('vacancy');
+  });
+
   it('acceptTeamInvitation calls the atomic RPC and returns membership state (#180)', async () => {
     const invitation = {
       id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',

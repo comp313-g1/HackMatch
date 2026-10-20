@@ -7,6 +7,7 @@ import { OwnerInvitationsPanel } from './OwnerInvitationsPanel';
 import { TeamRosterPanel } from './TeamRosterPanel';
 import { LeaveTeamPanel } from './LeaveTeamPanel';
 import { RosterStatusView } from './RosterStatusView';
+import { OwnerApplicationsPanel } from './OwnerApplicationsPanel';
 
 export interface TeamWorkspaceProps {
   eventId: string;
@@ -267,6 +268,8 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
             disabled={isLocked}
             refreshKey={invitationsRefreshKey}
           />
+
+          <OwnerApplicationsPanel teamId={team.id} />
 
           <TeamRosterPanel
             teamId={team.id}
