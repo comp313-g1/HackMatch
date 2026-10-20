@@ -5,6 +5,7 @@ import {
   fetchTeamApplications,
   type OwnerApplicationReviewItem,
 } from './applicationsApi';
+import { ApplicationReviewCard } from './ApplicationReviewCard';
 
 export interface OwnerApplicationsPanelProps {
   teamId: string;
@@ -113,45 +114,7 @@ export function OwnerApplicationsPanel({
       {hasApplications && (
         <ul className="space-y-3" data-testid="applications-review-list">
           {applications.map((application) => (
-            <li key={application.id} className="rounded-md border border-cream-200 p-3" data-testid={`application-review-${application.id}`}>
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <p className="font-semibold text-forest-900">
-                    {application.applicantDisplayName}
-                    {application.applicantHandle ? ` (@${application.applicantHandle})` : ''}
-                  </p>
-                  <p className="text-xs text-ink-muted">
-                    {application.vacancyRole || 'Unspecified role'} · {application.statusLabel}
-                  </p>
-                </div>
-                <time className="text-xs text-ink-muted" dateTime={application.createdAt}>
-                  {new Date(application.createdAt).toLocaleString()}
-                </time>
-              </div>
-
-              {(application.primaryRole || application.institution) && (
-                <p className="mt-2 text-sm text-ink">
-                  {[application.primaryRole, application.institution].filter(Boolean).join(' · ')}
-                </p>
-              )}
-              {application.skills.length > 0 && (
-                <p className="mt-2 text-xs text-ink-muted">Skills: {application.skills.join(', ')}</p>
-              )}
-              <p className="mt-2 text-sm text-ink">
-                {application.message || 'No application note provided.'}
-              </p>
-              {application.portfolios.length > 0 && (
-                <ul className="mt-2 flex flex-wrap gap-2" aria-label="Self-declared portfolio links">
-                  {application.portfolios.map((portfolio) => (
-                    <li key={portfolio.url}>
-                      <a className="text-xs font-medium text-forest underline" href={portfolio.url} target="_blank" rel="noreferrer">
-                        {portfolio.label || 'Portfolio'} (self-declared)
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
+            <ApplicationReviewCard key={application.id} application={application} />
           ))}
         </ul>
       )}
