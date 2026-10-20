@@ -13,6 +13,7 @@ describe('teamView service unit tests (US-012 / #120)', () => {
     commitment_hours: 15.5,
     communication_link: 'https://discord.gg/bytecrafters',
     recruitment_status: 'Open',
+    locked_at: null,
     disbanded_at: null,
     created_at: '2026-10-18T10:00:00.000Z',
     updated_at: '2026-10-18T10:00:00.000Z',
@@ -195,7 +196,7 @@ describe('teamView service unit tests (US-012 / #120)', () => {
 
   it('includes derived lifecycle in TeamView', () => {
     const parts = {
-      team: { ...baseTeam, recruitment_status: 'Locked' as const },
+      team: { ...baseTeam, recruitment_status: 'Locked' as const, locked_at: '2026-10-19T15:00:00.000Z' },
       event: {
         max_team_size: 4,
         status: 'Published' as const,
@@ -211,5 +212,59 @@ describe('teamView service unit tests (US-012 / #120)', () => {
       reason: 'Locked',
     });
   });
+
+  describe('roster lock fields (#206 / US-022 / FR-066)', () => {
+    it('maps locked_at to lockedAt on TeamView (happy path)', () => {
+      const lockedAt = '2026-10-19T15:30:00.000Z';
+      const view = toTeamView({
+        team: {
+          ...baseTeam,
+          recruitment_status: 'Locked',
+          locked_at: lockedAt,
+        },
+        event: {
+          max_team_size: 4,
+          status: 'Published' as const,
+          end_date: '2099-01-01T00:00:00.000Z',
+        },
+        members: [],
+        vacancies: [],
+      });
+
+      expect(view.recruitmentStatus).toBe('Locked');
+      expect(view.lockedAt).toBe(lockedAt);
+      expect(view.lifecycle).toEqual({ mutable: false, reason: 'Locked' });
+      expect((view as unknown as Record<string, unknown>).locked_at).toBeUndefined();
+      expect((view as unknown as Record<string, unknown>).disbanded_at).toBeUndefined();
+    });
+
+    it('exposes lockedAt as null for Open teams (boundary)', () => {
+      const view = toTeamView({
+        team: baseTeam,
+        event: { max_team_size: 4, status: 'Published' as const, end_date: '2099-01-01T00:00:00.000Z' },
+        members: [],
+        vacancies: [],
+      });
+
+      expect(view.recruitmentStatus).toBe('Open');
+      expect(view.lockedAt).toBeNull();
+      expect(view.lifecycle.mutable).toBe(true);
+    });
+
+    it('treats missing locked_at as null without throwing (failure / legacy row)', () => {
+      const legacyTeam = { ...baseTeam } as Team & { locked_at?: string | null };
+      delete (legacyTeam as { locked_at?: string | null }).locked_at;
+
+      const view = toTeamView({
+        team: legacyTeam as Team,
+        event: { max_team_size: 4 },
+        members: [],
+        vacancies: [],
+      });
+
+      expect(view.lockedAt).toBeNull();
+    });
+  });
 });
+
 

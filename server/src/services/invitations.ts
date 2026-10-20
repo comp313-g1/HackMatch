@@ -89,6 +89,8 @@ export interface OwnerInvitationListItem {
   resolvedAt: string | null;
   vacancyRole: string | null;
   teamName: string;
+  /** Present when status is Canceled/Declined (e.g. TEAM_LOCKED on roster lock — #209). */
+  cancelReason: string | null;
   /** True when Pending but clock expiry has passed (cleanup may lag). */
   expiredByClock: boolean;
 }
@@ -192,6 +194,7 @@ export async function listOwnerInvitations(
       resolvedAt: row.invitation.resolved_at,
       vacancyRole: row.vacancyRole,
       teamName: row.teamName,
+      cancelReason: row.invitation.cancel_reason,
       expiredByClock,
     };
   });

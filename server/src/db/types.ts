@@ -290,6 +290,8 @@ export interface Team {
   commitment_hours: number;
   communication_link: string | null;
   recruitment_status: TeamRecruitmentStatus;
+  /** Server lock time when recruitment_status is Locked (US-022 / FR-066). */
+  locked_at: string | null;
   disbanded_at: string | null;
   created_at: string;
   updated_at: string;

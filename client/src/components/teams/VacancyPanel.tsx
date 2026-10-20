@@ -7,6 +7,7 @@ import {
 } from './teamTypes';
 import { validateVacancyForm } from './teamValidation';
 import { addVacancy, updateVacancy, removeVacancy, TeamApiError, AuthRequiredError } from './teamApi';
+import { postLockMutationErrorMessage } from './postLockGuards';
 import { RecommendationPanel } from '../scoring/RecommendationPanel';
 
 export interface VacancyPanelProps {
@@ -119,7 +120,13 @@ export function VacancyPanel({
             ...err.errors,
           }));
         }
-        setFormError(err.message || 'An error occurred while saving the vacancy.');
+        setFormError(
+          postLockMutationErrorMessage({
+            code: err.code,
+            message: err.message,
+            details: err.details,
+          }) || 'An error occurred while saving the vacancy.'
+        );
         return;
       }
       setFormError(err instanceof Error ? err.message : 'An error occurred.');
@@ -140,7 +147,13 @@ export function VacancyPanel({
       onChanged(team);
     } catch (err: unknown) {
       if (err instanceof TeamApiError) {
-        setFormError(err.message || 'Failed to remove vacancy slot.');
+        setFormError(
+          postLockMutationErrorMessage({
+            code: err.code,
+            message: err.message,
+            details: err.details,
+          }) || 'Failed to remove vacancy slot.'
+        );
       } else {
         setFormError(err instanceof Error ? err.message : 'Failed to remove vacancy slot.');
       }

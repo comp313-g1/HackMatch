@@ -1,5 +1,6 @@
 import React from 'react';
 import type { TeamView, TeamMemberView, TeamVacancyView } from './teamTypes';
+import { LockedRosterBadge } from './LockedRosterBadge';
 
 export type RosterStatusViewState = 'loading' | 'success' | 'empty' | 'error';
 
@@ -61,11 +62,10 @@ function MemberRow({
       <div className="flex items-center gap-2 min-w-0">
         <span className="font-medium text-forest-900 truncate">{member.displayName}</span>
         <span
-          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide border ${
-            member.role === 'Owner'
+          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide border ${member.role === 'Owner'
               ? 'bg-cream-100 text-ink border-cream-300'
               : 'bg-white text-ink-muted border-cream-200'
-          }`}
+            }`}
         >
           {member.role}
         </span>
@@ -195,25 +195,33 @@ export function RosterStatusView({
             </p>
           ) : null}
         </div>
-        <span
-          className={`inline-flex items-center px-2.5 py-1 rounded text-[11px] font-semibold border ${statusBadgeClass(recruitmentStatus)}`}
-          data-testid="roster-recruitment-status"
-        >
-          {recruitmentStatus}
-        </span>
+        {recruitmentStatus === 'Locked' ? (
+          <span data-testid="roster-recruitment-status">
+            <LockedRosterBadge lockedAt={team?.lockedAt ?? null} variant="badge" />
+          </span>
+        ) : (
+          <span
+            className={`inline-flex items-center px-2.5 py-1 rounded text-[11px] font-semibold border ${statusBadgeClass(recruitmentStatus)}`}
+            data-testid="roster-recruitment-status"
+          >
+            {recruitmentStatus}
+          </span>
+        )}
       </div>
 
-      {lifecycle && !lifecycle.mutable && lifecycle.reason ? (
+      {lifecycle && !lifecycle.mutable && lifecycle.reason === 'Locked' ? (
+        <div data-testid="roster-lifecycle-note">
+          <LockedRosterBadge lockedAt={team?.lockedAt ?? null} variant="note" />
+        </div>
+      ) : lifecycle && !lifecycle.mutable && lifecycle.reason ? (
         <div
           role="note"
           className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-3 py-2"
           data-testid="roster-lifecycle-note"
         >
-          {lifecycle.reason === 'Locked'
-            ? 'Roster is locked. Membership changes are closed.'
-            : lifecycle.reason === 'Disbanded'
-              ? 'This team was disbanded.'
-              : 'Team recruitment is closed. Roster changes are closed.'}
+          {lifecycle.reason === 'Disbanded'
+            ? 'This team was disbanded.'
+            : 'Event recruitment has ended. Roster changes are closed.'}
         </div>
       ) : null}
 
@@ -242,7 +250,7 @@ export function RosterStatusView({
           <dd className="font-semibold text-forest-900" data-testid="roster-your-status">
             {snapshot?.membershipStatus ||
               (viewerParticipantId &&
-              members.find((m) => m.participantId === viewerParticipantId)?.role) ||
+                members.find((m) => m.participantId === viewerParticipantId)?.role) ||
               'Member'}
             {snapshot?.membershipRole ? ` · ${snapshot.membershipRole}` : ''}
           </dd>

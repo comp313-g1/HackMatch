@@ -21,6 +21,8 @@ import {
   createTeamHandler,
   getMyTeamHandler,
   getTeamHandler,
+  validateLockHandler,
+  lockTeamHandler,
   updateTeamHandler,
   addVacancyHandler,
   updateVacancyHandler,
@@ -55,6 +57,22 @@ teamRouter.get('/', optionalParticipantAuth, validateOpenTeamsQuery, listOpenTea
 teamRouter.post('/', ...participantAuth, requireJsonObjectBody, validateCreateTeamBody, createTeamHandler);
 teamRouter.get('/mine', ...participantAuth, validateMyTeamQuery, getMyTeamHandler);
 teamRouter.get('/:teamId', ...participantAuth, validateTeamIdParams, requireTeamOwner, getTeamHandler);
+/** US-022 / #207 / FR-066 — owner-only roster lock validation (non-mutating). */
+teamRouter.get(
+  '/:teamId/lock/validate',
+  ...participantAuth,
+  validateTeamIdParams,
+  requireTeamOwner,
+  validateLockHandler
+);
+/** US-022 / #208 / FR-066 — atomic owner roster lock (serializes with join/leave). */
+teamRouter.post(
+  '/:teamId/lock',
+  ...participantAuth,
+  validateTeamIdParams,
+  requireTeamOwner,
+  lockTeamHandler
+);
 teamRouter.patch('/:teamId', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateUpdateTeamBody, updateTeamHandler);
 teamRouter.post('/:teamId/vacancies', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateVacancyBody, addVacancyHandler);
 teamRouter.get(

@@ -10,6 +10,8 @@ vi.mock('./teamApi', async () => {
   return {
     ...actual,
     fetchMyTeam: vi.fn(),
+    validateTeamLock: vi.fn(),
+    lockTeam: vi.fn(),
   };
 });
 
@@ -23,6 +25,7 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
     commitmentHours: 20,
     communicationLink: 'https://discord.gg/test',
     recruitmentStatus: 'Open',
+    lockedAt: null,
     createdAt: '2026-10-18T10:00:00.000Z',
     updatedAt: '2026-10-18T10:00:00.000Z',
     members: [
@@ -51,6 +54,22 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.mocked(teamApi.validateTeamLock).mockResolvedValue({
+      canLock: false,
+      reasons: [
+        {
+          code: 'BELOW_MIN_MEMBERS',
+          message: 'Locking requires at least 2 confirmed members (currently 1).',
+        },
+      ],
+      memberCount: 1,
+      minRequired: 2,
+      maxAllowed: 4,
+      recruitmentStatus: 'Open',
+      lockedAt: null,
+      openSlots: 0,
+      members: [{ participantId: 'p-1', displayName: 'Ada Lovelace', role: 'Owner' }],
+    });
   });
 
   it('renders loading state initially with role="status" and aria-busy="true"', () => {
@@ -138,7 +157,8 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
       expect(screen.getByDisplayValue('HackMatch Innovators')).toBeInTheDocument();
       expect(screen.getByText('Recruiting Roles & Open Slots')).toBeInTheDocument();
       expect(screen.getByText('Team Roster')).toBeInTheDocument();
-      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+      expect(screen.getByTestId('confirm-lock-roster-panel')).toBeInTheDocument();
+      expect(screen.getAllByText('Ada Lovelace').length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -180,13 +200,14 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
     const lockedTeam: TeamView = {
       ...sampleTeam,
       recruitmentStatus: 'Locked',
+      lockedAt: '2026-10-19T15:30:00.000Z',
       lifecycle: {
         mutable: false,
         reason: 'Locked',
       },
-    viewerRole: 'Owner',
-    viewerParticipantId: 'p-1',
-    canLeave: false,
+      viewerRole: 'Owner',
+      viewerParticipantId: 'p-1',
+      canLeave: false,
     };
 
     vi.mocked(teamApi.fetchMyTeam).mockResolvedValueOnce(lockedTeam);
@@ -194,9 +215,15 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
     render(<TeamWorkspace eventId="e-123" />);
 
     await waitFor(() => {
-      const note = screen.getByRole('note');
-      expect(note).toHaveTextContent(/team recruitment is locked/i);
+      expect(screen.getByTestId('owner-locked-roster-banner')).toBeInTheDocument();
+      expect(screen.getByTestId('locked-roster-badge')).toHaveTextContent(/locked/i);
+      expect(screen.getByTestId('owner-locked-roster-banner')).toHaveTextContent(
+        /leaving, member removals/i
+      );
+      expect(screen.getByTestId('confirm-lock-roster-panel')).toBeInTheDocument();
+      expect(screen.getByTestId('locked-roster-status-note')).toHaveTextContent(/locked at/i);
       expect(screen.getByRole('button', { name: /save changes/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /\+ add open slot/i })).toBeDisabled();
       expect(screen.getByRole('button', { name: /disband team/i })).toBeDisabled();
     });
   });

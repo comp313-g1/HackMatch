@@ -10,6 +10,8 @@ import {
   removeMember,
   disbandTeam,
   leaveTeam,
+  validateTeamLock,
+  lockTeam,
 } from './teamApi';
 import { authFetch, AuthRequiredError } from '../../config/authFetch';
 import type { TeamView } from './teamTypes';
@@ -39,6 +41,7 @@ describe('teamApi client unit tests (US-012 / Task 8 / #125)', () => {
     commitmentHours: 20,
     communicationLink: 'https://discord.gg/test',
     recruitmentStatus: 'Open',
+    lockedAt: null,
     createdAt: '2026-10-18T10:00:00.000Z',
     updatedAt: '2026-10-18T10:00:00.000Z',
     members: [],
@@ -226,6 +229,58 @@ describe('teamApi client unit tests (US-012 / Task 8 / #125)', () => {
     });
     expect(result.availabilityRestored).toBe(true);
     expect(result.message).toMatch(/availability/i);
+  });
+
+  it('validateTeamLock calls GET /api/teams/:teamId/lock/validate (#207)', async () => {
+    vi.mocked(authFetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          validation: {
+            canLock: false,
+            reasons: [{ code: 'BELOW_MIN_MEMBERS', message: 'Need 2 members.' }],
+            memberCount: 1,
+            minRequired: 2,
+            maxAllowed: 4,
+            recruitmentStatus: 'Open',
+            lockedAt: null,
+            openSlots: 2,
+            members: [],
+          },
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await validateTeamLock('t-123');
+    expect(authFetch).toHaveBeenCalledWith('/api/teams/t-123/lock/validate', {
+      method: 'GET',
+    });
+    expect(result.canLock).toBe(false);
+    expect(result.minRequired).toBe(2);
+  });
+
+  it('lockTeam calls POST /api/teams/:teamId/lock (#208)', async () => {
+    vi.mocked(authFetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          message: 'Roster locked. 0 pending requests were canceled.',
+          lockedAt: '2026-10-20T15:30:00.000Z',
+          memberCount: 2,
+          minRequired: 2,
+          maxAllowed: 4,
+          canceledRequests: 0,
+          team: mockTeam,
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await lockTeam('t-123');
+    expect(authFetch).toHaveBeenCalledWith('/api/teams/t-123/lock', {
+      method: 'POST',
+    });
+    expect(result.lockedAt).toBe('2026-10-20T15:30:00.000Z');
+    expect(result.team.id).toBe('t-123');
   });
 
   it('maps HTTP errors into TeamApiError with structured details and code', async () => {

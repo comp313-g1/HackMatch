@@ -144,6 +144,181 @@ describe('0033_decline_team_application.sql decline DDL (#192)', () => {
   });
 });
 
+describe('lock min/max/concurrency SQL contract (#212 / US-022 / FR-066)', () => {
+  const lockSql = fs.readFileSync(
+    path.resolve(__dirname, '../../../supabase/migrations/0036_lock_team.sql'),
+    'utf-8'
+  );
+
+  it('enforces GREATEST(2, event min) and COALESCE(event max, 4)', () => {
+    expect(lockSql).toMatch(/GREATEST\s*\(\s*2\s*,\s*COALESCE\s*\(\s*v_event\.min_team_size/i);
+    expect(lockSql).toMatch(/COALESCE\s*\(\s*v_event\.max_team_size\s*,\s*4\s*\)/i);
+  });
+
+  it('raises BELOW_MIN_MEMBERS and ABOVE_MAX_MEMBERS before writing Locked', () => {
+    const lockFnIdx = lockSql.indexOf('CREATE OR REPLACE FUNCTION lock_team');
+    const lockBody = lockSql.slice(lockFnIdx);
+    const belowIdx = lockBody.search(/BELOW_MIN_MEMBERS/i);
+    const aboveIdx = lockBody.search(/ABOVE_MAX_MEMBERS/i);
+    // Prefer the UPDATE write, not earlier status comparisons.
+    const writeIdx = lockBody.search(
+      /UPDATE\s+teams[\s\S]*?recruitment_status\s*=\s*'Locked'/i
+    );
+    expect(belowIdx).toBeGreaterThan(-1);
+    expect(aboveIdx).toBeGreaterThan(-1);
+    expect(writeIdx).toBeGreaterThan(aboveIdx);
+    expect(writeIdx).toBeGreaterThan(belowIdx);
+  });
+
+  it('shares hackmatch:accept:team advisory lock between leave_team and lock_team', () => {
+    const leaveIdx = lockSql.indexOf('CREATE OR REPLACE FUNCTION leave_team');
+    const lockIdx = lockSql.indexOf('CREATE OR REPLACE FUNCTION lock_team');
+    const leaveSql = lockSql.slice(leaveIdx, lockIdx);
+    const lockBody = lockSql.slice(lockIdx);
+    expect(leaveSql).toMatch(/hackmatch:accept:team:/);
+    expect(lockBody).toMatch(/hackmatch:accept:team:/);
+  });
+});
+
+describe('post-lock mutation guards SQL contract (#210 / US-022 / FR-067)', () => {
+  const listingSql = fs.readFileSync(
+    path.resolve(__dirname, '../../../supabase/migrations/0013_create_team_listing_functions.sql'),
+    'utf-8'
+  );
+  const cancelSql = fs.readFileSync(
+    path.resolve(__dirname, '../../../supabase/migrations/0014_create_team_cancellation_functions.sql'),
+    'utf-8'
+  );
+  const removalSql = fs.readFileSync(
+    path.resolve(__dirname, '../../../supabase/migrations/0015_create_team_member_removal_function.sql'),
+    'utf-8'
+  );
+  const leaveLockSql = fs.readFileSync(
+    path.resolve(__dirname, '../../../supabase/migrations/0036_lock_team.sql'),
+    'utf-8'
+  );
+
+  it('owner mutation guard rejects Locked via recruitment_status <> Open', () => {
+    expect(listingSql).toMatch(/lock_team_for_owner_mutation/i);
+    expect(listingSql).toMatch(/recruitment_status\s*<>\s*'Open'/i);
+    expect(listingSql).toMatch(/TEAM_NOT_MUTABLE/);
+  });
+
+  it('vacancy remove and disband go through lock_team_for_owner_mutation', () => {
+    expect(cancelSql).toMatch(/remove_team_vacancy/i);
+    expect(cancelSql).toMatch(/disband_team/i);
+    expect(cancelSql).toMatch(/lock_team_for_owner_mutation/i);
+  });
+
+  it('member removal goes through lock_team_for_owner_mutation', () => {
+    expect(removalSql).toMatch(/remove_team_member/i);
+    expect(removalSql).toMatch(/lock_team_for_owner_mutation/i);
+  });
+
+  it('leave_team rejects Locked recruitment after advisory serialization (#210)', () => {
+    const leaveIdx = leaveLockSql.indexOf('CREATE OR REPLACE FUNCTION leave_team');
+    const lockIdx = leaveLockSql.indexOf('CREATE OR REPLACE FUNCTION lock_team');
+    const leaveSql = leaveLockSql.slice(leaveIdx, lockIdx);
+    expect(leaveSql).toMatch(/recruitment_status\s*<>\s*'Open'/i);
+    expect(leaveSql).toMatch(/TEAM_NOT_MUTABLE/);
+    expect(leaveSql).toMatch(/reason',\s*v_team\.recruitment_status/i);
+  });
+});
+
+describe('0036_lock_team.sql atomic roster lock (#208 / US-022 / FR-066)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0036_lock_team.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(100);
+  });
+
+  it('declares lock_team with SECURITY DEFINER and service_role-only execute', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+lock_team/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/SET\s+search_path\s*=\s*public/i);
+    expect(sql).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+lock_team[\s\S]*?FROM\s+PUBLIC\s*,\s*anon\s*,\s*authenticated/i
+    );
+    expect(sql).toMatch(/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+lock_team[\s\S]*?TO\s+service_role/i);
+  });
+
+  it('serializes with join/leave via shared team advisory lock and teams FOR UPDATE', () => {
+    expect(sql).toMatch(/pg_advisory_xact_lock/i);
+    expect(sql).toMatch(/hackmatch:accept:team:/i);
+    expect(sql).toMatch(/FROM\s+teams[\s\S]*?FOR\s+UPDATE/i);
+  });
+
+  it('enforces owner, open status, event recruiting, and min/max member bounds', () => {
+    expect(sql).toMatch(/FORBIDDEN_NOT_TEAM_OWNER/i);
+    expect(sql).toMatch(/ALREADY_LOCKED/i);
+    expect(sql).toMatch(/BELOW_MIN_MEMBERS/i);
+    expect(sql).toMatch(/ABOVE_MAX_MEMBERS/i);
+    expect(sql).toMatch(/GREATEST\s*\(\s*2\s*,\s*COALESCE\s*\(\s*v_event\.min_team_size/i);
+    expect(sql).toMatch(/COALESCE\s*\(\s*v_event\.max_team_size\s*,\s*4\s*\)/i);
+    expect(sql).toMatch(/EventNotRecruiting/i);
+  });
+
+  it('sets Locked + locked_at and cancels Pending requests atomically', () => {
+    expect(sql).toMatch(/recruitment_status\s*=\s*'Locked'/i);
+    expect(sql).toMatch(/locked_at\s*=\s*v_locked_at/i);
+    expect(sql).toMatch(/cancel_reason\s*=\s*'TEAM_LOCKED'/i);
+    expect(sql).toMatch(/status\s*=\s*'Canceled'/i);
+    expect(sql).toMatch(/resolved_at\s*=\s*now\(\)/i);
+    expect(sql).toMatch(/REQUEST_CANCELED_TEAM_LOCKED/i);
+    expect(sql).toMatch(/WHERE\s+team_id\s*=\s*p_team[\s\S]*?AND\s+status\s*=\s*'Pending'/i);
+  });
+
+  it('updates leave_team to take the shared team advisory lock before FOR UPDATE', () => {
+    const leaveIdx = sql.indexOf('CREATE OR REPLACE FUNCTION leave_team');
+    const lockIdx = sql.indexOf('CREATE OR REPLACE FUNCTION lock_team');
+    expect(leaveIdx).toBeGreaterThan(-1);
+    expect(lockIdx).toBeGreaterThan(leaveIdx);
+    const leaveSql = sql.slice(leaveIdx, lockIdx);
+    expect(leaveSql).toMatch(/pg_advisory_xact_lock/i);
+    expect(leaveSql).toMatch(/hackmatch:accept:team:/i);
+  });
+});
+
+describe('0035_add_team_roster_lock_fields.sql roster lock timestamp (#206 / US-022 / FR-066)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0035_add_team_roster_lock_fields.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(100);
+  });
+
+  it('adds teams.locked_at as a nullable timestamptz server lock timestamp', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+teams/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+locked_at\s+TIMESTAMPTZ/i);
+  });
+
+  it('ties Locked recruitment_status to a non-null locked_at (and forbids locked_at otherwise)', () => {
+    expect(sql).toMatch(/chk_teams_locked_at_matches_status/i);
+    expect(sql).toMatch(
+      /recruitment_status\s*=\s*'Locked'\s+AND\s+locked_at\s+IS\s+NOT\s+NULL/i
+    );
+    expect(sql).toMatch(
+      /recruitment_status\s*<>\s*'Locked'\s+AND\s+locked_at\s+IS\s+NULL/i
+    );
+  });
+
+  it('indexes locked teams for lock-timestamp lookups', () => {
+    expect(sql).toMatch(
+      /CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_teams_locked_at\s+ON\s+teams\s*\(\s*locked_at\s*\)/i
+    );
+    expect(sql).toMatch(/WHERE\s+locked_at\s+IS\s+NOT\s+NULL/i);
+  });
+});
+
 describe('0034_idempotent_application_decisions.sql decision wrappers (#193)', () => {
   const migrationPath = path.resolve(
     __dirname,

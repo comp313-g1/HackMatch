@@ -29,6 +29,7 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
     commitment_hours: sampleInput.commitmentHours,
     communication_link: sampleInput.communicationLink,
     recruitment_status: 'Open',
+    locked_at: null,
     disbanded_at: null,
     created_at: '2026-10-18T10:00:00.000Z',
     updated_at: '2026-10-18T10:00:00.000Z',
@@ -237,6 +238,38 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
       p_team: sampleTeam.id,
     });
     expect(result).toEqual({ releasedMembers: 3, canceledRequests: 4 });
+  });
+
+  it('lockTeam calls lock_team RPC and returns lock payload (#208)', async () => {
+    const mockRpc = vi.fn().mockResolvedValue({
+      data: {
+        teamId: sampleTeam.id,
+        lockedAt: '2026-10-20T15:30:00.000Z',
+        memberCount: 2,
+        minRequired: 2,
+        maxAllowed: 4,
+        canceledRequests: 1,
+      },
+      error: null,
+    });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      rpc: mockRpc,
+    } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.lockTeam('actor-1', sampleTeam.id);
+    expect(mockRpc).toHaveBeenCalledWith('lock_team', {
+      p_actor: 'actor-1',
+      p_team: sampleTeam.id,
+    });
+    expect(result).toEqual({
+      teamId: sampleTeam.id,
+      lockedAt: '2026-10-20T15:30:00.000Z',
+      memberCount: 2,
+      minRequired: 2,
+      maxAllowed: 4,
+      canceledRequests: 1,
+    });
   });
 
   it('leaveTeam calls leave_team RPC and returns availability restoration (#183)', async () => {
@@ -876,4 +909,5 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
     });
   });
 });
+
 

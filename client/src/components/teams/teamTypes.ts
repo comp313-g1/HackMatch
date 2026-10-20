@@ -53,6 +53,8 @@ export interface TeamView {
   commitmentHours: number;
   communicationLink: string | null;
   recruitmentStatus: TeamRecruitmentStatus;
+  /** Server-recorded roster lock timestamp when Locked (US-022 / FR-066 / #206). */
+  lockedAt: string | null;
   createdAt: string;
   updatedAt: string;
   members: TeamMemberView[];
@@ -65,6 +67,40 @@ export interface TeamView {
   viewerParticipantId: string | null;
   /** True when the viewer is a confirmed non-owner and the team is still mutable. */
   canLeave: boolean;
+}
+
+/** US-022 / #207 / FR-066 — owner-only lock preflight payload. */
+export type RosterLockValidationReasonCode =
+  | 'BELOW_MIN_MEMBERS'
+  | 'ABOVE_MAX_MEMBERS'
+  | 'TEAM_NOT_MUTABLE'
+  | 'ALREADY_LOCKED'
+  | 'EVENT_NOT_RECRUITING'
+  | 'MEMBER_CONFIRMED_ELSEWHERE'
+  | 'FORBIDDEN_NOT_TEAM_OWNER';
+
+export interface RosterLockValidationReason {
+  code: RosterLockValidationReasonCode;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+export interface RosterLockValidationMember {
+  participantId: string;
+  displayName: string;
+  role: TeamMembershipRole;
+}
+
+export interface RosterLockValidationResult {
+  canLock: boolean;
+  reasons: RosterLockValidationReason[];
+  memberCount: number;
+  minRequired: number;
+  maxAllowed: number;
+  recruitmentStatus: TeamRecruitmentStatus;
+  lockedAt: string | null;
+  openSlots: number;
+  members: RosterLockValidationMember[];
 }
 
 export interface TeamFieldErrors {

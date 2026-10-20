@@ -34,7 +34,7 @@ vi.mock('../config/firebase.js', () => {
   };
 });
 
-describe('Team Lifecycle Lock Matrix & Member Removal (US-012 / Task 7 / #124)', () => {
+describe('Team Lifecycle Lock Matrix & Member Removal (US-012 / Task 7 / #124 / US-022 #210)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockVerifyIdToken.mockResolvedValue(validOwnerDecodedToken);
@@ -149,7 +149,12 @@ describe('Team Lifecycle Lock Matrix & Member Removal (US-012 / Task 7 / #124)',
 
           expect(res.status).toBe(409);
           expect(res.body.code).toBe('TEAM_NOT_MUTABLE');
-          expect(res.body.error).toBe('Team recruitment is not open or event is concluded.');
+          // #210 — Locked gets an explicit freeze message; other reasons keep catalog copy.
+          expect(res.body.error).toBe(
+            reason === 'Locked'
+              ? 'This roster is locked. Leaving, member removals, slot edits, and disbanding are not allowed.'
+              : 'Team recruitment is not open or event is concluded.'
+          );
           expect(res.body.details).toEqual({ reason });
 
           // Guarantee zero stack traces or raw database leaks
@@ -162,10 +167,11 @@ describe('Team Lifecycle Lock Matrix & Member Removal (US-012 / Task 7 / #124)',
   });
 
   describe('Read-only view retains access when lifecycle is not mutable', () => {
-    it('returns 200 with lifecycle.mutable=false and reason="Locked" for Locked teams', async () => {
+    it('returns 200 with lifecycle.mutable=false, reason="Locked", and lockedAt for Locked teams (#206)', async () => {
+      const lockedAt = '2026-10-19T16:00:00.000Z';
       vi.spyOn(teamsRepository, 'getTeamViewParts').mockResolvedValue({
         ...sampleParts,
-        team: { ...sampleTeam, recruitment_status: 'Locked' },
+        team: { ...sampleTeam, recruitment_status: 'Locked', locked_at: lockedAt },
         event: { max_team_size: 4, status: 'Published', end_date: '2099-01-01T00:00:00.000Z' },
       });
 
@@ -179,6 +185,8 @@ describe('Team Lifecycle Lock Matrix & Member Removal (US-012 / Task 7 / #124)',
         reason: 'Locked',
       });
       expect(res.body.team.recruitmentStatus).toBe('Locked');
+      expect(res.body.team.lockedAt).toBe(lockedAt);
+      expect(res.body.team.locked_at).toBeUndefined();
     });
 
     it('returns 200 with lifecycle.mutable=false and reason="Disbanded" for Disbanded teams', async () => {

@@ -1,5 +1,6 @@
 import React from 'react';
 import type { InviteeInvitationListItem } from './invitationsApi';
+import { cancelReasonLabel } from './requestCancelReason';
 
 export type InvitationInboxListState = 'loading' | 'success' | 'error';
 
@@ -142,6 +143,14 @@ export function MyInvitationsView({
                     {expiryLabel(inv)}
                   </span>
                 </p>
+                {cancelReasonLabel(inv.cancelReason) ? (
+                  <p
+                    className="text-amber-900/90"
+                    data-testid={`invitation-inbox-cancel-reason-${inv.id}`}
+                  >
+                    {cancelReasonLabel(inv.cancelReason)}
+                  </p>
+                ) : null}
               </button>
             </li>
           ))}
@@ -178,6 +187,14 @@ export function MyInvitationsView({
               <dt className="font-medium text-ink-muted shrink-0">Expires</dt>
               <dd data-testid="invitation-detail-expiry">{expiryLabel(selected)}</dd>
             </div>
+            {cancelReasonLabel(selected.cancelReason) ? (
+              <div className="flex gap-2">
+                <dt className="font-medium text-ink-muted shrink-0">Outcome</dt>
+                <dd data-testid="invitation-detail-cancel-reason">
+                  {cancelReasonLabel(selected.cancelReason)}
+                </dd>
+              </div>
+            ) : null}
           </dl>
 
           {selected.canRespond ? (

@@ -12,6 +12,7 @@ const sampleTeam: TeamView = {
   commitmentHours: 20,
   communicationLink: null,
   recruitmentStatus: 'Open',
+  lockedAt: null,
   createdAt: '2026-10-18T10:00:00.000Z',
   updatedAt: '2026-10-18T10:00:00.000Z',
   members: [
@@ -123,11 +124,30 @@ describe('RosterStatusView (US-019 / #185)', () => {
         team={{
           ...sampleTeam,
           recruitmentStatus: 'Locked',
+          lockedAt: null,
           lifecycle: { mutable: false, reason: 'Locked' },
           canLeave: false,
         }}
       />
     );
-    expect(screen.getByTestId('roster-lifecycle-note')).toHaveTextContent(/locked/i);
+    expect(screen.getByTestId('roster-lifecycle-note')).toHaveTextContent(/roster locked/i);
+    expect(screen.queryByTestId('locked-roster-locked-at')).not.toBeInTheDocument();
+  });
+
+  it('shows server lock timestamp when Locked and lockedAt is set (#206 / #211)', () => {
+    render(
+      <RosterStatusView
+        team={{
+          ...sampleTeam,
+          recruitmentStatus: 'Locked',
+          lockedAt: '2026-10-19T15:30:00.000Z',
+          lifecycle: { mutable: false, reason: 'Locked' },
+          canLeave: false,
+        }}
+      />
+    );
+    expect(screen.getByTestId('roster-recruitment-status')).toHaveTextContent('Locked');
+    expect(screen.getByTestId('locked-roster-locked-at')).toHaveTextContent(/locked at/i);
+    expect(screen.getByTestId('locked-roster-badge')).toBeInTheDocument();
   });
 });

@@ -341,7 +341,7 @@ describe('US-019 Response Transactions Integration Suite (#186)', () => {
       expect(leaveSpy).toHaveBeenCalledWith(otherParticipant.id, sampleTeamId);
     });
 
-    it('rejects leave after lock with 409 TEAM_NOT_MUTABLE', async () => {
+    it('rejects leave after lock with 409 TEAM_NOT_MUTABLE (#210)', async () => {
       vi.spyOn(teamsRepository, 'leaveTeam').mockRejectedValue(
         new TeamServiceError('TEAM_NOT_MUTABLE', { reason: 'Locked' })
       );
@@ -353,6 +353,8 @@ describe('US-019 Response Transactions Integration Suite (#186)', () => {
       expect(res.status).toBe(409);
       expect(res.body.code).toBe('TEAM_NOT_MUTABLE');
       expect(res.body.details).toEqual({ reason: 'Locked' });
+      expect(res.body.error).toMatch(/roster is locked/i);
+      expect(res.body.error).toMatch(/leaving/i);
     });
   });
 

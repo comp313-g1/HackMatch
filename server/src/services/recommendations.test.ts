@@ -27,6 +27,7 @@ function baseTeam(overrides: Partial<Team> = {}): Team {
     commitment_hours: 20,
     communication_link: null,
     recruitment_status: 'Open',
+    locked_at: null,
     disbanded_at: null,
     created_at: '2026-10-18T00:00:00.000Z',
     updated_at: '2026-10-18T00:00:00.000Z',
@@ -454,3 +455,4 @@ describe('getRecommendationsForOpenSlot', () => {
     expect(result.candidates[0].participantId).toBe(otherId);
   });
 });
+

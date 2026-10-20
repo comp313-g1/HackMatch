@@ -1,5 +1,6 @@
 import React from 'react';
 import type { MyApplicationListItem } from './applicationsApi';
+import { cancelReasonLabel } from './requestCancelReason';
 
 export type ApplicationListState = 'loading' | 'success' | 'error';
 
@@ -92,6 +93,14 @@ export function MyApplicationsView({
                   {' · '}
                   Submitted {new Date(app.createdAt).toLocaleString()}
                 </p>
+                {cancelReasonLabel(app.cancelReason) ? (
+                  <p
+                    className="text-amber-900/90"
+                    data-testid={`application-cancel-reason-${app.id}`}
+                  >
+                    {cancelReasonLabel(app.cancelReason)}
+                  </p>
+                ) : null}
                 {app.message ? (
                   <p className="text-ink" data-testid={`application-message-${app.id}`}>
                     Message: {app.message}

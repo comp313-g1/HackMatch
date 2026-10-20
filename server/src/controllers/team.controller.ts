@@ -9,10 +9,14 @@ import {
   updateVacancy,
   removeVacancy,
   disbandTeam,
+  lockTeam,
   removeMember,
   leaveTeam,
 } from '../services/teamManagement.js';
 import { toTeamView } from '../services/teamView.js';
+import { validateRosterLockForOwner } from '../services/rosterLockValidation.js';
+import { canceledRequestsLockMessage } from '../services/lockCancel.js';
+import { teamNotMutablePublicMessage } from '../services/postLockGuards.js';
 import { teamsRepository, type TeamListingPatch } from '../db/teams.repository.js';
 import { toTeamServiceError } from '../services/teamErrors.js';
 import { listOpenTeams, type OpenTeamsViewer } from '../services/openTeams.js';
@@ -44,8 +48,14 @@ function handleControllerError(err: unknown, res: Response, next: NextFunction):
       return;
     }
 
+    // US-022 / #210 / FR-067 — Locked roster gets an explicit freeze message.
+    const publicError =
+      serviceErr.code === 'TEAM_NOT_MUTABLE'
+        ? teamNotMutablePublicMessage(serviceErr.details)
+        : serviceErr.message;
+
     res.status(serviceErr.status).json({
-      error: serviceErr.message,
+      error: publicError,
       code: serviceErr.code,
       ...(serviceErr.details ? { details: serviceErr.details } : {}),
     });
@@ -110,6 +120,28 @@ export async function getTeamHandler(req: Request, res: Response, next: NextFunc
 
     res.setHeader('Cache-Control', 'no-store');
     res.status(200).json({ team });
+  } catch (err: unknown) {
+    handleControllerError(err, res, next);
+  }
+}
+
+/**
+ * GET /api/teams/:teamId/lock/validate — US-022 / #207 / FR-066
+ * Owner-only, non-mutating preflight for roster lock eligibility.
+ */
+export async function validateLockHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const teamId = String(req.params.teamId);
+
+    const validation = await validateRosterLockForOwner(actorId, teamId);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({ validation });
   } catch (err: unknown) {
     handleControllerError(err, res, next);
   }
@@ -210,6 +242,31 @@ export async function disbandTeamHandler(req: Request, res: Response, next: Next
       message: 'Team disbanded.',
       releasedMembers,
       canceledRequests,
+    });
+  } catch (err: unknown) {
+    handleControllerError(err, res, next);
+  }
+}
+
+/** POST /api/teams/:teamId/lock — US-022 / #208 / FR-066 atomic roster lock. */
+export async function lockTeamHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const teamId = String(req.params.teamId);
+
+    const result = await lockTeam(actorId, teamId);
+
+    const requestText = canceledRequestsLockMessage(result.canceledRequests);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({
+      message: `Roster locked. ${requestText}`,
+      lockedAt: result.lockedAt,
+      memberCount: result.memberCount,
+      minRequired: result.minRequired,
+      maxAllowed: result.maxAllowed,
+      canceledRequests: result.canceledRequests,
+      team: result.team,
     });
   } catch (err: unknown) {
     handleControllerError(err, res, next);

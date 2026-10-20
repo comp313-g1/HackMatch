@@ -42,7 +42,11 @@ export type TeamErrorCode =
   | 'APPLICATION_APPLICANT_NOT_ELIGIBLE'
   | 'APPLICATION_APPLICANT_ALREADY_CONFIRMED'
   | 'APPLICATION_APPROVAL_CONFLICT'
-  | 'FORBIDDEN_NOT_APPLICANT';
+  | 'FORBIDDEN_NOT_APPLICANT'
+  | 'ALREADY_LOCKED'
+  | 'BELOW_MIN_MEMBERS'
+  | 'ABOVE_MAX_MEMBERS'
+  | 'MEMBER_CONFIRMED_ELSEWHERE';
 
 export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message: string }> = {
   EVENT_NOT_FOUND: { status: 404, message: 'Event not found.' },
@@ -184,6 +188,23 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   FORBIDDEN_NOT_APPLICANT: {
     status: 403,
     message: 'Only the applicant can withdraw this application.',
+  },
+  ALREADY_LOCKED: {
+    status: 409,
+    message: 'This roster is already locked.',
+  },
+  BELOW_MIN_MEMBERS: {
+    status: 409,
+    message: 'Not enough confirmed members to lock this roster.',
+  },
+  ABOVE_MAX_MEMBERS: {
+    status: 409,
+    message: 'Too many confirmed members to lock this roster.',
+  },
+  MEMBER_CONFIRMED_ELSEWHERE: {
+    status: 409,
+    message:
+      'A confirmed member already has another confirmed membership for this event.',
   },
 };
 

@@ -24,6 +24,7 @@ describe('CreateTeamPage component', () => {
     commitmentHours: 20,
     communicationLink: 'https://discord.gg/apollo',
     recruitmentStatus: 'Open',
+    lockedAt: null,
     createdAt: '2026-10-18T10:00:00.000Z',
     updatedAt: '2026-10-18T10:00:00.000Z',
     members: [

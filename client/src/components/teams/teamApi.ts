@@ -6,6 +6,7 @@ import type {
   CreateTeamPayload,
   UpdateTeamPayload,
   ParticipantPrimaryRole,
+  RosterLockValidationResult,
 } from './teamTypes';
 
 export { AuthRequiredError };
@@ -216,6 +217,43 @@ export async function leaveTeam(teamId: string): Promise<{
     teamId: string;
   }>(() =>
     authFetch(`/api/teams/${encodeURIComponent(teamId)}/leave`, {
+      method: 'POST',
+    })
+  );
+}
+
+/** GET /api/teams/:teamId/lock/validate — US-022 / #207 / FR-066 owner lock preflight. */
+export async function validateTeamLock(
+  teamId: string
+): Promise<RosterLockValidationResult> {
+  const result = await handleApiCall<{ validation: RosterLockValidationResult }>(() =>
+    authFetch(`/api/teams/${encodeURIComponent(teamId)}/lock/validate`, {
+      method: 'GET',
+    })
+  );
+  return result.validation;
+}
+
+/** POST /api/teams/:teamId/lock — US-022 / #208 / FR-066 atomic roster lock. */
+export async function lockTeam(teamId: string): Promise<{
+  message: string;
+  lockedAt: string;
+  memberCount: number;
+  minRequired: number;
+  maxAllowed: number;
+  canceledRequests: number;
+  team: TeamView;
+}> {
+  return handleApiCall<{
+    message: string;
+    lockedAt: string;
+    memberCount: number;
+    minRequired: number;
+    maxAllowed: number;
+    canceledRequests: number;
+    team: TeamView;
+  }>(() =>
+    authFetch(`/api/teams/${encodeURIComponent(teamId)}/lock`, {
       method: 'POST',
     })
   );

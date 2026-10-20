@@ -89,6 +89,7 @@ describe('Availability Status & Automatic Deactivation (US-011-T2 / AC 4)', () =
         commitment_hours: 20,
         communication_link: null,
         recruitment_status: 'Open',
+        locked_at: null,
         disbanded_at: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -143,3 +144,4 @@ describe('Availability Status & Automatic Deactivation (US-011-T2 / AC 4)', () =
     });
   });
 });
+
