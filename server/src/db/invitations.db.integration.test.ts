@@ -899,4 +899,93 @@ describe.skipIf(isGated)('US-017 Invitation Model Postgres Suite (#161)', () => 
       .single();
     expect(stillConfirmed?.status).toBe('Confirmed');
   });
+
+  it('serializes competing acceptances so exactly one placement wins with a clear conflict (#184)', async () => {
+    const firstOwner = await createParticipant('race-owner-a');
+    const secondOwner = await createParticipant('race-owner-b');
+    const invitee = await createParticipant('race-invitee');
+    const event = await createEvent('race-event');
+    const first = await createTeamWithVacancy(firstOwner.id, event.id, 'Race Team A');
+    const second = await createTeamWithVacancy(secondOwner.id, event.id, 'Race Team B');
+    const platformEventId = '00000000-0000-4000-8000-000000000001';
+
+    const { error: availabilityError } = await supabase.from('event_availability').upsert({
+      participant_id: invitee.id,
+      event_id: platformEventId,
+      is_looking: true,
+      desired_role: 'Frontend',
+      commitment_hours: 10,
+      goal: 'Learning',
+    });
+    expect(availabilityError).toBeNull();
+
+    const [firstIssue, secondIssue] = await Promise.all([
+      supabase.rpc('issue_team_invitation', {
+        p_actor: firstOwner.id,
+        p_team: first.teamId,
+        p_vacancy: first.vacancyId,
+        p_invitee: invitee.id,
+      }),
+      supabase.rpc('issue_team_invitation', {
+        p_actor: secondOwner.id,
+        p_team: second.teamId,
+        p_vacancy: second.vacancyId,
+        p_invitee: invitee.id,
+      }),
+    ]);
+    expect(firstIssue.error).toBeNull();
+    expect(secondIssue.error).toBeNull();
+
+    const invitationIds = [
+      firstIssue.data.invitation.id,
+      secondIssue.data.invitation.id,
+    ];
+    const attempts = await Promise.all(
+      invitationIds.map((invitationId) =>
+        supabase.rpc('accept_team_invitation', {
+          p_actor: invitee.id,
+          p_invitation: invitationId,
+        })
+      )
+    );
+
+    const winners = attempts.filter((attempt) => !attempt.error);
+    const losers = attempts.filter((attempt) => attempt.error);
+    expect(winners).toHaveLength(1);
+    expect(losers).toHaveLength(1);
+    expect(losers[0].error?.message).toContain('INVITATION_ACCEPTANCE_CONFLICT');
+    expect(losers[0].error?.details).toContain('EVENT_MEMBERSHIP_CONFIRMED');
+
+    const [{ data: memberships }, { data: invitations }, { data: availability }] =
+      await Promise.all([
+        supabase
+          .from('team_memberships')
+          .select('id, team_id')
+          .eq('event_id', event.id)
+          .eq('participant_id', invitee.id)
+          .eq('status', 'Confirmed'),
+        supabase
+          .from('team_requests')
+          .select('id, status, cancel_reason')
+          .in('id', invitationIds),
+        supabase
+          .from('event_availability')
+          .select('is_looking')
+          .eq('participant_id', invitee.id)
+          .eq('event_id', platformEventId)
+          .single(),
+      ]);
+
+    expect(memberships ?? []).toHaveLength(1);
+    expect(invitations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: 'Accepted', cancel_reason: null }),
+        expect.objectContaining({
+          status: 'Canceled',
+          cancel_reason: 'EVENT_MEMBERSHIP_CONFIRMED',
+        }),
+      ])
+    );
+    expect(availability?.is_looking).toBe(false);
+  });
 });

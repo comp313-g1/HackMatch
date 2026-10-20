@@ -4,6 +4,8 @@
  * Acceptance fails at/after expires_at even when cleanup has not marked Expired yet.
  * Slot closure, locked teams, and non-recruiting events also make invitations unusable.
  * US-019 / #180 adds the atomic membership commit after the legacy pure guards.
+ * US-019 / #184 serializes related acceptance attempts and maps residual
+ * PostgreSQL concurrency failures to an explicit retryable conflict.
  */
 
 import {
@@ -251,6 +253,21 @@ export async function acceptInvitation(
   } catch (err: unknown) {
     const serviceError = toTeamServiceError(err);
     if (serviceError) throw serviceError;
+
+    if (typeof err === 'object' && err !== null) {
+      const databaseCode = (err as { code?: unknown }).code;
+      if (
+        typeof databaseCode === 'string' &&
+        ['40P01', '40001', '55P03'].includes(databaseCode)
+      ) {
+        throw new TeamServiceError('INVITATION_ACCEPTANCE_CONFLICT', {
+          invitationId: input.invitationId,
+          reason: 'DATABASE_CONCURRENCY_RETRY',
+          retryable: true,
+        });
+      }
+    }
+
     throw err;
   }
 }

@@ -171,6 +171,7 @@ describe('acceptInvitation (US-019 / #180 / FR-056 / FR-083)', () => {
     ['VACANCY_NOT_OPEN', 409],
     ['CAPACITY_EXCEEDED', 409],
     ['INVITEE_ALREADY_CONFIRMED', 409],
+    ['INVITATION_ACCEPTANCE_CONFLICT', 409],
   ] as const)('maps %s from the RPC to an explicit service failure', async (code, status) => {
     const acceptTeamInvitation = vi.fn().mockRejectedValue({
       message: code,
@@ -188,6 +189,34 @@ describe('acceptInvitation (US-019 / #180 / FR-056 / FR-083)', () => {
       )
     ).rejects.toMatchObject({ code, status });
   });
+
+  it.each(['40P01', '40001', '55P03'])(
+    'maps PostgreSQL concurrency failure %s to a retryable acceptance conflict',
+    async (databaseCode) => {
+      const acceptTeamInvitation = vi.fn().mockRejectedValue({
+        code: databaseCode,
+        message: 'database concurrency detail that must not reach the client',
+      });
+
+      await expect(
+        acceptInvitation(
+          {
+            actorParticipantId: otherParticipant.id,
+            invitationId: acceptedInvitation.id,
+          },
+          { teamsRepo: { acceptTeamInvitation } }
+        )
+      ).rejects.toMatchObject({
+        code: 'INVITATION_ACCEPTANCE_CONFLICT',
+        status: 409,
+        details: {
+          invitationId: acceptedInvitation.id,
+          reason: 'DATABASE_CONCURRENCY_RETRY',
+          retryable: true,
+        },
+      });
+    }
+  );
 
   it('preserves unknown repository failures for the centralized safe 500 handler', async () => {
     const failure = new Error('database transport secret');

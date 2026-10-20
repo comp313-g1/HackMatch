@@ -258,9 +258,14 @@ describe('US-019 Response Transactions Integration Suite (#186)', () => {
           return acceptedPayload();
         }
         throw {
-          message: 'INVITEE_ALREADY_CONFIRMED',
+          message: 'INVITATION_ACCEPTANCE_CONFLICT',
           code: 'P0001',
-          detail: JSON.stringify({ eventId: sampleEventId }),
+          detail: JSON.stringify({
+            invitationId,
+            status: 'Accepted',
+            reason: 'ALREADY_ACCEPTED',
+            retryable: false,
+          }),
         };
       });
 
@@ -275,7 +280,14 @@ describe('US-019 Response Transactions Integration Suite (#186)', () => {
       const success = first.status === 200 ? first : second;
       const conflict = first.status === 409 ? first : second;
       expect(success.body.membership.status).toBe('Confirmed');
-      expect(conflict.body.code).toBe('INVITEE_ALREADY_CONFIRMED');
+      expect(conflict.body).toMatchObject({
+        code: 'INVITATION_ACCEPTANCE_CONFLICT',
+        details: {
+          status: 'Accepted',
+          reason: 'ALREADY_ACCEPTED',
+          retryable: false,
+        },
+      });
       expect(conflict.body).not.toHaveProperty('membership');
       expect(calls).toBe(2);
     });

@@ -15,6 +15,26 @@ export interface MyInvitationsPanelProps {
   onStatusNotice?: (notice: string) => void;
 }
 
+function acceptanceConflictMessage(
+  reason: unknown,
+  fallback: string
+): string {
+  switch (reason) {
+    case 'ALREADY_ACCEPTED':
+      return 'This invitation was already accepted in another request and cannot be accepted again.';
+    case 'EVENT_MEMBERSHIP_CONFIRMED':
+      return 'Another invitation was accepted first, so this invitation was canceled. You are already placed for this event.';
+    case 'SLOT_FILLED':
+      return 'Another participant accepted first and filled this vacancy. This invitation was canceled.';
+    case 'TEAM_FULL':
+      return 'Another acceptance filled the team before this request completed. This invitation was canceled.';
+    case 'DATABASE_CONCURRENCY_RETRY':
+      return 'Another acceptance is being processed. Refresh your invitations and try again.';
+    default:
+      return fallback;
+  }
+}
+
 /**
  * Stateful US-019 / #179 / #182 My Invitations panel: list, detail, Accept/Decline.
  * List and detail selection are preserved on response failures (NR-017).
@@ -134,9 +154,52 @@ export function MyInvitationsPanel({
       if (err instanceof AuthRequiredError) {
         setResponseError('You need to sign in to respond to an invitation.');
       } else if (err instanceof TeamInvitationsApiError) {
-        setResponseError(err.message || 'Could not respond to invitation.');
-        if (err.errors?.decision) {
-          setFieldError(err.errors.decision);
+        const isAcceptanceConflict =
+          decision === 'accept' && err.code === 'INVITATION_ACCEPTANCE_CONFLICT';
+        setResponseError(
+          isAcceptanceConflict
+            ? acceptanceConflictMessage(
+                err.details?.reason,
+                err.message || 'Another acceptance changed this invitation.'
+              )
+            : err.message || 'Could not respond to invitation.'
+        );
+
+        const fieldMessage = err.errors?.decision ?? err.errors?.invitationId;
+        if (fieldMessage) {
+          setFieldError(fieldMessage);
+        }
+
+        const conflictStatus =
+          isAcceptanceConflict && typeof err.details?.status === 'string'
+            ? err.details.status
+            : null;
+        if (conflictStatus) {
+          const conflictReason =
+            typeof err.details?.reason === 'string' ? err.details.reason : null;
+          setInvitations((prev) =>
+            prev.map((invitation) =>
+              invitation.id === invitationId
+                ? {
+                    ...invitation,
+                    status: conflictStatus,
+                    statusLabel: conflictStatus,
+                    cancelReason:
+                      conflictStatus === 'Canceled'
+                        ? conflictReason
+                        : invitation.cancelReason,
+                    expiredByClock: conflictStatus === 'Expired',
+                    canRespond: false,
+                    permittedDetails: invitation.permittedDetails
+                      ? {
+                          ...invitation.permittedDetails,
+                          statusLabel: conflictStatus,
+                        }
+                      : invitation.permittedDetails,
+                  }
+                : invitation
+            )
+          );
         }
       } else {
         setResponseError('Could not respond to invitation.');

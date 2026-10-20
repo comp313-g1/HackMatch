@@ -30,6 +30,7 @@ function fieldErrorsForInvitationCode(
       return { inviteeParticipantId: message };
     case 'INVITATION_EXPIRED':
     case 'INVITATION_NOT_ACCEPTABLE':
+    case 'INVITATION_ACCEPTANCE_CONFLICT':
     case 'INVITATION_NOT_CANCELABLE':
     case 'INVITATION_NOT_DECLINABLE':
     case 'INVITATION_NOT_FOUND':
@@ -114,7 +115,8 @@ export async function listTeamInvitationsHandler(
 
 /**
  * POST /api/invitations/:id/accept
- * US-019 / #180 / FR-056 / FR-083 — atomically revalidate and confirm membership.
+ * US-019 / #180 / #184 — atomically revalidate and confirm membership with
+ * deterministic conflict responses for competing acceptances.
  */
 export async function acceptInvitationHandler(
   req: Request,

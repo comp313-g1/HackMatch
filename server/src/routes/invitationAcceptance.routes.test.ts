@@ -102,6 +102,20 @@ describe('POST /api/invitations/:id/accept (US-019 / #180 / FR-056 / FR-083)', (
     expect(teamsRepository.acceptTeamInvitation).not.toHaveBeenCalled();
   });
 
+  it('rejects a malformed invitation id before the acceptance transaction', async () => {
+    const res = await request(app)
+      .post('/api/invitations/not-a-uuid/accept')
+      .set('Authorization', otherTokenHeader)
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      errors: { invitationId: expect.stringMatching(/valid UUID/i) },
+    });
+    expect(teamsRepository.acceptTeamInvitation).not.toHaveBeenCalled();
+  });
+
   it('atomically accepts the invitation and returns confirmed membership (happy path)', async () => {
     const res = await request(app)
       .post(acceptPath)
@@ -159,6 +173,17 @@ describe('POST /api/invitations/:id/accept (US-019 / #180 / FR-056 / FR-083)', (
       code: 'INVITEE_ALREADY_CONFIRMED',
       status: 409,
       details: { eventId: sampleEventId },
+    },
+    {
+      name: 'concurrent acceptance winner',
+      code: 'INVITATION_ACCEPTANCE_CONFLICT',
+      status: 409,
+      details: {
+        invitationId,
+        status: 'Canceled',
+        reason: 'EVENT_MEMBERSHIP_CONFIRMED',
+        retryable: false,
+      },
     },
   ])('returns an explicit conflict for $name without a success payload', async (scenario) => {
     vi.spyOn(teamsRepository, 'acceptTeamInvitation').mockRejectedValue({

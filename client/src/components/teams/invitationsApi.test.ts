@@ -149,6 +149,39 @@ describe('teams invitationsApi (US-017 / #167 shared client)', () => {
     });
   });
 
+  it('preserves concurrent acceptance conflict details for the UI (#184)', async () => {
+    authFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 'INVITATION_ACCEPTANCE_CONFLICT',
+          error:
+            'Another acceptance changed this invitation or team placement. Refresh your invitations before trying again.',
+          errors: {
+            invitationId: 'Another acceptance changed this invitation or team placement.',
+          },
+          details: {
+            invitationId: 'inv-1',
+            status: 'Canceled',
+            reason: 'SLOT_FILLED',
+            retryable: false,
+          },
+        }),
+        { status: 409 }
+      )
+    );
+
+    await expect(revalidateInvitationAcceptance('inv-1')).rejects.toMatchObject({
+      name: 'InvitationsApiError',
+      code: 'INVITATION_ACCEPTANCE_CONFLICT',
+      status: 409,
+      details: {
+        status: 'Canceled',
+        reason: 'SLOT_FILLED',
+        retryable: false,
+      },
+    });
+  });
+
   it('surfaces MFA_REQUIRED permission failures from issue endpoint (#168)', async () => {
     authFetchMock.mockResolvedValue(
       new Response(

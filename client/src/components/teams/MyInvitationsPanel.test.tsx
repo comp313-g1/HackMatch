@@ -289,6 +289,59 @@ describe('MyInvitationsPanel (US-019 / #179)', () => {
     expect(respondMock).toHaveBeenCalledWith('inv-1', 'accept');
   });
 
+  it('shows the winning concurrent outcome, closes actions, and keeps selection (#184)', async () => {
+    fetchListMock.mockResolvedValue({
+      invitations: [pendingInv],
+      empty: false,
+      message: null,
+    });
+    fetchDetailMock.mockResolvedValue({
+      ...pendingInv,
+      permittedDetails: {
+        teamName: pendingInv.teamName,
+        vacancyRole: pendingInv.vacancyRole,
+        expiresAt: pendingInv.expiresAt,
+        statusLabel: 'Pending',
+      },
+    });
+    respondMock.mockRejectedValue(
+      new invitationsApi.TeamInvitationsApiError(
+        409,
+        'INVITATION_ACCEPTANCE_CONFLICT',
+        { invitationId: 'Another acceptance changed this invitation.' },
+        {
+          invitationId: pendingInv.id,
+          status: 'Canceled',
+          reason: 'SLOT_FILLED',
+          retryable: false,
+        },
+        'Another acceptance changed this invitation or team placement.'
+      )
+    );
+
+    render(<MyInvitationsPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('select-invitation-inv-1')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('select-invitation-inv-1'));
+    await waitFor(() => {
+      expect(screen.getByTestId('accept-invitation-inv-1')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('accept-invitation-inv-1'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('invitation-respond-error')).toHaveTextContent(
+        /another participant accepted first.*filled this vacancy/i
+      );
+    });
+    expect(screen.getByText(/invitation selection was kept/i)).toBeInTheDocument();
+    expect(screen.getByTestId('invitation-inbox-status-inv-1')).toHaveTextContent('Canceled');
+    expect(screen.getByTestId('invitation-detail-status')).toHaveTextContent('Canceled');
+    expect(screen.getByTestId('invitation-detail-closed')).toBeInTheDocument();
+    expect(screen.queryByTestId('accept-invitation-inv-1')).not.toBeInTheDocument();
+  });
+
   it('keeps selection and shows error when respond fails (NR-017)', async () => {
     fetchListMock.mockResolvedValue({
       invitations: [pendingInv],

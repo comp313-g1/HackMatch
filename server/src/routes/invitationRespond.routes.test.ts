@@ -205,6 +205,37 @@ describe('Invitee invitation detail + respond (US-019 / #179 / #182)', () => {
     });
   });
 
+  it('returns the explicit winning state when a competing acceptance resolves first (#184)', async () => {
+    vi.spyOn(invitationAcceptance, 'acceptInvitation').mockRejectedValue({
+      message: 'INVITATION_ACCEPTANCE_CONFLICT',
+      code: 'P0001',
+      detail: JSON.stringify({
+        invitationId,
+        status: 'Canceled',
+        reason: 'SLOT_FILLED',
+        retryable: false,
+      }),
+    });
+
+    const res = await request(app)
+      .post(respondPath)
+      .set('Authorization', otherTokenHeader)
+      .send({ decision: 'accept' });
+
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({
+      code: 'INVITATION_ACCEPTANCE_CONFLICT',
+      details: {
+        invitationId,
+        status: 'Canceled',
+        reason: 'SLOT_FILLED',
+        retryable: false,
+      },
+      errors: { invitationId: expect.stringMatching(/another acceptance/i) },
+    });
+    expect(res.body).not.toHaveProperty('membership');
+  });
+
   it('decline respond returns Declined status and alerts (US-019-T2)', async () => {
     vi.spyOn(teamsRepository, 'declineTeamInvitation').mockResolvedValue({
       invitation: {

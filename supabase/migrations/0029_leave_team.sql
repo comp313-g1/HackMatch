@@ -1,4 +1,4 @@
--- Migration: 0028_leave_team.sql
+-- Migration: 0029_leave_team.sql
 -- Description: US-019 / #183 / FR-059 — pre-lock voluntary leave for confirmed
 --              non-owner members. Releases membership, restores event availability
 --              when recruitment remains open, alerts the owner, and does not revive

@@ -6,6 +6,21 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+describe('Supabase migration ordering', () => {
+  it('uses each numeric migration version exactly once', () => {
+    const migrationDirectory = path.resolve(__dirname, '../../../supabase/migrations');
+    const versions = fs
+      .readdirSync(migrationDirectory)
+      .map((name) => /^(\d+)_/.exec(name)?.[1])
+      .filter((version): version is string => Boolean(version));
+    const duplicates = versions.filter(
+      (version, index) => versions.indexOf(version) !== index
+    );
+
+    expect(duplicates).toEqual([]);
+  });
+});
+
 describe('0001_create_participants_table.sql Migration DDL', () => {
   const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0001_create_participants_table.sql');
   const sql = fs.readFileSync(migrationPath, 'utf-8');
@@ -1160,10 +1175,10 @@ describe('0027_accept_team_invitation.sql Migration DDL (US-019 / #180)', () => 
   });
 });
 
-describe('0028_leave_team.sql Migration DDL (US-019 / #183 / FR-059)', () => {
+describe('0029_leave_team.sql Migration DDL (US-019 / #183 / FR-059)', () => {
   const migrationPath = path.resolve(
     __dirname,
-    '../../../supabase/migrations/0028_leave_team.sql'
+    '../../../supabase/migrations/0029_leave_team.sql'
   );
   const sql = fs.readFileSync(migrationPath, 'utf-8');
 
@@ -1208,6 +1223,56 @@ describe('0028_leave_team.sql Migration DDL (US-019 / #183 / FR-059)', () => {
   it('secures function from anon/public and grants execute to service_role', () => {
     expect(sql).toMatch(/REVOKE\s+ALL\s+ON\s+FUNCTION\s+leave_team[\s\S]*?FROM\s+PUBLIC,\s*anon,\s*authenticated/i);
     expect(sql).toMatch(/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+leave_team[\s\S]*?TO\s+service_role/i);
+  });
+});
+
+describe('0030_handle_concurrent_invitation_acceptance.sql Migration DDL (US-019 / #184)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0030_handle_concurrent_invitation_acceptance.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('wraps the existing atomic acceptance function behind a secured serialized entry point', () => {
+    expect(sql).toMatch(
+      /ALTER\s+FUNCTION\s+accept_team_invitation[\s\S]*?RENAME\s+TO\s+accept_team_invitation_unserialized/i
+    );
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+accept_team_invitation/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+accept_team_invitation_unserialized[\s\S]*?service_role/i
+    );
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+accept_team_invitation[\s\S]*?TO\s+service_role/i
+    );
+  });
+
+  it('acquires participant/event then team transaction locks before the core RPC', () => {
+    const participantLock = sql.indexOf('hackmatch:accept:participant-event:');
+    const teamLock = sql.indexOf('hackmatch:accept:team:');
+    const coreCall = sql.indexOf('accept_team_invitation_unserialized(p_actor, p_invitation)');
+
+    expect(participantLock).toBeGreaterThan(-1);
+    expect(teamLock).toBeGreaterThan(participantLock);
+    expect(coreCall).toBeGreaterThan(teamLock);
+    expect(sql).toMatch(/pg_advisory_xact_lock\s*\(/i);
+  });
+
+  it('returns explicit conflicts for same-invitation and competing-cascade winners', () => {
+    expect(sql).toMatch(/INVITATION_ACCEPTANCE_CONFLICT/i);
+    expect(sql).toMatch(/ALREADY_ACCEPTED/i);
+    expect(sql).toMatch(/EVENT_MEMBERSHIP_CONFIRMED/i);
+    expect(sql).toMatch(/SLOT_FILLED/i);
+    expect(sql).toMatch(/TEAM_FULL/i);
+    expect(sql).toMatch(/'retryable',\s*FALSE/i);
+  });
+
+  it('converts residual database concurrency failures into retryable conflicts', () => {
+    expect(sql).toMatch(/deadlock_detected/i);
+    expect(sql).toMatch(/serialization_failure/i);
+    expect(sql).toMatch(/lock_not_available/i);
+    expect(sql).toMatch(/DATABASE_CONCURRENCY_RETRY/i);
+    expect(sql).toMatch(/'retryable',\s*TRUE/i);
   });
 });
 

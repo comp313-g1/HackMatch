@@ -24,6 +24,7 @@ export type TeamErrorCode =
   | 'INVITATION_NOT_FOUND'
   | 'INVITATION_EXPIRED'
   | 'INVITATION_NOT_ACCEPTABLE'
+  | 'INVITATION_ACCEPTANCE_CONFLICT'
   | 'INVITATION_NOT_CANCELABLE'
   | 'INVITATION_NOT_DECLINABLE'
   | 'FORBIDDEN_NOT_INVITEE'
@@ -99,6 +100,11 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   INVITATION_NOT_ACCEPTABLE: {
     status: 409,
     message: 'This invitation is no longer acceptable (canceled, declined, or otherwise closed).',
+  },
+  INVITATION_ACCEPTANCE_CONFLICT: {
+    status: 409,
+    message:
+      'Another acceptance changed this invitation or team placement. Refresh your invitations before trying again.',
   },
   INVITATION_NOT_CANCELABLE: {
     status: 409,
