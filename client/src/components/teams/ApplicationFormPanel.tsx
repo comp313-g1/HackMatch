@@ -39,15 +39,17 @@ export function ApplicationFormPanel({
     setSubmitError(null);
     setSuccessNotice(null);
     setSubmitting(false);
-  }, [target?.teamId, target?.vacancyId]);
+  }, [target?.teamId, target?.vacancyId, target?.slotId]);
 
   if (!target) {
     return null;
   }
 
+  const targetSlotId = target.vacancyId || target.slotId || '';
+
   const validate = (): boolean => {
     const errors: { message?: string; vacancyId?: string } = {};
-    if (!target.vacancyId) {
+    if (!targetSlotId) {
       errors.vacancyId = 'Select an open slot to apply.';
     }
     if (isApplicationMessageTooLong(message)) {
@@ -67,7 +69,8 @@ export function ApplicationFormPanel({
     setSubmitting(true);
     try {
       const application = await submitTeamApplication(target.teamId, {
-        vacancyId: target.vacancyId,
+        vacancyId: targetSlotId,
+        ...(target.slotId ? { slotId: target.slotId } : {}),
         message: normalizeApplicationMessage(message),
       });
       const notice =

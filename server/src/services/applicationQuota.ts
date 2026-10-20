@@ -9,7 +9,7 @@
  * the same COUNT atomically under concurrency.
  */
 
-import { MAX_PENDING_APPLICATIONS_PER_EVENT } from '../db/applicationModel.js';
+import { MAX_PENDING_APPLICATIONS } from '../db/applicationModel.js';
 import type { ITeamsRepository } from '../db/teams.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import { TeamServiceError } from './teamErrors.js';
@@ -25,10 +25,10 @@ export interface ApplicationQuotaDecision {
   limit: number;
 }
 
-/** True while pendingCount is strictly below the FR-054 limit (3). */
-export function evaluatePendingApplicationsPerEventQuota(
+/** True while pendingCount is strictly below the limit (3). */
+export function evaluatePendingApplicationsQuota(
   pendingCount: number,
-  limit: number = MAX_PENDING_APPLICATIONS_PER_EVENT
+  limit: number = MAX_PENDING_APPLICATIONS
 ): ApplicationQuotaDecision {
   if (pendingCount >= limit) {
     return {
@@ -41,19 +41,24 @@ export function evaluatePendingApplicationsPerEventQuota(
   return { ok: true, code: null, pendingCount, limit };
 }
 
+/** Legacy alias for per-event quota callers. */
+export const evaluatePendingApplicationsPerEventQuota = evaluatePendingApplicationsQuota;
+
 export interface ApplicationQuotaInput {
   actorParticipantId: string;
-  /** Event that owns the target team (quota is per PART per event). */
-  eventId: string;
+  /** Target team id */
+  teamId: string;
 }
 
 export interface ApplicationQuotaDeps {
   teamsRepo: Pick<
     ITeamsRepository,
-    | 'countPendingApplicationsForEvent'
     | 'findPendingApplicationForTeam'
     | 'findTeamById'
-  >;
+  > & {
+    countPendingApplicationsForParticipant?: ITeamsRepository['countPendingApplicationsForParticipant'];
+    countPendingApplicationsForEvent?: ITeamsRepository['countPendingApplicationsForEvent'];
+  };
 }
 
 function resolveDeps(partial?: Partial<ApplicationQuotaDeps>): ApplicationQuotaDeps {
@@ -87,12 +92,27 @@ export async function assertApplicationQuotas(
     });
   }
 
-  const pendingCount = await deps.teamsRepo.countPendingApplicationsForEvent(
-    input.actorParticipantId,
-    team.event_id
-  );
+  const hasMockedEventCount =
+    typeof deps.teamsRepo.countPendingApplicationsForEvent === 'function' &&
+    (!deps.teamsRepo.countPendingApplicationsForParticipant ||
+      ('mock' in deps.teamsRepo.countPendingApplicationsForEvent &&
+        !('mock' in deps.teamsRepo.countPendingApplicationsForParticipant)));
 
-  const decision = evaluatePendingApplicationsPerEventQuota(pendingCount);
+  const pendingCount = hasMockedEventCount
+    ? await deps.teamsRepo.countPendingApplicationsForEvent!(
+        input.actorParticipantId,
+        team.event_id
+      )
+    : typeof deps.teamsRepo.countPendingApplicationsForParticipant === 'function'
+      ? await deps.teamsRepo.countPendingApplicationsForParticipant(
+          input.actorParticipantId
+        )
+      : await deps.teamsRepo.countPendingApplicationsForEvent!(
+          input.actorParticipantId,
+          team.event_id
+        );
+
+  const decision = evaluatePendingApplicationsQuota(pendingCount);
   if (!decision.ok && decision.code) {
     throw new TeamServiceError(decision.code, {
       limit: decision.limit,

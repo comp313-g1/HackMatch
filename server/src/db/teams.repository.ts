@@ -149,9 +149,14 @@ export interface ITeamsRepository {
     application: TeamRequest;
     vacancyRole: string;
     teamName: string;
+    pendingCount?: number;
     pendingCountForEvent: number;
     notice: string;
   }>;
+  /** US-018 / #174 — count Pending Applications across all teams for platform-wide quota. */
+  countPendingApplicationsForParticipant(
+    participantId: string
+  ): Promise<number>;
   /** US-018 / #174 — count Pending Applications for PART/event quota preflight. */
   countPendingApplicationsForEvent(
     participantId: string,
@@ -693,6 +698,7 @@ export const teamsRepository: ITeamsRepository = {
     application: TeamRequest;
     vacancyRole: string;
     teamName: string;
+    pendingCount: number;
     pendingCountForEvent: number;
     notice: string;
   }> {
@@ -708,6 +714,7 @@ export const teamsRepository: ITeamsRepository = {
       application: TeamRequest;
       vacancyRole: string;
       teamName: string;
+      pendingCount?: number;
       pendingCountForEvent: number;
       notice: string;
     };
@@ -715,9 +722,24 @@ export const teamsRepository: ITeamsRepository = {
       application: payload.application,
       vacancyRole: payload.vacancyRole,
       teamName: payload.teamName,
+      pendingCount: payload.pendingCount ?? payload.pendingCountForEvent,
       pendingCountForEvent: payload.pendingCountForEvent,
       notice: payload.notice,
     };
+  },
+
+  async countPendingApplicationsForParticipant(
+    participantId: string
+  ): Promise<number> {
+    const client = getSupabaseClient();
+    const { count, error } = await client
+      .from('team_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('participant_id', participantId)
+      .eq('request_type', 'Application')
+      .eq('status', 'Pending');
+    if (error) throw error;
+    return count ?? 0;
   },
 
   async countPendingApplicationsForEvent(

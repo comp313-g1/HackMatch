@@ -37,4 +37,37 @@ describe('validateSubmitApplicationInput (US-018 / #172)', () => {
     expect(result.errors.vacancyId).toBeTruthy();
     expect(result.errors.extra).toMatch(/Unknown field/i);
   });
+
+  it('accepts slotId alias and rejects mismatching slotId or unknown eventId', () => {
+    const bySlot = validateSubmitApplicationInput({ slotId: vacancyId });
+    expect(bySlot.sanitized).toEqual({
+      vacancyId,
+      slotId: vacancyId,
+      message: null,
+    });
+
+    const matching = validateSubmitApplicationInput({
+      vacancyId,
+      slotId: vacancyId,
+    });
+    expect(matching.sanitized).toEqual({
+      vacancyId,
+      slotId: vacancyId,
+      message: null,
+    });
+
+    const mismatch = validateSubmitApplicationInput({
+      vacancyId,
+      slotId: '11111111-1111-4111-8111-111111111111',
+    });
+    expect(mismatch.sanitized).toBeNull();
+    expect(mismatch.errors.vacancyId).toMatch(/must match/i);
+
+    const withEventId = validateSubmitApplicationInput({
+      vacancyId,
+      eventId: '22222222-2222-4222-8222-222222222222',
+    });
+    expect(withEventId.sanitized).toBeNull();
+    expect(withEventId.errors.eventId).toMatch(/Unknown field/i);
+  });
 });

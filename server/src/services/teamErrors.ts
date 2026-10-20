@@ -134,7 +134,7 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   },
   APPLICANT_ALREADY_CONFIRMED: {
     status: 409,
-    message: 'You are already a confirmed member of a team for this event.',
+    message: 'You are already a confirmed member of this team.',
   },
   APPLICATION_MESSAGE_TOO_LONG: {
     status: 400,
@@ -148,7 +148,7 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   APPLICATION_PENDING_LIMIT: {
     status: 409,
     message:
-      'You already have 3 pending applications for this event. Withdraw one or wait for a decision before applying again.',
+      'You already have 3 pending applications across the platform. Withdraw one or wait for a decision before applying again.',
   },
   APPLICATION_NOT_FOUND: { status: 404, message: 'Application not found.' },
   APPLICATION_NOT_WITHDRAWABLE: {

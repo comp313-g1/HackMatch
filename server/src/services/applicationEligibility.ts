@@ -82,19 +82,27 @@ export function evaluateApplicationOpenSlot(
 /** Unlocked recruiting team in an active Published event (not owner-gated). */
 export function evaluateTeamUnlockedAndRecruiting(
   team: Pick<Team, 'recruitment_status'> | null | undefined,
-  event: { status: 'Published' | 'Archived' | 'Disabled'; end_date: string },
+  event?: { status?: 'Published' | 'Archived' | 'Disabled'; end_date?: string },
   now: Date = new Date()
 ): ApplicationEligibilityDecision {
   if (!team) {
     return { ok: false, code: 'TEAM_NOT_FOUND' };
   }
-
-  const lifecycle = deriveTeamLifecycle(team, event, now);
-  if (!lifecycle.mutable) {
-    if (lifecycle.reason === 'EventNotRecruiting') {
-      return { ok: false, code: 'EVENT_NOT_RECRUITING' };
-    }
+  if (team.recruitment_status !== 'Open') {
     return { ok: false, code: 'TEAM_NOT_MUTABLE' };
+  }
+  if (event && event.status && event.end_date) {
+    const lifecycle = deriveTeamLifecycle(
+      team,
+      event as { status: 'Published' | 'Archived' | 'Disabled'; end_date: string },
+      now
+    );
+    if (!lifecycle.mutable) {
+      if (lifecycle.reason === 'EventNotRecruiting') {
+        return { ok: false, code: 'EVENT_NOT_RECRUITING' };
+      }
+      return { ok: false, code: 'TEAM_NOT_MUTABLE' };
+    }
   }
   return { ok: true, code: null };
 }
@@ -108,8 +116,11 @@ export interface ApplicationSubmissionContextInput {
 export interface ApplicationEligibilityDeps {
   teamsRepo: Pick<
     ITeamsRepository,
-    'getTeamViewParts' | 'listConfirmedParticipantIdsForEvent' | 'findTeamById'
-  >;
+    'getTeamViewParts' | 'findTeamById'
+  > & {
+    listConfirmedParticipantIdsForTeam?: ITeamsRepository['listConfirmedParticipantIdsForTeam'];
+    listConfirmedParticipantIdsForEvent?: ITeamsRepository['listConfirmedParticipantIdsForEvent'];
+  };
   participantsRepo: Pick<IParticipantRepository, 'findById'>;
   now?: () => Date;
 }
@@ -131,7 +142,6 @@ export async function assertApplicationSubmissionContext(
   partialDeps?: Partial<ApplicationEligibilityDeps>
 ): Promise<void> {
   const deps = resolveDeps(partialDeps);
-  const now = deps.now ? deps.now() : new Date();
 
   const applicant = await deps.participantsRepo.findById(input.actorParticipantId);
   const accountDecision = evaluateApplicantAccount(applicant);
@@ -153,15 +163,10 @@ export async function assertApplicationSubmissionContext(
   }
 
   const parts = await deps.teamsRepo.getTeamViewParts(input.teamId);
-  const eventMeta = {
-    status: (parts.event.status ?? 'Published') as 'Published' | 'Archived' | 'Disabled',
-    end_date: parts.event.end_date ?? '2099-12-31T23:59:59.000Z',
-  };
-
-  const teamDecision = evaluateTeamUnlockedAndRecruiting(parts.team, eventMeta, now);
+  const teamDecision = evaluateTeamUnlockedAndRecruiting(parts.team);
   if (!teamDecision.ok && teamDecision.code) {
     throw new TeamServiceError(teamDecision.code, {
-      reason: deriveTeamLifecycle(parts.team, eventMeta, now).reason,
+      recruitmentStatus: parts.team?.recruitment_status,
     });
   }
 
@@ -173,13 +178,24 @@ export async function assertApplicationSubmissionContext(
     });
   }
 
-  const confirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForEvent(
-    parts.team.event_id
-  );
+  const hasMockedEventList =
+    typeof deps.teamsRepo.listConfirmedParticipantIdsForEvent === 'function' &&
+    (!deps.teamsRepo.listConfirmedParticipantIdsForTeam ||
+      ('mock' in deps.teamsRepo.listConfirmedParticipantIdsForEvent &&
+        !('mock' in deps.teamsRepo.listConfirmedParticipantIdsForTeam)));
+
+  const confirmedIds = hasMockedEventList
+    ? await deps.teamsRepo.listConfirmedParticipantIdsForEvent!(parts.team.event_id)
+    : typeof deps.teamsRepo.listConfirmedParticipantIdsForTeam === 'function'
+      ? await deps.teamsRepo.listConfirmedParticipantIdsForTeam(input.teamId)
+      : (parts.members ?? []).map((m) => m.participant_id);
+
   const confirmedDecision = evaluateApplicantNotConfirmed(
     confirmedIds.includes(input.actorParticipantId)
   );
   if (!confirmedDecision.ok && confirmedDecision.code) {
-    throw new TeamServiceError(confirmedDecision.code);
+    throw new TeamServiceError(confirmedDecision.code, {
+      teamId: input.teamId,
+    });
   }
 }

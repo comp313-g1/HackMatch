@@ -38,7 +38,8 @@ export function ApplicationForm({
   const trimmedLen = normalizeApplicationMessage(message)?.length ?? 0;
   const overLimit = trimmedLen > APPLICATION_MESSAGE_MAX_LENGTH;
 
-  if (!target || !target.vacancyId || !target.teamId) {
+  const targetSlotId = target?.vacancyId || target?.slotId;
+  if (!target || !targetSlotId || !target.teamId) {
     return (
       <div
         role="status"
@@ -75,8 +76,8 @@ export function ApplicationForm({
       <p className="text-xs text-ink-muted" data-testid="application-form-quota-hint">
         Submit a Pending Review application for an open slot. An optional message of at most{' '}
         {APPLICATION_MESSAGE_MAX_LENGTH} characters may be included. You may hold at most{' '}
-        {MAX_PENDING_APPLICATIONS_PER_EVENT} pending applications per event; other events have
-        separate limits.
+        {MAX_PENDING_APPLICATIONS_PER_EVENT} pending applications across the platform at a time.
+        Withdraw a pending application to free a slot.
       </p>
 
       <dl className="text-xs text-ink space-y-1.5 rounded-md border border-cream-200 bg-cream-50/40 p-3">
