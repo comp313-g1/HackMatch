@@ -27,6 +27,7 @@ import {
   removeVacancyHandler,
   disbandTeamHandler,
   removeMemberHandler,
+  leaveTeamHandler,
   listOpenTeamsHandler,
 } from '../controllers/team.controller.js';
 import { getVacancyRecommendationsHandler } from '../controllers/recommendations.controller.js';
@@ -103,4 +104,6 @@ teamRouter.post(
   validateRemovalReasonBody,
   removeMemberHandler
 );
+/** US-019 / #183 / FR-059 — confirmed non-owner leave (not owner-gated). */
+teamRouter.post('/:teamId/leave', ...participantAuth, validateTeamIdParams, leaveTeamHandler);
 

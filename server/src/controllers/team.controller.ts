@@ -10,6 +10,7 @@ import {
   removeVacancy,
   disbandTeam,
   removeMember,
+  leaveTeam,
 } from '../services/teamManagement.js';
 import { toTeamView } from '../services/teamView.js';
 import { teamsRepository, type TeamListingPatch } from '../db/teams.repository.js';
@@ -70,7 +71,7 @@ export async function createTeamHandler(req: Request, res: Response, next: NextF
     });
 
     const parts = await teamsRepository.getTeamViewParts(team.id);
-    const teamView = toTeamView(parts);
+    const teamView = toTeamView(parts, { viewerParticipantId: actorId });
 
     res.setHeader('Cache-Control', 'no-store');
     res.status(201).json({ team: teamView });
@@ -229,6 +230,26 @@ export async function removeMemberHandler(req: Request, res: Response, next: Nex
       message: 'Team member removed.',
       availabilityRestored,
       team,
+    });
+  } catch (err: unknown) {
+    handleControllerError(err, res, next);
+  }
+}
+
+/** POST /api/teams/:teamId/leave — US-019 / #183 / FR-059 pre-lock non-owner leave. */
+export async function leaveTeamHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const teamId = String(req.params.teamId);
+
+    const result = await leaveTeam(actorId, teamId);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({
+      message: result.notice,
+      availabilityRestored: result.availabilityRestored,
+      leftParticipantId: result.leftParticipantId,
+      teamId,
     });
   } catch (err: unknown) {
     handleControllerError(err, res, next);

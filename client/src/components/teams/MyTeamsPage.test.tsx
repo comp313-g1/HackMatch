@@ -45,6 +45,9 @@ describe('MyTeamsPage component (teams.html wireframe)', () => {
       mutable: true,
       reason: null,
     },
+    viewerRole: 'Owner',
+    viewerParticipantId: 'p-1',
+    canLeave: false,
   };
 
   const mockOnCreateTeam = vi.fn();

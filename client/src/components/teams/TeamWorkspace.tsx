@@ -5,6 +5,8 @@ import { TeamListingForm } from './TeamListingForm';
 import { VacancyPanel } from './VacancyPanel';
 import { OwnerInvitationsPanel } from './OwnerInvitationsPanel';
 import { TeamRosterPanel } from './TeamRosterPanel';
+import { LeaveTeamPanel } from './LeaveTeamPanel';
+import { RosterStatusView } from './RosterStatusView';
 
 export interface TeamWorkspaceProps {
   eventId: string;
@@ -153,6 +155,7 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
   }
 
   const isLocked = team.lifecycle && !team.lifecycle.mutable;
+  const isMemberViewer = team.viewerRole === 'Member' || team.canLeave;
   const getLifecycleNotice = () => {
     if (!team.lifecycle || team.lifecycle.mutable) return null;
     switch (team.lifecycle.reason) {
@@ -168,6 +171,39 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
   };
 
   const lifecycleNotice = getLifecycleNotice();
+
+  if (isMemberViewer) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-6 px-4 sm:px-6">
+        {statusNotice && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-900 text-sm rounded-md"
+          >
+            {statusNotice}
+          </div>
+        )}
+
+        <RosterStatusView
+          team={team}
+          viewState="success"
+          viewerParticipantId={team.viewerParticipantId}
+          leaveSlot={
+            <LeaveTeamPanel
+              teamId={team.id}
+              teamName={team.name}
+              disabled={!team.canLeave || isLocked}
+              onLeft={(notice) => {
+                setTeam(null);
+                setStatusNotice(notice);
+              }}
+            />
+          }
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 px-4 sm:px-6">

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { teamsRepository, type CreateTeamWithOwnerInput } from './teams.repository.js';
 import * as clientModule from './client.js';
-import type { Team, TeamMembership } from './types.js';
+import type { Team, TeamMembership, TeamRequest, TeamVacancy } from './types.js';
 
 describe('teamsRepository unit tests (US-012 / #119)', () => {
   beforeEach(() => {
@@ -239,6 +239,30 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
     expect(result).toEqual({ releasedMembers: 3, canceledRequests: 4 });
   });
 
+  it('leaveTeam calls leave_team RPC and returns availability restoration (#183)', async () => {
+    const mockRpc = vi.fn().mockResolvedValue({
+      data: {
+        leftParticipantId: 'actor-2',
+        teamId: sampleTeam.id,
+        availabilityRestored: true,
+        notice: 'You left the team. Your Looking-for-Team availability for this event was restored.',
+      },
+      error: null,
+    });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      rpc: mockRpc,
+    } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.leaveTeam('actor-2', sampleTeam.id);
+    expect(mockRpc).toHaveBeenCalledWith('leave_team', {
+      p_actor: 'actor-2',
+      p_team: sampleTeam.id,
+    });
+    expect(result.availabilityRestored).toBe(true);
+    expect(result.leftParticipantId).toBe('actor-2');
+  });
+
   it('listConfirmedParticipantIdsForEvent selects Confirmed memberships for the event (FR-046)', async () => {
     const eventId = sampleInput.eventId;
     const ownerId = sampleInput.ownerParticipantId;
@@ -316,6 +340,179 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
     expect(eqType).toHaveBeenCalledWith('request_type', 'Application');
     expect(eqStatus).toHaveBeenCalledWith('status', 'Pending');
     expect(result).toEqual(application);
+  });
+
+  it('acceptTeamInvitation calls the atomic RPC and returns membership state (#180)', async () => {
+    const invitation = {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      team_id: sampleTeam.id,
+      event_id: sampleTeam.event_id,
+      vacancy_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      participant_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      request_type: 'Invitation',
+      status: 'Accepted',
+      cancel_reason: null,
+      resolved_at: '2026-10-20T12:00:00.000Z',
+      expires_at: '2026-10-21T12:00:00.000Z',
+      message: null,
+      created_at: '2026-10-19T12:00:00.000Z',
+      updated_at: '2026-10-20T12:00:00.000Z',
+    } satisfies TeamRequest;
+    const vacancy = {
+      id: invitation.vacancy_id!,
+      team_id: sampleTeam.id,
+      role: 'Frontend',
+      skills: ['React'],
+      status: 'Filled',
+      removed_at: null,
+      created_at: '2026-10-19T12:00:00.000Z',
+      updated_at: '2026-10-20T12:00:00.000Z',
+    } satisfies TeamVacancy;
+    const membership = {
+      ...sampleMembership,
+      participant_id: invitation.participant_id,
+      role: 'Member',
+    } satisfies TeamMembership;
+    const payload = {
+      accepted: true,
+      invitation,
+      membership,
+      vacancy,
+      teamName: sampleTeam.name,
+      vacancyRole: vacancy.role,
+      memberCount: 2,
+      maxTeamSize: 4,
+      availabilityCleared: true,
+      membershipCommitted: true,
+      cascade: {
+        winningRequestId: invitation.id,
+        eventInvitationsCanceled: 0,
+        eventApplicationsWithdrawn: 1,
+        slotRequestsCanceled: 1,
+        teamRequestsCanceled: 0,
+        teamNowFull: false,
+      },
+      notice: 'Invitation accepted.',
+    };
+    const mockRpc = vi.fn().mockResolvedValue({ data: payload, error: null });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      rpc: mockRpc,
+    } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.acceptTeamInvitation(
+      invitation.participant_id,
+      invitation.id
+    );
+
+    expect(mockRpc).toHaveBeenCalledWith('accept_team_invitation', {
+      p_actor: invitation.participant_id,
+      p_invitation: invitation.id,
+    });
+    expect(result).toEqual(payload);
+    expect(result.cascade.eventApplicationsWithdrawn).toBe(1);
+  });
+
+  it('acceptTeamInvitation converts a committed expiry payload into a domain failure', async () => {
+    const mockRpc = vi.fn().mockResolvedValue({
+      data: {
+        error: 'INVITATION_EXPIRED',
+        details: { status: 'Expired', expiresAt: '2026-10-19T12:00:00.000Z' },
+      },
+      error: null,
+    });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      rpc: mockRpc,
+    } as unknown as SupabaseClient);
+
+    await expect(
+      teamsRepository.acceptTeamInvitation('actor-id', 'invitation-id')
+    ).rejects.toMatchObject({
+      message: 'INVITATION_EXPIRED',
+      code: 'P0001',
+    });
+  });
+
+  it('declineTeamInvitation returns persisted owner alert and unchanged roster effects (#182)', async () => {
+    const invitation = {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      team_id: sampleTeam.id,
+      event_id: sampleTeam.event_id,
+      vacancy_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      participant_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      request_type: 'Invitation',
+      status: 'Declined',
+      cancel_reason: 'INVITEE_DECLINED',
+      resolved_at: '2026-10-20T12:00:00.000Z',
+      expires_at: '2026-10-21T12:00:00.000Z',
+      message: null,
+      created_at: '2026-10-19T12:00:00.000Z',
+      updated_at: '2026-10-20T12:00:00.000Z',
+    } satisfies TeamRequest;
+    const payload = {
+      invitation,
+      changed: true,
+      idempotent: false,
+      teamName: sampleTeam.name,
+      vacancyRole: 'Frontend',
+      alerts: [
+        {
+          audience: 'owner',
+          type: 'team_invitation_declined',
+          message: 'An invitee declined the pending invitation.',
+          notificationId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          createdAt: '2026-10-20T12:00:00.000Z',
+        },
+      ],
+      effects: {
+        invitationChanged: true,
+        ownerAlertCreated: true,
+        inviteeAlertCreated: true,
+        availabilityChanged: false as const,
+        membershipChanged: false as const,
+        vacancyChanged: false as const,
+      },
+      notice: 'Invitation declined. The team owner has been notified.',
+    };
+    const mockRpc = vi.fn().mockResolvedValue({ data: payload, error: null });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      rpc: mockRpc,
+    } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.declineTeamInvitation(
+      invitation.participant_id,
+      invitation.id
+    );
+
+    expect(mockRpc).toHaveBeenCalledWith('decline_team_invitation', {
+      p_actor: invitation.participant_id,
+      p_invitation: invitation.id,
+    });
+    expect(result).toEqual(payload);
+  });
+
+  it('declineTeamInvitation converts committed clock expiry into INVITATION_EXPIRED', async () => {
+    const mockRpc = vi.fn().mockResolvedValue({
+      data: {
+        error: 'INVITATION_EXPIRED',
+        details: { status: 'Expired', expiresAt: '2026-10-19T12:00:00.000Z' },
+      },
+      error: null,
+    });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      rpc: mockRpc,
+    } as unknown as SupabaseClient);
+
+    await expect(
+      teamsRepository.declineTeamInvitation('actor-id', 'invitation-id')
+    ).rejects.toMatchObject({
+      message: 'INVITATION_EXPIRED',
+      code: 'P0001',
+      detail: expect.stringContaining('Expired'),
+    });
   });
 });
 

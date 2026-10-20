@@ -17,6 +17,7 @@ import { LookingForTeamPage } from './components/LookingForTeamPage';
 import { OpenTeamsBoard } from './components/teams/OpenTeamsBoard';
 import { ApplicationFormPanel } from './components/teams/ApplicationFormPanel';
 import { MyApplicationsPanel } from './components/teams/MyApplicationsPanel';
+import { MyInvitationsPanel } from './components/teams/MyInvitationsPanel';
 import type { OpenTeamApplyTarget } from './components/teams/openTeamsApi';
 import type { OtpChallenge } from './components/auth/providerSignIn';
 
@@ -33,7 +34,8 @@ type View =
   | 'create-team'
   | 'looking'
   | 'browse-teams'
-  | 'applications';
+  | 'applications'
+  | 'invitations';
 
 const getInitialView = (): View => {
   if (typeof window === 'undefined') return 'landing';
@@ -73,6 +75,9 @@ const getInitialView = (): View => {
   }
   if (view === 'applications' || view === 'my-applications') {
     return 'applications';
+  }
+  if (view === 'invitations' || view === 'my-invitations') {
+    return 'invitations';
   }
   return 'landing';
 };
@@ -179,6 +184,13 @@ export function App(): React.JSX.Element {
     setCurrentView('applications');
   };
 
+  const goToInvitations = () => {
+    setStatusNotice(null);
+    setApplyTarget(null);
+    setIsMobileMenuOpen(false);
+    setCurrentView('invitations');
+  };
+
   const isAuthenticated =
     Boolean(currentUser) ||
     currentView === 'account' ||
@@ -186,6 +198,7 @@ export function App(): React.JSX.Element {
     currentView === 'create-team' ||
     currentView === 'looking' ||
     currentView === 'applications' ||
+    currentView === 'invitations' ||
     currentView === 'mfa';
   const participantIdentifier =
     currentUser?.displayName ||
@@ -284,10 +297,13 @@ export function App(): React.JSX.Element {
                 </button>
                 <button
                   type="button"
-                  disabled
-                  title="Coming soon in Sprint 3"
-                  aria-disabled="true"
-                  className="hidden xl:inline text-sm font-medium text-ink-muted/60 cursor-not-allowed"
+                  onClick={goToInvitations}
+                  aria-current={currentView === 'invitations' ? 'page' : undefined}
+                  className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
+                    currentView === 'invitations'
+                      ? 'text-forest-900 font-semibold'
+                      : 'text-ink-muted hover:text-forest-800'
+                  }`}
                 >
                   Invitations
                 </button>
@@ -423,6 +439,13 @@ export function App(): React.JSX.Element {
                   className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
                 >
                   Applications
+                </button>
+                <button
+                  type="button"
+                  onClick={goToInvitations}
+                  className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
+                >
+                  Invitations
                 </button>
                 <button
                   type="button"
@@ -604,6 +627,32 @@ export function App(): React.JSX.Element {
               {() => (
                 <MyApplicationsPanel
                   onStatusNotice={(notice) => setStatusNotice(notice)}
+                />
+              )}
+            </MfaGate>
+          </section>
+        ) : currentView === 'invitations' ? (
+          <section aria-labelledby="invitations-heading">
+            <h2 id="invitations-heading" className="sr-only">
+              My Invitations
+            </h2>
+            <MfaGate
+              initialChallenge={otpChallenge}
+              onNavigateToSignIn={() => {
+                setStatusNotice(null);
+                setOtpChallenge(null);
+                setCurrentView('login');
+              }}
+            >
+              {() => (
+                <MyInvitationsPanel
+                  onStatusNotice={(notice) => setStatusNotice(notice)}
+                  onViewRoster={(eventId) => {
+                    setStatusNotice(null);
+                    setIsMobileMenuOpen(false);
+                    setTeamEventId(eventId);
+                    setCurrentView('team');
+                  }}
                 />
               )}
             </MfaGate>

@@ -148,7 +148,7 @@ export async function issueTeamInvitation(
 }
 
 export interface AcceptanceRevalidationResult {
-  eligible: true;
+  accepted: true;
   invitation: {
     id: string;
     teamId: string;
@@ -160,12 +160,25 @@ export interface AcceptanceRevalidationResult {
     teamName: string;
     vacancyRole: string | null;
   };
+  membership: {
+    id: string;
+    teamId: string;
+    eventId: string;
+    participantId: string;
+    role: string;
+    status: string;
+    joinedAt: string;
+  };
+  vacancy: { id: string; status: string; role: string };
+  memberCount: number;
+  maxTeamSize: number;
+  availabilityCleared: boolean;
   notice: string;
 }
 
 /**
- * POST /api/invitations/:id/accept — US-017 / #165 acceptance-time revalidation.
- * Rejects expired / unusable invitations; does not confirm membership yet (US-019).
+ * POST /api/invitations/:id/accept — US-019 / #180 atomic acceptance.
+ * Revalidates the invitation and confirms membership in one transaction.
  */
 export async function revalidateInvitationAcceptance(
   invitationId: string
@@ -207,6 +220,129 @@ export async function cancelTeamInvitation(
   return authCall(() =>
     authFetch(`/api/invitations/${encodeURIComponent(invitationId)}`, {
       method: 'DELETE',
+    })
+  );
+}
+
+export interface InviteeInvitationListItem {
+  id: string;
+  teamId: string;
+  eventId: string;
+  vacancyId: string | null;
+  inviteeParticipantId: string;
+  status: string;
+  statusLabel: string;
+  requestType: 'Invitation';
+  expiresAt: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  cancelReason: string | null;
+  teamName: string;
+  vacancyRole: string | null;
+  expiredByClock: boolean;
+  canRespond: boolean;
+  permittedDetails?: {
+    teamName: string;
+    vacancyRole: string | null;
+    expiresAt: string | null;
+    statusLabel: string;
+  };
+}
+
+export interface InviteeInvitationsListResponse {
+  invitations: InviteeInvitationListItem[];
+  empty: boolean;
+  message: string | null;
+}
+
+export type InvitationResponseDecision = 'accept' | 'decline';
+
+export interface InvitationRespondResult {
+  decision: InvitationResponseDecision;
+  membershipCommitted: boolean;
+  invitation: {
+    id: string;
+    teamId: string;
+    eventId: string;
+    vacancyId: string | null;
+    inviteeParticipantId: string;
+    status: string;
+    statusLabel: string;
+    requestType: 'Invitation';
+    expiresAt: string | null;
+    resolvedAt: string | null;
+    cancelReason: string | null;
+    teamName: string;
+    vacancyRole: string | null;
+  };
+  changed: boolean;
+  idempotent: boolean;
+  eligible?: boolean;
+  membership?: {
+    id: string;
+    teamId: string;
+    eventId: string;
+    participantId: string;
+    role: string;
+    status: string;
+    joinedAt: string;
+  };
+  vacancy?: { id: string; status: string; role: string };
+  memberCount?: number;
+  maxTeamSize?: number;
+  availabilityCleared?: boolean;
+  cascade?: {
+    eventInvitationsCanceled: number;
+    eventApplicationsWithdrawn: number;
+    slotRequestsCanceled: number;
+    teamRequestsCanceled: number;
+    teamNowFull: boolean;
+  };
+  effects?: {
+    invitationChanged: boolean;
+    ownerAlertCreated: boolean;
+    inviteeAlertCreated: boolean;
+    availabilityChanged: false;
+    membershipChanged: false;
+    vacancyChanged: false;
+  };
+  alerts: Array<{
+    audience: string;
+    type: string;
+    message: string;
+    notificationId?: string;
+    createdAt?: string;
+  }>;
+  notice: string;
+}
+
+/** GET /api/invitations/mine — invitee inbound list (US-019 / #179). */
+export async function fetchMyInvitations(): Promise<InviteeInvitationsListResponse> {
+  return authCall(() => authFetch('/api/invitations/mine', { method: 'GET' }));
+}
+
+/** GET /api/invitations/:id — invitee detail with permitted team fields (#179). */
+export async function fetchInvitationDetail(
+  invitationId: string
+): Promise<InviteeInvitationListItem> {
+  const data = await authCall<{ invitation: InviteeInvitationListItem }>(() =>
+    authFetch(`/api/invitations/${encodeURIComponent(invitationId)}`, { method: 'GET' })
+  );
+  return data.invitation;
+}
+
+/**
+ * POST /api/invitations/:id/respond — atomic accept (FR-051/FR-056) or decline (FR-058).
+ */
+export async function respondToInvitation(
+  invitationId: string,
+  decision: InvitationResponseDecision
+): Promise<InvitationRespondResult> {
+  return authCall(() =>
+    authFetch(`/api/invitations/${encodeURIComponent(invitationId)}/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision }),
     })
   );
 }

@@ -1,5 +1,11 @@
 import type { Request, Response, NextFunction } from 'express';
-import { revalidateInvitationForAcceptance } from '../services/invitationAcceptance.js';
+import { acceptInvitation } from '../services/invitationAcceptance.js';
+import {
+  getInvitationDetailForInvitee,
+  listMyInvitations,
+  respondToInvitation,
+  type InvitationResponseDecision,
+} from '../services/invitationResponse.js';
 import {
   cancelInvitation,
   issueInvitation,
@@ -24,9 +30,14 @@ function fieldErrorsForInvitationCode(
       return { inviteeParticipantId: message };
     case 'INVITATION_EXPIRED':
     case 'INVITATION_NOT_ACCEPTABLE':
+    case 'INVITATION_ACCEPTANCE_CONFLICT':
     case 'INVITATION_NOT_CANCELABLE':
+    case 'INVITATION_NOT_DECLINABLE':
     case 'INVITATION_NOT_FOUND':
+    case 'FORBIDDEN_NOT_INVITEE':
       return { invitationId: message };
+    case 'VALIDATION_ERROR':
+      return { decision: message };
     default:
       return undefined;
   }
@@ -104,10 +115,10 @@ export async function listTeamInvitationsHandler(
 
 /**
  * POST /api/invitations/:id/accept
- * US-017 / #165 / FR-051 — acceptance-time revalidation (48h expiry, slot/team/event).
- * Does not confirm membership yet (US-019 / FR-056); returns eligible when checks pass.
+ * US-019 / #180 / #184 — atomically revalidate and confirm membership with
+ * deterministic conflict responses for competing acceptances.
  */
-export async function revalidateInvitationAcceptanceHandler(
+export async function acceptInvitationHandler(
   req: Request,
   res: Response,
   next: NextFunction
@@ -125,14 +136,14 @@ export async function revalidateInvitationAcceptanceHandler(
       return;
     }
 
-    const result = await revalidateInvitationForAcceptance({
+    const result = await acceptInvitation({
       actorParticipantId: actorId,
       invitationId,
     });
 
     res.setHeader('Cache-Control', 'no-store');
     res.status(200).json({
-      eligible: true,
+      accepted: true,
       invitation: {
         id: result.invitation.id,
         teamId: result.invitation.team_id,
@@ -140,10 +151,27 @@ export async function revalidateInvitationAcceptanceHandler(
         vacancyId: result.invitation.vacancy_id,
         inviteeParticipantId: result.invitation.participant_id,
         status: result.invitation.status,
-        expiresAt: result.expiresAt,
+        expiresAt: result.invitation.expires_at,
         teamName: result.teamName,
         vacancyRole: result.vacancyRole,
       },
+      membership: {
+        id: result.membership.id,
+        teamId: result.membership.team_id,
+        eventId: result.membership.event_id,
+        participantId: result.membership.participant_id,
+        role: result.membership.role,
+        status: result.membership.status,
+        joinedAt: result.membership.joined_at,
+      },
+      vacancy: {
+        id: result.vacancy.id,
+        status: result.vacancy.status,
+        role: result.vacancy.role,
+      },
+      memberCount: result.memberCount,
+      maxTeamSize: result.maxTeamSize,
+      availabilityCleared: result.availabilityCleared,
       notice: result.notice,
     });
   } catch (err: unknown) {
@@ -174,6 +202,89 @@ export async function cancelInvitationHandler(
     }
 
     const result = await cancelInvitation(actorId, invitationId);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json(result);
+  } catch (err: unknown) {
+    handleInvitationError(err, res, next);
+  }
+}
+
+/**
+ * GET /api/invitations/mine
+ * US-019 / #179 — addressed PART inspects inbound invitations.
+ */
+export async function listMyInvitationsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const result = await listMyInvitations(actorId);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json(result);
+  } catch (err: unknown) {
+    handleInvitationError(err, res, next);
+  }
+}
+
+/**
+ * GET /api/invitations/:id
+ * US-019 / #179 — invitee-only detail with permitted team/slot fields (AC1).
+ */
+export async function getInvitationDetailHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const invitationId = String(req.params.id || '').trim();
+    if (!invitationId) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(400).json({
+        error: 'Invitation id is required.',
+        code: 'VALIDATION_ERROR',
+        errors: { invitationId: 'Invitation id is required.' },
+      });
+      return;
+    }
+
+    const invitation = await getInvitationDetailForInvitee(actorId, invitationId);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({ invitation });
+  } catch (err: unknown) {
+    handleInvitationError(err, res, next);
+  }
+}
+
+/**
+ * POST /api/invitations/:id/respond
+ * US-019 / #179 / #182 — accept atomically or decline with persisted owner alert.
+ */
+export async function respondInvitationHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const invitationId = String(req.params.id || '').trim();
+    if (!invitationId) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(400).json({
+        error: 'Invitation id is required.',
+        code: 'VALIDATION_ERROR',
+        errors: { invitationId: 'Invitation id is required.' },
+      });
+      return;
+    }
+
+    const { decision } = req.body as { decision: InvitationResponseDecision };
+    const result = await respondToInvitation(actorId, invitationId, decision);
 
     res.setHeader('Cache-Control', 'no-store');
     res.status(200).json(result);

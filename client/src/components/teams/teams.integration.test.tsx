@@ -42,6 +42,9 @@ describe('US-012 Client Integration Suite (TeamWorkspace & Lifecycle)', () => {
         mutable: true,
         reason: null,
       },
+    viewerRole: 'Owner',
+    viewerParticipantId: 'p-1',
+    canLeave: false,
       members: [
         {
           participantId: OWNER_ID,

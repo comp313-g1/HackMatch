@@ -12,6 +12,7 @@ export type TeamErrorCode =
   | 'VACANCY_NOT_OPEN'
   | 'MEMBER_NOT_FOUND'
   | 'CANNOT_REMOVE_OWNER'
+  | 'CANNOT_LEAVE_AS_OWNER'
   | 'RECOMMENDATIONS_FORBIDDEN'
   | 'SLOT_NOT_OPEN_FOR_RECOMMENDATIONS'
   | 'CANNOT_INVITE_SELF'
@@ -23,7 +24,9 @@ export type TeamErrorCode =
   | 'INVITATION_NOT_FOUND'
   | 'INVITATION_EXPIRED'
   | 'INVITATION_NOT_ACCEPTABLE'
+  | 'INVITATION_ACCEPTANCE_CONFLICT'
   | 'INVITATION_NOT_CANCELABLE'
+  | 'INVITATION_NOT_DECLINABLE'
   | 'FORBIDDEN_NOT_INVITEE'
   | 'CANNOT_APPLY_TO_OWN_TEAM'
   | 'APPLICANT_NOT_ELIGIBLE'
@@ -44,7 +47,10 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   TEAM_NOT_FOUND: { status: 404, message: 'Team not found.' },
   FORBIDDEN_NOT_TEAM_OWNER: { status: 403, message: 'You are not the owner of this team.' },
   TEAM_NOT_MUTABLE: { status: 409, message: 'Team recruitment is not open or event is concluded.' },
-  CAPACITY_EXCEEDED: { status: 409, message: 'Team capacity exceeded.' },
+  CAPACITY_EXCEEDED: {
+    status: 409,
+    message: 'This team has reached the event capacity and cannot accept another member.',
+  },
   VACANCY_NOT_FOUND: { status: 404, message: 'Vacancy not found or not open.' },
   VACANCY_NOT_OPEN: {
     status: 409,
@@ -52,6 +58,10 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   },
   MEMBER_NOT_FOUND: { status: 404, message: 'Confirmed member not found on this team.' },
   CANNOT_REMOVE_OWNER: { status: 409, message: 'Team owner cannot be removed. To step down, disband the team.' },
+  CANNOT_LEAVE_AS_OWNER: {
+    status: 409,
+    message: 'Team owners cannot leave. Disband the team instead.',
+  },
   RECOMMENDATIONS_FORBIDDEN: {
     status: 403,
     message: 'Only the team owner can request candidate recommendations for an open slot.',
@@ -85,19 +95,28 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   INVITATION_EXPIRED: {
     status: 409,
     message:
-      'This invitation has expired after 48 hours and can no longer be accepted.',
+      'This invitation has expired after 48 hours and can no longer be accepted or declined.',
   },
   INVITATION_NOT_ACCEPTABLE: {
     status: 409,
     message: 'This invitation is no longer acceptable (canceled, declined, or otherwise closed).',
   },
+  INVITATION_ACCEPTANCE_CONFLICT: {
+    status: 409,
+    message:
+      'Another acceptance changed this invitation or team placement. Refresh your invitations before trying again.',
+  },
   INVITATION_NOT_CANCELABLE: {
     status: 409,
     message: 'Only Pending invitations can be canceled.',
   },
+  INVITATION_NOT_DECLINABLE: {
+    status: 409,
+    message: 'Only Pending invitations can be declined.',
+  },
   FORBIDDEN_NOT_INVITEE: {
     status: 403,
-    message: 'Only the invited participant can accept this invitation.',
+    message: 'Only the invited participant can respond to this invitation.',
   },
   CANNOT_APPLY_TO_OWN_TEAM: {
     status: 400,

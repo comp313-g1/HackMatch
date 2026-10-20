@@ -17,7 +17,7 @@ export async function getOwnerTeamView(
       throw new TeamServiceError('FORBIDDEN_NOT_TEAM_OWNER');
     }
     const parts = await deps.repo.getTeamViewParts(teamId);
-    return toTeamView(parts);
+    return toTeamView(parts, { viewerParticipantId: actorId });
   } catch (err: unknown) {
     const serviceError = toTeamServiceError(err);
     if (serviceError) throw serviceError;
@@ -36,7 +36,7 @@ export async function getMyTeamView(
       return null;
     }
     const parts = await deps.repo.getTeamViewParts(teamId);
-    return toTeamView(parts);
+    return toTeamView(parts, { viewerParticipantId: actorId });
   } catch (err: unknown) {
     const serviceError = toTeamServiceError(err);
     if (serviceError) throw serviceError;
@@ -54,7 +54,7 @@ export async function getMyTeamsView(
     for (const teamId of teamIds) {
       try {
         const parts = await deps.repo.getTeamViewParts(teamId);
-        views.push(toTeamView(parts));
+        views.push(toTeamView(parts, { viewerParticipantId: actorId }));
       } catch (perTeamErr) {
         console.warn(`[TEAMS] Skipping teamId ${teamId} due to load error:`, perTeamErr);
       }
@@ -76,7 +76,7 @@ export async function updateListing(
   try {
     await deps.repo.updateTeamListing(actorId, teamId, patch);
     const parts = await deps.repo.getTeamViewParts(teamId);
-    return toTeamView(parts);
+    return toTeamView(parts, { viewerParticipantId: actorId });
   } catch (err: unknown) {
     const serviceError = toTeamServiceError(err);
     if (serviceError) throw serviceError;
@@ -93,7 +93,7 @@ export async function addVacancy(
   try {
     await deps.repo.addTeamVacancy(actorId, teamId, v.role, v.skills);
     const parts = await deps.repo.getTeamViewParts(teamId);
-    return toTeamView(parts);
+    return toTeamView(parts, { viewerParticipantId: actorId });
   } catch (err: unknown) {
     const serviceError = toTeamServiceError(err);
     if (serviceError) throw serviceError;
@@ -111,7 +111,7 @@ export async function updateVacancy(
   try {
     await deps.repo.updateTeamVacancy(actorId, teamId, vacancyId, v.role, v.skills);
     const parts = await deps.repo.getTeamViewParts(teamId);
-    return toTeamView(parts);
+    return toTeamView(parts, { viewerParticipantId: actorId });
   } catch (err: unknown) {
     const serviceError = toTeamServiceError(err);
     if (serviceError) throw serviceError;
@@ -130,7 +130,7 @@ export async function removeVacancy(
     const parts = await deps.repo.getTeamViewParts(teamId);
     return {
       canceledRequests: result.canceledRequests,
-      team: toTeamView(parts),
+      team: toTeamView(parts, { viewerParticipantId: actorId }),
     };
   } catch (err: unknown) {
     const serviceError = toTeamServiceError(err);
@@ -165,8 +165,29 @@ export async function removeMember(
     const parts = await deps.repo.getTeamViewParts(teamId);
     return {
       availabilityRestored: result.availabilityRestored,
-      team: toTeamView(parts),
+      team: toTeamView(parts, { viewerParticipantId: actorId }),
     };
+  } catch (err: unknown) {
+    const serviceError = toTeamServiceError(err);
+    if (serviceError) throw serviceError;
+    throw err;
+  }
+}
+
+/**
+ * US-019 / #183 / FR-059 — confirmed non-owner leaves before roster lock.
+ */
+export async function leaveTeam(
+  actorId: string,
+  teamId: string,
+  deps: { repo: ITeamsRepository } = { repo: teamsRepository }
+): Promise<{
+  availabilityRestored: boolean;
+  notice: string;
+  leftParticipantId: string;
+}> {
+  try {
+    return await deps.repo.leaveTeam(actorId, teamId);
   } catch (err: unknown) {
     const serviceError = toTeamServiceError(err);
     if (serviceError) throw serviceError;
