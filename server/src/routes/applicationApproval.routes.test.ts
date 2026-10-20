@@ -82,11 +82,19 @@ function approvalResult() {
     maxTeamSize: 4,
     availabilityCleared: true,
     membershipCommitted: true,
-    notice: 'Application approved. Membership is confirmed and the vacancy is filled.',
+    cascade: {
+      winningRequestId: applicationId,
+      eventInvitationsCanceled: 1,
+      eventApplicationsWithdrawn: 2,
+      slotRequestsCanceled: 1,
+      teamRequestsCanceled: 0,
+      teamNowFull: false,
+    },
+    notice: 'Application approved. Competing pending requests were cleared.',
   };
 }
 
-describe('POST /api/applications/:applicationId/approve (US-020 / #190)', () => {
+describe('POST /api/applications/:applicationId/approve (US-020 / #190 / #191)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockVerifyIdToken.mockResolvedValue(validOwnerDecodedToken);
@@ -151,6 +159,14 @@ describe('POST /api/applications/:applicationId/approve (US-020 / #190)', () => 
       memberCount: 2,
       maxTeamSize: 4,
       availabilityCleared: true,
+      cascade: {
+        winningRequestId: applicationId,
+        eventInvitationsCanceled: 1,
+        eventApplicationsWithdrawn: 2,
+        slotRequestsCanceled: 1,
+        teamRequestsCanceled: 0,
+        teamNowFull: false,
+      },
     });
   });
 

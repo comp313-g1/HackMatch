@@ -211,6 +211,14 @@ export interface ApplicationApprovalResult {
   maxTeamSize: number;
   availabilityCleared: boolean;
   membershipCommitted: boolean;
+  cascade: {
+    winningRequestId?: string;
+    eventInvitationsCanceled: number;
+    eventApplicationsWithdrawn: number;
+    slotRequestsCanceled: number;
+    teamRequestsCanceled: number;
+    teamNowFull: boolean;
+  };
   notice: string;
 }
 
@@ -225,7 +233,7 @@ export async function fetchTeamApplications(
   );
 }
 
-/** POST /api/applications/:applicationId/approve — atomic owner approval (#190). */
+/** POST /api/applications/:applicationId/approve — atomic approval + cascade (#190/#191). */
 export async function approveTeamApplication(
   applicationId: string
 ): Promise<ApplicationApprovalResult> {

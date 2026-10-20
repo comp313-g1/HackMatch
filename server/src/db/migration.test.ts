@@ -60,6 +60,45 @@ describe('0031_approve_team_application.sql atomic approval DDL (#190)', () => {
   });
 });
 
+describe('0032_cancel_competing_requests_after_approval.sql cascade DDL (#191)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0032_cancel_competing_requests_after_approval.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('wraps #190 approval behind a secured service-role-only entry point', () => {
+    expect(sql).toMatch(
+      /ALTER\s+FUNCTION\s+approve_team_application[\s\S]*?RENAME\s+TO\s+approve_team_application_without_cascade/i
+    );
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+approve_team_application/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+approve_team_application_without_cascade[\s\S]*?service_role/i
+    );
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+approve_team_application[\s\S]*?TO\s+service_role/i
+    );
+  });
+
+  it('runs the competing-request cascade in the approval transaction', () => {
+    const approvalCall = sql.indexOf(
+      'approve_team_application_without_cascade(p_actor, p_application)'
+    );
+    const cascadeCall = sql.indexOf('cancel_competing_requests_on_placement(');
+
+    expect(approvalCall).toBeGreaterThan(-1);
+    expect(cascadeCall).toBeGreaterThan(approvalCall);
+    expect(sql).toMatch(/'cascade'\s*,\s*v_cascade/i);
+    expect(sql).toMatch(/'notice'[\s\S]*competing pending requests were cleared/i);
+  });
+
+  it('passes winner, participant, event, team, vacancy, and capacity state', () => {
+    expect(sql).toMatch(/p_application\s*,[\s\S]*participant_id[\s\S]*event_id[\s\S]*team_id[\s\S]*vacancy_id[\s\S]*v_team_now_full/i);
+    expect(sql).toMatch(/memberCount[\s\S]*>=\s*[\s\S]*maxTeamSize/i);
+  });
+});
+
 describe('0001_create_participants_table.sql Migration DDL', () => {
   const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0001_create_participants_table.sql');
   const sql = fs.readFileSync(migrationPath, 'utf-8');

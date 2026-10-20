@@ -71,11 +71,26 @@ export function OwnerApplicationsPanel({
     try {
       const result = await approveTeamApplication(applicationId);
       setApplications((current) => {
-        const remaining = current.filter((item) => item.id !== applicationId);
+        const remaining = result.cascade.teamNowFull
+          ? []
+          : current.filter(
+              (item) =>
+                item.id !== applicationId && item.vacancyId !== result.vacancy.id
+            );
         if (remaining.length === 0) setEmptyMessage('No pending applications to review.');
         return remaining;
       });
-      setApprovalNotice(result.notice);
+      const cascade = result.cascade;
+      const clearedCount =
+        cascade.eventInvitationsCanceled +
+        cascade.eventApplicationsWithdrawn +
+        cascade.slotRequestsCanceled +
+        cascade.teamRequestsCanceled;
+      setApprovalNotice(
+        clearedCount > 0
+          ? `${result.notice} Cleared ${clearedCount} competing request${clearedCount === 1 ? '' : 's'}.`
+          : result.notice
+      );
       onApproved?.(result, application);
     } catch (err: unknown) {
       if (err instanceof AuthRequiredError || (err instanceof ApplicationsApiError && err.status === 401)) {

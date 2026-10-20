@@ -265,6 +265,14 @@ describe('applicationsApi (US-018 / #171)', () => {
           maxTeamSize: 4,
           availabilityCleared: true,
           membershipCommitted: true,
+          cascade: {
+            winningRequestId: 'app-1',
+            eventInvitationsCanceled: 1,
+            eventApplicationsWithdrawn: 2,
+            slotRequestsCanceled: 1,
+            teamRequestsCanceled: 0,
+            teamNowFull: false,
+          },
           notice: 'Application approved and membership confirmed.',
         }),
         { status: 200 }
@@ -283,6 +291,12 @@ describe('applicationsApi (US-018 / #171)', () => {
       application: { status: 'Accepted' },
       membership: { status: 'Confirmed' },
       vacancy: { status: 'Filled' },
+      cascade: {
+        eventInvitationsCanceled: 1,
+        eventApplicationsWithdrawn: 2,
+        slotRequestsCanceled: 1,
+        teamNowFull: false,
+      },
     });
   });
 

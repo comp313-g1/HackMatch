@@ -61,7 +61,15 @@ function committedApproval() {
     maxTeamSize: 4,
     availabilityCleared: true,
     membershipCommitted: true,
-    notice: 'Application approved. Membership is confirmed and the vacancy is filled.',
+    cascade: {
+      winningRequestId: applicationId,
+      eventInvitationsCanceled: 2,
+      eventApplicationsWithdrawn: 1,
+      slotRequestsCanceled: 3,
+      teamRequestsCanceled: 0,
+      teamNowFull: false,
+    },
+    notice: 'Application approved. Competing pending requests were cleared.',
   };
 }
 
@@ -73,7 +81,7 @@ function passingRepo() {
   };
 }
 
-describe('approveApplication (US-020 / #190 / FR-061)', () => {
+describe('approveApplication (US-020 / #190 / #191 / FR-061)', () => {
   it('returns the committed membership and filled vacancy from the atomic RPC', async () => {
     const teamsRepo = passingRepo();
 
@@ -94,6 +102,14 @@ describe('approveApplication (US-020 / #190 / FR-061)', () => {
       memberCount: 2,
       maxTeamSize: 4,
       availabilityCleared: true,
+      cascade: {
+        winningRequestId: applicationId,
+        eventInvitationsCanceled: 2,
+        eventApplicationsWithdrawn: 1,
+        slotRequestsCanceled: 3,
+        teamRequestsCanceled: 0,
+        teamNowFull: false,
+      },
     });
   });
 

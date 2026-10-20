@@ -273,6 +273,9 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
             teamId={team.id}
             disabled={isLocked}
             onApproved={(result, application) => {
+              // Approval may cancel outgoing invitations for the filled slot or
+              // the whole team; refresh the owner list to remove stale rows.
+              setInvitationsRefreshKey((key) => key + 1);
               setTeam((current) => {
                 if (!current) return current;
                 const alreadyListed = current.members.some(
