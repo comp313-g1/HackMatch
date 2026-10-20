@@ -45,7 +45,10 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   TEAM_NOT_FOUND: { status: 404, message: 'Team not found.' },
   FORBIDDEN_NOT_TEAM_OWNER: { status: 403, message: 'You are not the owner of this team.' },
   TEAM_NOT_MUTABLE: { status: 409, message: 'Team recruitment is not open or event is concluded.' },
-  CAPACITY_EXCEEDED: { status: 409, message: 'Team capacity exceeded.' },
+  CAPACITY_EXCEEDED: {
+    status: 409,
+    message: 'This team has reached the event capacity and cannot accept another member.',
+  },
   VACANCY_NOT_FOUND: { status: 404, message: 'Vacancy not found or not open.' },
   VACANCY_NOT_OPEN: {
     status: 409,

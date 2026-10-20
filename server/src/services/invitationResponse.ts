@@ -1,7 +1,7 @@
 /**
  * US-019 / #179 — invitee invitation detail and respond (accept revalidation / decline).
  *
- * Accept path uses FR-051 revalidation (#165); membership commit remains sibling FR-056 work.
+ * Accept path uses the #180 atomic transaction for FR-051 revalidation and FR-056 membership.
  * Decline commits FR-058 (Pending → Declined) with basic owner/invitee alerts.
  */
 
@@ -11,7 +11,7 @@ import {
 } from '../db/invitationModel.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import type { TeamRequest } from '../db/types.js';
-import { revalidateInvitationForAcceptance } from './invitationAcceptance.js';
+import { acceptInvitation } from './invitationAcceptance.js';
 import { TeamServiceError, toTeamServiceError } from './teamErrors.js';
 
 export type InvitationResponseDecision = 'accept' | 'decline';
@@ -186,13 +186,30 @@ export interface InvitationRespondResult {
   changed: boolean;
   idempotent: boolean;
   eligible?: boolean;
+  membership?: {
+    id: string;
+    teamId: string;
+    eventId: string;
+    participantId: string;
+    role: string;
+    status: string;
+    joinedAt: string;
+  };
+  vacancy?: {
+    id: string;
+    status: string;
+    role: string;
+  };
+  memberCount?: number;
+  maxTeamSize?: number;
+  availabilityCleared?: boolean;
   alerts: InvitationStatusAlert[];
   notice: string;
 }
 
 /**
  * Addressed PART responds to a Pending invitation (US-019 / #179).
- * - accept: FR-051 revalidation only (membership commit is sibling FR-056 work)
+ * - accept: atomically revalidates and commits membership (FR-051 / FR-056 / #180)
  * - decline: FR-058 Pending → Declined with owner/invitee alerts
  */
 export async function respondToInvitation(
@@ -201,13 +218,13 @@ export async function respondToInvitation(
   decision: InvitationResponseDecision
 ): Promise<InvitationRespondResult> {
   if (decision === 'accept') {
-    const result = await revalidateInvitationForAcceptance({
+    const result = await acceptInvitation({
       actorParticipantId,
       invitationId,
     });
     return {
       decision: 'accept',
-      membershipCommitted: false,
+      membershipCommitted: true,
       invitation: {
         id: result.invitation.id,
         teamId: result.invitation.team_id,
@@ -215,21 +232,42 @@ export async function respondToInvitation(
         vacancyId: result.invitation.vacancy_id,
         inviteeParticipantId: result.invitation.participant_id,
         status: result.invitation.status,
-        statusLabel: 'Pending',
+        statusLabel: 'Accepted',
         requestType: 'Invitation',
-        expiresAt: result.expiresAt,
+        expiresAt: result.invitation.expires_at,
         resolvedAt: result.invitation.resolved_at,
         cancelReason: result.invitation.cancel_reason,
         teamName: result.teamName,
         vacancyRole: result.vacancyRole,
       },
-      changed: false,
+      changed: true,
       idempotent: false,
       eligible: true,
-      alerts: [],
-      notice:
-        result.notice ||
-        'Invitation is still valid. Membership confirmation will complete when acceptance is committed.',
+      membership: {
+        id: result.membership.id,
+        teamId: result.membership.team_id,
+        eventId: result.membership.event_id,
+        participantId: result.membership.participant_id,
+        role: result.membership.role,
+        status: result.membership.status,
+        joinedAt: result.membership.joined_at,
+      },
+      vacancy: {
+        id: result.vacancy.id,
+        status: result.vacancy.status,
+        role: result.vacancy.role,
+      },
+      memberCount: result.memberCount,
+      maxTeamSize: result.maxTeamSize,
+      availabilityCleared: result.availabilityCleared,
+      alerts: [
+        {
+          audience: 'owner',
+          type: 'team_invitation_accepted',
+          message: 'The invited participant accepted the team invitation.',
+        },
+      ],
+      notice: result.notice,
     };
   }
 

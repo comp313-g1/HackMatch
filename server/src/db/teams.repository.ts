@@ -139,6 +139,22 @@ export interface ITeamsRepository {
   markInvitationExpiredIfDue(
     invitationId: string
   ): Promise<{ invitation: TeamRequest; changed: boolean }>;
+  /** US-019 / #180 — atomically accept invitation, fill slot, and confirm membership. */
+  acceptTeamInvitation(
+    actorId: string,
+    invitationId: string
+  ): Promise<{
+    accepted: true;
+    invitation: TeamRequest;
+    membership: TeamMembership;
+    vacancy: TeamVacancy;
+    teamName: string;
+    vacancyRole: string;
+    memberCount: number;
+    maxTeamSize: number;
+    availabilityCleared: boolean;
+    notice: string;
+  }>;
   /** Owner cancel Pending invitation (US-017 / #166 / FR-052); idempotent. */
   cancelTeamInvitation(
     actorId: string,
@@ -674,6 +690,67 @@ export const teamsRepository: ITeamsRepository = {
     return {
       invitation: payload.invitation,
       changed: Boolean(payload.changed),
+    };
+  },
+
+  async acceptTeamInvitation(
+    actorId: string,
+    invitationId: string
+  ): Promise<{
+    accepted: true;
+    invitation: TeamRequest;
+    membership: TeamMembership;
+    vacancy: TeamVacancy;
+    teamName: string;
+    vacancyRole: string;
+    memberCount: number;
+    maxTeamSize: number;
+    availabilityCleared: boolean;
+    notice: string;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('accept_team_invitation', {
+      p_actor: actorId,
+      p_invitation: invitationId,
+    });
+    if (error) throw error;
+
+    const payload = data as {
+      error?: string;
+      details?: Record<string, unknown>;
+      accepted?: boolean;
+      invitation?: TeamRequest;
+      membership?: TeamMembership;
+      vacancy?: TeamVacancy;
+      teamName?: string;
+      vacancyRole?: string;
+      memberCount?: number;
+      maxTeamSize?: number;
+      availabilityCleared?: boolean;
+      notice?: string;
+    };
+
+    // Expiry is persisted by the RPC and returned as a domain failure instead of
+    // raised inside PostgreSQL (raising would roll the Expired update back).
+    if (payload.error) {
+      throw {
+        message: payload.error,
+        code: 'P0001',
+        detail: JSON.stringify(payload.details ?? {}),
+      };
+    }
+
+    return payload as {
+      accepted: true;
+      invitation: TeamRequest;
+      membership: TeamMembership;
+      vacancy: TeamVacancy;
+      teamName: string;
+      vacancyRole: string;
+      memberCount: number;
+      maxTeamSize: number;
+      availabilityCleared: boolean;
+      notice: string;
     };
   },
 

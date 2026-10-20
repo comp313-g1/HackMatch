@@ -4,6 +4,7 @@ import {
   evaluateInviteeIsAddressee,
   evaluateAcceptanceSlotStillOpen,
   evaluateAcceptanceTeamAndEvent,
+  acceptInvitation,
   revalidateInvitationForAcceptance,
 } from './invitationAcceptance.js';
 import {
@@ -99,6 +100,100 @@ describe('invitationAcceptance pure guards (US-017 / #165 / FR-051)', () => {
         now
       ).code
     ).toBe('EVENT_NOT_RECRUITING');
+  });
+});
+
+describe('acceptInvitation (US-019 / #180 / FR-056 / FR-083)', () => {
+  const acceptedInvitation = pendingInvite({
+    status: 'Accepted',
+    resolved_at: '2026-10-20T12:00:00.000Z',
+  });
+  const membership = {
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    team_id: sampleTeamId,
+    event_id: sampleEventId,
+    participant_id: otherParticipant.id,
+    role: 'Member' as const,
+    status: 'Confirmed' as const,
+    removal_reason: null,
+    joined_at: '2026-10-20T12:00:00.000Z',
+    ended_at: null,
+    created_at: '2026-10-20T12:00:00.000Z',
+    updated_at: '2026-10-20T12:00:00.000Z',
+  };
+
+  it('returns the committed membership result from the atomic repository RPC', async () => {
+    const acceptTeamInvitation = vi.fn().mockResolvedValue({
+      accepted: true as const,
+      invitation: acceptedInvitation,
+      membership,
+      vacancy: { ...sampleVacancy, status: 'Filled' as const },
+      teamName: sampleTeam.name,
+      vacancyRole: sampleVacancy.role,
+      memberCount: 2,
+      maxTeamSize: 4,
+      availabilityCleared: true,
+      notice: 'Invitation accepted. Team membership is confirmed and the vacancy is filled.',
+    });
+
+    const result = await acceptInvitation(
+      {
+        actorParticipantId: otherParticipant.id,
+        invitationId: acceptedInvitation.id,
+      },
+      { teamsRepo: { acceptTeamInvitation } }
+    );
+
+    expect(acceptTeamInvitation).toHaveBeenCalledWith(
+      otherParticipant.id,
+      acceptedInvitation.id
+    );
+    expect(result).toMatchObject({
+      accepted: true,
+      invitation: { status: 'Accepted' },
+      membership: { status: 'Confirmed', role: 'Member' },
+      vacancy: { status: 'Filled' },
+      availabilityCleared: true,
+    });
+  });
+
+  it.each([
+    ['INVITATION_EXPIRED', 409],
+    ['FORBIDDEN_NOT_INVITEE', 403],
+    ['VACANCY_NOT_OPEN', 409],
+    ['CAPACITY_EXCEEDED', 409],
+    ['INVITEE_ALREADY_CONFIRMED', 409],
+  ] as const)('maps %s from the RPC to an explicit service failure', async (code, status) => {
+    const acceptTeamInvitation = vi.fn().mockRejectedValue({
+      message: code,
+      code: 'P0001',
+      detail: JSON.stringify({ invitationId: acceptedInvitation.id }),
+    });
+
+    await expect(
+      acceptInvitation(
+        {
+          actorParticipantId: otherParticipant.id,
+          invitationId: acceptedInvitation.id,
+        },
+        { teamsRepo: { acceptTeamInvitation } }
+      )
+    ).rejects.toMatchObject({ code, status });
+  });
+
+  it('preserves unknown repository failures for the centralized safe 500 handler', async () => {
+    const failure = new Error('database transport secret');
+    const acceptTeamInvitation = vi.fn().mockRejectedValue(failure);
+
+    await expect(
+      acceptInvitation(
+        {
+          actorParticipantId: otherParticipant.id,
+          invitationId: acceptedInvitation.id,
+        },
+        { teamsRepo: { acceptTeamInvitation } }
+      )
+    ).rejects.toBe(failure);
   });
 });
 

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { teamsRepository, type CreateTeamWithOwnerInput } from './teams.repository.js';
 import * as clientModule from './client.js';
-import type { Team, TeamMembership } from './types.js';
+import type { Team, TeamMembership, TeamRequest, TeamVacancy } from './types.js';
 
 describe('teamsRepository unit tests (US-012 / #119)', () => {
   beforeEach(() => {
@@ -291,6 +291,88 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
     expect(eqType).toHaveBeenCalledWith('request_type', 'Application');
     expect(eqStatus).toHaveBeenCalledWith('status', 'Pending');
     expect(result).toEqual(application);
+  });
+
+  it('acceptTeamInvitation calls the atomic RPC and returns membership state (#180)', async () => {
+    const invitation = {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      team_id: sampleTeam.id,
+      event_id: sampleTeam.event_id,
+      vacancy_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      participant_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      request_type: 'Invitation',
+      status: 'Accepted',
+      cancel_reason: null,
+      resolved_at: '2026-10-20T12:00:00.000Z',
+      expires_at: '2026-10-21T12:00:00.000Z',
+      message: null,
+      created_at: '2026-10-19T12:00:00.000Z',
+      updated_at: '2026-10-20T12:00:00.000Z',
+    } satisfies TeamRequest;
+    const vacancy = {
+      id: invitation.vacancy_id!,
+      team_id: sampleTeam.id,
+      role: 'Frontend',
+      skills: ['React'],
+      status: 'Filled',
+      removed_at: null,
+      created_at: '2026-10-19T12:00:00.000Z',
+      updated_at: '2026-10-20T12:00:00.000Z',
+    } satisfies TeamVacancy;
+    const membership = {
+      ...sampleMembership,
+      participant_id: invitation.participant_id,
+      role: 'Member',
+    } satisfies TeamMembership;
+    const payload = {
+      accepted: true,
+      invitation,
+      membership,
+      vacancy,
+      teamName: sampleTeam.name,
+      vacancyRole: vacancy.role,
+      memberCount: 2,
+      maxTeamSize: 4,
+      availabilityCleared: true,
+      notice: 'Invitation accepted.',
+    };
+    const mockRpc = vi.fn().mockResolvedValue({ data: payload, error: null });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      rpc: mockRpc,
+    } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.acceptTeamInvitation(
+      invitation.participant_id,
+      invitation.id
+    );
+
+    expect(mockRpc).toHaveBeenCalledWith('accept_team_invitation', {
+      p_actor: invitation.participant_id,
+      p_invitation: invitation.id,
+    });
+    expect(result).toEqual(payload);
+  });
+
+  it('acceptTeamInvitation converts a committed expiry payload into a domain failure', async () => {
+    const mockRpc = vi.fn().mockResolvedValue({
+      data: {
+        error: 'INVITATION_EXPIRED',
+        details: { status: 'Expired', expiresAt: '2026-10-19T12:00:00.000Z' },
+      },
+      error: null,
+    });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      rpc: mockRpc,
+    } as unknown as SupabaseClient);
+
+    await expect(
+      teamsRepository.acceptTeamInvitation('actor-id', 'invitation-id')
+    ).rejects.toMatchObject({
+      message: 'INVITATION_EXPIRED',
+      code: 'P0001',
+    });
   });
 });
 

@@ -103,8 +103,8 @@ export function MyInvitationsPanel({
         );
       } else {
         setStatusAlert(
-          result.eligible
-            ? 'Invitation is still valid and ready for membership confirmation.'
+          result.membershipCommitted
+            ? 'Invitation accepted. Your team membership is confirmed.'
             : result.notice
         );
       }
@@ -139,8 +139,8 @@ export function MyInvitationsPanel({
             My Invitations
           </h3>
           <p className="text-xs text-ink-muted mt-1">
-            Inspect permitted team details for invitations addressed to you. Accept revalidates the
-            offer; Decline notifies the owner without changing your availability.
+            Inspect permitted team details for invitations addressed to you. Accept confirms your
+            membership; Decline notifies the owner without changing your availability.
           </p>
         </div>
         <button

@@ -79,23 +79,36 @@ describe('teams invitationsApi (US-017 / #167 shared client)', () => {
     expect(invitation.source).toBe('direct');
   });
 
-  it('POSTs acceptance-time revalidation and returns eligible (#165)', async () => {
+  it('POSTs atomic acceptance and returns confirmed membership (#180)', async () => {
     authFetchMock.mockResolvedValue(
       new Response(
         JSON.stringify({
-          eligible: true,
+          accepted: true,
           invitation: {
             id: 'inv-1',
             teamId: 't1',
             eventId: 'e1',
             vacancyId: 'v1',
             inviteeParticipantId: 'p1',
-            status: 'Pending',
+            status: 'Accepted',
             expiresAt: '2026-10-21T00:00:00.000Z',
             teamName: 'Team',
             vacancyRole: 'Frontend',
           },
-          notice: 'Invitation is still valid within its 48-hour window.',
+          membership: {
+            id: 'm1',
+            teamId: 't1',
+            eventId: 'e1',
+            participantId: 'p1',
+            role: 'Member',
+            status: 'Confirmed',
+            joinedAt: '2026-10-20T00:00:00.000Z',
+          },
+          vacancy: { id: 'v1', status: 'Filled', role: 'Frontend' },
+          memberCount: 2,
+          maxTeamSize: 4,
+          availabilityCleared: true,
+          notice: 'Invitation accepted. Team membership is confirmed.',
         }),
         { status: 200 }
       )
@@ -106,7 +119,9 @@ describe('teams invitationsApi (US-017 / #167 shared client)', () => {
       '/api/invitations/inv-1/accept',
       expect.objectContaining({ method: 'POST' })
     );
-    expect(result.eligible).toBe(true);
+    expect(result.accepted).toBe(true);
+    expect(result.membership.status).toBe('Confirmed');
+    expect(result.vacancy.status).toBe('Filled');
   });
 
   it('surfaces INVITATION_EXPIRED field errors when past 48h (#165 / T3)', async () => {

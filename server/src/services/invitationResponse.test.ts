@@ -102,22 +102,42 @@ describe('invitationResponse (US-019 / #179)', () => {
     ).rejects.toMatchObject({ code: 'FORBIDDEN_NOT_INVITEE', status: 403 });
   });
 
-  it('accept decision runs FR-051 revalidation without membership commit', async () => {
-    vi.spyOn(invitationAcceptance, 'revalidateInvitationForAcceptance').mockResolvedValue({
-      eligible: true,
-      invitation: pendingInvitation,
-      expiresAt: pendingInvitation.expires_at!,
+  it('accept decision atomically confirms membership and fills the vacancy (#180)', async () => {
+    const timestamp = '2026-10-20T12:00:00.000Z';
+    vi.spyOn(invitationAcceptance, 'acceptInvitation').mockResolvedValue({
+      accepted: true,
+      invitation: { ...pendingInvitation, status: 'Accepted', resolved_at: timestamp },
+      membership: {
+        id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        team_id: sampleTeamId,
+        event_id: sampleEventId,
+        participant_id: otherParticipant.id,
+        role: 'Member',
+        status: 'Confirmed',
+        removal_reason: null,
+        joined_at: timestamp,
+        ended_at: null,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      vacancy: { ...sampleVacancy, status: 'Filled' },
       teamName: 'HackMatch Innovators',
       vacancyRole: 'Frontend',
-      notice: 'Invitation is still valid for acceptance.',
+      memberCount: 2,
+      maxTeamSize: 4,
+      availabilityCleared: true,
+      notice: 'Invitation accepted. Team membership is confirmed and the vacancy is filled.',
     });
 
     const result = await respondToInvitation(otherParticipant.id, invitationId, 'accept');
 
     expect(result.decision).toBe('accept');
-    expect(result.membershipCommitted).toBe(false);
+    expect(result.membershipCommitted).toBe(true);
     expect(result.eligible).toBe(true);
-    expect(result.notice).toMatch(/valid/i);
+    expect(result.invitation.status).toBe('Accepted');
+    expect(result.membership).toMatchObject({ role: 'Member', status: 'Confirmed' });
+    expect(result.vacancy).toMatchObject({ status: 'Filled' });
+    expect(result.notice).toMatch(/membership is confirmed/i);
   });
 
   it('decline decision commits Declined and returns owner/invitee alerts', async () => {

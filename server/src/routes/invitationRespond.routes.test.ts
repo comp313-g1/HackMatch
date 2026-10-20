@@ -126,14 +126,31 @@ describe('Invitee invitation detail + respond (US-019 / #179)', () => {
     expect(res.body.errors.decision).toMatch(/accept or decline/i);
   });
 
-  it('accept respond returns eligible revalidation without membership commit', async () => {
-    vi.spyOn(invitationAcceptance, 'revalidateInvitationForAcceptance').mockResolvedValue({
-      eligible: true,
-      invitation: pendingInvitation,
-      expiresAt: pendingInvitation.expires_at!,
+  it('accept respond atomically commits membership and fills the vacancy (#180)', async () => {
+    const timestamp = '2026-10-20T12:00:00.000Z';
+    vi.spyOn(invitationAcceptance, 'acceptInvitation').mockResolvedValue({
+      accepted: true,
+      invitation: { ...pendingInvitation, status: 'Accepted', resolved_at: timestamp },
+      membership: {
+        id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        team_id: sampleTeamId,
+        event_id: sampleEventId,
+        participant_id: otherParticipant.id,
+        role: 'Member',
+        status: 'Confirmed',
+        removal_reason: null,
+        joined_at: timestamp,
+        ended_at: null,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      vacancy: { ...sampleVacancy, status: 'Filled' },
       teamName: 'HackMatch Innovators',
       vacancyRole: 'Frontend',
-      notice: 'Invitation is still valid for acceptance.',
+      memberCount: 2,
+      maxTeamSize: 4,
+      availabilityCleared: true,
+      notice: 'Invitation accepted. Team membership is confirmed and the vacancy is filled.',
     });
 
     const res = await request(app)
@@ -143,8 +160,11 @@ describe('Invitee invitation detail + respond (US-019 / #179)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.decision).toBe('accept');
-    expect(res.body.membershipCommitted).toBe(false);
+    expect(res.body.membershipCommitted).toBe(true);
     expect(res.body.eligible).toBe(true);
+    expect(res.body.invitation.status).toBe('Accepted');
+    expect(res.body.membership).toMatchObject({ role: 'Member', status: 'Confirmed' });
+    expect(res.body.vacancy.status).toBe('Filled');
   });
 
   it('decline respond returns Declined status and alerts (US-019-T2)', async () => {
