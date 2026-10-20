@@ -38,6 +38,7 @@ export type TeamErrorCode =
   | 'APPLICATION_NOT_WITHDRAWABLE'
   | 'APPLICATION_NOT_DECLINABLE'
   | 'APPLICATION_NOT_APPROVABLE'
+  | 'APPLICATION_DECISION_CONFLICT'
   | 'APPLICATION_APPLICANT_NOT_ELIGIBLE'
   | 'APPLICATION_APPLICANT_ALREADY_CONFIRMED'
   | 'APPLICATION_APPROVAL_CONFLICT'
@@ -161,6 +162,11 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   APPLICATION_NOT_APPROVABLE: {
     status: 409,
     message: 'Only Pending Review applications can be approved.',
+  },
+  APPLICATION_DECISION_CONFLICT: {
+    status: 409,
+    message:
+      'This application already has a final outcome. Refresh applications before making another decision.',
   },
   APPLICATION_APPLICANT_NOT_ELIGIBLE: {
     status: 409,

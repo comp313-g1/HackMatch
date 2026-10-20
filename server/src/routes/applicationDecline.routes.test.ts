@@ -64,6 +64,7 @@ function declineResult() {
     },
     changed: true,
     idempotent: false,
+    existingOutcome: 'Declined' as const,
     teamName: sampleTeam.name,
     vacancyRole: 'Backend',
     alerts: [
@@ -92,7 +93,7 @@ function declineResult() {
   };
 }
 
-describe('POST /api/applications/:applicationId/decline (US-020 / #192)', () => {
+describe('POST /api/applications/:applicationId/decline (US-020 / #192 / #193)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockVerifyIdToken.mockResolvedValue(validOwnerDecodedToken);
@@ -147,6 +148,9 @@ describe('POST /api/applications/:applicationId/decline (US-020 / #192)', () => 
     expect(res.headers['cache-control']).toBe('no-store');
     expect(res.body).toMatchObject({
       decision: 'decline',
+      changed: true,
+      idempotent: false,
+      existingOutcome: 'Declined',
       application: {
         id: applicationId,
         status: 'Declined',
@@ -166,11 +170,56 @@ describe('POST /api/applications/:applicationId/decline (US-020 / #192)', () => 
     });
   });
 
-  it('returns explicit 409 for a stale or already-completed decision', async () => {
+  it('returns 200 without duplicate alerts for an already Declined application', async () => {
+    vi.mocked(teamsRepository.declineTeamApplication).mockResolvedValue({
+      ...declineResult(),
+      changed: false,
+      idempotent: true,
+      alerts: [],
+      effects: {
+        applicationChanged: false,
+        applicantAlertCreated: false,
+        ownerAlertCreated: false,
+        pendingQuotaReleased: false,
+        availabilityChanged: false,
+        membershipChanged: false,
+        vacancyChanged: false,
+        capacityChanged: false,
+      },
+      notice: 'Application was already declined. No changes or duplicate alerts were created.',
+    });
+
+    const res = await request(app)
+      .post(path)
+      .set('Authorization', validTokenHeader)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      decision: 'decline',
+      changed: false,
+      idempotent: true,
+      existingOutcome: 'Declined',
+      application: { status: 'Declined' },
+      alerts: [],
+      effects: {
+        applicationChanged: false,
+        applicantAlertCreated: false,
+        ownerAlertCreated: false,
+        pendingQuotaReleased: false,
+      },
+    });
+  });
+
+  it('returns explicit 409 with the existing outcome for an opposite decision', async () => {
     vi.mocked(teamsRepository.declineTeamApplication).mockRejectedValue({
-      message: 'APPLICATION_NOT_DECLINABLE',
+      message: 'APPLICATION_DECISION_CONFLICT',
       code: 'P0001',
-      detail: JSON.stringify({ status: 'Accepted' }),
+      detail: JSON.stringify({
+        requestedDecision: 'decline',
+        existingOutcome: 'Accepted',
+        retryable: false,
+      }),
     });
 
     const res = await request(app)
@@ -180,9 +229,13 @@ describe('POST /api/applications/:applicationId/decline (US-020 / #192)', () => 
 
     expect(res.status).toBe(409);
     expect(res.body).toMatchObject({
-      code: 'APPLICATION_NOT_DECLINABLE',
-      details: { status: 'Accepted' },
-      errors: { _form: expect.stringMatching(/Pending Review/i) },
+      code: 'APPLICATION_DECISION_CONFLICT',
+      details: {
+        requestedDecision: 'decline',
+        existingOutcome: 'Accepted',
+        retryable: false,
+      },
+      errors: { _form: expect.stringMatching(/final outcome/i) },
     });
     expect(res.body).not.toHaveProperty('alerts');
   });

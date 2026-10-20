@@ -42,6 +42,7 @@ function committedDecline() {
     },
     changed: true,
     idempotent: false,
+    existingOutcome: 'Declined' as const,
     teamName: sampleTeam.name,
     vacancyRole: 'Backend',
     alerts: [
@@ -78,7 +79,7 @@ function passingRepo() {
   };
 }
 
-describe('declineApplication (US-020 / #192 / FR-062)', () => {
+describe('declineApplication (US-020 / #192 / #193 / FR-062)', () => {
   it('returns Declined with both alerts and unchanged roster effects', async () => {
     const teamsRepo = passingRepo();
 
@@ -100,6 +101,7 @@ describe('declineApplication (US-020 / #192 / FR-062)', () => {
       },
       changed: true,
       idempotent: false,
+      existingOutcome: 'Declined',
       alerts: [
         { audience: 'applicant', type: 'team_application_declined' },
         { audience: 'owner', type: 'team_application_declined' },
@@ -110,6 +112,47 @@ describe('declineApplication (US-020 / #192 / FR-062)', () => {
         membershipChanged: false,
         vacancyChanged: false,
         capacityChanged: false,
+      },
+    });
+  });
+
+  it('returns the existing Declined outcome without duplicate alerts on repeat', async () => {
+    const teamsRepo = passingRepo();
+    teamsRepo.declineTeamApplication.mockResolvedValue({
+      ...committedDecline(),
+      changed: false,
+      idempotent: true,
+      alerts: [],
+      effects: {
+        applicationChanged: false,
+        applicantAlertCreated: false,
+        ownerAlertCreated: false,
+        pendingQuotaReleased: false,
+        availabilityChanged: false,
+        membershipChanged: false,
+        vacancyChanged: false,
+        capacityChanged: false,
+      },
+      notice: 'Application was already declined. No changes or duplicate alerts were created.',
+    });
+
+    const result = await declineApplication(
+      { actorParticipantId: ownerParticipant.id, applicationId },
+      { teamsRepo }
+    );
+
+    expect(result).toMatchObject({
+      decision: 'decline',
+      changed: false,
+      idempotent: true,
+      existingOutcome: 'Declined',
+      application: { status: 'Declined' },
+      alerts: [],
+      effects: {
+        applicationChanged: false,
+        applicantAlertCreated: false,
+        ownerAlertCreated: false,
+        pendingQuotaReleased: false,
       },
     });
   });
@@ -139,12 +182,16 @@ describe('declineApplication (US-020 / #192 / FR-062)', () => {
     expect(teamsRepo.findTeamById).not.toHaveBeenCalled();
   });
 
-  it('returns an explicit conflict for a stale or completed application', async () => {
+  it('returns the existing outcome in an explicit opposite-decision conflict', async () => {
     const teamsRepo = passingRepo();
     teamsRepo.declineTeamApplication.mockRejectedValue({
-      message: 'APPLICATION_NOT_DECLINABLE',
+      message: 'APPLICATION_DECISION_CONFLICT',
       code: 'P0001',
-      detail: JSON.stringify({ status: 'Accepted' }),
+      detail: JSON.stringify({
+        requestedDecision: 'decline',
+        existingOutcome: 'Accepted',
+        retryable: false,
+      }),
     });
 
     await expect(
@@ -153,9 +200,13 @@ describe('declineApplication (US-020 / #192 / FR-062)', () => {
         { teamsRepo }
       )
     ).rejects.toMatchObject({
-      code: 'APPLICATION_NOT_DECLINABLE',
+      code: 'APPLICATION_DECISION_CONFLICT',
       status: 409,
-      details: { status: 'Accepted' },
+      details: {
+        requestedDecision: 'decline',
+        existingOutcome: 'Accepted',
+        retryable: false,
+      },
     });
   });
 

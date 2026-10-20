@@ -35,6 +35,9 @@ function committedApproval() {
   const timestamp = '2026-10-20T12:00:00.000Z';
   return {
     approved: true as const,
+    changed: true,
+    idempotent: false,
+    existingOutcome: 'Accepted' as const,
     application: {
       ...pendingApplication(),
       status: 'Accepted' as const,
@@ -81,7 +84,7 @@ function passingRepo() {
   };
 }
 
-describe('approveApplication (US-020 / #190 / #191 / FR-061)', () => {
+describe('approveApplication (US-020 / #190 / #191 / #193 / FR-061)', () => {
   it('returns the committed membership and filled vacancy from the atomic RPC', async () => {
     const teamsRepo = passingRepo();
 
@@ -96,6 +99,9 @@ describe('approveApplication (US-020 / #190 / #191 / FR-061)', () => {
     );
     expect(result).toMatchObject({
       approved: true,
+      changed: true,
+      idempotent: false,
+      existingOutcome: 'Accepted',
       application: { status: 'Accepted', statusLabel: 'Accepted' },
       membership: { participantId: otherParticipant.id, status: 'Confirmed' },
       vacancy: { id: sampleVacancyId, status: 'Filled' },
@@ -110,6 +116,69 @@ describe('approveApplication (US-020 / #190 / #191 / FR-061)', () => {
         teamRequestsCanceled: 0,
         teamNowFull: false,
       },
+    });
+  });
+
+  it('returns the existing Accepted outcome for an idempotent repeat', async () => {
+    const teamsRepo = passingRepo();
+    teamsRepo.approveTeamApplication.mockResolvedValue({
+      ...committedApproval(),
+      changed: false,
+      idempotent: true,
+      cascade: {
+        winningRequestId: applicationId,
+        eventInvitationsCanceled: 0,
+        eventApplicationsWithdrawn: 0,
+        slotRequestsCanceled: 0,
+        teamRequestsCanceled: 0,
+        teamNowFull: false,
+      },
+      notice: 'Application was already approved. No changes were made.',
+    });
+
+    const result = await approveApplication(
+      { actorParticipantId: ownerParticipant.id, applicationId },
+      { teamsRepo }
+    );
+
+    expect(result).toMatchObject({
+      approved: true,
+      changed: false,
+      idempotent: true,
+      existingOutcome: 'Accepted',
+      application: { status: 'Accepted' },
+      cascade: {
+        eventInvitationsCanceled: 0,
+        eventApplicationsWithdrawn: 0,
+        slotRequestsCanceled: 0,
+        teamRequestsCanceled: 0,
+      },
+    });
+  });
+
+  it('returns historical Accepted state when later lifecycle changes removed live records', async () => {
+    const teamsRepo = passingRepo();
+    teamsRepo.approveTeamApplication.mockResolvedValue({
+      ...committedApproval(),
+      changed: false,
+      idempotent: true,
+      membership: null,
+      vacancy: null,
+      membershipCommitted: false,
+      notice: 'Application was already approved. No changes were made.',
+    });
+
+    const result = await approveApplication(
+      { actorParticipantId: ownerParticipant.id, applicationId },
+      { teamsRepo }
+    );
+
+    expect(result).toMatchObject({
+      idempotent: true,
+      existingOutcome: 'Accepted',
+      membership: null,
+      vacancy: null,
+      membershipCommitted: false,
     });
   });
 
@@ -146,6 +215,7 @@ describe('approveApplication (US-020 / #190 / #191 / FR-061)', () => {
     'TEAM_NOT_MUTABLE',
     'EVENT_NOT_RECRUITING',
     'APPLICATION_NOT_APPROVABLE',
+    'APPLICATION_DECISION_CONFLICT',
     'APPLICATION_APPROVAL_CONFLICT',
   ] as const)('maps %s to an explicit service failure', async (code) => {
     const teamsRepo = passingRepo();

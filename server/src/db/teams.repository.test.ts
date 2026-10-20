@@ -561,6 +561,9 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
     });
     expect(result).toMatchObject({
       approved: true,
+      changed: true,
+      idempotent: false,
+      existingOutcome: 'Accepted',
       availabilityCleared: true,
       membershipCommitted: true,
       cascade: {
@@ -570,6 +573,42 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
         slotRequestsCanceled: 3,
         teamRequestsCanceled: 0,
         teamNowFull: false,
+      },
+    });
+  });
+
+  it('normalizes an idempotent approval without replayed cascade effects (#193)', async () => {
+    const payload = {
+      approved: true,
+      changed: false,
+      idempotent: true,
+      existingOutcome: 'Accepted' as const,
+      application: { id: 'application-1' },
+      membership: { id: 'membership-1' },
+      vacancy: { id: 'vacancy-1' },
+      teamName: sampleTeam.name,
+      vacancyRole: 'Backend',
+      memberCount: 2,
+      maxTeamSize: 4,
+      availabilityCleared: false,
+      membershipCommitted: true,
+      cascade: { winningRequestId: 'application-1' },
+      notice: 'Application was already approved. No changes were made.',
+    };
+    const rpc = vi.fn().mockResolvedValue({ data: payload, error: null });
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({ rpc } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.approveTeamApplication('owner-1', 'application-1');
+
+    expect(result).toMatchObject({
+      changed: false,
+      idempotent: true,
+      existingOutcome: 'Accepted',
+      cascade: {
+        eventInvitationsCanceled: 0,
+        eventApplicationsWithdrawn: 0,
+        slotRequestsCanceled: 0,
+        teamRequestsCanceled: 0,
       },
     });
   });
@@ -624,6 +663,7 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
       application,
       changed: true,
       idempotent: false,
+      existingOutcome: 'Declined' as const,
       teamName: sampleTeam.name,
       vacancyRole: 'Backend',
       alerts: [
@@ -669,6 +709,46 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
       membershipChanged: false,
       vacancyChanged: false,
       capacityChanged: false,
+    });
+  });
+
+  it('normalizes an idempotent decline with no duplicate alerts (#193)', async () => {
+    const payload = {
+      application: { id: 'application-1' },
+      changed: false,
+      idempotent: true,
+      existingOutcome: 'Declined' as const,
+      teamName: sampleTeam.name,
+      vacancyRole: 'Backend',
+      alerts: [],
+      effects: {
+        applicationChanged: false,
+        applicantAlertCreated: false,
+        ownerAlertCreated: false,
+        pendingQuotaReleased: false,
+        availabilityChanged: false as const,
+        membershipChanged: false as const,
+        vacancyChanged: false as const,
+        capacityChanged: false as const,
+      },
+      notice: 'Application was already declined.',
+    };
+    const rpc = vi.fn().mockResolvedValue({ data: payload, error: null });
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({ rpc } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.declineTeamApplication('owner-1', 'application-1');
+
+    expect(result).toMatchObject({
+      changed: false,
+      idempotent: true,
+      existingOutcome: 'Declined',
+      alerts: [],
+      effects: {
+        applicationChanged: false,
+        applicantAlertCreated: false,
+        ownerAlertCreated: false,
+        pendingQuotaReleased: false,
+      },
     });
   });
 

@@ -25,6 +25,25 @@ export interface OwnerApplicationsPanelProps {
   ) => void;
 }
 
+function decisionFailureMessage(
+  err: ApplicationsApiError,
+  requestedDecision: 'approve' | 'decline'
+): string {
+  if (err.code === 'APPLICATION_DECISION_CONFLICT') {
+    const outcome = err.details?.existingOutcome;
+    const outcomeLabel =
+      typeof outcome === 'string' ? `the ${outcome} outcome` : 'a final outcome';
+    return `This application already has ${outcomeLabel} and cannot be ${
+      requestedDecision === 'approve' ? 'approved' : 'declined'
+    }. Refresh the review queue to see the latest state.`;
+  }
+  return (
+    err.errors?._form ||
+    err.message ||
+    `Could not ${requestedDecision} this application.`
+  );
+}
+
 /** US-020 / #188 / FR-060 — owner-only incoming application review queue. */
 export function OwnerApplicationsPanel({
   teamId,
@@ -79,11 +98,13 @@ export function OwnerApplicationsPanel({
     try {
       const result = await approveTeamApplication(applicationId);
       setApplications((current) => {
+        const decidedVacancyId = result.vacancy?.id ?? application.vacancyId;
         const remaining = result.cascade.teamNowFull
           ? []
           : current.filter(
               (item) =>
-                item.id !== applicationId && item.vacancyId !== result.vacancy.id
+                item.id !== applicationId &&
+                (decidedVacancyId === null || item.vacancyId !== decidedVacancyId)
             );
         if (remaining.length === 0) setEmptyMessage('No pending applications to review.');
         return remaining;
@@ -106,7 +127,7 @@ export function OwnerApplicationsPanel({
       } else if (err instanceof ApplicationsApiError && err.status === 403) {
         setApprovalError('Only the team owner can approve this application.');
       } else if (err instanceof ApplicationsApiError) {
-        setApprovalError(err.errors?._form || err.message || 'Could not approve this application.');
+        setApprovalError(decisionFailureMessage(err, 'approve'));
       } else {
         setApprovalError('Could not approve this application.');
       }
@@ -138,7 +159,7 @@ export function OwnerApplicationsPanel({
       } else if (err instanceof ApplicationsApiError && err.status === 403) {
         setApprovalError('Only the team owner can decline this application.');
       } else if (err instanceof ApplicationsApiError) {
-        setApprovalError(err.errors?._form || err.message || 'Could not decline this application.');
+        setApprovalError(decisionFailureMessage(err, 'decline'));
       } else {
         setApprovalError('Could not decline this application.');
       }

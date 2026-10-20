@@ -239,6 +239,9 @@ describe('applicationsApi (US-018 / #171)', () => {
       new Response(
         JSON.stringify({
           approved: true,
+          changed: true,
+          idempotent: false,
+          existingOutcome: 'Accepted',
           application: {
             id: 'app-1',
             teamId: 't1',
@@ -289,6 +292,9 @@ describe('applicationsApi (US-018 / #171)', () => {
     });
     expect(result).toMatchObject({
       approved: true,
+      changed: true,
+      idempotent: false,
+      existingOutcome: 'Accepted',
       application: { status: 'Accepted' },
       membership: { status: 'Confirmed' },
       vacancy: { status: 'Filled' },
@@ -323,6 +329,7 @@ describe('applicationsApi (US-018 / #171)', () => {
           },
           changed: true,
           idempotent: false,
+          existingOutcome: 'Declined',
           alerts: [
             { audience: 'applicant', type: 'team_application_declined', message: 'Declined.' },
             { audience: 'owner', type: 'team_application_declined', message: 'Declined.' },
@@ -352,6 +359,9 @@ describe('applicationsApi (US-018 / #171)', () => {
     });
     expect(result).toMatchObject({
       decision: 'decline',
+      changed: true,
+      idempotent: false,
+      existingOutcome: 'Declined',
       application: { status: 'Declined', cancelReason: 'OWNER_DECLINED' },
       effects: {
         pendingQuotaReleased: true,

@@ -16,6 +16,9 @@ export interface ApplicationApprovalDeps {
 
 export interface ApplicationApprovalResult {
   approved: true;
+  changed: boolean;
+  idempotent: boolean;
+  existingOutcome: 'Accepted';
   application: {
     id: string;
     teamId: string;
@@ -27,7 +30,7 @@ export interface ApplicationApprovalResult {
     requestType: 'Application';
     resolvedAt: string | null;
     teamName: string;
-    vacancyRole: string;
+    vacancyRole: string | null;
   };
   membership: {
     id: string;
@@ -37,8 +40,8 @@ export interface ApplicationApprovalResult {
     role: string;
     status: string;
     joinedAt: string;
-  };
-  vacancy: { id: string; role: string; status: string };
+  } | null;
+  vacancy: { id: string; role: string; status: string } | null;
   memberCount: number;
   maxTeamSize: number;
   availabilityCleared: boolean;
@@ -78,6 +81,9 @@ export async function approveApplication(
     );
     return {
       approved: true,
+      changed: result.changed,
+      idempotent: result.idempotent,
+      existingOutcome: result.existingOutcome,
       application: {
         id: result.application.id,
         teamId: result.application.team_id,
@@ -91,7 +97,7 @@ export async function approveApplication(
         teamName: result.teamName,
         vacancyRole: result.vacancyRole,
       },
-      membership: {
+      membership: result.membership ? {
         id: result.membership.id,
         teamId: result.membership.team_id,
         eventId: result.membership.event_id,
@@ -99,12 +105,12 @@ export async function approveApplication(
         role: result.membership.role,
         status: result.membership.status,
         joinedAt: result.membership.joined_at,
-      },
-      vacancy: {
+      } : null,
+      vacancy: result.vacancy ? {
         id: result.vacancy.id,
         role: result.vacancy.role,
         status: result.vacancy.status,
-      },
+      } : null,
       memberCount: result.memberCount,
       maxTeamSize: result.maxTeamSize,
       availabilityCleared: result.availabilityCleared,

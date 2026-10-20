@@ -37,6 +37,7 @@ export interface ApplicationDeclineResult {
   };
   changed: boolean;
   idempotent: boolean;
+  existingOutcome: 'Declined';
   alerts: ApplicationStatusAlertRecord[];
   effects: ApplicationDeclineEffects;
   notice: string;
@@ -84,6 +85,7 @@ export async function declineApplication(
       },
       changed: result.changed,
       idempotent: result.idempotent,
+      existingOutcome: result.existingOutcome,
       alerts: result.alerts,
       effects: result.effects,
       notice: result.notice,

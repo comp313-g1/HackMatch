@@ -40,6 +40,9 @@ const application: applicationsApi.OwnerApplicationReviewItem = {
 
 const approvalResult: applicationsApi.ApplicationApprovalResult = {
   approved: true,
+  changed: true,
+  idempotent: false,
+  existingOutcome: 'Accepted',
   application: {
     id: 'app-1',
     teamId: 'team-1',
@@ -97,6 +100,7 @@ const declineResult: applicationsApi.ApplicationDeclineResult = {
   },
   changed: true,
   idempotent: false,
+  existingOutcome: 'Declined',
   alerts: [
     {
       audience: 'applicant',
@@ -122,7 +126,7 @@ const declineResult: applicationsApi.ApplicationDeclineResult = {
   notice: 'Application declined. The applicant was notified and the vacancy remains open.',
 };
 
-describe('OwnerApplicationsPanel (US-020 / #188 / #190 / #191 / #192)', () => {
+describe('OwnerApplicationsPanel (US-020 / #188 / #190 / #191 / #192 / #193)', () => {
   beforeEach(() => {
     fetchMock.mockReset();
     approveMock.mockReset();
@@ -277,6 +281,39 @@ describe('OwnerApplicationsPanel (US-020 / #188 / #190 / #191 / #192)', () => {
     expect(onApproved).toHaveBeenCalledWith(approvalResult, application);
   });
 
+  it('shows an existing Accepted outcome as idempotent success', async () => {
+    fetchMock.mockResolvedValue({
+      teamId: 'team-1',
+      applications: [application],
+      empty: false,
+      message: null,
+    });
+    approveMock.mockResolvedValue({
+      ...approvalResult,
+      changed: false,
+      idempotent: true,
+      cascade: {
+        ...approvalResult.cascade,
+        eventInvitationsCanceled: 0,
+        eventApplicationsWithdrawn: 0,
+        slotRequestsCanceled: 0,
+        teamRequestsCanceled: 0,
+      },
+      notice: 'Application was already approved. No changes were made.',
+    });
+
+    render(<OwnerApplicationsPanel teamId="team-1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /approve application/i }));
+
+    expect(await screen.findByTestId('application-decision-success')).toHaveTextContent(
+      /already approved.*no changes/i
+    );
+    expect(screen.getByTestId('applications-empty')).toHaveTextContent(
+      /no pending applications/i
+    );
+    expect(screen.queryByText('Grace Hopper')).not.toBeInTheDocument();
+  });
+
   it('removes other reviews canceled for the filled slot and reports cascade effects', async () => {
     const sameSlot = {
       ...application,
@@ -383,6 +420,43 @@ describe('OwnerApplicationsPanel (US-020 / #188 / #190 / #191 / #192)', () => {
     expect(screen.getByRole('button', { name: /approve application/i })).toBeEnabled();
   });
 
+  it('preserves the review and names Declined when a stale approval is rejected', async () => {
+    fetchMock.mockResolvedValue({
+      teamId: 'team-1',
+      applications: [application],
+      empty: false,
+      message: null,
+    });
+    approveMock.mockRejectedValue(
+      new applicationsApi.ApplicationsApiError(
+        409,
+        'APPLICATION_DECISION_CONFLICT',
+        {
+          _form:
+            'This application already has a final outcome. Refresh applications before making another decision.',
+        },
+        {
+          requestedDecision: 'approve',
+          existingOutcome: 'Declined',
+          retryable: false,
+        },
+        'This application already has a final outcome.'
+      )
+    );
+
+    render(<OwnerApplicationsPanel teamId="team-1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /approve application/i }));
+
+    expect(await screen.findByTestId('application-decision-error')).toHaveTextContent(
+      /already has the Declined outcome.*cannot be approved/i
+    );
+    expect(screen.getByTestId('application-decision-error')).toHaveTextContent(
+      /review details were kept/i
+    );
+    expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
+    expect(screen.getByText(application.message as string)).toBeInTheDocument();
+  });
+
   it('declines an application, reports both alerts, and leaves roster state unchanged', async () => {
     const onDeclined = vi.fn();
     fetchMock.mockResolvedValue({
@@ -418,7 +492,39 @@ describe('OwnerApplicationsPanel (US-020 / #188 / #190 / #191 / #192)', () => {
     expect(onDeclined).toHaveBeenCalledWith(declineResult, application);
   });
 
-  it('preserves the review when a stale decline is rejected', async () => {
+  it('shows an existing Declined outcome without claiming duplicate alerts', async () => {
+    fetchMock.mockResolvedValue({
+      teamId: 'team-1',
+      applications: [application],
+      empty: false,
+      message: null,
+    });
+    declineMock.mockResolvedValue({
+      ...declineResult,
+      changed: false,
+      idempotent: true,
+      alerts: [],
+      effects: {
+        ...declineResult.effects,
+        applicationChanged: false,
+        applicantAlertCreated: false,
+        ownerAlertCreated: false,
+        pendingQuotaReleased: false,
+      },
+      notice: 'Application was already declined. No changes or duplicate alerts were created.',
+    });
+
+    render(<OwnerApplicationsPanel teamId="team-1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /decline application/i }));
+
+    expect(await screen.findByTestId('application-decision-success')).toHaveTextContent(
+      /already declined.*no changes.*duplicate alerts/i
+    );
+    expect(screen.getByTestId('applications-empty')).toBeInTheDocument();
+    expect(screen.queryByText('Grace Hopper')).not.toBeInTheDocument();
+  });
+
+  it('preserves the review and shows the existing outcome when a stale decline is rejected', async () => {
     fetchMock.mockResolvedValue({
       teamId: 'team-1',
       applications: [application],
@@ -428,10 +534,17 @@ describe('OwnerApplicationsPanel (US-020 / #188 / #190 / #191 / #192)', () => {
     declineMock.mockRejectedValue(
       new applicationsApi.ApplicationsApiError(
         409,
-        'APPLICATION_NOT_DECLINABLE',
-        { _form: 'Only Pending Review applications can be declined.' },
-        { status: 'Accepted' },
-        'Only Pending Review applications can be declined.'
+        'APPLICATION_DECISION_CONFLICT',
+        {
+          _form:
+            'This application already has a final outcome. Refresh applications before making another decision.',
+        },
+        {
+          requestedDecision: 'decline',
+          existingOutcome: 'Accepted',
+          retryable: false,
+        },
+        'This application already has a final outcome.'
       )
     );
 
@@ -439,7 +552,7 @@ describe('OwnerApplicationsPanel (US-020 / #188 / #190 / #191 / #192)', () => {
     fireEvent.click(await screen.findByRole('button', { name: /decline application/i }));
 
     expect(await screen.findByTestId('application-decision-error')).toHaveTextContent(
-      /only pending review applications/i
+      /already has the Accepted outcome.*cannot be declined/i
     );
     expect(screen.getByTestId('application-decision-error')).toHaveTextContent(
       /review details were kept/i
