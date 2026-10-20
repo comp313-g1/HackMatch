@@ -157,6 +157,34 @@ describe('US-019 Response Transactions Integration Suite (#186)', () => {
       expect(res.body.vacancy.status).toBe('Filled');
       expect(res.body.availabilityCleared).toBe(true);
     });
+
+    it('POST /respond accept when memberCount reaches 4 auto-cancels remaining team requests', async () => {
+      vi.spyOn(invitationAcceptance, 'acceptInvitation').mockResolvedValue(
+        acceptedPayload({
+          memberCount: 4,
+          cascade: {
+            winningRequestId: invitationId,
+            eventInvitationsCanceled: 1,
+            eventApplicationsWithdrawn: 0,
+            slotRequestsCanceled: 1,
+            teamRequestsCanceled: 2,
+            teamNowFull: true,
+          },
+        })
+      );
+
+      const res = await request(app)
+        .post(respondPath)
+        .set('Authorization', otherTokenHeader)
+        .send({ decision: 'accept' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.cascade).toMatchObject({
+        teamRequestsCanceled: 2,
+        teamNowFull: true,
+      });
+      expect(res.body.invitation.slotId).toBe(sampleVacancyId);
+    });
   });
 
   describe('US-019-T2: decline changes only that invitation and alerts the owner', () => {

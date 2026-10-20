@@ -34,7 +34,18 @@ export function validateRespondInvitationBody(
   res: Response,
   next: NextFunction
 ): void {
-  const body = (req.body ?? {}) as { decision?: unknown };
+  const body = (req.body ?? {}) as { decision?: unknown; eventId?: unknown };
+
+  if ('eventId' in body && body.eventId !== undefined) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(400).json({
+      error: 'Validation failed.',
+      code: 'VALIDATION_ERROR',
+      errors: { eventId: 'Unknown field "eventId".' },
+    });
+    return;
+  }
+
   const raw = typeof body.decision === 'string' ? body.decision.trim().toLowerCase() : '';
 
   if (!raw || !DECISIONS.has(raw as InvitationResponseDecision)) {

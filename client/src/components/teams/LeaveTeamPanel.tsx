@@ -107,7 +107,7 @@ export function LeaveTeamPanel({
           </h4>
           <p id="leave-confirm-desc" className="text-xs text-red-800">
             You will leave &quot;{teamName}&quot;. Previously canceled invitations or applications
-            for this event stay canceled.
+            for this team stay canceled.
           </p>
           <div className="flex flex-wrap gap-2">
             <button

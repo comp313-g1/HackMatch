@@ -24,8 +24,9 @@ export function invitationStatusLabel(status: string, expiredByClock = false): s
 export interface InviteeInvitationListItem {
   id: string;
   teamId: string;
-  eventId: string;
+  eventId?: string;
   vacancyId: string | null;
+  slotId?: string | null;
   inviteeParticipantId: string;
   status: TeamRequest['status'];
   statusLabel: string;
@@ -76,6 +77,7 @@ function toListItem(
     teamId: invitation.team_id,
     eventId: invitation.event_id,
     vacancyId: invitation.vacancy_id,
+    slotId: invitation.vacancy_id,
     inviteeParticipantId: invitation.participant_id,
     status: invitation.status,
     statusLabel: invitationStatusLabel(invitation.status, expiredByClock),
@@ -173,8 +175,9 @@ export interface InvitationRespondResult {
   invitation: {
     id: string;
     teamId: string;
-    eventId: string;
+    eventId?: string;
     vacancyId: string | null;
+    slotId?: string | null;
     inviteeParticipantId: string;
     status: TeamRequest['status'];
     statusLabel: string;
@@ -191,7 +194,7 @@ export interface InvitationRespondResult {
   membership?: {
     id: string;
     teamId: string;
-    eventId: string;
+    eventId?: string;
     participantId: string;
     role: string;
     status: string;
@@ -242,6 +245,7 @@ export async function respondToInvitation(
         teamId: result.invitation.team_id,
         eventId: result.invitation.event_id,
         vacancyId: result.invitation.vacancy_id,
+        slotId: result.invitation.vacancy_id,
         inviteeParticipantId: result.invitation.participant_id,
         status: result.invitation.status,
         statusLabel: 'Accepted',
@@ -304,6 +308,7 @@ export async function respondToInvitation(
         teamId: inv.team_id,
         eventId: inv.event_id,
         vacancyId: inv.vacancy_id,
+        slotId: inv.vacancy_id,
         inviteeParticipantId: inv.participant_id,
         status: inv.status,
         statusLabel: invitationStatusLabel(inv.status),

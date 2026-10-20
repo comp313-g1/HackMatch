@@ -157,7 +157,7 @@ export function RosterStatusView({
         className="p-4 text-center text-xs text-ink-muted border border-dashed border-cream-300 rounded-lg"
         data-testid="roster-status-empty"
       >
-        {emptyMessage || 'You are not on a team roster for this event yet.'}
+        {emptyMessage || 'You are not on a team roster yet.'}
       </div>
     );
   }
@@ -213,7 +213,7 @@ export function RosterStatusView({
             ? 'Roster is locked. Membership changes are closed.'
             : lifecycle.reason === 'Disbanded'
               ? 'This team was disbanded.'
-              : 'Event recruitment has ended. Roster changes are closed.'}
+              : 'Team recruitment is closed. Roster changes are closed.'}
         </div>
       ) : null}
 
@@ -265,7 +265,7 @@ export function RosterStatusView({
             </>
           ) : null}
           {snapshot.availabilityCleared ? (
-            <span className="block mt-1">Looking-for-Team was cleared for this event.</span>
+            <span className="block mt-1">Looking-for-Team was cleared across the platform.</span>
           ) : null}
         </p>
       ) : null}

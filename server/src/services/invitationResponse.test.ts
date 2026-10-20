@@ -64,6 +64,8 @@ describe('invitationResponse (US-019 / #179)', () => {
       canRespond: true,
       teamName: 'HackMatch Innovators',
       vacancyRole: 'Frontend',
+      vacancyId: sampleVacancyId,
+      slotId: sampleVacancyId,
     });
   });
 
@@ -91,6 +93,7 @@ describe('invitationResponse (US-019 / #179)', () => {
       vacancyRole: sampleVacancy.role,
       statusLabel: 'Pending',
     });
+    expect(detail.slotId).toBe(sampleVacancyId);
     expect(detail.canRespond).toBe(true);
   });
 
@@ -145,6 +148,7 @@ describe('invitationResponse (US-019 / #179)', () => {
     expect(result.membershipCommitted).toBe(true);
     expect(result.eligible).toBe(true);
     expect(result.invitation.status).toBe('Accepted');
+    expect(result.invitation.slotId).toBe(sampleVacancyId);
     expect(result.membership).toMatchObject({ role: 'Member', status: 'Confirmed' });
     expect(result.vacancy).toMatchObject({ status: 'Filled' });
     expect(result.cascade).toMatchObject({
@@ -196,6 +200,7 @@ describe('invitationResponse (US-019 / #179)', () => {
 
     expect(result.decision).toBe('decline');
     expect(result.invitation.status).toBe('Declined');
+    expect(result.invitation.slotId).toBe(sampleVacancyId);
     expect(result.changed).toBe(true);
     expect(result.alerts).toHaveLength(2);
     expect(result.alerts.find((alert) => alert.audience === 'owner')).toMatchObject({
