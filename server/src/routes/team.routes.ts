@@ -27,6 +27,7 @@ import {
   removeVacancyHandler,
   disbandTeamHandler,
   removeMemberHandler,
+  leaveTeamHandler,
   listOpenTeamsHandler,
 } from '../controllers/team.controller.js';
 import { getVacancyRecommendationsHandler } from '../controllers/recommendations.controller.js';
@@ -34,7 +35,10 @@ import {
   issueInvitationHandler,
   listTeamInvitationsHandler,
 } from '../controllers/invitations.controller.js';
-import { submitApplicationHandler } from '../controllers/applications.controller.js';
+import {
+  listTeamApplicationsHandler,
+  submitApplicationHandler,
+} from '../controllers/applications.controller.js';
 import { validateSubmitApplicationBody } from '../validators/application.validator.js';
 
 export const teamRouter = Router();
@@ -91,6 +95,13 @@ teamRouter.post(
   validateSubmitApplicationBody,
   submitApplicationHandler
 );
+teamRouter.get(
+  '/:teamId/applications',
+  ...participantAuth,
+  validateTeamIdParams,
+  requireTeamOwner,
+  listTeamApplicationsHandler
+);
 teamRouter.patch('/:teamId/vacancies/:vacancyId', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateVacancyBody, updateVacancyHandler);
 teamRouter.delete('/:teamId/vacancies/:vacancyId', ...participantAuth, validateTeamIdParams, requireTeamOwner, removeVacancyHandler);
 teamRouter.post('/:teamId/disband', ...participantAuth, validateTeamIdParams, requireTeamOwner, disbandTeamHandler);
@@ -103,4 +114,6 @@ teamRouter.post(
   validateRemovalReasonBody,
   removeMemberHandler
 );
+/** US-019 / #183 / FR-059 — confirmed non-owner leave (not owner-gated). */
+teamRouter.post('/:teamId/leave', ...participantAuth, validateTeamIdParams, leaveTeamHandler);
 

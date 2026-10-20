@@ -154,6 +154,45 @@ export interface MyApplicationListItem {
   withdrawable: boolean;
 }
 
+export interface OwnerApplicationReviewItem {
+  id: string;
+  teamId: string;
+  eventId: string;
+  vacancyId: string | null;
+  applicantParticipantId: string;
+  applicantDisplayName: string;
+  applicantHandle: string | null;
+  primaryRole: string | null;
+  institution: string | null;
+  skills: string[];
+  portfolios: Array<{ url: string; label: string | null }>;
+  status: 'Pending';
+  statusLabel: 'Pending Review';
+  requestType: 'Application';
+  message: string | null;
+  createdAt: string;
+  teamName: string;
+  vacancyRole: string | null;
+}
+
+export interface OwnerApplicationReviewResponse {
+  teamId: string;
+  applications: OwnerApplicationReviewItem[];
+  empty: boolean;
+  message: string | null;
+}
+
+/** GET /api/teams/:teamId/applications — owner-only Pending Review queue (#188). */
+export async function fetchTeamApplications(
+  teamId: string
+): Promise<OwnerApplicationReviewResponse> {
+  return authCall(() =>
+    authFetch(`/api/teams/${encodeURIComponent(teamId)}/applications`, {
+      method: 'GET',
+    })
+  );
+}
+
 export interface MyApplicationsListResult {
   applications: MyApplicationListItem[];
   empty: boolean;

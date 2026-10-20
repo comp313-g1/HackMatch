@@ -43,9 +43,18 @@ export interface TeamView {
   vacancies: TeamVacancyView[];
   limits: TeamLimits;
   lifecycle: TeamLifecycle;
+  /** Role of the authenticated viewer on this team, when known (US-019 leave). */
+  viewerRole: TeamMembershipRole | null;
+  /** Participant id of the authenticated viewer when they are on the roster (#185). */
+  viewerParticipantId: string | null;
+  /** Non-owner may leave while recruitment remains mutable (FR-059). */
+  canLeave: boolean;
 }
 
-export function toTeamView(parts: Awaited<ReturnType<ITeamsRepository['getTeamViewParts']>>): TeamView {
+export function toTeamView(
+  parts: Awaited<ReturnType<ITeamsRepository['getTeamViewParts']>>,
+  options?: { viewerParticipantId?: string }
+): TeamView {
   const maxTeamSize = parts.event.max_team_size;
   const effectiveMax = maxTeamSize ?? 4;
   const confirmedMembers = parts.members.length;
@@ -77,6 +86,13 @@ export function toTeamView(parts: Awaited<ReturnType<ITeamsRepository['getTeamVi
     end_date: eventEndDate,
   });
 
+  const viewerMember = options?.viewerParticipantId
+    ? members.find((m) => m.participantId === options.viewerParticipantId)
+    : undefined;
+  const viewerRole = viewerMember?.role ?? null;
+  const viewerParticipantId = viewerMember?.participantId ?? null;
+  const canLeave = viewerRole === 'Member' && lifecycle.mutable;
+
   return {
     id: parts.team.id,
     eventId: parts.team.event_id,
@@ -97,5 +113,8 @@ export function toTeamView(parts: Awaited<ReturnType<ITeamsRepository['getTeamVi
       remainingCapacity,
     },
     lifecycle,
+    viewerRole,
+    viewerParticipantId,
+    canLeave,
   };
 }

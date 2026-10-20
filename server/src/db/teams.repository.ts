@@ -27,6 +27,37 @@ export interface TeamListingPatch {
   communicationLink?: string | null;
 }
 
+export interface DeclineInvitationEffects {
+  invitationChanged: boolean;
+  ownerAlertCreated: boolean;
+  inviteeAlertCreated: boolean;
+  availabilityChanged: false;
+  membershipChanged: false;
+  vacancyChanged: false;
+}
+
+export interface InvitationStatusAlertRecord {
+  audience: string;
+  type: string;
+  message: string;
+  notificationId?: string;
+  createdAt?: string;
+}
+
+export interface TeamApplicationReviewRecord {
+  application: TeamRequest;
+  vacancyRole: string | null;
+  teamName: string;
+  applicant: {
+    displayName: string;
+    handle: string | null;
+    primaryRole: ParticipantPrimaryRole | null;
+    institution: string | null;
+    skills: string[];
+    portfolios: Array<{ url: string; label: string | null }>;
+  };
+}
+
 export interface OpenTeamRecord {
   team: Team;
   event: { status: 'Published' | 'Archived' | 'Disabled'; end_date: string };
@@ -71,6 +102,13 @@ export interface ITeamsRepository {
   removeTeamVacancy(actorId: string, teamId: string, vacancyId: string): Promise<{ canceledRequests: number }>;
   disbandTeam(actorId: string, teamId: string): Promise<{ releasedMembers: number; canceledRequests: number }>;
   removeTeamMember(actorId: string, teamId: string, memberParticipantId: string, reason: string): Promise<{ availabilityRestored: boolean }>;
+  /** US-019 / #183 / FR-059 — confirmed non-owner voluntary leave before lock. */
+  leaveTeam(actorId: string, teamId: string): Promise<{
+    leftParticipantId: string;
+    teamId: string;
+    availabilityRestored: boolean;
+    notice: string;
+  }>;
   issueTeamInvitation(
     actorId: string,
     teamId: string,
@@ -108,6 +146,8 @@ export interface ITeamsRepository {
       teamName: string;
     }>
   >;
+  /** US-020 / #188 / FR-060 — owner review queue containing Pending applications only. */
+  listTeamApplications(teamId: string): Promise<TeamApplicationReviewRecord[]>;
   /** US-018 / #175 / FR-055 — applicant withdraw Pending application; idempotent. */
   withdrawTeamApplication(
     actorId: string,
@@ -141,6 +181,34 @@ export interface ITeamsRepository {
   markInvitationExpiredIfDue(
     invitationId: string
   ): Promise<{ invitation: TeamRequest; changed: boolean }>;
+  /**
+   * US-019 / #180 / #181 — atomically accept invitation, fill slot, confirm membership,
+   * and cancel competing invitations/applications/slot requests.
+   */
+  acceptTeamInvitation(
+    actorId: string,
+    invitationId: string
+  ): Promise<{
+    accepted: true;
+    invitation: TeamRequest;
+    membership: TeamMembership;
+    vacancy: TeamVacancy;
+    teamName: string;
+    vacancyRole: string;
+    memberCount: number;
+    maxTeamSize: number;
+    availabilityCleared: boolean;
+    membershipCommitted: boolean;
+    cascade: {
+      winningRequestId?: string;
+      eventInvitationsCanceled: number;
+      eventApplicationsWithdrawn: number;
+      slotRequestsCanceled: number;
+      teamRequestsCanceled: number;
+      teamNowFull: boolean;
+    };
+    notice: string;
+  }>;
   /** Owner cancel Pending invitation (US-017 / #166 / FR-052); idempotent. */
   cancelTeamInvitation(
     actorId: string,
@@ -154,6 +222,44 @@ export interface ITeamsRepository {
     alerts: Array<{ audience: string; type: string; message: string }>;
     notice: string;
   }>;
+  /** Invitee decline Pending invitation (US-019 / #182 / FR-058); idempotent. */
+  declineTeamInvitation(
+    actorId: string,
+    invitationId: string
+  ): Promise<{
+    invitation: TeamRequest;
+    changed: boolean;
+    idempotent: boolean;
+    teamName: string;
+    vacancyRole: string | null;
+    alerts: InvitationStatusAlertRecord[];
+    effects: DeclineInvitationEffects;
+    notice: string;
+  }>;
+  /** US-019 / #181 — FR-056/057 cascade helper (also usable after application approval). */
+  cancelCompetingRequestsOnPlacement(input: {
+    winningRequestId: string;
+    participantId: string;
+    eventId: string;
+    teamId: string;
+    vacancyId: string | null;
+    teamNowFull: boolean;
+  }): Promise<{
+    winningRequestId: string;
+    eventInvitationsCanceled: number;
+    eventApplicationsWithdrawn: number;
+    slotRequestsCanceled: number;
+    teamRequestsCanceled: number;
+    teamNowFull: boolean;
+  }>;
+  /** Invitee inbound invitations (US-019 / #179). */
+  listMyInvitations(participantId: string): Promise<
+    Array<{
+      invitation: TeamRequest;
+      vacancyRole: string | null;
+      teamName: string;
+    }>
+  >;
   /** Owner outbound invitations for a team (US-017). */
   listTeamInvitations(teamId: string): Promise<
     Array<{
@@ -450,6 +556,37 @@ export const teamsRepository: ITeamsRepository = {
     return data as { availabilityRestored: boolean };
   },
 
+  async leaveTeam(
+    actorId: string,
+    teamId: string
+  ): Promise<{
+    leftParticipantId: string;
+    teamId: string;
+    availabilityRestored: boolean;
+    notice: string;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('leave_team', {
+      p_actor: actorId,
+      p_team: teamId,
+    });
+    if (error) throw error;
+    const payload = data as {
+      leftParticipantId?: string;
+      teamId?: string;
+      availabilityRestored?: boolean;
+      notice?: string;
+    };
+    return {
+      leftParticipantId: payload.leftParticipantId ?? actorId,
+      teamId: payload.teamId ?? teamId,
+      availabilityRestored: Boolean(payload.availabilityRestored),
+      notice:
+        payload.notice ??
+        'You left the team. Capacity is available for the team again.',
+    };
+  },
+
   async issueTeamInvitation(
     actorId: string,
     teamId: string,
@@ -670,6 +807,95 @@ export const teamsRepository: ITeamsRepository = {
     };
   },
 
+  async acceptTeamInvitation(
+    actorId: string,
+    invitationId: string
+  ): Promise<{
+    accepted: true;
+    invitation: TeamRequest;
+    membership: TeamMembership;
+    vacancy: TeamVacancy;
+    teamName: string;
+    vacancyRole: string;
+    memberCount: number;
+    maxTeamSize: number;
+    availabilityCleared: boolean;
+    membershipCommitted: boolean;
+    cascade: {
+      winningRequestId?: string;
+      eventInvitationsCanceled: number;
+      eventApplicationsWithdrawn: number;
+      slotRequestsCanceled: number;
+      teamRequestsCanceled: number;
+      teamNowFull: boolean;
+    };
+    notice: string;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('accept_team_invitation', {
+      p_actor: actorId,
+      p_invitation: invitationId,
+    });
+    if (error) throw error;
+
+    const payload = data as {
+      error?: string;
+      details?: Record<string, unknown>;
+      accepted?: boolean;
+      invitation?: TeamRequest;
+      membership?: TeamMembership;
+      vacancy?: TeamVacancy;
+      teamName?: string;
+      vacancyRole?: string;
+      memberCount?: number;
+      maxTeamSize?: number;
+      availabilityCleared?: boolean;
+      membershipCommitted?: boolean;
+      cascade?: {
+        winningRequestId?: string;
+        eventInvitationsCanceled?: number;
+        eventApplicationsWithdrawn?: number;
+        slotRequestsCanceled?: number;
+        teamRequestsCanceled?: number;
+        teamNowFull?: boolean;
+      };
+      notice?: string;
+    };
+
+    // Expiry is persisted by the RPC and returned as a domain failure instead of
+    // raised inside PostgreSQL (raising would roll the Expired update back).
+    if (payload.error) {
+      throw {
+        message: payload.error,
+        code: 'P0001',
+        detail: JSON.stringify(payload.details ?? {}),
+      };
+    }
+
+    const cascade = payload.cascade ?? {};
+    return {
+      accepted: true as const,
+      invitation: payload.invitation as TeamRequest,
+      membership: payload.membership as TeamMembership,
+      vacancy: payload.vacancy as TeamVacancy,
+      teamName: payload.teamName as string,
+      vacancyRole: payload.vacancyRole as string,
+      memberCount: payload.memberCount as number,
+      maxTeamSize: payload.maxTeamSize as number,
+      availabilityCleared: Boolean(payload.availabilityCleared),
+      membershipCommitted: payload.membershipCommitted !== false,
+      cascade: {
+        winningRequestId: cascade.winningRequestId,
+        eventInvitationsCanceled: cascade.eventInvitationsCanceled ?? 0,
+        eventApplicationsWithdrawn: cascade.eventApplicationsWithdrawn ?? 0,
+        slotRequestsCanceled: cascade.slotRequestsCanceled ?? 0,
+        teamRequestsCanceled: cascade.teamRequestsCanceled ?? 0,
+        teamNowFull: Boolean(cascade.teamNowFull),
+      },
+      notice: payload.notice as string,
+    };
+  },
+
   async cancelTeamInvitation(
     actorId: string,
     invitationId: string
@@ -706,6 +932,140 @@ export const teamsRepository: ITeamsRepository = {
       alerts: payload.alerts ?? [],
       notice: payload.notice,
     };
+  },
+
+  async declineTeamInvitation(
+    actorId: string,
+    invitationId: string
+  ): Promise<{
+    invitation: TeamRequest;
+    changed: boolean;
+    idempotent: boolean;
+    teamName: string;
+    vacancyRole: string | null;
+    alerts: InvitationStatusAlertRecord[];
+    effects: DeclineInvitationEffects;
+    notice: string;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('decline_team_invitation', {
+      p_actor: actorId,
+      p_invitation: invitationId,
+    });
+    if (error) throw error;
+    const payload = data as {
+      error?: string;
+      details?: Record<string, unknown>;
+      invitation: TeamRequest;
+      changed: boolean;
+      idempotent: boolean;
+      teamName: string;
+      vacancyRole?: string | null;
+      alerts?: InvitationStatusAlertRecord[];
+      effects?: DeclineInvitationEffects;
+      notice: string;
+    };
+
+    // Clock expiry must commit, so the RPC reports it as a failure payload.
+    if (payload.error) {
+      throw {
+        message: payload.error,
+        code: 'P0001',
+        detail: JSON.stringify(payload.details ?? {}),
+      };
+    }
+
+    return {
+      invitation: payload.invitation,
+      changed: Boolean(payload.changed),
+      idempotent: Boolean(payload.idempotent),
+      teamName: payload.teamName,
+      vacancyRole: payload.vacancyRole ?? null,
+      alerts: payload.alerts ?? [],
+      effects: payload.effects ?? {
+        invitationChanged: Boolean(payload.changed),
+        ownerAlertCreated: false,
+        inviteeAlertCreated: false,
+        availabilityChanged: false,
+        membershipChanged: false,
+        vacancyChanged: false,
+      },
+      notice: payload.notice,
+    };
+  },
+
+  async cancelCompetingRequestsOnPlacement(input: {
+    winningRequestId: string;
+    participantId: string;
+    eventId: string;
+    teamId: string;
+    vacancyId: string | null;
+    teamNowFull: boolean;
+  }): Promise<{
+    winningRequestId: string;
+    eventInvitationsCanceled: number;
+    eventApplicationsWithdrawn: number;
+    slotRequestsCanceled: number;
+    teamRequestsCanceled: number;
+    teamNowFull: boolean;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('cancel_competing_requests_on_placement', {
+      p_winning_request_id: input.winningRequestId,
+      p_participant_id: input.participantId,
+      p_event_id: input.eventId,
+      p_team_id: input.teamId,
+      p_vacancy_id: input.vacancyId,
+      p_team_now_full: input.teamNowFull,
+    });
+    if (error) throw error;
+    const payload = data as {
+      winningRequestId: string;
+      eventInvitationsCanceled: number;
+      eventApplicationsWithdrawn: number;
+      slotRequestsCanceled: number;
+      teamRequestsCanceled: number;
+      teamNowFull: boolean;
+    };
+    return {
+      winningRequestId: payload.winningRequestId,
+      eventInvitationsCanceled: payload.eventInvitationsCanceled ?? 0,
+      eventApplicationsWithdrawn: payload.eventApplicationsWithdrawn ?? 0,
+      slotRequestsCanceled: payload.slotRequestsCanceled ?? 0,
+      teamRequestsCanceled: payload.teamRequestsCanceled ?? 0,
+      teamNowFull: Boolean(payload.teamNowFull),
+    };
+  },
+
+  async listMyInvitations(participantId: string): Promise<
+    Array<{
+      invitation: TeamRequest;
+      vacancyRole: string | null;
+      teamName: string;
+    }>
+  > {
+    const client = getSupabaseClient();
+    const { data: rows, error } = await client
+      .from('team_requests')
+      .select('*, vacancy:team_vacancies(role), team:teams(name)')
+      .eq('participant_id', participantId)
+      .eq('request_type', 'Invitation')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    return (rows || []).map(
+      (row: {
+        vacancy?: { role?: string } | null;
+        team?: { name?: string } | null;
+      } & TeamRequest) => {
+        const { vacancy, team, ...invitation } = row;
+        return {
+          invitation: invitation as TeamRequest,
+          vacancyRole: vacancy?.role ?? null,
+          teamName: team?.name ?? 'Unknown team',
+        };
+      }
+    );
   },
 
   async listTeamInvitations(teamId: string): Promise<
@@ -776,6 +1136,125 @@ export const teamsRepository: ITeamsRepository = {
         inviteeDisplayName: profile?.full_name ?? 'Participant',
         vacancyRole: vacancy?.role ?? null,
         teamName: (teamRow as { name: string }).name,
+      };
+    });
+  },
+
+  async listTeamApplications(teamId: string): Promise<TeamApplicationReviewRecord[]> {
+    const client = getSupabaseClient();
+    const { data: teamRow, error: teamErr } = await client
+      .from('teams')
+      .select('id, name')
+      .eq('id', teamId)
+      .maybeSingle();
+    if (teamErr) throw teamErr;
+    if (!teamRow) return [];
+
+    const { data: requestRows, error: requestErr } = await client
+      .from('team_requests')
+      .select('*, vacancy:team_vacancies(role)')
+      .eq('team_id', teamId)
+      .eq('request_type', 'Application')
+      .eq('status', 'Pending')
+      .order('created_at', { ascending: false });
+    if (requestErr) throw requestErr;
+
+    const rows = (requestRows || []) as Array<Record<string, unknown>>;
+    const applicantIds = [
+      ...new Set(rows.map((row) => String(row.participant_id))),
+    ];
+    const applicantById = new Map<
+      string,
+      TeamApplicationReviewRecord['applicant']
+    >();
+
+    if (applicantIds.length > 0) {
+      const [participantsResult, profilesResult, skillsResult, portfoliosResult] =
+        await Promise.all([
+          client.from('participants').select('id, full_name').in('id', applicantIds),
+          client
+            .from('participant_profiles')
+            .select('participant_id, handle, primary_role, institution')
+            .in('participant_id', applicantIds),
+          client
+            .from('participant_skills')
+            .select('participant_id, skill_name, created_at')
+            .in('participant_id', applicantIds)
+            .order('created_at', { ascending: true }),
+          client
+            .from('participant_portfolios')
+            .select('participant_id, url, label, created_at')
+            .in('participant_id', applicantIds)
+            .order('created_at', { ascending: true }),
+        ]);
+
+      if (participantsResult.error) throw participantsResult.error;
+      if (profilesResult.error) throw profilesResult.error;
+      if (skillsResult.error) throw skillsResult.error;
+      if (portfoliosResult.error) throw portfoliosResult.error;
+
+      const profileById = new Map(
+        (profilesResult.data || []).map((profile) => [
+          String(profile.participant_id),
+          profile as {
+            participant_id: string;
+            handle: string | null;
+            primary_role: ParticipantPrimaryRole | null;
+            institution: string | null;
+          },
+        ])
+      );
+      const skillsById = new Map<string, string[]>();
+      for (const skill of skillsResult.data || []) {
+        const participantId = String(skill.participant_id);
+        const existing = skillsById.get(participantId) ?? [];
+        existing.push(String(skill.skill_name));
+        skillsById.set(participantId, existing);
+      }
+      const portfoliosById = new Map<
+        string,
+        Array<{ url: string; label: string | null }>
+      >();
+      for (const portfolio of portfoliosResult.data || []) {
+        const participantId = String(portfolio.participant_id);
+        const existing = portfoliosById.get(participantId) ?? [];
+        existing.push({
+          url: String(portfolio.url),
+          label: portfolio.label == null ? null : String(portfolio.label),
+        });
+        portfoliosById.set(participantId, existing);
+      }
+
+      for (const participant of participantsResult.data || []) {
+        const participantId = String(participant.id);
+        const profile = profileById.get(participantId);
+        applicantById.set(participantId, {
+          displayName: String(participant.full_name || 'Participant'),
+          handle: profile?.handle ?? null,
+          primaryRole: profile?.primary_role ?? null,
+          institution: profile?.institution ?? null,
+          skills: skillsById.get(participantId) ?? [],
+          portfolios: portfoliosById.get(participantId) ?? [],
+        });
+      }
+    }
+
+    return rows.map((row) => {
+      const vacancy = row.vacancy as { role?: string } | null;
+      const application = { ...row } as unknown as TeamRequest & { vacancy?: unknown };
+      delete application.vacancy;
+      return {
+        application,
+        vacancyRole: vacancy?.role ?? null,
+        teamName: String((teamRow as { name: string }).name),
+        applicant: applicantById.get(application.participant_id) ?? {
+          displayName: 'Participant',
+          handle: null,
+          primaryRole: null,
+          institution: null,
+          skills: [],
+          portfolios: [],
+        },
       };
     });
   },

@@ -201,3 +201,22 @@ export async function disbandTeam(
     })
   );
 }
+
+/** POST /api/teams/:teamId/leave — US-019 / #183 / FR-059 pre-lock non-owner leave. */
+export async function leaveTeam(teamId: string): Promise<{
+  message: string;
+  availabilityRestored: boolean;
+  leftParticipantId: string;
+  teamId: string;
+}> {
+  return handleApiCall<{
+    message: string;
+    availabilityRestored: boolean;
+    leftParticipantId: string;
+    teamId: string;
+  }>(() =>
+    authFetch(`/api/teams/${encodeURIComponent(teamId)}/leave`, {
+      method: 'POST',
+    })
+  );
+}

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { teamsRepository, type CreateTeamWithOwnerInput } from './teams.repository.js';
 import * as clientModule from './client.js';
-import type { Team, TeamMembership } from './types.js';
+import type { Team, TeamMembership, TeamRequest, TeamVacancy } from './types.js';
 
 describe('teamsRepository unit tests (US-012 / #119)', () => {
   beforeEach(() => {
@@ -239,6 +239,30 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
     expect(result).toEqual({ releasedMembers: 3, canceledRequests: 4 });
   });
 
+  it('leaveTeam calls leave_team RPC and returns availability restoration (#183)', async () => {
+    const mockRpc = vi.fn().mockResolvedValue({
+      data: {
+        leftParticipantId: 'actor-2',
+        teamId: sampleTeam.id,
+        availabilityRestored: true,
+        notice: 'You left the team. Your Looking-for-Team availability for this event was restored.',
+      },
+      error: null,
+    });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      rpc: mockRpc,
+    } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.leaveTeam('actor-2', sampleTeam.id);
+    expect(mockRpc).toHaveBeenCalledWith('leave_team', {
+      p_actor: 'actor-2',
+      p_team: sampleTeam.id,
+    });
+    expect(result.availabilityRestored).toBe(true);
+    expect(result.leftParticipantId).toBe('actor-2');
+  });
+
   it('listConfirmedParticipantIdsForEvent selects Confirmed memberships for the event (FR-046)', async () => {
     const eventId = sampleInput.eventId;
     const ownerId = sampleInput.ownerParticipantId;
@@ -316,6 +340,294 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
     expect(eqType).toHaveBeenCalledWith('request_type', 'Application');
     expect(eqStatus).toHaveBeenCalledWith('status', 'Pending');
     expect(result).toEqual(application);
+  });
+
+  it('listTeamApplications queries only Pending Applications newest-first and projects permitted profile data (#188)', async () => {
+    const applicantId = 'p2000000-0000-4000-8000-000000000002';
+    const application = {
+      id: 'a1000000-0000-4000-8000-000000000001',
+      team_id: sampleTeam.id,
+      event_id: sampleTeam.event_id,
+      vacancy_id: 'v1000000-0000-4000-8000-000000000001',
+      participant_id: applicantId,
+      request_type: 'Application',
+      status: 'Pending',
+      message: 'Ready to contribute',
+      cancel_reason: null,
+      resolved_at: null,
+      expires_at: null,
+      created_at: '2026-10-20T16:00:00.000Z',
+      updated_at: '2026-10-20T16:00:00.000Z',
+      vacancy: { role: 'Backend' },
+    };
+
+    const requestOrder = vi.fn().mockResolvedValue({ data: [application], error: null });
+    const requestStatus = vi.fn().mockReturnValue({ order: requestOrder });
+    const requestType = vi.fn().mockReturnValue({ eq: requestStatus });
+    const requestTeam = vi.fn().mockReturnValue({ eq: requestType });
+    const teamMaybeSingle = vi.fn().mockResolvedValue({
+      data: { id: sampleTeam.id, name: sampleTeam.name },
+      error: null,
+    });
+    const profileIn = vi.fn().mockResolvedValue({
+      data: [
+        {
+          participant_id: applicantId,
+          handle: 'backend_dev',
+          primary_role: 'Backend',
+          institution: 'George Brown College',
+        },
+      ],
+      error: null,
+    });
+    const participantIn = vi.fn().mockResolvedValue({
+      data: [{ id: applicantId, full_name: 'Grace Hopper' }],
+      error: null,
+    });
+    const skillOrder = vi.fn().mockResolvedValue({
+      data: [{ participant_id: applicantId, skill_name: 'PostgreSQL' }],
+      error: null,
+    });
+    const portfolioOrder = vi.fn().mockResolvedValue({
+      data: [
+        {
+          participant_id: applicantId,
+          url: 'https://example.com/grace',
+          label: 'Projects',
+        },
+      ],
+      error: null,
+    });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'teams') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({ maybeSingle: teamMaybeSingle }),
+          }),
+        };
+      }
+      if (table === 'team_requests') {
+        return { select: vi.fn().mockReturnValue({ eq: requestTeam }) };
+      }
+      if (table === 'participants') {
+        return { select: vi.fn().mockReturnValue({ in: participantIn }) };
+      }
+      if (table === 'participant_profiles') {
+        return { select: vi.fn().mockReturnValue({ in: profileIn }) };
+      }
+      if (table === 'participant_skills') {
+        return {
+          select: vi.fn().mockReturnValue({
+            in: vi.fn().mockReturnValue({ order: skillOrder }),
+          }),
+        };
+      }
+      return {
+        select: vi.fn().mockReturnValue({
+          in: vi.fn().mockReturnValue({ order: portfolioOrder }),
+        }),
+      };
+    });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      from,
+    } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.listTeamApplications(sampleTeam.id);
+
+    expect(requestTeam).toHaveBeenCalledWith('team_id', sampleTeam.id);
+    expect(requestType).toHaveBeenCalledWith('request_type', 'Application');
+    expect(requestStatus).toHaveBeenCalledWith('status', 'Pending');
+    expect(requestOrder).toHaveBeenCalledWith('created_at', { ascending: false });
+    expect(result).toEqual([
+      expect.objectContaining({
+        vacancyRole: 'Backend',
+        teamName: sampleTeam.name,
+        applicant: {
+          displayName: 'Grace Hopper',
+          handle: 'backend_dev',
+          primaryRole: 'Backend',
+          institution: 'George Brown College',
+          skills: ['PostgreSQL'],
+          portfolios: [{ url: 'https://example.com/grace', label: 'Projects' }],
+        },
+      }),
+    ]);
+    expect(result[0].application).not.toHaveProperty('vacancy');
+  });
+
+  it('acceptTeamInvitation calls the atomic RPC and returns membership state (#180)', async () => {
+    const invitation = {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      team_id: sampleTeam.id,
+      event_id: sampleTeam.event_id,
+      vacancy_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      participant_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      request_type: 'Invitation',
+      status: 'Accepted',
+      cancel_reason: null,
+      resolved_at: '2026-10-20T12:00:00.000Z',
+      expires_at: '2026-10-21T12:00:00.000Z',
+      message: null,
+      created_at: '2026-10-19T12:00:00.000Z',
+      updated_at: '2026-10-20T12:00:00.000Z',
+    } satisfies TeamRequest;
+    const vacancy = {
+      id: invitation.vacancy_id!,
+      team_id: sampleTeam.id,
+      role: 'Frontend',
+      skills: ['React'],
+      status: 'Filled',
+      removed_at: null,
+      created_at: '2026-10-19T12:00:00.000Z',
+      updated_at: '2026-10-20T12:00:00.000Z',
+    } satisfies TeamVacancy;
+    const membership = {
+      ...sampleMembership,
+      participant_id: invitation.participant_id,
+      role: 'Member',
+    } satisfies TeamMembership;
+    const payload = {
+      accepted: true,
+      invitation,
+      membership,
+      vacancy,
+      teamName: sampleTeam.name,
+      vacancyRole: vacancy.role,
+      memberCount: 2,
+      maxTeamSize: 4,
+      availabilityCleared: true,
+      membershipCommitted: true,
+      cascade: {
+        winningRequestId: invitation.id,
+        eventInvitationsCanceled: 0,
+        eventApplicationsWithdrawn: 1,
+        slotRequestsCanceled: 1,
+        teamRequestsCanceled: 0,
+        teamNowFull: false,
+      },
+      notice: 'Invitation accepted.',
+    };
+    const mockRpc = vi.fn().mockResolvedValue({ data: payload, error: null });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      rpc: mockRpc,
+    } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.acceptTeamInvitation(
+      invitation.participant_id,
+      invitation.id
+    );
+
+    expect(mockRpc).toHaveBeenCalledWith('accept_team_invitation', {
+      p_actor: invitation.participant_id,
+      p_invitation: invitation.id,
+    });
+    expect(result).toEqual(payload);
+    expect(result.cascade.eventApplicationsWithdrawn).toBe(1);
+  });
+
+  it('acceptTeamInvitation converts a committed expiry payload into a domain failure', async () => {
+    const mockRpc = vi.fn().mockResolvedValue({
+      data: {
+        error: 'INVITATION_EXPIRED',
+        details: { status: 'Expired', expiresAt: '2026-10-19T12:00:00.000Z' },
+      },
+      error: null,
+    });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      rpc: mockRpc,
+    } as unknown as SupabaseClient);
+
+    await expect(
+      teamsRepository.acceptTeamInvitation('actor-id', 'invitation-id')
+    ).rejects.toMatchObject({
+      message: 'INVITATION_EXPIRED',
+      code: 'P0001',
+    });
+  });
+
+  it('declineTeamInvitation returns persisted owner alert and unchanged roster effects (#182)', async () => {
+    const invitation = {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      team_id: sampleTeam.id,
+      event_id: sampleTeam.event_id,
+      vacancy_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      participant_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      request_type: 'Invitation',
+      status: 'Declined',
+      cancel_reason: 'INVITEE_DECLINED',
+      resolved_at: '2026-10-20T12:00:00.000Z',
+      expires_at: '2026-10-21T12:00:00.000Z',
+      message: null,
+      created_at: '2026-10-19T12:00:00.000Z',
+      updated_at: '2026-10-20T12:00:00.000Z',
+    } satisfies TeamRequest;
+    const payload = {
+      invitation,
+      changed: true,
+      idempotent: false,
+      teamName: sampleTeam.name,
+      vacancyRole: 'Frontend',
+      alerts: [
+        {
+          audience: 'owner',
+          type: 'team_invitation_declined',
+          message: 'An invitee declined the pending invitation.',
+          notificationId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          createdAt: '2026-10-20T12:00:00.000Z',
+        },
+      ],
+      effects: {
+        invitationChanged: true,
+        ownerAlertCreated: true,
+        inviteeAlertCreated: true,
+        availabilityChanged: false as const,
+        membershipChanged: false as const,
+        vacancyChanged: false as const,
+      },
+      notice: 'Invitation declined. The team owner has been notified.',
+    };
+    const mockRpc = vi.fn().mockResolvedValue({ data: payload, error: null });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      rpc: mockRpc,
+    } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.declineTeamInvitation(
+      invitation.participant_id,
+      invitation.id
+    );
+
+    expect(mockRpc).toHaveBeenCalledWith('decline_team_invitation', {
+      p_actor: invitation.participant_id,
+      p_invitation: invitation.id,
+    });
+    expect(result).toEqual(payload);
+  });
+
+  it('declineTeamInvitation converts committed clock expiry into INVITATION_EXPIRED', async () => {
+    const mockRpc = vi.fn().mockResolvedValue({
+      data: {
+        error: 'INVITATION_EXPIRED',
+        details: { status: 'Expired', expiresAt: '2026-10-19T12:00:00.000Z' },
+      },
+      error: null,
+    });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      rpc: mockRpc,
+    } as unknown as SupabaseClient);
+
+    await expect(
+      teamsRepository.declineTeamInvitation('actor-id', 'invitation-id')
+    ).rejects.toMatchObject({
+      message: 'INVITATION_EXPIRED',
+      code: 'P0001',
+      detail: expect.stringContaining('Expired'),
+    });
   });
 });
 

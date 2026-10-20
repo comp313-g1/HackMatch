@@ -2,8 +2,8 @@
  * US-017 invitation issuance and US-015 FR-048 recommendation handoff.
  *
  * Pending invitations do not confirm membership or reserve capacity against applications.
- * Expiry is 48 hours from issuance; acceptance-time revalidation is #165 / FR-051
- * (membership commit remains US-019 / FR-056).
+ * Expiry is 48 hours from issuance; acceptance atomically revalidates FR-051
+ * and commits US-019 / FR-056 membership through the #180 transaction.
  */
 
 import { INVITATION_TTL_HOURS } from '../db/invitationModel.js';

@@ -3,7 +3,9 @@
  *
  * Acceptance fails at/after expires_at even when cleanup has not marked Expired yet.
  * Slot closure, locked teams, and non-recruiting events also make invitations unusable.
- * Full membership commit remains US-019 / FR-056; this module gates acceptance.
+ * US-019 / #180 adds the atomic membership commit after the legacy pure guards.
+ * US-019 / #184 serializes related acceptance attempts and maps residual
+ * PostgreSQL concurrency failures to an explicit retryable conflict.
  */
 
 import {
@@ -15,7 +17,7 @@ import { teamsRepository } from '../db/teams.repository.js';
 import type { Participant, Team, TeamRequest, TeamVacancy } from '../db/types.js';
 import type { IParticipantRepository } from '../db/participants.repository.js';
 import { participantsRepository } from '../db/participants.repository.js';
-import { TeamServiceError } from './teamErrors.js';
+import { TeamServiceError, toTeamServiceError } from './teamErrors.js';
 
 export type AcceptanceRevalidationFailure =
   | 'INVITATION_NOT_FOUND'
@@ -233,4 +235,52 @@ export async function revalidateInvitationForAcceptance(
     notice:
       'Invitation is still valid within its 48-hour window. Slot and team checks passed at acceptance time.',
   };
+}
+
+export interface AcceptInvitationInput {
+  actorParticipantId: string;
+  invitationId: string;
+}
+
+export type InvitationAcceptanceResult = Awaited<
+  ReturnType<ITeamsRepository['acceptTeamInvitation']>
+>;
+
+export interface AcceptInvitationDeps {
+  teamsRepo: Pick<ITeamsRepository, 'acceptTeamInvitation'>;
+}
+
+/**
+ * Commits invitation acceptance through one PostgreSQL transaction (US-019 / #180).
+ * The RPC is authoritative for all mutable eligibility, capacity, and slot checks.
+ */
+export async function acceptInvitation(
+  input: AcceptInvitationInput,
+  deps: AcceptInvitationDeps = { teamsRepo: teamsRepository }
+): Promise<InvitationAcceptanceResult> {
+  try {
+    return await deps.teamsRepo.acceptTeamInvitation(
+      input.actorParticipantId,
+      input.invitationId
+    );
+  } catch (err: unknown) {
+    const serviceError = toTeamServiceError(err);
+    if (serviceError) throw serviceError;
+
+    if (typeof err === 'object' && err !== null) {
+      const databaseCode = (err as { code?: unknown }).code;
+      if (
+        typeof databaseCode === 'string' &&
+        ['40P01', '40001', '55P03'].includes(databaseCode)
+      ) {
+        throw new TeamServiceError('INVITATION_ACCEPTANCE_CONFLICT', {
+          invitationId: input.invitationId,
+          reason: 'DATABASE_CONCURRENCY_RETRY',
+          retryable: true,
+        });
+      }
+    }
+
+    throw err;
+  }
 }

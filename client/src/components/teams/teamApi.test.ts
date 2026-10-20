@@ -9,6 +9,7 @@ import {
   removeVacancy,
   removeMember,
   disbandTeam,
+  leaveTeam,
 } from './teamApi';
 import { authFetch, AuthRequiredError } from '../../config/authFetch';
 import type { TeamView } from './teamTypes';
@@ -52,6 +53,9 @@ describe('teamApi client unit tests (US-012 / Task 8 / #125)', () => {
       mutable: true,
       reason: null,
     },
+    viewerRole: 'Owner',
+    viewerParticipantId: 'p-1',
+    canLeave: false,
   };
 
   beforeEach(() => {
@@ -201,6 +205,27 @@ describe('teamApi client unit tests (US-012 / Task 8 / #125)', () => {
     });
     expect(result.releasedMembers).toBe(3);
     expect(result.canceledRequests).toBe(1);
+  });
+
+  it('leaveTeam sends POST to /api/teams/:teamId/leave (#183)', async () => {
+    vi.mocked(authFetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          message: 'You left the team. Your Looking-for-Team availability for this event was restored.',
+          availabilityRestored: true,
+          leftParticipantId: 'p-456',
+          teamId: 't-123',
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await leaveTeam('t-123');
+    expect(authFetch).toHaveBeenCalledWith('/api/teams/t-123/leave', {
+      method: 'POST',
+    });
+    expect(result.availabilityRestored).toBe(true);
+    expect(result.message).toMatch(/availability/i);
   });
 
   it('maps HTTP errors into TeamApiError with structured details and code', async () => {

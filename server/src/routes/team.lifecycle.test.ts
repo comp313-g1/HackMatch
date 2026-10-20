@@ -123,6 +123,18 @@ describe('Team Lifecycle Lock Matrix & Member Removal (US-012 / Task 7 / #124)',
           );
         },
       },
+      {
+        name: 'POST /api/teams/:teamId/leave (leaveTeam)',
+        method: 'post',
+        path: `/api/teams/${sampleTeamId}/leave`,
+        setupMock: (reason) => {
+          mockVerifyIdToken.mockResolvedValue(validOtherDecodedToken);
+          vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(otherParticipant);
+          vi.spyOn(teamsRepository, 'leaveTeam').mockRejectedValue(
+            new TeamServiceError('TEAM_NOT_MUTABLE', { reason })
+          );
+        },
+      },
     ];
 
     describe.each(mutatingRoutes)('$name', (routeConfig) => {
@@ -335,6 +347,64 @@ describe('Team Lifecycle Lock Matrix & Member Removal (US-012 / Task 7 / #124)',
       expect(res.status).toBe(403);
       expect(res.body.code).toBe('FORBIDDEN_NOT_TEAM_OWNER');
       expect(removeSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/teams/:teamId/leave (US-019 / #183 / FR-059)', () => {
+    it('lets a confirmed non-owner leave and restores availability', async () => {
+      mockVerifyIdToken.mockResolvedValue(validOtherDecodedToken);
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(otherParticipant);
+      const leaveSpy = vi.spyOn(teamsRepository, 'leaveTeam').mockResolvedValue({
+        leftParticipantId: otherParticipant.id,
+        teamId: sampleTeamId,
+        availabilityRestored: true,
+        notice:
+          'You left the team. Your Looking-for-Team availability for this event was restored.',
+      });
+
+      const res = await request(app)
+        .post(`/api/teams/${sampleTeamId}/leave`)
+        .set('Authorization', otherTokenHeader);
+
+      expect(res.status).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(res.body.availabilityRestored).toBe(true);
+      expect(res.body.message).toMatch(/availability/i);
+      expect(leaveSpy).toHaveBeenCalledWith(otherParticipant.id, sampleTeamId);
+    });
+
+    it('rejects owner leave with 409 CANNOT_LEAVE_AS_OWNER', async () => {
+      vi.spyOn(teamsRepository, 'leaveTeam').mockRejectedValue(
+        new TeamServiceError('CANNOT_LEAVE_AS_OWNER')
+      );
+
+      const res = await request(app)
+        .post(`/api/teams/${sampleTeamId}/leave`)
+        .set('Authorization', validTokenHeader);
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('CANNOT_LEAVE_AS_OWNER');
+      expect(res.body.error).toMatch(/disband/i);
+    });
+
+    it('rejects leave when actor is not a confirmed member', async () => {
+      mockVerifyIdToken.mockResolvedValue(validOtherDecodedToken);
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(otherParticipant);
+      vi.spyOn(teamsRepository, 'leaveTeam').mockRejectedValue(
+        new TeamServiceError('MEMBER_NOT_FOUND')
+      );
+
+      const res = await request(app)
+        .post(`/api/teams/${sampleTeamId}/leave`)
+        .set('Authorization', otherTokenHeader);
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe('MEMBER_NOT_FOUND');
+    });
+
+    it('rejects unauthenticated leave with 401', async () => {
+      const res = await request(app).post(`/api/teams/${sampleTeamId}/leave`);
+      expect(res.status).toBe(401);
     });
   });
 });

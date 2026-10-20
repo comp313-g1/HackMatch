@@ -7,6 +7,7 @@ import {
   updateVacancy,
   removeVacancy,
   disbandTeam,
+  leaveTeam,
 } from './teamManagement.js';
 import { TeamServiceError } from './teamErrors.js';
 import type { ITeamsRepository } from '../db/teams.repository.js';
@@ -281,6 +282,62 @@ describe('teamManagement service unit tests (US-012 / #120)', () => {
         expect(serviceErr.details).toEqual({ reason: 'Disbanded' });
         return true;
       });
+    });
+  });
+
+  describe('leaveTeam (US-019 / #183 / FR-059)', () => {
+    it('returns availability restoration notice on successful leave', async () => {
+      const mockRepo = {
+        leaveTeam: vi.fn().mockResolvedValue({
+          leftParticipantId: otherActorId,
+          teamId,
+          availabilityRestored: true,
+          notice:
+            'You left the team. Your Looking-for-Team availability for this event was restored.',
+        }),
+      } as unknown as ITeamsRepository;
+
+      const result = await leaveTeam(otherActorId, teamId, { repo: mockRepo });
+      expect(mockRepo.leaveTeam).toHaveBeenCalledWith(otherActorId, teamId);
+      expect(result.availabilityRestored).toBe(true);
+      expect(result.notice).toMatch(/availability/i);
+    });
+
+    it('maps CANNOT_LEAVE_AS_OWNER when owner attempts leave', async () => {
+      const mockRepo = {
+        leaveTeam: vi.fn().mockRejectedValue({
+          message: 'CANNOT_LEAVE_AS_OWNER',
+          code: 'P0001',
+        }),
+      } as unknown as ITeamsRepository;
+
+      await expect(leaveTeam(actorId, teamId, { repo: mockRepo })).rejects.toSatisfy(
+        (err: unknown) => {
+          expect(err).toBeInstanceOf(TeamServiceError);
+          expect((err as TeamServiceError).code).toBe('CANNOT_LEAVE_AS_OWNER');
+          expect((err as TeamServiceError).status).toBe(409);
+          return true;
+        }
+      );
+    });
+
+    it('maps TEAM_NOT_MUTABLE when leave is attempted after lock', async () => {
+      const mockRepo = {
+        leaveTeam: vi.fn().mockRejectedValue({
+          message: 'TEAM_NOT_MUTABLE',
+          code: 'P0001',
+          detail: JSON.stringify({ reason: 'Locked' }),
+        }),
+      } as unknown as ITeamsRepository;
+
+      await expect(leaveTeam(otherActorId, teamId, { repo: mockRepo })).rejects.toSatisfy(
+        (err: unknown) => {
+          expect(err).toBeInstanceOf(TeamServiceError);
+          expect((err as TeamServiceError).code).toBe('TEAM_NOT_MUTABLE');
+          expect((err as TeamServiceError).details).toEqual({ reason: 'Locked' });
+          return true;
+        }
+      );
     });
   });
 });
