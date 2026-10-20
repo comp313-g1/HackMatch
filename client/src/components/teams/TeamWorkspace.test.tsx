@@ -44,6 +44,8 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
       mutable: true,
       reason: null,
     },
+    viewerRole: 'Owner',
+    canLeave: false,
   };
 
   beforeEach(() => {
@@ -147,6 +149,8 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
         mutable: false,
         reason: 'Locked',
       },
+    viewerRole: 'Owner',
+    canLeave: false,
     };
 
     vi.mocked(teamApi.fetchMyTeam).mockResolvedValueOnce(lockedTeam);

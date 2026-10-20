@@ -47,6 +47,8 @@ describe('VacancyPanel component tests (US-012 / Task 8 / #125)', () => {
     vacancies: mockVacancies,
     limits: mockLimits,
     lifecycle: { mutable: true, reason: null },
+    viewerRole: 'Owner',
+    canLeave: false,
   };
 
   beforeEach(() => {

@@ -50,6 +50,8 @@ describe('TeamRosterPanel component tests (US-012 / Task 8 / #125)', () => {
       remainingCapacity: 3,
     },
     lifecycle: { mutable: true, reason: null },
+    viewerRole: 'Owner',
+    canLeave: false,
   };
 
   beforeEach(() => {

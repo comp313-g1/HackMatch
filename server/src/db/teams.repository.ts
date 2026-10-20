@@ -86,6 +86,13 @@ export interface ITeamsRepository {
   removeTeamVacancy(actorId: string, teamId: string, vacancyId: string): Promise<{ canceledRequests: number }>;
   disbandTeam(actorId: string, teamId: string): Promise<{ releasedMembers: number; canceledRequests: number }>;
   removeTeamMember(actorId: string, teamId: string, memberParticipantId: string, reason: string): Promise<{ availabilityRestored: boolean }>;
+  /** US-019 / #183 / FR-059 — confirmed non-owner voluntary leave before lock. */
+  leaveTeam(actorId: string, teamId: string): Promise<{
+    leftParticipantId: string;
+    teamId: string;
+    availabilityRestored: boolean;
+    notice: string;
+  }>;
   issueTeamInvitation(
     actorId: string,
     teamId: string,
@@ -517,6 +524,37 @@ export const teamsRepository: ITeamsRepository = {
     });
     if (error) throw error;
     return data as { availabilityRestored: boolean };
+  },
+
+  async leaveTeam(
+    actorId: string,
+    teamId: string
+  ): Promise<{
+    leftParticipantId: string;
+    teamId: string;
+    availabilityRestored: boolean;
+    notice: string;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('leave_team', {
+      p_actor: actorId,
+      p_team: teamId,
+    });
+    if (error) throw error;
+    const payload = data as {
+      leftParticipantId?: string;
+      teamId?: string;
+      availabilityRestored?: boolean;
+      notice?: string;
+    };
+    return {
+      leftParticipantId: payload.leftParticipantId ?? actorId,
+      teamId: payload.teamId ?? teamId,
+      availabilityRestored: Boolean(payload.availabilityRestored),
+      notice:
+        payload.notice ??
+        'You left the team. Capacity is available for the team again.',
+    };
   },
 
   async issueTeamInvitation(

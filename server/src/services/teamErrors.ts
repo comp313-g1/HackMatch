@@ -12,6 +12,7 @@ export type TeamErrorCode =
   | 'VACANCY_NOT_OPEN'
   | 'MEMBER_NOT_FOUND'
   | 'CANNOT_REMOVE_OWNER'
+  | 'CANNOT_LEAVE_AS_OWNER'
   | 'RECOMMENDATIONS_FORBIDDEN'
   | 'SLOT_NOT_OPEN_FOR_RECOMMENDATIONS'
   | 'CANNOT_INVITE_SELF'
@@ -56,6 +57,10 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   },
   MEMBER_NOT_FOUND: { status: 404, message: 'Confirmed member not found on this team.' },
   CANNOT_REMOVE_OWNER: { status: 409, message: 'Team owner cannot be removed. To step down, disband the team.' },
+  CANNOT_LEAVE_AS_OWNER: {
+    status: 409,
+    message: 'Team owners cannot leave. Disband the team instead.',
+  },
   RECOMMENDATIONS_FORBIDDEN: {
     status: 403,
     message: 'Only the team owner can request candidate recommendations for an open slot.',

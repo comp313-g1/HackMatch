@@ -45,6 +45,8 @@ describe('CreateTeamPage component', () => {
       mutable: true,
       reason: null,
     },
+    viewerRole: 'Owner',
+    canLeave: false,
   };
 
   const mockOnCancel = vi.fn();

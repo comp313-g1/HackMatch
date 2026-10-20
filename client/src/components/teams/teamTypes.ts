@@ -59,6 +59,10 @@ export interface TeamView {
   vacancies: TeamVacancyView[];
   limits: TeamLimits;
   lifecycle: TeamLifecycle;
+  /** Role of the signed-in viewer on this team (US-019 leave). */
+  viewerRole: TeamMembershipRole | null;
+  /** True when the viewer is a confirmed non-owner and the team is still mutable. */
+  canLeave: boolean;
 }
 
 export interface TeamFieldErrors {

@@ -239,6 +239,30 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
     expect(result).toEqual({ releasedMembers: 3, canceledRequests: 4 });
   });
 
+  it('leaveTeam calls leave_team RPC and returns availability restoration (#183)', async () => {
+    const mockRpc = vi.fn().mockResolvedValue({
+      data: {
+        leftParticipantId: 'actor-2',
+        teamId: sampleTeam.id,
+        availabilityRestored: true,
+        notice: 'You left the team. Your Looking-for-Team availability for this event was restored.',
+      },
+      error: null,
+    });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      rpc: mockRpc,
+    } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.leaveTeam('actor-2', sampleTeam.id);
+    expect(mockRpc).toHaveBeenCalledWith('leave_team', {
+      p_actor: 'actor-2',
+      p_team: sampleTeam.id,
+    });
+    expect(result.availabilityRestored).toBe(true);
+    expect(result.leftParticipantId).toBe('actor-2');
+  });
+
   it('listConfirmedParticipantIdsForEvent selects Confirmed memberships for the event (FR-046)', async () => {
     const eventId = sampleInput.eventId;
     const ownerId = sampleInput.ownerParticipantId;

@@ -67,9 +67,44 @@ describe('teamView service unit tests (US-012 / #120)', () => {
     expect(view.members[0].displayName).toBe('ada_lovelace');
     expect(view.members[0].role).toBe('Owner');
     expect(view.vacancies).toHaveLength(2);
+    expect(view.viewerRole).toBeNull();
+    expect(view.canLeave).toBe(false);
     expect((view as unknown as Record<string, unknown>).owner_participant_id).toBeUndefined();
     expect((view.members[0] as unknown as Record<string, unknown>).email).toBeUndefined();
     expect((view.members[0] as unknown as Record<string, unknown>).firebase_uid).toBeUndefined();
+  });
+
+  it('marks canLeave for confirmed non-owner viewers on mutable teams (#183)', () => {
+    const memberId = 'p2000000-0000-4000-8000-000000000002';
+    const parts = {
+      team: baseTeam,
+      event: { max_team_size: 4, status: 'Published' as const, end_date: '2099-01-01T00:00:00.000Z' },
+      members: [
+        {
+          participant_id: baseTeam.owner_participant_id,
+          role: 'Owner' as const,
+          joined_at: '2026-10-18T10:00:00.000Z',
+          handle: 'owner',
+          full_name: 'Owner',
+        },
+        {
+          participant_id: memberId,
+          role: 'Member' as const,
+          joined_at: '2026-10-18T11:00:00.000Z',
+          handle: 'member',
+          full_name: 'Member',
+        },
+      ],
+      vacancies: [],
+    };
+
+    const memberView = toTeamView(parts, { viewerParticipantId: memberId });
+    expect(memberView.viewerRole).toBe('Member');
+    expect(memberView.canLeave).toBe(true);
+
+    const ownerView = toTeamView(parts, { viewerParticipantId: baseTeam.owner_participant_id });
+    expect(ownerView.viewerRole).toBe('Owner');
+    expect(ownerView.canLeave).toBe(false);
   });
 
   it('falls back to fullName for displayName when handle is null or whitespace', () => {

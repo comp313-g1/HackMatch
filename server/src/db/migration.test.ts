@@ -1160,4 +1160,55 @@ describe('0027_accept_team_invitation.sql Migration DDL (US-019 / #180)', () => 
   });
 });
 
+describe('0028_leave_team.sql Migration DDL (US-019 / #183 / FR-059)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0028_leave_team.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(sql.length).toBeGreaterThan(100);
+  });
+
+  it('declares leave_team with SECURITY DEFINER and search_path = public', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+leave_team/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/SET\s+search_path\s*=\s*public/i);
+  });
+
+  it('rejects owner leave with CANNOT_LEAVE_AS_OWNER', () => {
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'CANNOT_LEAVE_AS_OWNER'/i);
+    expect(sql).toMatch(/owner_participant_id\s*=\s*p_actor/i);
+  });
+
+  it('rejects non-mutable teams and non-recruiting events with TEAM_NOT_MUTABLE', () => {
+    expect(sql).toMatch(/recruitment_status\s*<>\s*'Open'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'TEAM_NOT_MUTABLE'/i);
+    expect(sql).toMatch(/EventNotRecruiting/i);
+  });
+
+  it('requires confirmed membership and marks it Removed with MEMBER_LEFT', () => {
+    expect(sql).toMatch(/status\s*=\s*'Confirmed'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'MEMBER_NOT_FOUND'/i);
+    expect(sql).toMatch(/UPDATE\s+team_memberships[\s\S]*?status\s*=\s*'Removed'/i);
+    expect(sql).toMatch(/removal_reason\s*=\s*'MEMBER_LEFT'/i);
+  });
+
+  it('restores availability and alerts owner without touching team_requests', () => {
+    expect(sql).toMatch(/UPDATE\s+event_availability/i);
+    expect(sql).toMatch(/SET\s+is_looking\s*=\s*TRUE/i);
+    expect(sql).toMatch(/NOT\s+EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+team_memberships/i);
+    expect(sql).toMatch(/INSERT\s+INTO\s+participant_notifications/i);
+    expect(sql).toMatch(/'MEMBER_LEFT'/i);
+    expect(sql).not.toMatch(/UPDATE\s+team_requests/i);
+    expect(sql).not.toMatch(/INSERT\s+INTO\s+event_availability/i);
+  });
+
+  it('secures function from anon/public and grants execute to service_role', () => {
+    expect(sql).toMatch(/REVOKE\s+ALL\s+ON\s+FUNCTION\s+leave_team[\s\S]*?FROM\s+PUBLIC,\s*anon,\s*authenticated/i);
+    expect(sql).toMatch(/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+leave_team[\s\S]*?TO\s+service_role/i);
+  });
+});
+
 
