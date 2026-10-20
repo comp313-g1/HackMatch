@@ -84,6 +84,7 @@ describe('Invitee invitation detail + respond (US-019 / #179 / #182)', () => {
       status: 'Pending',
       canRespond: true,
       teamName: 'HackMatch Innovators',
+      slotId: sampleVacancyId,
     });
   });
 
@@ -102,6 +103,7 @@ describe('Invitee invitation detail + respond (US-019 / #179 / #182)', () => {
     expect(res.status).toBe(200);
     expect(res.body.invitation.permittedDetails.teamName).toBe(sampleTeam.name);
     expect(res.body.invitation.permittedDetails.vacancyRole).toBe(sampleVacancy.role);
+    expect(res.body.invitation.slotId).toBe(sampleVacancyId);
   });
 
   it('forbids detail access for non-invitee', async () => {
@@ -124,6 +126,17 @@ describe('Invitee invitation detail + respond (US-019 / #179 / #182)', () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('VALIDATION_ERROR');
     expect(res.body.errors.decision).toMatch(/accept or decline/i);
+  });
+
+  it('rejects respond payloads containing eventId with 400 VALIDATION_ERROR', async () => {
+    const res = await request(app)
+      .post(respondPath)
+      .set('Authorization', otherTokenHeader)
+      .send({ decision: 'accept', eventId: sampleEventId });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+    expect(res.body.errors.eventId).toMatch(/unknown field/i);
   });
 
   it('rejects unauthenticated decline attempts before the repository', async () => {
@@ -197,6 +210,7 @@ describe('Invitee invitation detail + respond (US-019 / #179 / #182)', () => {
     expect(res.body.membershipCommitted).toBe(true);
     expect(res.body.eligible).toBe(true);
     expect(res.body.invitation.status).toBe('Accepted');
+    expect(res.body.invitation.slotId).toBe(sampleVacancyId);
     expect(res.body.membership).toMatchObject({ role: 'Member', status: 'Confirmed' });
     expect(res.body.vacancy.status).toBe('Filled');
     expect(res.body.cascade).toMatchObject({

@@ -55,6 +55,11 @@ describe('RosterStatusView (US-019 / #185)', () => {
     expect(screen.getByTestId('roster-status-empty')).toHaveTextContent(/no roster yet/i);
   });
 
+  it('renders default empty guidance when no emptyMessage is provided', () => {
+    render(<RosterStatusView viewState="empty" />);
+    expect(screen.getByTestId('roster-status-empty')).toHaveTextContent('You are not on a team roster yet.');
+  });
+
   it('renders error with retry and preserves guidance', () => {
     const onRetry = vi.fn();
     render(
@@ -107,7 +112,7 @@ describe('RosterStatusView (US-019 / #185)', () => {
     );
 
     expect(screen.getByTestId('roster-slot-outcome')).toHaveTextContent(/Frontend/);
-    expect(screen.getByTestId('roster-slot-outcome')).toHaveTextContent(/Looking-for-Team was cleared/i);
+    expect(screen.getByTestId('roster-slot-outcome')).toHaveTextContent(/Looking-for-Team was cleared across the platform/i);
     fireEvent.click(screen.getByTestId('roster-view-team'));
     expect(onViewTeam).toHaveBeenCalled();
   });

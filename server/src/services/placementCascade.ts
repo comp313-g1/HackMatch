@@ -57,7 +57,7 @@ export function planCompetingRequestCancellation(
   };
 
   const winningSlotId = winning.vacancyId ?? winning.slotId ?? null;
-  const scopeToTeamOnly = options?.scopeToTeamOnly ?? false;
+  const scopeToTeamOnly = options?.scopeToTeamOnly ?? true;
 
   for (const row of pending) {
     if (row.id === winning.id) continue;

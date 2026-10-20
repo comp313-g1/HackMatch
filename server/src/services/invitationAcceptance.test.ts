@@ -165,6 +165,44 @@ describe('acceptInvitation (US-019 / #180 / FR-056 / FR-083)', () => {
     });
   });
 
+  it('invokes availabilityRepo.clearLookingForTeamStatus to deactivate platform-wide LFT and returns availabilityCleared: true', async () => {
+    const acceptTeamInvitation = vi.fn().mockResolvedValue({
+      accepted: true as const,
+      invitation: acceptedInvitation,
+      membership,
+      vacancy: { ...sampleVacancy, status: 'Filled' as const },
+      teamName: sampleTeam.name,
+      vacancyRole: sampleVacancy.role,
+      memberCount: 2,
+      maxTeamSize: 4,
+      availabilityCleared: false,
+      membershipCommitted: true,
+      cascade: {
+        eventInvitationsCanceled: 0,
+        eventApplicationsWithdrawn: 0,
+        slotRequestsCanceled: 0,
+        teamRequestsCanceled: 0,
+        teamNowFull: false,
+      },
+      notice: 'Invitation accepted.',
+    });
+    const clearLookingForTeamStatus = vi.fn().mockResolvedValue(true);
+
+    const result = await acceptInvitation(
+      {
+        actorParticipantId: otherParticipant.id,
+        invitationId: acceptedInvitation.id,
+      },
+      {
+        teamsRepo: { acceptTeamInvitation },
+        availabilityRepo: { clearLookingForTeamStatus },
+      }
+    );
+
+    expect(clearLookingForTeamStatus).toHaveBeenCalledWith(otherParticipant.id);
+    expect(result.availabilityCleared).toBe(true);
+  });
+
   it.each([
     ['INVITATION_EXPIRED', 409],
     ['FORBIDDEN_NOT_INVITEE', 403],
@@ -360,5 +398,60 @@ describe('revalidateInvitationForAcceptance (US-017 / #165)', () => {
     );
 
     expect(result.eligible).toBe(true);
+  });
+
+  it('permits an invitee who is already a confirmed member of another distinct team', async () => {
+    const deps = passingDeps();
+    deps.teamsRepo.listConfirmedParticipantIdsForTeam = vi.fn().mockResolvedValue([ownerParticipant.id]);
+
+    const result = await revalidateInvitationForAcceptance(
+      {
+        actorParticipantId: otherParticipant.id,
+        invitationId: pendingInvite().id,
+      },
+      deps
+    );
+
+    expect(result.eligible).toBe(true);
+  });
+
+  it('rejects an invitee already confirmed on the target team with INVITEE_ALREADY_CONFIRMED', async () => {
+    const deps = passingDeps();
+    deps.teamsRepo.listConfirmedParticipantIdsForTeam = vi
+      .fn()
+      .mockResolvedValue([ownerParticipant.id, otherParticipant.id]);
+
+    await expect(
+      revalidateInvitationForAcceptance(
+        {
+          actorParticipantId: otherParticipant.id,
+          invitationId: pendingInvite().id,
+        },
+        deps
+      )
+    ).rejects.toMatchObject({
+      code: 'INVITEE_ALREADY_CONFIRMED',
+      status: 409,
+    });
+  });
+
+  it('rejects when target team has reached capacity (4 confirmed members) with CAPACITY_EXCEEDED', async () => {
+    const deps = passingDeps();
+    deps.teamsRepo.listConfirmedParticipantIdsForTeam = vi
+      .fn()
+      .mockResolvedValue(['p-1', 'p-2', 'p-3', 'p-4']);
+
+    await expect(
+      revalidateInvitationForAcceptance(
+        {
+          actorParticipantId: otherParticipant.id,
+          invitationId: pendingInvite().id,
+        },
+        deps
+      )
+    ).rejects.toMatchObject({
+      code: 'CAPACITY_EXCEEDED',
+      status: 409,
+    });
   });
 });

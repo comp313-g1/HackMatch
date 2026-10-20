@@ -31,6 +31,9 @@ describe('LeaveTeamPanel (US-019 / #183 / FR-059)', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /leave team/i }));
+    expect(
+      screen.getByText(/previously canceled invitations or applications for this team stay canceled/i)
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /yes, leave team/i }));
 
     await waitFor(() => {
@@ -58,6 +61,9 @@ describe('LeaveTeamPanel (US-019 / #183 / FR-059)', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /leave team/i }));
+    expect(
+      screen.getByText(/previously canceled invitations or applications for this team stay canceled/i)
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /yes, leave team/i }));
 
     await waitFor(() => {
@@ -73,6 +79,9 @@ describe('LeaveTeamPanel (US-019 / #183 / FR-059)', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /leave team/i }));
+    expect(
+      screen.getByText(/previously canceled invitations or applications for this team stay canceled/i)
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /yes, leave team/i }));
 
     await waitFor(() => {
