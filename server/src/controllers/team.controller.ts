@@ -9,6 +9,7 @@ import {
   updateVacancy,
   removeVacancy,
   disbandTeam,
+  lockTeam,
   removeMember,
   leaveTeam,
 } from '../services/teamManagement.js';
@@ -233,6 +234,34 @@ export async function disbandTeamHandler(req: Request, res: Response, next: Next
       message: 'Team disbanded.',
       releasedMembers,
       canceledRequests,
+    });
+  } catch (err: unknown) {
+    handleControllerError(err, res, next);
+  }
+}
+
+/** POST /api/teams/:teamId/lock — US-022 / #208 / FR-066 atomic roster lock. */
+export async function lockTeamHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const teamId = String(req.params.teamId);
+
+    const result = await lockTeam(actorId, teamId);
+
+    const requestText =
+      result.canceledRequests === 1
+        ? '1 pending request was canceled.'
+        : `${result.canceledRequests} pending requests were canceled.`;
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({
+      message: `Roster locked. ${requestText}`,
+      lockedAt: result.lockedAt,
+      memberCount: result.memberCount,
+      minRequired: result.minRequired,
+      maxAllowed: result.maxAllowed,
+      canceledRequests: result.canceledRequests,
+      team: result.team,
     });
   } catch (err: unknown) {
     handleControllerError(err, res, next);

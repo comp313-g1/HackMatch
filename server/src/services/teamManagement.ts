@@ -153,6 +153,39 @@ export async function disbandTeam(
   }
 }
 
+/**
+ * US-022 / #208 / FR-066 — owner locks roster atomically with join/leave serialization.
+ */
+export async function lockTeam(
+  actorId: string,
+  teamId: string,
+  deps: { repo: ITeamsRepository } = { repo: teamsRepository }
+): Promise<{
+  lockedAt: string;
+  memberCount: number;
+  minRequired: number;
+  maxAllowed: number;
+  canceledRequests: number;
+  team: TeamView;
+}> {
+  try {
+    const result = await deps.repo.lockTeam(actorId, teamId);
+    const parts = await deps.repo.getTeamViewParts(teamId);
+    return {
+      lockedAt: result.lockedAt,
+      memberCount: result.memberCount,
+      minRequired: result.minRequired,
+      maxAllowed: result.maxAllowed,
+      canceledRequests: result.canceledRequests,
+      team: toTeamView(parts, { viewerParticipantId: actorId }),
+    };
+  } catch (err: unknown) {
+    const serviceError = toTeamServiceError(err);
+    if (serviceError) throw serviceError;
+    throw err;
+  }
+}
+
 export async function removeMember(
   actorId: string,
   teamId: string,

@@ -7,6 +7,7 @@ import {
   updateVacancy,
   removeVacancy,
   disbandTeam,
+  lockTeam,
   leaveTeam,
 } from './teamManagement.js';
 import { TeamServiceError } from './teamErrors.js';
@@ -283,6 +284,83 @@ describe('teamManagement service unit tests (US-012 / #120)', () => {
         expect(serviceErr.details).toEqual({ reason: 'Disbanded' });
         return true;
       });
+    });
+  });
+
+  describe('lockTeam (US-022 / #208 / FR-066)', () => {
+    it('returns lock payload and refreshed TeamView on success', async () => {
+      const mockRepo = {
+        lockTeam: vi.fn().mockResolvedValue({
+          teamId,
+          lockedAt: '2026-10-20T15:30:00.000Z',
+          memberCount: 2,
+          minRequired: 2,
+          maxAllowed: 4,
+          canceledRequests: 1,
+        }),
+        getTeamViewParts: vi.fn().mockResolvedValue({
+          team: {
+            ...mockTeam,
+            recruitment_status: 'Locked',
+            locked_at: '2026-10-20T15:30:00.000Z',
+          },
+          event: {
+            min_team_size: 2,
+            max_team_size: 4,
+            status: 'Published',
+            end_date: '2099-01-01T00:00:00.000Z',
+          },
+          members: [
+            {
+              participant_id: actorId,
+              role: 'Owner',
+              joined_at: '2026-10-18T10:00:00.000Z',
+              handle: 'lead',
+              full_name: 'Lead',
+            },
+            {
+              participant_id: otherActorId,
+              role: 'Member',
+              joined_at: '2026-10-19T10:00:00.000Z',
+              handle: 'mate',
+              full_name: 'Mate',
+            },
+          ],
+          vacancies: [],
+        }),
+      } as unknown as ITeamsRepository;
+
+      const result = await lockTeam(actorId, teamId, { repo: mockRepo });
+      expect(mockRepo.lockTeam).toHaveBeenCalledWith(actorId, teamId);
+      expect(result.lockedAt).toBe('2026-10-20T15:30:00.000Z');
+      expect(result.canceledRequests).toBe(1);
+      expect(result.team.recruitmentStatus).toBe('Locked');
+      expect(result.team.lockedAt).toBe('2026-10-20T15:30:00.000Z');
+      expect(result.team.lifecycle.reason).toBe('Locked');
+    });
+
+    it('maps BELOW_MIN_MEMBERS from RPC failures', async () => {
+      const mockRepo = {
+        lockTeam: vi.fn().mockRejectedValue({
+          message: 'BELOW_MIN_MEMBERS',
+          code: 'P0001',
+          detail: JSON.stringify({ memberCount: 1, minRequired: 2, maxAllowed: 4 }),
+        }),
+      } as unknown as ITeamsRepository;
+
+      await expect(lockTeam(actorId, teamId, { repo: mockRepo })).rejects.toSatisfy(
+        (err: unknown) => {
+          expect(err).toBeInstanceOf(TeamServiceError);
+          expect((err as TeamServiceError).code).toBe('BELOW_MIN_MEMBERS');
+          expect((err as TeamServiceError).status).toBe(409);
+          expect((err as TeamServiceError).details).toEqual({
+            memberCount: 1,
+            minRequired: 2,
+            maxAllowed: 4,
+          });
+          return true;
+        }
+      );
     });
   });
 
