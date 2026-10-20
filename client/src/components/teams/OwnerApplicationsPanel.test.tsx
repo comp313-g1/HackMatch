@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { OwnerApplicationsPanel } from './OwnerApplicationsPanel';
 import * as applicationsApi from './applicationsApi';
 
@@ -17,6 +17,17 @@ vi.mock('./applicationsApi', async () => {
 const fetchMock = vi.mocked(applicationsApi.fetchTeamApplications);
 const approveMock = vi.mocked(applicationsApi.approveTeamApplication);
 const declineMock = vi.mocked(applicationsApi.declineTeamApplication);
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 const application: applicationsApi.OwnerApplicationReviewItem = {
   id: 'app-1',
   teamId: 'team-1',
@@ -126,7 +137,7 @@ const declineResult: applicationsApi.ApplicationDeclineResult = {
   notice: 'Application declined. The applicant was notified and the vacancy remains open.',
 };
 
-describe('OwnerApplicationsPanel (US-020 / #188 / #190 / #191 / #192 / #193)', () => {
+describe('OwnerApplicationsPanel (US-020 / #188–#194)', () => {
   beforeEach(() => {
     fetchMock.mockReset();
     approveMock.mockReset();
@@ -163,6 +174,38 @@ describe('OwnerApplicationsPanel (US-020 / #188 / #190 / #191 / #192 / #193)', (
       'href',
       'https://example.com/grace'
     );
+    expect(screen.getByLabelText('1 pending application')).toHaveTextContent('1 pending');
+  });
+
+  it('orders reviews newest first even when the API response is unsorted', async () => {
+    const older = {
+      ...application,
+      id: 'app-older',
+      applicantParticipantId: 'participant-older',
+      applicantDisplayName: 'Older Applicant',
+      createdAt: '2026-10-19T16:00:00.000Z',
+    };
+    const newer = {
+      ...application,
+      id: 'app-newer',
+      applicantParticipantId: 'participant-newer',
+      applicantDisplayName: 'Newer Applicant',
+      createdAt: '2026-10-21T16:00:00.000Z',
+    };
+    fetchMock.mockResolvedValue({
+      teamId: 'team-1',
+      applications: [older, newer],
+      empty: false,
+      message: null,
+    });
+
+    render(<OwnerApplicationsPanel teamId="team-1" />);
+
+    await screen.findByText('Newer Applicant');
+    const reviews = screen.getAllByTestId(/^application-review-/);
+    expect(reviews[0]).toHaveAttribute('data-testid', 'application-review-app-newer');
+    expect(reviews[1]).toHaveAttribute('data-testid', 'application-review-app-older');
+    expect(screen.getByLabelText('2 pending applications')).toHaveTextContent('2 pending');
   });
 
   it('renders the explicit empty state', async () => {
@@ -255,6 +298,156 @@ describe('OwnerApplicationsPanel (US-020 / #188 / #190 / #191 / #192 / #193)', (
     expect(alert).toHaveTextContent(/previously loaded applications are still shown/i);
     expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
     expect(screen.getByText(application.message as string)).toBeInTheDocument();
+  });
+
+  it('disables refresh and every decision control while a decision is being saved', async () => {
+    const pendingApproval = deferred<applicationsApi.ApplicationApprovalResult>();
+    fetchMock.mockResolvedValue({
+      teamId: 'team-1',
+      applications: [application],
+      empty: false,
+      message: null,
+    });
+    approveMock.mockReturnValue(pendingApproval.promise);
+
+    render(<OwnerApplicationsPanel teamId="team-1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /approve application/i }));
+
+    expect(screen.getByTestId('application-decision-progress')).toHaveTextContent(
+      /saving the decision/i
+    );
+    expect(screen.getByRole('button', { name: /refresh/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /approving/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /decline application/i })).toBeDisabled();
+
+    await act(async () => {
+      pendingApproval.resolve(approvalResult);
+      await pendingApproval.promise;
+    });
+    expect(await screen.findByTestId('application-decision-success')).toBeInTheDocument();
+  });
+
+  it('clears another team review immediately and ignores its late response', async () => {
+    const nextTeamLoad = deferred<applicationsApi.OwnerApplicationReviewResponse>();
+    fetchMock
+      .mockResolvedValueOnce({
+        teamId: 'team-1',
+        applications: [application],
+        empty: false,
+        message: null,
+      })
+      .mockReturnValueOnce(nextTeamLoad.promise);
+
+    const { rerender } = render(<OwnerApplicationsPanel teamId="team-1" />);
+    await screen.findByText('Grace Hopper');
+
+    rerender(<OwnerApplicationsPanel teamId="team-2" />);
+
+    expect(screen.queryByText('Grace Hopper')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/loading pending applications/i);
+
+    nextTeamLoad.resolve({
+      teamId: 'team-2',
+      applications: [],
+      empty: true,
+      message: 'No pending applications to review.',
+    });
+    expect(await screen.findByTestId('applications-empty')).toBeInTheDocument();
+  });
+
+  it('ignores a decision response after the panel switches to another team', async () => {
+    const pendingApproval = deferred<applicationsApi.ApplicationApprovalResult>();
+    const onApproved = vi.fn();
+    const otherTeamApplication = {
+      ...application,
+      id: 'app-team-2',
+      teamId: 'team-2',
+      applicantParticipantId: 'participant-team-2',
+      applicantDisplayName: 'Team Two Applicant',
+    };
+    fetchMock
+      .mockResolvedValueOnce({
+        teamId: 'team-1',
+        applications: [application],
+        empty: false,
+        message: null,
+      })
+      .mockResolvedValueOnce({
+        teamId: 'team-2',
+        applications: [otherTeamApplication],
+        empty: false,
+        message: null,
+      });
+    approveMock.mockReturnValue(pendingApproval.promise);
+
+    const { rerender } = render(
+      <OwnerApplicationsPanel teamId="team-1" onApproved={onApproved} />
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /approve application/i }));
+
+    rerender(<OwnerApplicationsPanel teamId="team-2" onApproved={onApproved} />);
+    expect(await screen.findByText('Team Two Applicant')).toBeInTheDocument();
+
+    await act(async () => {
+      pendingApproval.resolve(approvalResult);
+      await pendingApproval.promise;
+    });
+    expect(screen.getByText('Team Two Applicant')).toBeInTheDocument();
+    expect(screen.queryByTestId('application-decision-success')).not.toBeInTheDocument();
+    expect(onApproved).not.toHaveBeenCalled();
+  });
+
+  it('ignores an older refresh response that finishes after a newer refresh', async () => {
+    const staleRefresh = deferred<applicationsApi.OwnerApplicationReviewResponse>();
+    const latestApplication = {
+      ...application,
+      id: 'app-latest',
+      applicantParticipantId: 'participant-latest',
+      applicantDisplayName: 'Latest Applicant',
+      createdAt: '2026-10-21T18:00:00.000Z',
+    };
+    fetchMock
+      .mockResolvedValueOnce({
+        teamId: 'team-1',
+        applications: [application],
+        empty: false,
+        message: null,
+      })
+      .mockReturnValueOnce(staleRefresh.promise)
+      .mockResolvedValueOnce({
+        teamId: 'team-1',
+        applications: [latestApplication],
+        empty: false,
+        message: null,
+      });
+
+    const { rerender } = render(
+      <OwnerApplicationsPanel teamId="team-1" refreshKey={0} />
+    );
+    await screen.findByText('Grace Hopper');
+
+    rerender(<OwnerApplicationsPanel teamId="team-1" refreshKey={1} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    rerender(<OwnerApplicationsPanel teamId="team-1" refreshKey={2} />);
+    expect(await screen.findByText('Latest Applicant')).toBeInTheDocument();
+
+    staleRefresh.resolve({
+      teamId: 'team-1',
+      applications: [
+        {
+          ...application,
+          id: 'app-stale',
+          applicantDisplayName: 'Stale Applicant',
+        },
+      ],
+      empty: false,
+      message: null,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Latest Applicant')).toBeInTheDocument();
+      expect(screen.queryByText('Stale Applicant')).not.toBeInTheDocument();
+    });
   });
 
   it('approves an application, removes it from the queue, and reports success', async () => {
@@ -418,6 +611,33 @@ describe('OwnerApplicationsPanel (US-020 / #188 / #190 / #191 / #192 / #193)', (
     expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
     expect(screen.getByText(application.message as string)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /approve application/i })).toBeEnabled();
+  });
+
+  it('keeps the review when a decision has an unconfirmed network failure', async () => {
+    fetchMock.mockResolvedValue({
+      teamId: 'team-1',
+      applications: [application],
+      empty: false,
+      message: null,
+    });
+    approveMock.mockRejectedValue(
+      new applicationsApi.ApplicationsApiError(
+        0,
+        'NETWORK',
+        undefined,
+        undefined,
+        'Network request failed.'
+      )
+    );
+
+    render(<OwnerApplicationsPanel teamId="team-1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /approve application/i }));
+
+    expect(await screen.findByTestId('application-decision-error')).toHaveTextContent(
+      /decision was not confirmed.*refresh.*before retrying/i
+    );
+    expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
+    expect(screen.getByText(application.message as string)).toBeInTheDocument();
   });
 
   it('preserves the review and names Declined when a stale approval is rejected', async () => {
