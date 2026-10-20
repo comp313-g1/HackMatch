@@ -187,17 +187,20 @@ export interface ITeamsRepository {
   ): Promise<Pick<TeamRequest, 'id'> | null>;
   /** Load a single Application row for owner authorization (#190). */
   findApplicationById(applicationId: string): Promise<TeamRequest | null>;
-  /** US-020 / #190 / #191 — atomically approve and clear competing requests. */
+  /** US-020 / #190 / #191 / #193 — atomic, idempotent owner approval. */
   approveTeamApplication(
     actorId: string,
     applicationId: string
   ): Promise<{
     approved: true;
+    changed: boolean;
+    idempotent: boolean;
+    existingOutcome: 'Accepted';
     application: TeamRequest;
-    membership: TeamMembership;
-    vacancy: TeamVacancy;
+    membership: TeamMembership | null;
+    vacancy: TeamVacancy | null;
     teamName: string;
-    vacancyRole: string;
+    vacancyRole: string | null;
     memberCount: number;
     maxTeamSize: number;
     availabilityCleared: boolean;
@@ -220,6 +223,7 @@ export interface ITeamsRepository {
     application: TeamRequest;
     changed: boolean;
     idempotent: boolean;
+    existingOutcome: 'Declined';
     teamName: string;
     vacancyRole: string | null;
     alerts: ApplicationStatusAlertRecord[];
@@ -869,11 +873,14 @@ export const teamsRepository: ITeamsRepository = {
     applicationId: string
   ): Promise<{
     approved: true;
+    changed: boolean;
+    idempotent: boolean;
+    existingOutcome: 'Accepted';
     application: TeamRequest;
-    membership: TeamMembership;
-    vacancy: TeamVacancy;
+    membership: TeamMembership | null;
+    vacancy: TeamVacancy | null;
     teamName: string;
-    vacancyRole: string;
+    vacancyRole: string | null;
     memberCount: number;
     maxTeamSize: number;
     availabilityCleared: boolean;
@@ -896,11 +903,14 @@ export const teamsRepository: ITeamsRepository = {
     if (error) throw error;
     const payload = data as {
       approved: boolean;
+      changed?: boolean;
+      idempotent?: boolean;
+      existingOutcome?: 'Accepted';
       application: TeamRequest;
-      membership: TeamMembership;
-      vacancy: TeamVacancy;
+      membership: TeamMembership | null;
+      vacancy: TeamVacancy | null;
       teamName: string;
-      vacancyRole: string;
+      vacancyRole: string | null;
       memberCount: number;
       maxTeamSize: number;
       availabilityCleared: boolean;
@@ -919,6 +929,9 @@ export const teamsRepository: ITeamsRepository = {
     return {
       ...payload,
       approved: true,
+      changed: payload.changed !== false,
+      idempotent: Boolean(payload.idempotent),
+      existingOutcome: payload.existingOutcome ?? 'Accepted',
       availabilityCleared: Boolean(payload.availabilityCleared),
       membershipCommitted: payload.membershipCommitted !== false,
       cascade: {
@@ -939,6 +952,7 @@ export const teamsRepository: ITeamsRepository = {
     application: TeamRequest;
     changed: boolean;
     idempotent: boolean;
+    existingOutcome: 'Declined';
     teamName: string;
     vacancyRole: string | null;
     alerts: ApplicationStatusAlertRecord[];
@@ -956,6 +970,7 @@ export const teamsRepository: ITeamsRepository = {
       application: TeamRequest;
       changed: boolean;
       idempotent: boolean;
+      existingOutcome?: 'Declined';
       teamName: string;
       vacancyRole?: string | null;
       alerts?: ApplicationStatusAlertRecord[];
@@ -967,6 +982,7 @@ export const teamsRepository: ITeamsRepository = {
       application: payload.application,
       changed: Boolean(payload.changed),
       idempotent: Boolean(payload.idempotent),
+      existingOutcome: payload.existingOutcome ?? 'Declined',
       teamName: payload.teamName,
       vacancyRole: payload.vacancyRole ?? null,
       alerts: payload.alerts ?? [],

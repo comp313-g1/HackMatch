@@ -184,6 +184,9 @@ export interface OwnerApplicationReviewResponse {
 
 export interface ApplicationApprovalResult {
   approved: true;
+  changed: boolean;
+  idempotent: boolean;
+  existingOutcome: 'Accepted';
   application: {
     id: string;
     teamId: string;
@@ -195,7 +198,7 @@ export interface ApplicationApprovalResult {
     requestType: 'Application';
     resolvedAt: string | null;
     teamName: string;
-    vacancyRole: string;
+    vacancyRole: string | null;
   };
   membership: {
     id: string;
@@ -205,8 +208,8 @@ export interface ApplicationApprovalResult {
     role: string;
     status: string;
     joinedAt: string;
-  };
-  vacancy: { id: string; role: string; status: string };
+  } | null;
+  vacancy: { id: string; role: string; status: string } | null;
   memberCount: number;
   maxTeamSize: number;
   availabilityCleared: boolean;
@@ -241,6 +244,7 @@ export interface ApplicationDeclineResult {
   };
   changed: boolean;
   idempotent: boolean;
+  existingOutcome: 'Declined';
   alerts: Array<{
     audience: 'applicant' | 'owner';
     type: string;

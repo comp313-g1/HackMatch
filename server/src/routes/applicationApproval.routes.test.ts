@@ -57,6 +57,9 @@ function approvalResult() {
   const timestamp = '2026-10-20T12:00:00.000Z';
   return {
     approved: true as const,
+    changed: true,
+    idempotent: false,
+    existingOutcome: 'Accepted' as const,
     application: {
       ...pendingApplication(),
       status: 'Accepted' as const,
@@ -94,7 +97,7 @@ function approvalResult() {
   };
 }
 
-describe('POST /api/applications/:applicationId/approve (US-020 / #190 / #191)', () => {
+describe('POST /api/applications/:applicationId/approve (US-020 / #190 / #191 / #193)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockVerifyIdToken.mockResolvedValue(validOwnerDecodedToken);
@@ -149,6 +152,9 @@ describe('POST /api/applications/:applicationId/approve (US-020 / #190 / #191)',
     expect(res.headers['cache-control']).toBe('no-store');
     expect(res.body).toMatchObject({
       approved: true,
+      changed: true,
+      idempotent: false,
+      existingOutcome: 'Accepted',
       application: { id: applicationId, status: 'Accepted' },
       membership: {
         participantId: otherParticipant.id,
@@ -170,12 +176,53 @@ describe('POST /api/applications/:applicationId/approve (US-020 / #190 / #191)',
     });
   });
 
+  it('returns 200 and zero repeated effects for an already Accepted application', async () => {
+    vi.mocked(teamsRepository.approveTeamApplication).mockResolvedValue({
+      ...approvalResult(),
+      changed: false,
+      idempotent: true,
+      cascade: {
+        winningRequestId: applicationId,
+        eventInvitationsCanceled: 0,
+        eventApplicationsWithdrawn: 0,
+        slotRequestsCanceled: 0,
+        teamRequestsCanceled: 0,
+        teamNowFull: false,
+      },
+      notice: 'Application was already approved. No changes were made.',
+    });
+
+    const res = await request(app)
+      .post(path)
+      .set('Authorization', validTokenHeader)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      approved: true,
+      changed: false,
+      idempotent: true,
+      existingOutcome: 'Accepted',
+      application: { status: 'Accepted' },
+      cascade: {
+        eventInvitationsCanceled: 0,
+        eventApplicationsWithdrawn: 0,
+        slotRequestsCanceled: 0,
+        teamRequestsCanceled: 0,
+      },
+    });
+  });
+
   it.each([
     ['VACANCY_NOT_OPEN', { vacancyStatus: 'Filled' }],
     ['CAPACITY_EXCEEDED', { current: 4, max: 4 }],
     ['APPLICATION_APPLICANT_ALREADY_CONFIRMED', { eventId: sampleEventId }],
     ['APPLICATION_APPLICANT_NOT_ELIGIBLE', {}],
     ['APPLICATION_NOT_APPROVABLE', { status: 'Withdrawn' }],
+    [
+      'APPLICATION_DECISION_CONFLICT',
+      { requestedDecision: 'approve', existingOutcome: 'Declined', retryable: false },
+    ],
     ['APPLICATION_APPROVAL_CONFLICT', { reason: 'DATABASE_CONCURRENCY_RETRY' }],
   ])('returns explicit 409 %s without a success payload', async (code, details) => {
     vi.mocked(teamsRepository.approveTeamApplication).mockRejectedValue({
