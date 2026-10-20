@@ -1,8 +1,5 @@
 import { Router } from 'express';
-import { requireFirebaseAuth } from '../middleware/requireFirebaseAuth.js';
-import { requireMfa } from '../middleware/requireMfa.js';
-import { requireActiveAccount } from '../middleware/requireActiveAccount.js';
-import { requireAdminRole } from '../middleware/requireRole.js';
+import { requireModerationAdmin } from '../middleware/requireModerationAdmin.js';
 import { requireJsonObjectBody } from '../validators/team.validator.js';
 import {
   validateCreateModerationCaseBody,
@@ -18,34 +15,21 @@ import {
 export const moderationRouter = Router();
 
 /**
- * ADMIN moderation queue + target detail (US-026 / #239 / FR-075).
- * Auth chain: Firebase ID token → MFA → active account → ADMIN role.
- * Decision actions (dismiss/redact/warn/hide/URL-disable) are separate tasks.
+ * US-026 / #240 — every moderation route is ADMIN-only via router-level RBAC.
+ * Decision actions (dismiss/redact/warn/hide/URL-disable) inherit the same guard.
  */
-const adminGuard = [
-  requireFirebaseAuth,
-  requireMfa,
-  requireActiveAccount,
-  requireAdminRole,
-];
+moderationRouter.use(...requireModerationAdmin);
 
-moderationRouter.get(
-  '/cases',
-  ...adminGuard,
-  validateModerationQueueQuery,
-  listModerationCasesHandler
-);
+moderationRouter.get('/cases', validateModerationQueueQuery, listModerationCasesHandler);
 
 moderationRouter.get(
   '/cases/:caseId',
-  ...adminGuard,
   validateModerationCaseIdParam,
   getModerationCaseDetailHandler
 );
 
 moderationRouter.post(
   '/cases',
-  ...adminGuard,
   requireJsonObjectBody,
   validateCreateModerationCaseBody,
   createModerationCaseHandler
