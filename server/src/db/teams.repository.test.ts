@@ -528,7 +528,7 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
     expect(result.cascade.eventApplicationsWithdrawn).toBe(1);
   });
 
-  it('approveTeamApplication calls the atomic approval RPC and returns committed state (#190)', async () => {
+  it('approveTeamApplication returns normalized approval cascade effects (#190/#191)', async () => {
     const payload = {
       approved: true,
       application: { id: 'application-1' },
@@ -540,7 +540,15 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
       maxTeamSize: 4,
       availabilityCleared: true,
       membershipCommitted: true,
-      notice: 'Application approved.',
+      cascade: {
+        winningRequestId: 'application-1',
+        eventInvitationsCanceled: 2,
+        eventApplicationsWithdrawn: 1,
+        slotRequestsCanceled: 3,
+        teamRequestsCanceled: 0,
+        teamNowFull: false,
+      },
+      notice: 'Application approved. Competing requests cleared.',
     };
     const rpc = vi.fn().mockResolvedValue({ data: payload, error: null });
     vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({ rpc } as unknown as SupabaseClient);
@@ -555,6 +563,43 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
       approved: true,
       availabilityCleared: true,
       membershipCommitted: true,
+      cascade: {
+        winningRequestId: 'application-1',
+        eventInvitationsCanceled: 2,
+        eventApplicationsWithdrawn: 1,
+        slotRequestsCanceled: 3,
+        teamRequestsCanceled: 0,
+        teamNowFull: false,
+      },
+    });
+  });
+
+  it('defaults missing approval cascade counters to safe zero values', async () => {
+    const payload = {
+      approved: true,
+      application: { id: 'application-1' },
+      membership: { id: 'membership-1' },
+      vacancy: { id: 'vacancy-1' },
+      teamName: sampleTeam.name,
+      vacancyRole: 'Backend',
+      memberCount: 2,
+      maxTeamSize: 4,
+      availabilityCleared: false,
+      membershipCommitted: true,
+      notice: 'Application approved.',
+    };
+    const rpc = vi.fn().mockResolvedValue({ data: payload, error: null });
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({ rpc } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.approveTeamApplication('owner-1', 'application-1');
+
+    expect(result.cascade).toEqual({
+      winningRequestId: undefined,
+      eventInvitationsCanceled: 0,
+      eventApplicationsWithdrawn: 0,
+      slotRequestsCanceled: 0,
+      teamRequestsCanceled: 0,
+      teamNowFull: false,
     });
   });
 

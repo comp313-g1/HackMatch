@@ -65,10 +65,18 @@ const approvalResult: applicationsApi.ApplicationApprovalResult = {
   maxTeamSize: 4,
   availabilityCleared: true,
   membershipCommitted: true,
+  cascade: {
+    winningRequestId: 'app-1',
+    eventInvitationsCanceled: 0,
+    eventApplicationsWithdrawn: 0,
+    slotRequestsCanceled: 0,
+    teamRequestsCanceled: 0,
+    teamNowFull: false,
+  },
   notice: 'Application approved and membership confirmed.',
 };
 
-describe('OwnerApplicationsPanel (US-020 / #188 / #190)', () => {
+describe('OwnerApplicationsPanel (US-020 / #188 / #190 / #191)', () => {
   beforeEach(() => {
     fetchMock.mockReset();
     approveMock.mockReset();
@@ -220,6 +228,81 @@ describe('OwnerApplicationsPanel (US-020 / #188 / #190)', () => {
     );
     expect(screen.queryByText('Grace Hopper')).not.toBeInTheDocument();
     expect(onApproved).toHaveBeenCalledWith(approvalResult, application);
+  });
+
+  it('removes other reviews canceled for the filled slot and reports cascade effects', async () => {
+    const sameSlot = {
+      ...application,
+      id: 'app-2',
+      applicantParticipantId: 'participant-2',
+      applicantDisplayName: 'Same Slot Applicant',
+    };
+    const otherSlot = {
+      ...application,
+      id: 'app-3',
+      applicantParticipantId: 'participant-3',
+      applicantDisplayName: 'Other Slot Applicant',
+      vacancyId: 'vacancy-2',
+      vacancyRole: 'Frontend',
+    };
+    fetchMock.mockResolvedValue({
+      teamId: 'team-1',
+      applications: [application, sameSlot, otherSlot],
+      empty: false,
+      message: null,
+    });
+    approveMock.mockResolvedValue({
+      ...approvalResult,
+      cascade: {
+        ...approvalResult.cascade,
+        eventInvitationsCanceled: 1,
+        slotRequestsCanceled: 1,
+      },
+    });
+
+    render(<OwnerApplicationsPanel teamId="team-1" />);
+    fireEvent.click(await screen.findByTestId('approve-application-app-1'));
+
+    expect(await screen.findByTestId('application-approval-success')).toHaveTextContent(
+      /cleared 2 competing requests/i
+    );
+    expect(screen.queryByText('Grace Hopper')).not.toBeInTheDocument();
+    expect(screen.queryByText('Same Slot Applicant')).not.toBeInTheDocument();
+    expect(screen.getByText('Other Slot Applicant')).toBeInTheDocument();
+  });
+
+  it('clears every remaining review when approval fills the team', async () => {
+    const otherSlot = {
+      ...application,
+      id: 'app-2',
+      applicantParticipantId: 'participant-2',
+      applicantDisplayName: 'Other Applicant',
+      vacancyId: 'vacancy-2',
+      vacancyRole: 'Frontend',
+    };
+    fetchMock.mockResolvedValue({
+      teamId: 'team-1',
+      applications: [application, otherSlot],
+      empty: false,
+      message: null,
+    });
+    approveMock.mockResolvedValue({
+      ...approvalResult,
+      memberCount: 4,
+      cascade: {
+        ...approvalResult.cascade,
+        teamRequestsCanceled: 1,
+        teamNowFull: true,
+      },
+    });
+
+    render(<OwnerApplicationsPanel teamId="team-1" />);
+    fireEvent.click(await screen.findByTestId('approve-application-app-1'));
+
+    expect(await screen.findByTestId('applications-empty')).toHaveTextContent(
+      /no pending applications/i
+    );
+    expect(screen.queryByText('Other Applicant')).not.toBeInTheDocument();
   });
 
   it('preserves the review when an atomic capacity check rejects approval', async () => {

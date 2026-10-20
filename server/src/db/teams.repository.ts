@@ -168,7 +168,7 @@ export interface ITeamsRepository {
   ): Promise<Pick<TeamRequest, 'id'> | null>;
   /** Load a single Application row for owner authorization (#190). */
   findApplicationById(applicationId: string): Promise<TeamRequest | null>;
-  /** US-020 / #190 — atomically approve an application and confirm membership. */
+  /** US-020 / #190 / #191 — atomically approve and clear competing requests. */
   approveTeamApplication(
     actorId: string,
     applicationId: string
@@ -183,6 +183,14 @@ export interface ITeamsRepository {
     maxTeamSize: number;
     availabilityCleared: boolean;
     membershipCommitted: boolean;
+    cascade: {
+      winningRequestId?: string;
+      eventInvitationsCanceled: number;
+      eventApplicationsWithdrawn: number;
+      slotRequestsCanceled: number;
+      teamRequestsCanceled: number;
+      teamNowFull: boolean;
+    };
     notice: string;
   }>;
   /**
@@ -837,6 +845,14 @@ export const teamsRepository: ITeamsRepository = {
     maxTeamSize: number;
     availabilityCleared: boolean;
     membershipCommitted: boolean;
+    cascade: {
+      winningRequestId?: string;
+      eventInvitationsCanceled: number;
+      eventApplicationsWithdrawn: number;
+      slotRequestsCanceled: number;
+      teamRequestsCanceled: number;
+      teamNowFull: boolean;
+    };
     notice: string;
   }> {
     const client = getSupabaseClient();
@@ -856,13 +872,30 @@ export const teamsRepository: ITeamsRepository = {
       maxTeamSize: number;
       availabilityCleared: boolean;
       membershipCommitted: boolean;
+      cascade?: {
+        winningRequestId?: string;
+        eventInvitationsCanceled?: number;
+        eventApplicationsWithdrawn?: number;
+        slotRequestsCanceled?: number;
+        teamRequestsCanceled?: number;
+        teamNowFull?: boolean;
+      };
       notice: string;
     };
+    const cascade = payload.cascade ?? {};
     return {
       ...payload,
       approved: true,
       availabilityCleared: Boolean(payload.availabilityCleared),
       membershipCommitted: payload.membershipCommitted !== false,
+      cascade: {
+        winningRequestId: cascade.winningRequestId,
+        eventInvitationsCanceled: cascade.eventInvitationsCanceled ?? 0,
+        eventApplicationsWithdrawn: cascade.eventApplicationsWithdrawn ?? 0,
+        slotRequestsCanceled: cascade.slotRequestsCanceled ?? 0,
+        teamRequestsCanceled: cascade.teamRequestsCanceled ?? 0,
+        teamNowFull: Boolean(cascade.teamNowFull),
+      },
     };
   },
 

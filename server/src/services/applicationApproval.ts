@@ -43,6 +43,14 @@ export interface ApplicationApprovalResult {
   maxTeamSize: number;
   availabilityCleared: boolean;
   membershipCommitted: boolean;
+  cascade: {
+    winningRequestId?: string;
+    eventInvitationsCanceled: number;
+    eventApplicationsWithdrawn: number;
+    slotRequestsCanceled: number;
+    teamRequestsCanceled: number;
+    teamNowFull: boolean;
+  };
   notice: string;
 }
 
@@ -101,6 +109,7 @@ export async function approveApplication(
       maxTeamSize: result.maxTeamSize,
       availabilityCleared: result.availabilityCleared,
       membershipCommitted: result.membershipCommitted,
+      cascade: result.cascade,
       notice: result.notice,
     };
   } catch (err: unknown) {
