@@ -14,7 +14,8 @@ export interface InviteDraftCandidate {
 
 export interface InviteFromRecommendationFormProps {
   teamId: string;
-  vacancyId: string;
+  vacancyId?: string;
+  slotId?: string;
   vacancyLabel: string;
   candidate: InviteDraftCandidate;
   onCancel: () => void;
@@ -28,6 +29,7 @@ export interface InviteFromRecommendationFormProps {
 export function InviteFromRecommendationForm({
   teamId,
   vacancyId,
+  slotId,
   vacancyLabel,
   candidate,
   onCancel,
@@ -38,6 +40,7 @@ export function InviteFromRecommendationForm({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | undefined>>({});
 
   const label = candidate.handle?.trim() || candidate.displayName;
+  const effectiveSlotId = slotId || vacancyId || '';
 
   const submit = async () => {
     setSubmitting(true);
@@ -45,7 +48,7 @@ export function InviteFromRecommendationForm({
     setFieldErrors({});
     try {
       const invitation = await issueTeamInvitation(teamId, {
-        vacancyId,
+        vacancyId: effectiveSlotId,
         inviteeParticipantId: candidate.participantId,
         source: 'recommendation',
       });
@@ -55,7 +58,13 @@ export function InviteFromRecommendationForm({
         setErrorMessage('You need to sign in to send an invitation.');
       } else if (err instanceof InvitationsApiError) {
         setErrorMessage(err.message || 'Could not send invitation.');
-        if (err.errors) setFieldErrors(err.errors);
+        if (err.errors) {
+          setFieldErrors({
+            ...err.errors,
+            vacancyId: err.errors.slotId ?? err.errors.vacancyId,
+            inviteeParticipantId: err.errors.inviteeId ?? err.errors.inviteeParticipantId,
+          });
+        }
       } else {
         setErrorMessage('Could not send invitation.');
       }
@@ -93,8 +102,12 @@ export function InviteFromRecommendationForm({
         <div role="alert" className="text-xs text-red-800 space-y-1" data-testid="invite-error">
           <p>{errorMessage}</p>
           <p>Your recommendation list and invitation draft were kept.</p>
-          {fieldErrors.vacancyId ? <p>{fieldErrors.vacancyId}</p> : null}
-          {fieldErrors.inviteeParticipantId ? <p>{fieldErrors.inviteeParticipantId}</p> : null}
+          {fieldErrors.slotId || fieldErrors.vacancyId ? (
+            <p>{fieldErrors.slotId || fieldErrors.vacancyId}</p>
+          ) : null}
+          {fieldErrors.inviteeId || fieldErrors.inviteeParticipantId ? (
+            <p>{fieldErrors.inviteeId || fieldErrors.inviteeParticipantId}</p>
+          ) : null}
         </div>
       ) : null}
 

@@ -33,9 +33,11 @@ export class InvitationsApiError extends TeamInvitationsApiError {
 export interface OwnerInvitationListItem {
   id: string;
   teamId: string;
-  eventId: string;
+  eventId?: string;
   vacancyId: string | null;
+  slotId?: string | null;
   inviteeParticipantId: string;
+  inviteeId?: string;
   inviteeHandle: string | null;
   inviteeDisplayName: string;
   status: string;
@@ -56,8 +58,10 @@ export interface OwnerInvitationsListResponse {
 }
 
 export interface IssueInvitationPayload {
-  vacancyId: string;
-  inviteeParticipantId: string;
+  vacancyId?: string;
+  slotId?: string;
+  inviteeParticipantId?: string;
+  inviteeId?: string;
   source?: 'recommendation' | 'direct';
 }
 
@@ -66,7 +70,9 @@ export interface IssuedInvitation {
   teamId: string;
   eventId?: string;
   vacancyId: string | null;
+  slotId?: string | null;
   inviteeParticipantId: string;
+  inviteeId?: string;
   status: string;
   requestType: 'Invitation';
   expiresAt: string;
@@ -133,15 +139,24 @@ export async function issueTeamInvitation(
   teamId: string,
   payload: IssueInvitationPayload
 ): Promise<IssuedInvitation> {
+  const vacancyId = String(payload.slotId || payload.vacancyId || '').trim();
+  const inviteeParticipantId = String(payload.inviteeId || payload.inviteeParticipantId || '').trim();
+  const bodyObj: Record<string, string> = {
+    vacancyId,
+    inviteeParticipantId,
+    source: payload.source ?? 'direct',
+  };
+  if (payload.slotId !== undefined) {
+    bodyObj.slotId = vacancyId;
+  }
+  if (payload.inviteeId !== undefined) {
+    bodyObj.inviteeId = inviteeParticipantId;
+  }
   const data = await authCall<{ invitation: IssuedInvitation }>(() =>
     authFetch(`/api/teams/${encodeURIComponent(teamId)}/invitations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        vacancyId: payload.vacancyId,
-        inviteeParticipantId: payload.inviteeParticipantId,
-        source: payload.source ?? 'direct',
-      }),
+      body: JSON.stringify(bodyObj),
     })
   );
   return data.invitation;
@@ -152,9 +167,11 @@ export interface AcceptanceRevalidationResult {
   invitation: {
     id: string;
     teamId: string;
-    eventId: string;
+    eventId?: string;
     vacancyId: string | null;
+    slotId?: string | null;
     inviteeParticipantId: string;
+    inviteeId?: string;
     status: string;
     expiresAt: string;
     teamName: string;
@@ -183,9 +200,11 @@ export interface CanceledInvitationResult {
   invitation: {
     id: string;
     teamId: string;
-    eventId: string;
+    eventId?: string;
     vacancyId: string | null;
+    slotId?: string | null;
     inviteeParticipantId: string;
+    inviteeId?: string;
     status: string;
     requestType: 'Invitation';
     expiresAt: string | null;

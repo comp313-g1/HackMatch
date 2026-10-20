@@ -19,7 +19,8 @@ const UUID_RE =
 
 export interface OwnerInvitationsPanelProps {
   teamId: string;
-  vacancies: TeamVacancyView[];
+  vacancies?: TeamVacancyView[];
+  slots?: TeamVacancyView[];
   disabled?: boolean;
   /** Bump to reload outbound list (e.g. after recommendation invite). */
   refreshKey?: number;
@@ -31,11 +32,13 @@ export interface OwnerInvitationsPanelProps {
  */
 export function OwnerInvitationsPanel({
   teamId,
-  vacancies,
+  vacancies = [],
+  slots,
   disabled = false,
   refreshKey = 0,
 }: OwnerInvitationsPanelProps): React.JSX.Element {
-  const openVacancies = vacancies.filter((v) => v.status === 'Open');
+  const allVacancies = slots ?? vacancies;
+  const openVacancies = allVacancies.filter((v) => v.status === 'Open');
 
   const [listState, setListState] = useState<InvitationListState>('loading');
   const [invitations, setInvitations] = useState<OwnerInvitationListItem[]>([]);
@@ -115,9 +118,10 @@ export function OwnerInvitationsPanel({
 
     setSubmitting(true);
     try {
+      const trimmedInvitee = inviteeParticipantId.trim();
       const invitation = await issueTeamInvitation(teamId, {
         vacancyId,
-        inviteeParticipantId: inviteeParticipantId.trim(),
+        inviteeParticipantId: trimmedInvitee,
         source: 'direct',
       });
       setSuccessNotice(
@@ -139,8 +143,8 @@ export function OwnerInvitationsPanel({
         setSubmitError(err.message || 'Could not send invitation.');
         if (err.errors) {
           setFieldErrors({
-            vacancyId: err.errors.vacancyId,
-            inviteeParticipantId: err.errors.inviteeParticipantId,
+            vacancyId: err.errors.slotId ?? err.errors.vacancyId,
+            inviteeParticipantId: err.errors.inviteeId ?? err.errors.inviteeParticipantId,
           });
         }
       } else {

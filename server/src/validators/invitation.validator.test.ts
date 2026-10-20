@@ -14,8 +14,26 @@ describe('validateIssueInvitationInput (US-017 / FR-048)', () => {
     expect(result.errors).toEqual({});
     expect(result.sanitized).toEqual({
       vacancyId,
+      slotId: vacancyId,
       inviteeParticipantId,
+      inviteeId: inviteeParticipantId,
       source: 'recommendation',
+    });
+  });
+
+  it('accepts slotId and inviteeId aliases without vacancyId or inviteeParticipantId', () => {
+    const result = validateIssueInvitationInput({
+      slotId: vacancyId,
+      inviteeId: inviteeParticipantId,
+      source: 'direct',
+    });
+    expect(result.errors).toEqual({});
+    expect(result.sanitized).toEqual({
+      vacancyId,
+      slotId: vacancyId,
+      inviteeParticipantId,
+      inviteeId: inviteeParticipantId,
+      source: 'direct',
     });
   });
 
