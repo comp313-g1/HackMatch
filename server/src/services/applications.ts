@@ -1,7 +1,8 @@
 /**
- * US-018 / #172–#175 team applications.
+ * US-018 / #172–#176 team applications.
  * Express preflight (#173) enforces verified PART, unlocked team, open slot, one-team;
- * Express quota preflight (#174) enforces 3 Pending per PART/event;
+ * Express limits preflight (#174 / #176) prioritizes duplicate-team errors and
+ * enforces 3 Pending per PART/event;
  * atomic pending-count / duplicate checks live in submit_team_application (FR-054 / FR-053);
  * list + withdraw (#175 / FR-055) release quota and emit basic owner/applicant alerts.
  */
@@ -73,8 +74,8 @@ function toView(
 }
 
 /**
- * Verified PART applies to an open vacancy (FR-053 / #173 / #174).
- * Express preflight validates eligibility and 3-pending-per-event quota;
+ * Verified PART applies to an open vacancy (FR-053 / #173 / #174 / #176).
+ * Express preflight validates eligibility, duplicate-team state, and quota;
  * Postgres RPC re-checks atomically (FR-054).
  */
 export async function submitApplication(

@@ -6,6 +6,7 @@ import {
   withdrawApplication,
 } from './applications.js';
 import { teamsRepository } from '../db/teams.repository.js';
+import type { TeamRequest } from '../db/types.js';
 import {
   otherParticipant,
   ownerParticipant,
@@ -49,10 +50,14 @@ function passingEligibility(overrides?: {
   };
 }
 
-function passingQuotas(pendingCount = 0) {
+function passingQuotas(
+  pendingCount = 0,
+  duplicate: Pick<TeamRequest, 'id'> | null = null
+) {
   return {
     teamsRepo: {
       findTeamById: vi.fn().mockResolvedValue(sampleTeam),
+      findPendingApplicationForTeam: vi.fn().mockResolvedValue(duplicate),
       countPendingApplicationsForEvent: vi.fn().mockResolvedValue(pendingCount),
     },
   };
@@ -188,6 +193,33 @@ describe('submitApplication (US-018 / #172 / #173 / #174)', () => {
       code: 'APPLICATION_PENDING_LIMIT',
       status: 409,
       details: expect.objectContaining({ limit: 3, pendingCount: 3 }),
+    });
+    expect(rpcSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns duplicate error before the pending limit when both conditions apply (#176)', async () => {
+    const rpcSpy = vi.spyOn(teamsRepository, 'submitTeamApplication');
+    const duplicate = {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    };
+
+    await expect(
+      submitApplication(
+        {
+          actorParticipantId: otherParticipant.id,
+          teamId: sampleTeamId,
+          vacancyId: sampleVacancyId,
+          message: null,
+        },
+        { eligibility: passingEligibility(), quotas: passingQuotas(3, duplicate) }
+      )
+    ).rejects.toMatchObject({
+      code: 'DUPLICATE_PENDING_APPLICATION',
+      status: 409,
+      details: expect.objectContaining({
+        teamId: sampleTeamId,
+        existingApplicationId: duplicate.id,
+      }),
     });
     expect(rpcSpy).not.toHaveBeenCalled();
   });

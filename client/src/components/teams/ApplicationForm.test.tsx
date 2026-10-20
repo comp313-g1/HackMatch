@@ -164,7 +164,37 @@ describe('ApplicationFormPanel (US-018 / #171)', () => {
       );
     });
     expect(screen.getByText(/message was kept/i)).toBeInTheDocument();
+    expect(screen.getByTestId('application-form-error')).toHaveTextContent(
+      /withdraw one or wait for a decision/i
+    );
     expect(screen.getByTestId('application-message-input')).toHaveValue('Still interested');
+  });
+
+  it('shows actionable duplicate guidance and keeps the message draft (#176)', async () => {
+    submitMock.mockRejectedValue(
+      new applicationsApi.ApplicationsApiError(
+        409,
+        'DUPLICATE_PENDING_APPLICATION',
+        undefined,
+        { teamId: target.teamId, existingApplicationId: 'app-existing' },
+        'You already have a pending application for this team.'
+      )
+    );
+
+    render(<ApplicationFormPanel target={target} onClose={() => {}} />);
+
+    fireEvent.change(screen.getByTestId('application-message-input'), {
+      target: { value: 'Updated pitch' },
+    });
+    fireEvent.click(screen.getByTestId('submit-application'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('application-form-error')).toHaveTextContent(
+        /withdraw it or wait for a decision/i
+      );
+    });
+    expect(screen.getByText(/message was kept/i)).toBeInTheDocument();
+    expect(screen.getByTestId('application-message-input')).toHaveValue('Updated pitch');
   });
 
   it('shows loading label while submitting', async () => {

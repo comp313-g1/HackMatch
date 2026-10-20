@@ -287,6 +287,19 @@ describe.skipIf(isGated)('US-018 Application Model Postgres Suite (#170)', () =>
       expect(error).toBeNull();
     }
 
+    // When both rules apply, the same-team conflict is the actionable cause.
+    const { error: duplicateAtLimitErr } = await supabase.rpc('submit_team_application', {
+      p_actor: applicant.id,
+      p_team: teamsA[0].teamId,
+      p_vacancy: teamsA[0].vacancyId,
+      p_message: null,
+    });
+    expect(duplicateAtLimitErr).toBeTruthy();
+    expect(String(duplicateAtLimitErr?.message || '')).toMatch(
+      /DUPLICATE_PENDING_APPLICATION/i
+    );
+    expect(String(duplicateAtLimitErr?.details || '')).toContain(teamsA[0].teamId);
+
     const ownerFourth = await createParticipant('lim-a-owner-4');
     const fourth = await createTeamWithVacancy(ownerFourth.id, eventA.id, 'Lim A4');
     const { error: fourthErr } = await supabase.rpc('submit_team_application', {

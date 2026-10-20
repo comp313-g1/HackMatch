@@ -8,6 +8,12 @@ export const APPLICATION_MESSAGE_MAX_LENGTH = 250;
 /** FR-054 / US-018 — concurrent Pending Review apps per PART per event. */
 export const MAX_PENDING_APPLICATIONS_PER_EVENT = 3;
 
+export const DUPLICATE_PENDING_APPLICATION_MESSAGE =
+  'You already have a pending application for this team. Withdraw it or wait for a decision before applying again.';
+
+export const APPLICATION_PENDING_LIMIT_MESSAGE =
+  'You already have 3 pending applications for this event. Withdraw one or wait for a decision before applying again.';
+
 export class ApplicationsApiError extends Error {
   constructor(
     readonly status: number,

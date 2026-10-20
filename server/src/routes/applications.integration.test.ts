@@ -122,6 +122,8 @@ describe('US-018 Applications Integration Suite (limits and permissions) #177', 
     vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue([
       ownerParticipant.id,
     ]);
+    vi.spyOn(teamsRepository, 'findPendingApplicationForTeam').mockResolvedValue(null);
+    vi.spyOn(teamsRepository, 'countPendingApplicationsForEvent').mockResolvedValue(0);
   });
 
   describe('happy path and message boundaries', () => {
@@ -372,6 +374,31 @@ describe('US-018 Applications Integration Suite (limits and permissions) #177', 
         errors: { _form: expect.stringMatching(/3 pending applications/i) },
       });
       expect(res.body.application).toBeUndefined();
+    });
+
+    it('prioritizes duplicate-team guidance when the applicant is also at the event limit (#176)', async () => {
+      vi.spyOn(teamsRepository, 'findPendingApplicationForTeam').mockResolvedValue(
+        { id: applicationId }
+      );
+      const countSpy = vi
+        .spyOn(teamsRepository, 'countPendingApplicationsForEvent')
+        .mockResolvedValue(3);
+      const submitSpy = vi.spyOn(teamsRepository, 'submitTeamApplication');
+
+      const res = await request(app)
+        .post(applyPath)
+        .set('Authorization', otherTokenHeader)
+        .send({ vacancyId: sampleVacancyId, message: 'Keep this draft' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('DUPLICATE_PENDING_APPLICATION');
+      expect(res.body.errors._form).toMatch(/withdraw it or wait/i);
+      expect(res.body.details).toMatchObject({
+        teamId: sampleTeamId,
+        existingApplicationId: applicationId,
+      });
+      expect(countSpy).not.toHaveBeenCalled();
+      expect(submitSpy).not.toHaveBeenCalled();
     });
 
     it('keeps another event independent of the per-event pending limit', async () => {

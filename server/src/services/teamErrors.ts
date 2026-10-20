@@ -122,11 +122,13 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   },
   DUPLICATE_PENDING_APPLICATION: {
     status: 409,
-    message: 'You already have a pending application for this team.',
+    message:
+      'You already have a pending application for this team. Withdraw it or wait for a decision before applying again.',
   },
   APPLICATION_PENDING_LIMIT: {
     status: 409,
-    message: 'You already have 3 pending applications for this event.',
+    message:
+      'You already have 3 pending applications for this event. Withdraw one or wait for a decision before applying again.',
   },
   APPLICATION_NOT_FOUND: { status: 404, message: 'Application not found.' },
   APPLICATION_NOT_WITHDRAWABLE: {

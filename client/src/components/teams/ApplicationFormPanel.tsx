@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { ApplicationForm } from './ApplicationForm';
 import {
   APPLICATION_MESSAGE_MAX_LENGTH,
+  APPLICATION_PENDING_LIMIT_MESSAGE,
   ApplicationsApiError,
   AuthRequiredError,
+  DUPLICATE_PENDING_APPLICATION_MESSAGE,
   isApplicationMessageTooLong,
   normalizeApplicationMessage,
   submitTeamApplication,
@@ -17,7 +19,7 @@ export interface ApplicationFormPanelProps {
 }
 
 /**
- * Stateful US-018 / #171 apply panel: optional 250-char message, loading/success/error,
+ * Stateful US-018 / #171 / #176 apply panel: optional 250-char message, loading/success/error,
  * draft retained on validation and API failures (NR-017).
  */
 export function ApplicationFormPanel({
@@ -81,12 +83,11 @@ export function ApplicationFormPanel({
       } else if (err instanceof ApplicationsApiError) {
         if (err.code === 'APPLICATION_PENDING_LIMIT') {
           setSubmitError(
-            err.message ||
-              'You already have 3 pending applications for this event. Withdraw one or wait for a decision before applying again.'
+            err.errors?._form || APPLICATION_PENDING_LIMIT_MESSAGE
           );
         } else if (err.code === 'DUPLICATE_PENDING_APPLICATION') {
           setSubmitError(
-            err.message || 'You already have a pending application for this team.'
+            err.errors?._form || DUPLICATE_PENDING_APPLICATION_MESSAGE
           );
         } else {
           setSubmitError(err.message || 'Could not submit application.');
