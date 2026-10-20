@@ -98,8 +98,8 @@ export function MyInvitationsPanel({
       if (decision === 'decline') {
         setStatusAlert(
           inviteeAlert?.message ??
-            ownerAlert?.message ??
-            'Invitation declined. The team owner has been notified.'
+          ownerAlert?.message ??
+          'Invitation declined. The team owner has been notified.'
         );
       } else {
         const cascade = result.cascade;
@@ -107,11 +107,12 @@ export function MyInvitationsPanel({
           ? ` Cleared ${cascade.eventInvitationsCanceled} other invitation(s), withdrew ${cascade.eventApplicationsWithdrawn} application(s), and canceled ${cascade.slotRequestsCanceled} competing slot request(s).`
           : '';
         setStatusAlert(
-          (inviteeAlert?.message ??
-            'Membership confirmed. Competing pending requests for this event were cleared.') +
-            cascadeSummary
+          (result.membershipCommitted
+            ? 'Invitation accepted. Your team membership is confirmed.'
+            : result.notice) + cascadeSummary
         );
-      }      onStatusNotice?.(result.notice);
+      }
+      onStatusNotice?.(result.notice);
       await loadList();
       setSelectedId(invitationId);
     } catch (err: unknown) {
@@ -142,9 +143,8 @@ export function MyInvitationsPanel({
             My Invitations
           </h3>
           <p className="text-xs text-ink-muted mt-1">
-            Inspect permitted team details for invitations addressed to you. Accept confirms
-            membership and clears competing pending requests for this event; Decline notifies the
-            owner without changing your availability.
+            Inspect permitted team details for invitations addressed to you. Accept confirms your
+            membership; Decline notifies the owner without changing your availability.
           </p>
         </div>
         <button

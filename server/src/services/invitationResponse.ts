@@ -11,6 +11,7 @@ import {
 } from '../db/invitationModel.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import type { TeamRequest } from '../db/types.js';
+import { acceptInvitation } from './invitationAcceptance.js';
 import { TeamServiceError, toTeamServiceError } from './teamErrors.js';
 
 export type InvitationResponseDecision = 'accept' | 'decline';
@@ -185,6 +186,23 @@ export interface InvitationRespondResult {
   changed: boolean;
   idempotent: boolean;
   eligible?: boolean;
+  membership?: {
+    id: string;
+    teamId: string;
+    eventId: string;
+    participantId: string;
+    role: string;
+    status: string;
+    joinedAt: string;
+  };
+  vacancy?: {
+    id: string;
+    status: string;
+    role: string;
+  };
+  memberCount?: number;
+  maxTeamSize?: number;
+  availabilityCleared?: boolean;
   /** Competing-request cascade summary after accept (#181 / FR-057). */
   cascade?: {
     eventInvitationsCanceled: number;
@@ -198,8 +216,8 @@ export interface InvitationRespondResult {
 }
 
 /**
- * Addressed PART responds to a Pending invitation (US-019 / #179 / #181).
- * - accept: FR-056 membership commit + FR-057 competing-request cascade
+ * Addressed PART responds to a Pending invitation (US-019 / #179 / #180 / #181).
+ * - accept: membership commit (#180) + competing-request cascade (#181)
  * - decline: FR-058 Pending → Declined with owner/invitee alerts
  */
 export async function respondToInvitation(
@@ -207,46 +225,68 @@ export async function respondToInvitation(
   invitationId: string,
   decision: InvitationResponseDecision
 ): Promise<InvitationRespondResult> {
-  try {
-    if (decision === 'accept') {
-      const result = await teamsRepository.acceptTeamInvitation(
-        actorParticipantId,
-        invitationId
-      );
-      const inv = result.invitation;
-      return {
-        decision: 'accept',
-        membershipCommitted: result.membershipCommitted,
-        invitation: {
-          id: inv.id,
-          teamId: inv.team_id,
-          eventId: inv.event_id,
-          vacancyId: inv.vacancy_id,
-          inviteeParticipantId: inv.participant_id,
-          status: inv.status,
-          statusLabel: invitationStatusLabel(inv.status),
-          requestType: 'Invitation',
-          expiresAt: inv.expires_at,
-          resolvedAt: inv.resolved_at,
-          cancelReason: inv.cancel_reason,
-          teamName: result.teamName,
-          vacancyRole: result.vacancyRole,
+  if (decision === 'accept') {
+    const result = await acceptInvitation({
+      actorParticipantId,
+      invitationId,
+    });
+    return {
+      decision: 'accept',
+      membershipCommitted: result.membershipCommitted !== false,
+      invitation: {
+        id: result.invitation.id,
+        teamId: result.invitation.team_id,
+        eventId: result.invitation.event_id,
+        vacancyId: result.invitation.vacancy_id,
+        inviteeParticipantId: result.invitation.participant_id,
+        status: result.invitation.status,
+        statusLabel: 'Accepted',
+        requestType: 'Invitation',
+        expiresAt: result.invitation.expires_at,
+        resolvedAt: result.invitation.resolved_at,
+        cancelReason: result.invitation.cancel_reason,
+        teamName: result.teamName,
+        vacancyRole: result.vacancyRole,
+      },
+      changed: true,
+      idempotent: false,
+      eligible: true,
+      membership: {
+        id: result.membership.id,
+        teamId: result.membership.team_id,
+        eventId: result.membership.event_id,
+        participantId: result.membership.participant_id,
+        role: result.membership.role,
+        status: result.membership.status,
+        joinedAt: result.membership.joined_at,
+      },
+      vacancy: {
+        id: result.vacancy.id,
+        status: result.vacancy.status,
+        role: result.vacancy.role,
+      },
+      memberCount: result.memberCount,
+      maxTeamSize: result.maxTeamSize,
+      availabilityCleared: result.availabilityCleared,
+      cascade: {
+        eventInvitationsCanceled: result.cascade.eventInvitationsCanceled,
+        eventApplicationsWithdrawn: result.cascade.eventApplicationsWithdrawn,
+        slotRequestsCanceled: result.cascade.slotRequestsCanceled,
+        teamRequestsCanceled: result.cascade.teamRequestsCanceled,
+        teamNowFull: result.cascade.teamNowFull,
+      },
+      alerts: [
+        {
+          audience: 'owner',
+          type: 'team_invitation_accepted',
+          message: 'The invited participant accepted the team invitation.',
         },
-        changed: result.changed,
-        idempotent: result.idempotent,
-        eligible: true,
-        cascade: {
-          eventInvitationsCanceled: result.cascade.eventInvitationsCanceled,
-          eventApplicationsWithdrawn: result.cascade.eventApplicationsWithdrawn,
-          slotRequestsCanceled: result.cascade.slotRequestsCanceled,
-          teamRequestsCanceled: result.cascade.teamRequestsCanceled,
-          teamNowFull: result.cascade.teamNowFull,
-        },
-        alerts: result.alerts,
-        notice: result.notice,
-      };
-    }
+      ],
+      notice: result.notice,
+    };
+  }
 
+  try {
     const result = await teamsRepository.declineTeamInvitation(
       actorParticipantId,
       invitationId

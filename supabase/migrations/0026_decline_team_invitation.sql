@@ -1,4 +1,4 @@
--- Migration: 0025_decline_team_invitation.sql
+-- Migration: 0026_decline_team_invitation.sql
 -- Description: US-019 / #179 / FR-058 — invitee decline of Pending invitations with
 --              idempotent repeats and basic status alerts for both parties.
 --              Availability and membership are unchanged.

@@ -7,6 +7,7 @@ import { requireVerifiedParticipant } from '../middleware/requireVerifiedPartici
 import { requireJsonObjectBody } from '../validators/team.validator.js';
 import { validateRespondInvitationBody } from '../validators/invitationResponse.validator.js';
 import {
+  acceptInvitationHandler,
   cancelInvitationHandler,
   getInvitationDetailHandler,
   listMyInvitationsHandler,
@@ -36,4 +37,15 @@ invitationsRouter.post(
   validateRespondInvitationBody,
   respondInvitationHandler
 );
+
+// Preserve the established verification-first response for acceptance while
+// still enforcing MFA, active-account, and PART authorization before the RPC.
+const acceptanceAuth = [
+  requireVerifiedParticipant,
+  requireMfa,
+  requireActiveAccount,
+  requireParticipantRole,
+];
+
 invitationsRouter.delete('/:id', ...participantAuth, cancelInvitationHandler);
+invitationsRouter.post('/:id/accept', ...acceptanceAuth, acceptInvitationHandler);

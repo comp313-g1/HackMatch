@@ -112,37 +112,22 @@ function mockPendingInvitationForAccept(overrides?: {
   vacancyStatus?: 'Open' | 'Filled';
   participantId?: string;
 }): void {
-  vi.spyOn(teamsRepository, 'findInvitationById').mockResolvedValue({
-    id: invitationId,
-    team_id: sampleTeamId,
-    event_id: sampleEventId,
-    vacancy_id: sampleVacancyId,
-    participant_id: overrides?.participantId ?? otherParticipant.id,
-    request_type: 'Invitation',
-    status: 'Pending',
-    cancel_reason: null,
-    resolved_at: null,
-    expires_at: overrides?.expiresAt ?? '2099-01-01T00:00:00.000Z',
-    message: null,
-    created_at: '2026-10-19T12:00:00.000Z',
-    updated_at: '2026-10-19T12:00:00.000Z',
+  let message = 'FORBIDDEN_NOT_INVITEE';
+  let detail: Record<string, unknown> = {};
+
+  if (overrides?.expiresAt === '2020-01-01T00:00:00.000Z') {
+    message = 'INVITATION_EXPIRED';
+    detail = { status: 'Expired', expiresAt: overrides.expiresAt };
+  } else if (overrides?.vacancyStatus === 'Filled') {
+    message = 'VACANCY_NOT_OPEN';
+    detail = { vacancyStatus: 'Filled' };
+  }
+
+  vi.spyOn(teamsRepository, 'acceptTeamInvitation').mockRejectedValue({
+    message,
+    code: 'P0001',
+    detail: JSON.stringify(detail),
   });
-  vi.spyOn(teamsRepository, 'getTeamViewParts').mockResolvedValue({
-    ...sampleParts,
-    team: sampleTeam,
-    event: {
-      max_team_size: 4,
-      status: 'Published',
-      end_date: '2099-01-01T00:00:00.000Z',
-    },
-    vacancies: [
-      { ...sampleVacancy, status: overrides?.vacancyStatus ?? 'Open' },
-    ],
-  });
-  vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue([
-    ownerParticipant.id,
-  ]);
-  vi.spyOn(participantsRepository, 'findById').mockResolvedValue(otherParticipant);
 }
 
 function tokenWithoutMfa(): DecodedIdToken {
@@ -285,25 +270,6 @@ describe('US-017 Invitations Integration Suite (permissions, issuance, cancel, a
       mockVerifyIdToken.mockResolvedValue(validOtherDecodedToken);
       vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(otherParticipant);
       mockPendingInvitationForAccept({ expiresAt: '2020-01-01T00:00:00.000Z' });
-      vi.spyOn(teamsRepository, 'markInvitationExpiredIfDue').mockResolvedValue({
-        invitation: {
-          id: invitationId,
-          team_id: sampleTeamId,
-          event_id: sampleEventId,
-          vacancy_id: sampleVacancyId,
-          participant_id: otherParticipant.id,
-          request_type: 'Invitation',
-          status: 'Expired',
-          cancel_reason: null,
-          resolved_at: '2020-01-01T00:00:00.000Z',
-          expires_at: '2020-01-01T00:00:00.000Z',
-          message: null,
-          created_at: '2019-12-30T00:00:00.000Z',
-          updated_at: '2020-01-01T00:00:00.000Z',
-        },
-        changed: true,
-      });
-
       const res = await request(app)
         .post(acceptPath)
         .set('Authorization', otherTokenHeader)

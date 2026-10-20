@@ -3,6 +3,7 @@ import request from 'supertest';
 import { app } from '../app.js';
 import { participantsRepository } from '../db/participants.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
+import * as invitationAcceptance from '../services/invitationAcceptance.js';
 import {
   otherParticipant,
   ownerParticipant,
@@ -125,36 +126,40 @@ describe('Invitee invitation detail + respond (US-019 / #179)', () => {
     expect(res.body.errors.decision).toMatch(/accept or decline/i);
   });
 
-  it('accept respond commits membership and returns cascade counts (#181)', async () => {
-    vi.spyOn(teamsRepository, 'acceptTeamInvitation').mockResolvedValue({
-      invitation: {
-        ...pendingInvitation,
-        status: 'Accepted',
-        resolved_at: '2026-10-19T16:00:00.000Z',
+  it('accept respond atomically commits membership and fills the vacancy (#180)', async () => {
+    const timestamp = '2026-10-20T12:00:00.000Z';
+    vi.spyOn(invitationAcceptance, 'acceptInvitation').mockResolvedValue({
+      accepted: true,
+      invitation: { ...pendingInvitation, status: 'Accepted', resolved_at: timestamp },
+      membership: {
+        id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        team_id: sampleTeamId,
+        event_id: sampleEventId,
+        participant_id: otherParticipant.id,
+        role: 'Member',
+        status: 'Confirmed',
+        removal_reason: null,
+        joined_at: timestamp,
+        ended_at: null,
+        created_at: timestamp,
+        updated_at: timestamp,
       },
-      membership: { id: 'mem-1', role: 'Member', status: 'Confirmed' },
-      changed: true,
-      idempotent: false,
-      membershipCommitted: true,
+      vacancy: { ...sampleVacancy, status: 'Filled' },
       teamName: 'HackMatch Innovators',
       vacancyRole: 'Frontend',
+      memberCount: 2,
+      maxTeamSize: 4,
+      availabilityCleared: true,
+      membershipCommitted: true,
       cascade: {
-        winningRequestId: invitationId,
         eventInvitationsCanceled: 1,
         eventApplicationsWithdrawn: 1,
-        slotRequestsCanceled: 2,
+        slotRequestsCanceled: 0,
         teamRequestsCanceled: 0,
         teamNowFull: false,
       },
-      alerts: [
-        {
-          audience: 'invitee',
-          type: 'team_invitation_accepted',
-          message: 'You accepted the invitation.',
-        },
-      ],
       notice:
-        'Invitation accepted. Membership confirmed, the slot is filled, and competing pending requests for this event were cleared.',
+        'Invitation accepted. Membership confirmed, the vacancy is filled, and competing pending requests for this event were cleared.',
     });
 
     const res = await request(app)
@@ -165,16 +170,14 @@ describe('Invitee invitation detail + respond (US-019 / #179)', () => {
     expect(res.status).toBe(200);
     expect(res.body.decision).toBe('accept');
     expect(res.body.membershipCommitted).toBe(true);
+    expect(res.body.eligible).toBe(true);
     expect(res.body.invitation.status).toBe('Accepted');
+    expect(res.body.membership).toMatchObject({ role: 'Member', status: 'Confirmed' });
+    expect(res.body.vacancy.status).toBe('Filled');
     expect(res.body.cascade).toMatchObject({
       eventInvitationsCanceled: 1,
       eventApplicationsWithdrawn: 1,
-      slotRequestsCanceled: 2,
     });
-    expect(teamsRepository.acceptTeamInvitation).toHaveBeenCalledWith(
-      otherParticipant.id,
-      invitationId
-    );
   });
 
   it('decline respond returns Declined status and alerts (US-019-T2)', async () => {

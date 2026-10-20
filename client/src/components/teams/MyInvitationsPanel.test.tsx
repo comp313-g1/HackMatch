@@ -187,6 +187,97 @@ describe('MyInvitationsPanel (US-019 / #179)', () => {
     expect(respondMock).toHaveBeenCalledWith('inv-1', 'decline');
   });
 
+  it('shows confirmed membership after a successful atomic acceptance (#180)', async () => {
+    fetchListMock
+      .mockResolvedValueOnce({ invitations: [pendingInv], empty: false, message: null })
+      .mockResolvedValueOnce({
+        invitations: [
+          {
+            ...pendingInv,
+            status: 'Accepted',
+            statusLabel: 'Accepted',
+            canRespond: false,
+            resolvedAt: '2026-10-20T12:00:00.000Z',
+          },
+        ],
+        empty: false,
+        message: null,
+      });
+    fetchDetailMock.mockResolvedValue({
+      ...pendingInv,
+      permittedDetails: {
+        teamName: pendingInv.teamName,
+        vacancyRole: pendingInv.vacancyRole,
+        expiresAt: pendingInv.expiresAt,
+        statusLabel: 'Pending',
+      },
+    });
+    respondMock.mockResolvedValue({
+      decision: 'accept',
+      membershipCommitted: true,
+      invitation: {
+        id: pendingInv.id,
+        teamId: pendingInv.teamId,
+        eventId: pendingInv.eventId,
+        vacancyId: pendingInv.vacancyId,
+        inviteeParticipantId: pendingInv.inviteeParticipantId,
+        status: 'Accepted',
+        statusLabel: 'Accepted',
+        requestType: 'Invitation',
+        expiresAt: pendingInv.expiresAt,
+        resolvedAt: '2026-10-20T12:00:00.000Z',
+        cancelReason: null,
+        teamName: pendingInv.teamName,
+        vacancyRole: pendingInv.vacancyRole,
+      },
+      changed: true,
+      idempotent: false,
+      eligible: true,
+      membership: {
+        id: 'm1',
+        teamId: pendingInv.teamId,
+        eventId: pendingInv.eventId,
+        participantId: pendingInv.inviteeParticipantId,
+        role: 'Member',
+        status: 'Confirmed',
+        joinedAt: '2026-10-20T12:00:00.000Z',
+      },
+      vacancy: { id: 'v1', status: 'Filled', role: 'Frontend' },
+      memberCount: 2,
+      maxTeamSize: 4,
+      availabilityCleared: true,
+      alerts: [
+        {
+          audience: 'owner',
+          type: 'team_invitation_accepted',
+          message: 'The invited participant accepted the team invitation.',
+        },
+      ],
+      notice: 'Invitation accepted. Team membership is confirmed and the vacancy is filled.',
+    });
+
+    render(<MyInvitationsPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('select-invitation-inv-1')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('select-invitation-inv-1'));
+    await waitFor(() => {
+      expect(screen.getByTestId('accept-invitation-inv-1')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('accept-invitation-inv-1'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('invitation-respond-success')).toHaveTextContent(
+        /membership is confirmed/i
+      );
+    });
+    expect(screen.getByTestId('invitation-status-alert')).toHaveTextContent(
+      /team membership is confirmed/i
+    );
+    expect(respondMock).toHaveBeenCalledWith('inv-1', 'accept');
+  });
+
   it('keeps selection and shows error when respond fails (NR-017)', async () => {
     fetchListMock.mockResolvedValue({
       invitations: [pendingInv],

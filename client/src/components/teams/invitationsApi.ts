@@ -148,7 +148,7 @@ export async function issueTeamInvitation(
 }
 
 export interface AcceptanceRevalidationResult {
-  eligible: true;
+  accepted: true;
   invitation: {
     id: string;
     teamId: string;
@@ -160,12 +160,25 @@ export interface AcceptanceRevalidationResult {
     teamName: string;
     vacancyRole: string | null;
   };
+  membership: {
+    id: string;
+    teamId: string;
+    eventId: string;
+    participantId: string;
+    role: string;
+    status: string;
+    joinedAt: string;
+  };
+  vacancy: { id: string; status: string; role: string };
+  memberCount: number;
+  maxTeamSize: number;
+  availabilityCleared: boolean;
   notice: string;
 }
 
 /**
- * POST /api/invitations/:id/accept — US-017 / #165 acceptance-time revalidation.
- * Rejects expired / unusable invitations; does not confirm membership yet (US-019).
+ * POST /api/invitations/:id/accept — US-019 / #180 atomic acceptance.
+ * Revalidates the invitation and confirms membership in one transaction.
  */
 export async function revalidateInvitationAcceptance(
   invitationId: string
@@ -265,13 +278,19 @@ export interface InvitationRespondResult {
   changed: boolean;
   idempotent: boolean;
   eligible?: boolean;
-  cascade?: {
-    eventInvitationsCanceled: number;
-    eventApplicationsWithdrawn: number;
-    slotRequestsCanceled: number;
-    teamRequestsCanceled: number;
-    teamNowFull: boolean;
+  membership?: {
+    id: string;
+    teamId: string;
+    eventId: string;
+    participantId: string;
+    role: string;
+    status: string;
+    joinedAt: string;
   };
+  vacancy?: { id: string; status: string; role: string };
+  memberCount?: number;
+  maxTeamSize?: number;
+  availabilityCleared?: boolean;
   alerts: Array<{ audience: string; type: string; message: string }>;
   notice: string;
 }
@@ -292,8 +311,7 @@ export async function fetchInvitationDetail(
 }
 
 /**
- * POST /api/invitations/:id/respond — accept (FR-051 revalidation) or decline (FR-058).
- * Membership commit on accept remains sibling US-019 / FR-056 work.
+ * POST /api/invitations/:id/respond — atomic accept (FR-051/FR-056) or decline (FR-058).
  */
 export async function respondToInvitation(
   invitationId: string,

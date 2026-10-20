@@ -1,5 +1,5 @@
 /**
- * US-017 / #161 Real Postgres invitation model integration tests.
+ * US-017 / US-019 Real Postgres invitation model and acceptance integration tests.
  *
  * Covers Pending/status/expiry constraints, quota indexes, and expiry helpers.
  * Gated by: process.env.RUN_DB_INTEGRATION === '1' against local Supabase only.
@@ -74,7 +74,7 @@ describe.skipIf(isGated)('US-017 Invitation Model Postgres Suite (#161)', () => 
     return data;
   }
 
-  async function createEvent(label: string) {
+  async function createEvent(label: string, maxTeamSize: number = 4) {
     const key = `${PREFIX}-${label}-${crypto.randomUUID().slice(0, 6)}`;
     const { data, error } = await supabase
       .from('events')
@@ -84,7 +84,7 @@ describe.skipIf(isGated)('US-017 Invitation Model Postgres Suite (#161)', () => 
         normalized_url: `https://example.com/${key}`,
         format: 'Online',
         min_team_size: 1,
-        max_team_size: 4,
+        max_team_size: maxTeamSize,
         status: 'Published',
         start_date: new Date(Date.now() - 3600000).toISOString(),
         end_date: new Date(Date.now() + 86400000 * 14).toISOString(),
@@ -289,5 +289,156 @@ describe.skipIf(isGated)('US-017 Invitation Model Postgres Suite (#161)', () => 
       p_invitation: data.invitation.id,
     });
     expect(isValid).toBe(true);
+  });
+
+  it('accept_team_invitation atomically confirms membership, fills the slot, and clears availability (#180)', async () => {
+    const owner = await createParticipant('accept-owner');
+    const invitee = await createParticipant('accept-invitee');
+    const event = await createEvent('accept-event');
+    const { teamId, vacancyId } = await createTeamWithVacancy(
+      owner.id,
+      event.id,
+      'Accept Team'
+    );
+    const platformEventId = '00000000-0000-4000-8000-000000000001';
+    await supabase.from('event_availability').upsert({
+      participant_id: invitee.id,
+      event_id: platformEventId,
+      is_looking: true,
+      desired_role: 'Frontend',
+      commitment_hours: 10,
+      goal: 'Learning',
+    });
+
+    const { data: issued, error: issueErr } = await supabase.rpc('issue_team_invitation', {
+      p_actor: owner.id,
+      p_team: teamId,
+      p_vacancy: vacancyId,
+      p_invitee: invitee.id,
+    });
+    expect(issueErr).toBeNull();
+
+    const { data: accepted, error: acceptErr } = await supabase.rpc(
+      'accept_team_invitation',
+      {
+        p_actor: invitee.id,
+        p_invitation: issued.invitation.id,
+      }
+    );
+
+    expect(acceptErr).toBeNull();
+    expect(accepted).toMatchObject({
+      accepted: true,
+      invitation: { status: 'Accepted' },
+      membership: {
+        team_id: teamId,
+        event_id: event.id,
+        participant_id: invitee.id,
+        role: 'Member',
+        status: 'Confirmed',
+      },
+      vacancy: { id: vacancyId, status: 'Filled' },
+      memberCount: 2,
+      maxTeamSize: 4,
+      availabilityCleared: true,
+    });
+
+    const [{ data: membership }, { data: vacancy }, { data: invitation }, { data: availability }] =
+      await Promise.all([
+        supabase
+          .from('team_memberships')
+          .select('status, role')
+          .eq('team_id', teamId)
+          .eq('participant_id', invitee.id)
+          .single(),
+        supabase.from('team_vacancies').select('status').eq('id', vacancyId).single(),
+        supabase
+          .from('team_requests')
+          .select('status')
+          .eq('id', issued.invitation.id)
+          .single(),
+        supabase
+          .from('event_availability')
+          .select('is_looking')
+          .eq('participant_id', invitee.id)
+          .eq('event_id', platformEventId)
+          .single(),
+      ]);
+
+    expect(membership).toEqual({ status: 'Confirmed', role: 'Member' });
+    expect(vacancy?.status).toBe('Filled');
+    expect(invitation?.status).toBe('Accepted');
+    expect(availability?.is_looking).toBe(false);
+  });
+
+  it('rejects acceptance at capacity without partial membership, slot, or invitation writes (#180)', async () => {
+    const owner = await createParticipant('full-owner');
+    const invitee = await createParticipant('full-invitee');
+    const filler = await createParticipant('full-filler');
+    const event = await createEvent('full-event', 2);
+    const { teamId, vacancyId } = await createTeamWithVacancy(
+      owner.id,
+      event.id,
+      'Full Team'
+    );
+    const platformEventId = '00000000-0000-4000-8000-000000000001';
+    await supabase.from('event_availability').upsert({
+      participant_id: invitee.id,
+      event_id: platformEventId,
+      is_looking: true,
+      desired_role: 'Frontend',
+      commitment_hours: 10,
+      goal: 'Learning',
+    });
+
+    const { data: issued, error: issueErr } = await supabase.rpc('issue_team_invitation', {
+      p_actor: owner.id,
+      p_team: teamId,
+      p_vacancy: vacancyId,
+      p_invitee: invitee.id,
+    });
+    expect(issueErr).toBeNull();
+
+    const { error: fillerErr } = await supabase.from('team_memberships').insert({
+      team_id: teamId,
+      event_id: event.id,
+      participant_id: filler.id,
+      role: 'Member',
+      status: 'Confirmed',
+    });
+    expect(fillerErr).toBeNull();
+
+    const { error: acceptErr } = await supabase.rpc('accept_team_invitation', {
+      p_actor: invitee.id,
+      p_invitation: issued.invitation.id,
+    });
+    expect(acceptErr?.message).toContain('CAPACITY_EXCEEDED');
+
+    const [{ data: memberships }, { data: vacancy }, { data: invitation }, { data: availability }] =
+      await Promise.all([
+        supabase
+          .from('team_memberships')
+          .select('id')
+          .eq('team_id', teamId)
+          .eq('participant_id', invitee.id)
+          .eq('status', 'Confirmed'),
+        supabase.from('team_vacancies').select('status').eq('id', vacancyId).single(),
+        supabase
+          .from('team_requests')
+          .select('status')
+          .eq('id', issued.invitation.id)
+          .single(),
+        supabase
+          .from('event_availability')
+          .select('is_looking')
+          .eq('participant_id', invitee.id)
+          .eq('event_id', platformEventId)
+          .single(),
+      ]);
+
+    expect(memberships ?? []).toHaveLength(0);
+    expect(vacancy?.status).toBe('Open');
+    expect(invitation?.status).toBe('Pending');
+    expect(availability?.is_looking).toBe(true);
   });
 });

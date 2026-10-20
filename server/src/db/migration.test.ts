@@ -928,33 +928,24 @@ describe('0026_cancel_competing_requests_on_placement.sql Migration DDL (US-019 
   );
   const sql = fs.readFileSync(migrationPath, 'utf-8');
 
-  it('migration file exists and is not empty', () => {
+  it('defines cascade helper only (accept stays in 0027 / #180)', () => {
     expect(fs.existsSync(migrationPath)).toBe(true);
-    expect(sql.length).toBeGreaterThan(0);
-  });
-
-  it('defines cascade helper and accept_team_invitation with FR-056/057 reasons', () => {
     expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+cancel_competing_requests_on_placement/i);
-    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+accept_team_invitation/i);
+    expect(sql).not.toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+accept_team_invitation/i);
     expect(sql).toMatch(/EVENT_MEMBERSHIP_CONFIRMED/i);
     expect(sql).toMatch(/SLOT_FILLED/i);
     expect(sql).toMatch(/TEAM_FULL/i);
     expect(sql).toMatch(/status\s*=\s*'Withdrawn'/i);
-    expect(sql).toMatch(/status\s*=\s*'Canceled'/i);
-    expect(sql).toMatch(/INSERT\s+INTO\s+team_memberships/i);
     expect(sql).toMatch(
       /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+cancel_competing_requests_on_placement/i
-    );
-    expect(sql).toMatch(
-      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+accept_team_invitation\s*\(\s*UUID\s*,\s*UUID\s*\)\s+TO\s+service_role/i
     );
   });
 });
 
-describe('0025_decline_team_invitation.sql Migration DDL (US-019 / #179)', () => {
+describe('0026_decline_team_invitation.sql Migration DDL (US-019 / #179)', () => {
   const migrationPath = path.resolve(
     __dirname,
-    '../../../supabase/migrations/0025_decline_team_invitation.sql'
+    '../../../supabase/migrations/0026_decline_team_invitation.sql'
   );
   const sql = fs.readFileSync(migrationPath, 'utf-8');
 
@@ -1074,6 +1065,78 @@ describe('0025_prioritize_application_submission_errors.sql Migration DDL (US-01
     expect(sql).toMatch(/'limit'\s*,\s*3/i);
     expect(sql).toMatch(/'pendingCount'\s*,\s*v_pending_count/i);
     expect(sql).toMatch(/'eventId'\s*,\s*v_team\.event_id/i);
+  });
+});
+
+describe('0027_accept_team_invitation.sql Migration DDL (US-019 / #180)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0027_accept_team_invitation.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('defines a service-role-only atomic acceptance RPC', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+accept_team_invitation/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/SET\s+search_path\s*=\s*public/i);
+    expect(sql).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+accept_team_invitation[\s\S]*?FROM\s+PUBLIC,\s*anon,\s*authenticated/i
+    );
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+accept_team_invitation[\s\S]*?TO\s+service_role/i
+    );
+  });
+
+  it('locks and revalidates the invitation, team, event, vacancy, and invitee', () => {
+    expect(sql).toMatch(/FROM\s+team_requests[\s\S]*?FOR\s+UPDATE/i);
+    expect(sql).toMatch(/FROM\s+teams[\s\S]*?FOR\s+UPDATE/i);
+    expect(sql).toMatch(/FROM\s+events[\s\S]*?FOR\s+SHARE/i);
+    expect(sql).toMatch(/FROM\s+team_vacancies[\s\S]*?FOR\s+UPDATE/i);
+    expect(sql).toMatch(/FROM\s+participants[\s\S]*?FOR\s+SHARE/i);
+    expect(sql).toMatch(/FORBIDDEN_NOT_INVITEE/i);
+    expect(sql).toMatch(/INVITATION_EXPIRED/i);
+    expect(sql).toMatch(/INVITATION_NOT_ACCEPTABLE/i);
+    expect(sql).toMatch(/TEAM_NOT_MUTABLE/i);
+    expect(sql).toMatch(/EVENT_NOT_RECRUITING/i);
+    expect(sql).toMatch(/VACANCY_NOT_OPEN/i);
+    expect(sql).toMatch(/INVITEE_NOT_ELIGIBLE/i);
+  });
+
+  it('enforces one membership per event and the official capacity boundary', () => {
+    expect(sql).toMatch(
+      /FROM\s+team_memberships[\s\S]*?event_id\s*=\s*v_team\.event_id[\s\S]*?participant_id\s*=\s*p_actor[\s\S]*?status\s*=\s*'Confirmed'/i
+    );
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'INVITEE_ALREADY_CONFIRMED'/i);
+    expect(sql).toMatch(/SELECT\s+COUNT\(\*\)::INTEGER\s+INTO\s+v_member_count/i);
+    expect(sql).toMatch(/COALESCE\(v_event\.max_team_size,\s*4\)/i);
+    expect(sql).toMatch(/v_member_count\s*>=\s*v_max_team_size/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'CAPACITY_EXCEEDED'/i);
+  });
+
+  it('commits membership, filled vacancy, accepted invitation, and availability together', () => {
+    expect(sql).toMatch(/UPDATE\s+event_availability[\s\S]*?is_looking\s*=\s*FALSE/i);
+    expect(sql).toMatch(/INSERT\s+INTO\s+team_memberships/i);
+    expect(sql).toMatch(/'Member'\s*,\s*'Confirmed'/i);
+    expect(sql).toMatch(/UPDATE\s+team_vacancies[\s\S]*?status\s*=\s*'Filled'/i);
+    expect(sql).toMatch(/UPDATE\s+team_requests[\s\S]*?status\s*=\s*'Accepted'/i);
+    expect(sql).toMatch(/team_invitation_accepted/i);
+  });
+
+  it('runs competing-request cascade after membership commit (#181)', () => {
+    expect(sql).toMatch(/cancel_competing_requests_on_placement\s*\(/i);
+    expect(sql).toMatch(/v_team_now_full/i);
+    expect(sql).toMatch(/'cascade'\s*,\s*v_cascade/i);
+    expect(sql).toMatch(/competing pending requests/i);
+  });
+
+  it('persists clock expiry through a failure payload instead of rolling it back', () => {
+    const expiryUpdate = sql.indexOf("status = 'Expired'");
+    const expiryPayload = sql.indexOf("'error', 'INVITATION_EXPIRED'");
+
+    expect(expiryUpdate).toBeGreaterThan(-1);
+    expect(expiryPayload).toBeGreaterThan(expiryUpdate);
+    expect(sql).toMatch(/'expiresAt'\s*,\s*v_req\.expires_at/i);
   });
 });
 

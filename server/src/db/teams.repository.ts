@@ -139,6 +139,34 @@ export interface ITeamsRepository {
   markInvitationExpiredIfDue(
     invitationId: string
   ): Promise<{ invitation: TeamRequest; changed: boolean }>;
+  /**
+   * US-019 / #180 / #181 — atomically accept invitation, fill slot, confirm membership,
+   * and cancel competing invitations/applications/slot requests.
+   */
+  acceptTeamInvitation(
+    actorId: string,
+    invitationId: string
+  ): Promise<{
+    accepted: true;
+    invitation: TeamRequest;
+    membership: TeamMembership;
+    vacancy: TeamVacancy;
+    teamName: string;
+    vacancyRole: string;
+    memberCount: number;
+    maxTeamSize: number;
+    availabilityCleared: boolean;
+    membershipCommitted: boolean;
+    cascade: {
+      winningRequestId?: string;
+      eventInvitationsCanceled: number;
+      eventApplicationsWithdrawn: number;
+      slotRequestsCanceled: number;
+      teamRequestsCanceled: number;
+      teamNowFull: boolean;
+    };
+    notice: string;
+  }>;
   /** Owner cancel Pending invitation (US-017 / #166 / FR-052); idempotent. */
   cancelTeamInvitation(
     actorId: string,
@@ -162,31 +190,6 @@ export interface ITeamsRepository {
     idempotent: boolean;
     teamName: string;
     vacancyRole: string | null;
-    alerts: Array<{ audience: string; type: string; message: string }>;
-    notice: string;
-  }>;
-  /**
-   * US-019 / #181 — accept invitation, confirm membership, run competing-request cascade.
-   */
-  acceptTeamInvitation(
-    actorId: string,
-    invitationId: string
-  ): Promise<{
-    invitation: TeamRequest;
-    membership: Record<string, unknown> | null;
-    changed: boolean;
-    idempotent: boolean;
-    membershipCommitted: boolean;
-    teamName: string;
-    vacancyRole: string | null;
-    cascade: {
-      winningRequestId?: string;
-      eventInvitationsCanceled: number;
-      eventApplicationsWithdrawn: number;
-      slotRequestsCanceled: number;
-      teamRequestsCanceled: number;
-      teamNowFull: boolean;
-    };
     alerts: Array<{ audience: string; type: string; message: string }>;
     notice: string;
   }>;
@@ -718,6 +721,95 @@ export const teamsRepository: ITeamsRepository = {
     };
   },
 
+  async acceptTeamInvitation(
+    actorId: string,
+    invitationId: string
+  ): Promise<{
+    accepted: true;
+    invitation: TeamRequest;
+    membership: TeamMembership;
+    vacancy: TeamVacancy;
+    teamName: string;
+    vacancyRole: string;
+    memberCount: number;
+    maxTeamSize: number;
+    availabilityCleared: boolean;
+    membershipCommitted: boolean;
+    cascade: {
+      winningRequestId?: string;
+      eventInvitationsCanceled: number;
+      eventApplicationsWithdrawn: number;
+      slotRequestsCanceled: number;
+      teamRequestsCanceled: number;
+      teamNowFull: boolean;
+    };
+    notice: string;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('accept_team_invitation', {
+      p_actor: actorId,
+      p_invitation: invitationId,
+    });
+    if (error) throw error;
+
+    const payload = data as {
+      error?: string;
+      details?: Record<string, unknown>;
+      accepted?: boolean;
+      invitation?: TeamRequest;
+      membership?: TeamMembership;
+      vacancy?: TeamVacancy;
+      teamName?: string;
+      vacancyRole?: string;
+      memberCount?: number;
+      maxTeamSize?: number;
+      availabilityCleared?: boolean;
+      membershipCommitted?: boolean;
+      cascade?: {
+        winningRequestId?: string;
+        eventInvitationsCanceled?: number;
+        eventApplicationsWithdrawn?: number;
+        slotRequestsCanceled?: number;
+        teamRequestsCanceled?: number;
+        teamNowFull?: boolean;
+      };
+      notice?: string;
+    };
+
+    // Expiry is persisted by the RPC and returned as a domain failure instead of
+    // raised inside PostgreSQL (raising would roll the Expired update back).
+    if (payload.error) {
+      throw {
+        message: payload.error,
+        code: 'P0001',
+        detail: JSON.stringify(payload.details ?? {}),
+      };
+    }
+
+    const cascade = payload.cascade ?? {};
+    return {
+      accepted: true as const,
+      invitation: payload.invitation as TeamRequest,
+      membership: payload.membership as TeamMembership,
+      vacancy: payload.vacancy as TeamVacancy,
+      teamName: payload.teamName as string,
+      vacancyRole: payload.vacancyRole as string,
+      memberCount: payload.memberCount as number,
+      maxTeamSize: payload.maxTeamSize as number,
+      availabilityCleared: Boolean(payload.availabilityCleared),
+      membershipCommitted: payload.membershipCommitted !== false,
+      cascade: {
+        winningRequestId: cascade.winningRequestId,
+        eventInvitationsCanceled: cascade.eventInvitationsCanceled ?? 0,
+        eventApplicationsWithdrawn: cascade.eventApplicationsWithdrawn ?? 0,
+        slotRequestsCanceled: cascade.slotRequestsCanceled ?? 0,
+        teamRequestsCanceled: cascade.teamRequestsCanceled ?? 0,
+        teamNowFull: Boolean(cascade.teamNowFull),
+      },
+      notice: payload.notice as string,
+    };
+  },
+
   async cancelTeamInvitation(
     actorId: string,
     invitationId: string
@@ -789,75 +881,6 @@ export const teamsRepository: ITeamsRepository = {
       idempotent: Boolean(payload.idempotent),
       teamName: payload.teamName,
       vacancyRole: payload.vacancyRole ?? null,
-      alerts: payload.alerts ?? [],
-      notice: payload.notice,
-    };
-  },
-
-  async acceptTeamInvitation(
-    actorId: string,
-    invitationId: string
-  ): Promise<{
-    invitation: TeamRequest;
-    membership: Record<string, unknown> | null;
-    changed: boolean;
-    idempotent: boolean;
-    membershipCommitted: boolean;
-    teamName: string;
-    vacancyRole: string | null;
-    cascade: {
-      winningRequestId?: string;
-      eventInvitationsCanceled: number;
-      eventApplicationsWithdrawn: number;
-      slotRequestsCanceled: number;
-      teamRequestsCanceled: number;
-      teamNowFull: boolean;
-    };
-    alerts: Array<{ audience: string; type: string; message: string }>;
-    notice: string;
-  }> {
-    const client = getSupabaseClient();
-    const { data, error } = await client.rpc('accept_team_invitation', {
-      p_actor: actorId,
-      p_invitation: invitationId,
-    });
-    if (error) throw error;
-    const payload = data as {
-      invitation: TeamRequest;
-      membership?: Record<string, unknown> | null;
-      changed: boolean;
-      idempotent: boolean;
-      membershipCommitted: boolean;
-      teamName: string;
-      vacancyRole?: string | null;
-      cascade?: {
-        winningRequestId?: string;
-        eventInvitationsCanceled?: number;
-        eventApplicationsWithdrawn?: number;
-        slotRequestsCanceled?: number;
-        teamRequestsCanceled?: number;
-        teamNowFull?: boolean;
-      };
-      alerts?: Array<{ audience: string; type: string; message: string }>;
-      notice: string;
-    };
-    const cascade = payload.cascade ?? {};
-    return {
-      invitation: payload.invitation,
-      membership: payload.membership ?? null,
-      changed: Boolean(payload.changed),
-      idempotent: Boolean(payload.idempotent),
-      membershipCommitted: Boolean(payload.membershipCommitted),
-      teamName: payload.teamName,
-      vacancyRole: payload.vacancyRole ?? null,
-      cascade: {
-        winningRequestId: cascade.winningRequestId,
-        eventInvitationsCanceled: cascade.eventInvitationsCanceled ?? 0,
-        eventApplicationsWithdrawn: cascade.eventApplicationsWithdrawn ?? 0,
-        slotRequestsCanceled: cascade.slotRequestsCanceled ?? 0,
-        teamRequestsCanceled: cascade.teamRequestsCanceled ?? 0,
-        teamNowFull: Boolean(cascade.teamNowFull),
-      },
       alerts: payload.alerts ?? [],
       notice: payload.notice,
     };

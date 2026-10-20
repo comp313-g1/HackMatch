@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { revalidateInvitationForAcceptance } from '../services/invitationAcceptance.js';
+import { acceptInvitation } from '../services/invitationAcceptance.js';
 import {
   getInvitationDetailForInvitee,
   listMyInvitations,
@@ -114,10 +114,9 @@ export async function listTeamInvitationsHandler(
 
 /**
  * POST /api/invitations/:id/accept
- * US-017 / #165 / FR-051 — acceptance-time revalidation (48h expiry, slot/team/event).
- * Does not confirm membership yet (US-019 / FR-056); returns eligible when checks pass.
+ * US-019 / #180 / FR-056 / FR-083 — atomically revalidate and confirm membership.
  */
-export async function revalidateInvitationAcceptanceHandler(
+export async function acceptInvitationHandler(
   req: Request,
   res: Response,
   next: NextFunction
@@ -135,14 +134,14 @@ export async function revalidateInvitationAcceptanceHandler(
       return;
     }
 
-    const result = await revalidateInvitationForAcceptance({
+    const result = await acceptInvitation({
       actorParticipantId: actorId,
       invitationId,
     });
 
     res.setHeader('Cache-Control', 'no-store');
     res.status(200).json({
-      eligible: true,
+      accepted: true,
       invitation: {
         id: result.invitation.id,
         teamId: result.invitation.team_id,
@@ -150,10 +149,27 @@ export async function revalidateInvitationAcceptanceHandler(
         vacancyId: result.invitation.vacancy_id,
         inviteeParticipantId: result.invitation.participant_id,
         status: result.invitation.status,
-        expiresAt: result.expiresAt,
+        expiresAt: result.invitation.expires_at,
         teamName: result.teamName,
         vacancyRole: result.vacancyRole,
       },
+      membership: {
+        id: result.membership.id,
+        teamId: result.membership.team_id,
+        eventId: result.membership.event_id,
+        participantId: result.membership.participant_id,
+        role: result.membership.role,
+        status: result.membership.status,
+        joinedAt: result.membership.joined_at,
+      },
+      vacancy: {
+        id: result.vacancy.id,
+        status: result.vacancy.status,
+        role: result.vacancy.role,
+      },
+      memberCount: result.memberCount,
+      maxTeamSize: result.maxTeamSize,
+      availabilityCleared: result.availabilityCleared,
       notice: result.notice,
     });
   } catch (err: unknown) {
