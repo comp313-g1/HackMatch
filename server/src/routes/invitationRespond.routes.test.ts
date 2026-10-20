@@ -55,7 +55,7 @@ const pendingInvitation = {
   updated_at: '2026-10-19T12:00:00.000Z',
 };
 
-describe('Invitee invitation detail + respond (US-019 / #179)', () => {
+describe('Invitee invitation detail + respond (US-019 / #179 / #182)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockVerifyIdToken.mockResolvedValue(validOtherDecodedToken);
@@ -124,6 +124,31 @@ describe('Invitee invitation detail + respond (US-019 / #179)', () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('VALIDATION_ERROR');
     expect(res.body.errors.decision).toMatch(/accept or decline/i);
+  });
+
+  it('rejects unauthenticated decline attempts before the repository', async () => {
+    const declineSpy = vi.spyOn(teamsRepository, 'declineTeamInvitation');
+
+    const res = await request(app).post(respondPath).send({ decision: 'decline' });
+
+    expect(res.status).toBe(401);
+    expect(declineSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed invitation id with an explicit field error', async () => {
+    const declineSpy = vi.spyOn(teamsRepository, 'declineTeamInvitation');
+
+    const res = await request(app)
+      .post('/api/invitations/not-a-uuid/respond')
+      .set('Authorization', otherTokenHeader)
+      .send({ decision: 'decline' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      errors: { invitationId: expect.stringMatching(/valid UUID/i) },
+    });
+    expect(declineSpy).not.toHaveBeenCalled();
   });
 
   it('accept respond atomically commits membership and fills the vacancy (#180)', async () => {
@@ -204,6 +229,14 @@ describe('Invitee invitation detail + respond (US-019 / #179)', () => {
           message: 'An invitee declined the pending invitation.',
         },
       ],
+      effects: {
+        invitationChanged: true,
+        ownerAlertCreated: true,
+        inviteeAlertCreated: true,
+        availabilityChanged: false,
+        membershipChanged: false,
+        vacancyChanged: false,
+      },
       notice: 'Invitation declined. The team owner has been notified. Your availability is unchanged.',
     });
 
@@ -216,9 +249,70 @@ describe('Invitee invitation detail + respond (US-019 / #179)', () => {
     expect(res.body.decision).toBe('decline');
     expect(res.body.invitation.status).toBe('Declined');
     expect(res.body.alerts).toHaveLength(2);
+    expect(res.body.effects).toEqual({
+      invitationChanged: true,
+      ownerAlertCreated: true,
+      inviteeAlertCreated: true,
+      availabilityChanged: false,
+      membershipChanged: false,
+      vacancyChanged: false,
+    });
     expect(teamsRepository.declineTeamInvitation).toHaveBeenCalledWith(
       otherParticipant.id,
       invitationId
     );
+  });
+
+  it('forbids a different participant from declining and makes no mutation', async () => {
+    mockVerifyIdToken.mockResolvedValue(validOwnerDecodedToken);
+    vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(ownerParticipant);
+    const declineSpy = vi.spyOn(teamsRepository, 'declineTeamInvitation').mockRejectedValue({
+      message: 'FORBIDDEN_NOT_INVITEE',
+      code: 'P0001',
+    });
+
+    const res = await request(app)
+      .post(respondPath)
+      .set('Authorization', validTokenHeader)
+      .send({ decision: 'decline' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN_NOT_INVITEE');
+    expect(declineSpy).toHaveBeenCalledWith(ownerParticipant.id, invitationId);
+  });
+
+  it.each(['INVITATION_NOT_DECLINABLE', 'INVITATION_EXPIRED'] as const)(
+    'returns a clear 409 for %s without reporting success',
+    async (code) => {
+      vi.spyOn(teamsRepository, 'declineTeamInvitation').mockRejectedValue({
+        message: code,
+        code: 'P0001',
+        detail: JSON.stringify({ status: code === 'INVITATION_EXPIRED' ? 'Expired' : 'Accepted' }),
+      });
+
+      const res = await request(app)
+        .post(respondPath)
+        .set('Authorization', otherTokenHeader)
+        .send({ decision: 'decline' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe(code);
+      expect(res.body.errors.invitationId).toBeTruthy();
+    }
+  );
+
+  it('returns a safe 500 when decline persistence fails unexpectedly', async () => {
+    vi.spyOn(teamsRepository, 'declineTeamInvitation').mockRejectedValue(
+      new Error('postgres password=secret decline failure')
+    );
+
+    const res = await request(app)
+      .post(respondPath)
+      .set('Authorization', otherTokenHeader)
+      .send({ decision: 'decline' });
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Internal Server Error' });
+    expect(JSON.stringify(res.body)).not.toContain('password');
   });
 });

@@ -320,6 +320,14 @@ describe('teams invitationsApi (US-017 / #167 shared client)', () => {
             { audience: 'invitee', type: 'team_invitation_declined', message: 'You declined.' },
             { audience: 'owner', type: 'team_invitation_declined', message: 'Invitee declined.' },
           ],
+          effects: {
+            invitationChanged: true,
+            ownerAlertCreated: true,
+            inviteeAlertCreated: true,
+            availabilityChanged: false,
+            membershipChanged: false,
+            vacancyChanged: false,
+          },
           notice: 'Invitation declined.',
         }),
         { status: 200 }
@@ -335,5 +343,11 @@ describe('teams invitationsApi (US-017 / #167 shared client)', () => {
       })
     );
     expect(declined.invitation.status).toBe('Declined');
+    expect(declined.effects).toMatchObject({
+      ownerAlertCreated: true,
+      availabilityChanged: false,
+      membershipChanged: false,
+      vacancyChanged: false,
+    });
   });
 });

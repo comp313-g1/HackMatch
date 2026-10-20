@@ -166,6 +166,14 @@ describe('MyInvitationsPanel (US-019 / #179)', () => {
           message: 'An invitee declined the pending invitation.',
         },
       ],
+      effects: {
+        invitationChanged: true,
+        ownerAlertCreated: true,
+        inviteeAlertCreated: true,
+        availabilityChanged: false,
+        membershipChanged: false,
+        vacancyChanged: false,
+      },
       notice: 'Invitation declined. The team owner has been notified. Your availability is unchanged.',
     });
 
@@ -183,7 +191,10 @@ describe('MyInvitationsPanel (US-019 / #179)', () => {
     await waitFor(() => {
       expect(screen.getByTestId('invitation-respond-success')).toHaveTextContent(/declined/i);
     });
-    expect(screen.getByTestId('invitation-status-alert')).toHaveTextContent(/You declined/i);
+    expect(screen.getByTestId('invitation-status-alert')).toHaveTextContent(
+      /owner was notified.*availability.*membership.*vacancy.*unchanged/i
+    );
+    expect(screen.getByTestId('invitation-inbox-status-inv-1')).toHaveTextContent('Declined');
     expect(respondMock).toHaveBeenCalledWith('inv-1', 'decline');
   });
 

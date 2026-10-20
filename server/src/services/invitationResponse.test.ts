@@ -177,8 +177,18 @@ describe('invitationResponse (US-019 / #179)', () => {
           audience: 'owner',
           type: 'team_invitation_declined',
           message: 'An invitee declined the pending invitation.',
+          notificationId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+          createdAt: '2026-10-19T16:00:00.000Z',
         },
       ],
+      effects: {
+        invitationChanged: true,
+        ownerAlertCreated: true,
+        inviteeAlertCreated: true,
+        availabilityChanged: false,
+        membershipChanged: false,
+        vacancyChanged: false,
+      },
       notice: 'Invitation declined. The team owner has been notified. Your availability is unchanged.',
     });
 
@@ -188,17 +198,66 @@ describe('invitationResponse (US-019 / #179)', () => {
     expect(result.invitation.status).toBe('Declined');
     expect(result.changed).toBe(true);
     expect(result.alerts).toHaveLength(2);
+    expect(result.alerts.find((alert) => alert.audience === 'owner')).toMatchObject({
+      notificationId: expect.any(String),
+    });
+    expect(result.effects).toEqual({
+      invitationChanged: true,
+      ownerAlertCreated: true,
+      inviteeAlertCreated: true,
+      availabilityChanged: false,
+      membershipChanged: false,
+      vacancyChanged: false,
+    });
     expect(result.notice).toMatch(/availability is unchanged/i);
   });
 
-  it('maps INVITATION_NOT_DECLINABLE from repository', async () => {
+  it.each([
+    ['INVITATION_NOT_DECLINABLE', 409],
+    ['INVITATION_EXPIRED', 409],
+    ['FORBIDDEN_NOT_INVITEE', 403],
+  ] as const)('maps %s decline failures from the repository', async (code, status) => {
     vi.spyOn(teamsRepository, 'declineTeamInvitation').mockRejectedValue({
-      message: 'INVITATION_NOT_DECLINABLE',
+      message: code,
       code: 'P0001',
     });
 
     await expect(
       respondToInvitation(otherParticipant.id, invitationId, 'decline')
-    ).rejects.toMatchObject({ code: 'INVITATION_NOT_DECLINABLE', status: 409 });
+    ).rejects.toMatchObject({ code, status });
+  });
+
+  it('keeps repeated declines idempotent without creating another owner alert', async () => {
+    vi.spyOn(teamsRepository, 'declineTeamInvitation').mockResolvedValue({
+      invitation: {
+        ...pendingInvitation,
+        status: 'Declined',
+        cancel_reason: 'INVITEE_DECLINED',
+        resolved_at: '2026-10-19T16:00:00.000Z',
+      },
+      changed: false,
+      idempotent: true,
+      teamName: 'HackMatch Innovators',
+      vacancyRole: null,
+      alerts: [],
+      effects: {
+        invitationChanged: false,
+        ownerAlertCreated: false,
+        inviteeAlertCreated: false,
+        availabilityChanged: false,
+        membershipChanged: false,
+        vacancyChanged: false,
+      },
+      notice: 'Invitation was already declined.',
+    });
+
+    const result = await respondToInvitation(otherParticipant.id, invitationId, 'decline');
+
+    expect(result).toMatchObject({
+      changed: false,
+      idempotent: true,
+      alerts: [],
+      effects: { ownerAlertCreated: false },
+    });
   });
 });

@@ -942,10 +942,10 @@ describe('0026_cancel_competing_requests_on_placement.sql Migration DDL (US-019 
   });
 });
 
-describe('0026_decline_team_invitation.sql Migration DDL (US-019 / #179)', () => {
+describe('0028_decline_team_invitation.sql Migration DDL (US-019 / #182)', () => {
   const migrationPath = path.resolve(
     __dirname,
-    '../../../supabase/migrations/0026_decline_team_invitation.sql'
+    '../../../supabase/migrations/0028_decline_team_invitation.sql'
   );
   const sql = fs.readFileSync(migrationPath, 'utf-8');
 
@@ -962,9 +962,29 @@ describe('0026_decline_team_invitation.sql Migration DDL (US-019 / #179)', () =>
     expect(sql).toMatch(/idempotent/i);
     expect(sql).toMatch(/team_invitation_declined/i);
     expect(sql).toMatch(/INSERT\s+INTO\s+participant_notifications/i);
+    expect(sql).toMatch(/p_actor\s+IS\s+NULL\s+OR\s+p_invitation\s+IS\s+NULL/i);
+    expect(sql).toMatch(/RETURNING\s+id\s*,\s*created_at/i);
     expect(sql).toMatch(
       /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+decline_team_invitation\s*\(\s*UUID\s*,\s*UUID\s*\)\s+TO\s+service_role/i
     );
+  });
+
+  it('rejects clock-expired invitations while committing Expired instead of Declined', () => {
+    const expiryGuard = sql.indexOf("v_req.expires_at <= now()");
+    const declinedUpdate = sql.indexOf("status = 'Declined'");
+
+    expect(expiryGuard).toBeGreaterThan(-1);
+    expect(expiryGuard).toBeLessThan(declinedUpdate);
+    expect(sql).toMatch(/status\s*=\s*'Expired'[\s\S]*'error',\s*'INVITATION_EXPIRED'/i);
+  });
+
+  it('reports the exact decline effects and guarantees roster state is unchanged', () => {
+    expect(sql).toMatch(/'invitationChanged',\s*TRUE/i);
+    expect(sql).toMatch(/'ownerAlertCreated',\s*TRUE/i);
+    expect(sql).toMatch(/'inviteeAlertCreated',\s*TRUE/i);
+    expect(sql).toMatch(/'availabilityChanged',\s*FALSE/i);
+    expect(sql).toMatch(/'membershipChanged',\s*FALSE/i);
+    expect(sql).toMatch(/'vacancyChanged',\s*FALSE/i);
   });
 });
 

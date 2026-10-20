@@ -16,7 +16,7 @@ export interface MyInvitationsPanelProps {
 }
 
 /**
- * Stateful US-019 / #179 My Invitations panel: list, detail, Accept/Decline.
+ * Stateful US-019 / #179 / #182 My Invitations panel: list, detail, Accept/Decline.
  * List and detail selection are preserved on response failures (NR-017).
  */
 export function MyInvitationsPanel({
@@ -92,14 +92,12 @@ export function MyInvitationsPanel({
     setRespondingId(invitationId);
     try {
       const result = await respondToInvitation(invitationId, decision);
-      const inviteeAlert = result.alerts.find((a) => a.audience === 'invitee');
-      const ownerAlert = result.alerts.find((a) => a.audience === 'owner');
       setSuccessNotice(result.notice);
       if (decision === 'decline') {
         setStatusAlert(
-          inviteeAlert?.message ??
-          ownerAlert?.message ??
-          'Invitation declined. The team owner has been notified.'
+          result.idempotent
+            ? 'This invitation was already declined; no additional owner alert was created.'
+            : 'The team owner was notified. Your availability, membership, and the vacancy are unchanged.'
         );
       } else {
         const cascade = result.cascade;
@@ -113,8 +111,25 @@ export function MyInvitationsPanel({
         );
       }
       onStatusNotice?.(result.notice);
-      await loadList();
+      setInvitations((prev) =>
+        prev.map((invitation) =>
+          invitation.id === invitationId
+            ? {
+                ...invitation,
+                ...result.invitation,
+                expiredByClock: false,
+                canRespond: false,
+              }
+            : invitation
+        )
+      );
       setSelectedId(invitationId);
+      // Decline changes exactly one invitation, so the response is sufficient to
+      // update the view without risking a refresh failure that hides valid data.
+      if (decision === 'accept') {
+        await loadList();
+        setSelectedId(invitationId);
+      }
     } catch (err: unknown) {
       if (err instanceof AuthRequiredError) {
         setResponseError('You need to sign in to respond to an invitation.');

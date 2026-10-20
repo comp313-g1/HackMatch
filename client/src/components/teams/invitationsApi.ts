@@ -291,7 +291,28 @@ export interface InvitationRespondResult {
   memberCount?: number;
   maxTeamSize?: number;
   availabilityCleared?: boolean;
-  alerts: Array<{ audience: string; type: string; message: string }>;
+  cascade?: {
+    eventInvitationsCanceled: number;
+    eventApplicationsWithdrawn: number;
+    slotRequestsCanceled: number;
+    teamRequestsCanceled: number;
+    teamNowFull: boolean;
+  };
+  effects?: {
+    invitationChanged: boolean;
+    ownerAlertCreated: boolean;
+    inviteeAlertCreated: boolean;
+    availabilityChanged: false;
+    membershipChanged: false;
+    vacancyChanged: false;
+  };
+  alerts: Array<{
+    audience: string;
+    type: string;
+    message: string;
+    notificationId?: string;
+    createdAt?: string;
+  }>;
   notice: string;
 }
 

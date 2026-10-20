@@ -1,7 +1,29 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { InvitationResponseDecision } from '../services/invitationResponse.js';
+import { UUID_REGEX } from './team.validator.js';
 
 const DECISIONS = new Set<InvitationResponseDecision>(['accept', 'decline']);
+
+/** Reject malformed invitation identifiers before they reach PostgreSQL UUID casts. */
+export function validateInvitationIdParam(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const invitationId = String(req.params.id ?? '').trim();
+  if (!UUID_REGEX.test(invitationId)) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(400).json({
+      error: 'Invitation id must be a valid UUID.',
+      code: 'VALIDATION_ERROR',
+      errors: { invitationId: 'Invitation id must be a valid UUID.' },
+    });
+    return;
+  }
+
+  req.params.id = invitationId;
+  next();
+}
 
 /**
  * Validates POST /api/invitations/:id/respond body (US-019 / #179).

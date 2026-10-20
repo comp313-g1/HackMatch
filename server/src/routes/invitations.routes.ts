@@ -5,7 +5,10 @@ import { requireActiveAccount } from '../middleware/requireActiveAccount.js';
 import { requireParticipantRole } from '../middleware/requireRole.js';
 import { requireVerifiedParticipant } from '../middleware/requireVerifiedParticipant.js';
 import { requireJsonObjectBody } from '../validators/team.validator.js';
-import { validateRespondInvitationBody } from '../validators/invitationResponse.validator.js';
+import {
+  validateInvitationIdParam,
+  validateRespondInvitationBody,
+} from '../validators/invitationResponse.validator.js';
 import {
   acceptInvitationHandler,
   cancelInvitationHandler,
@@ -29,10 +32,11 @@ const participantAuth = [
 ];
 
 invitationsRouter.get('/mine', ...participantAuth, listMyInvitationsHandler);
-invitationsRouter.get('/:id', ...participantAuth, getInvitationDetailHandler);
+invitationsRouter.get('/:id', ...participantAuth, validateInvitationIdParam, getInvitationDetailHandler);
 invitationsRouter.post(
   '/:id/respond',
   ...participantAuth,
+  validateInvitationIdParam,
   requireJsonObjectBody,
   validateRespondInvitationBody,
   respondInvitationHandler
@@ -47,5 +51,15 @@ const acceptanceAuth = [
   requireParticipantRole,
 ];
 
-invitationsRouter.delete('/:id', ...participantAuth, cancelInvitationHandler);
-invitationsRouter.post('/:id/accept', ...acceptanceAuth, acceptInvitationHandler);
+invitationsRouter.delete(
+  '/:id',
+  ...participantAuth,
+  validateInvitationIdParam,
+  cancelInvitationHandler
+);
+invitationsRouter.post(
+  '/:id/accept',
+  ...acceptanceAuth,
+  validateInvitationIdParam,
+  acceptInvitationHandler
+);

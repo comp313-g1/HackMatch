@@ -291,6 +291,139 @@ describe.skipIf(isGated)('US-017 Invitation Model Postgres Suite (#161)', () => 
     expect(isValid).toBe(true);
   });
 
+  it('declines only the addressed invitation, preserves roster state, and alerts the owner once (#182)', async () => {
+    const owner = await createParticipant('decline-owner');
+    const otherOwner = await createParticipant('decline-other-owner');
+    const invitee = await createParticipant('decline-invitee');
+    const event = await createEvent('decline-event');
+    const first = await createTeamWithVacancy(owner.id, event.id, 'Decline Team');
+    const second = await createTeamWithVacancy(otherOwner.id, event.id, 'Other Offer Team');
+    const platformEventId = '00000000-0000-4000-8000-000000000001';
+
+    await supabase.from('event_availability').upsert({
+      participant_id: invitee.id,
+      event_id: platformEventId,
+      is_looking: true,
+      desired_role: 'Frontend',
+      commitment_hours: 10,
+      goal: 'Learning',
+    });
+
+    const { data: firstIssued, error: firstIssueErr } = await supabase.rpc(
+      'issue_team_invitation',
+      {
+        p_actor: owner.id,
+        p_team: first.teamId,
+        p_vacancy: first.vacancyId,
+        p_invitee: invitee.id,
+      }
+    );
+    const { data: secondIssued, error: secondIssueErr } = await supabase.rpc(
+      'issue_team_invitation',
+      {
+        p_actor: otherOwner.id,
+        p_team: second.teamId,
+        p_vacancy: second.vacancyId,
+        p_invitee: invitee.id,
+      }
+    );
+    expect(firstIssueErr).toBeNull();
+    expect(secondIssueErr).toBeNull();
+
+    const { error: forbiddenErr } = await supabase.rpc('decline_team_invitation', {
+      p_actor: owner.id,
+      p_invitation: firstIssued.invitation.id,
+    });
+    expect(forbiddenErr?.message).toContain('FORBIDDEN_NOT_INVITEE');
+
+    const { data: declined, error: declineErr } = await supabase.rpc(
+      'decline_team_invitation',
+      {
+        p_actor: invitee.id,
+        p_invitation: firstIssued.invitation.id,
+      }
+    );
+    expect(declineErr).toBeNull();
+    expect(declined).toMatchObject({
+      invitation: { id: firstIssued.invitation.id, status: 'Declined' },
+      changed: true,
+      idempotent: false,
+      effects: {
+        invitationChanged: true,
+        ownerAlertCreated: true,
+        inviteeAlertCreated: true,
+        availabilityChanged: false,
+        membershipChanged: false,
+        vacancyChanged: false,
+      },
+    });
+    expect(declined.alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          audience: 'owner',
+          type: 'team_invitation_declined',
+          notificationId: expect.any(String),
+        }),
+      ])
+    );
+
+    const [
+      { data: firstInvitation },
+      { data: secondInvitation },
+      { data: firstVacancy },
+      { data: memberships },
+      { data: availability },
+      { data: ownerAlertsBeforeRepeat },
+    ] = await Promise.all([
+      supabase.from('team_requests').select('status').eq('id', firstIssued.invitation.id).single(),
+      supabase.from('team_requests').select('status').eq('id', secondIssued.invitation.id).single(),
+      supabase.from('team_vacancies').select('status').eq('id', first.vacancyId).single(),
+      supabase
+        .from('team_memberships')
+        .select('id')
+        .eq('event_id', event.id)
+        .eq('participant_id', invitee.id)
+        .eq('status', 'Confirmed'),
+      supabase
+        .from('event_availability')
+        .select('is_looking')
+        .eq('event_id', platformEventId)
+        .eq('participant_id', invitee.id)
+        .single(),
+      supabase
+        .from('participant_notifications')
+        .select('id')
+        .eq('participant_id', owner.id)
+        .eq('team_id', first.teamId)
+        .eq('type', 'team_invitation_declined'),
+    ]);
+
+    expect(firstInvitation?.status).toBe('Declined');
+    expect(secondInvitation?.status).toBe('Pending');
+    expect(firstVacancy?.status).toBe('Open');
+    expect(memberships ?? []).toHaveLength(0);
+    expect(availability?.is_looking).toBe(true);
+    expect(ownerAlertsBeforeRepeat ?? []).toHaveLength(1);
+
+    const { data: repeated, error: repeatErr } = await supabase.rpc(
+      'decline_team_invitation',
+      {
+        p_actor: invitee.id,
+        p_invitation: firstIssued.invitation.id,
+      }
+    );
+    expect(repeatErr).toBeNull();
+    expect(repeated).toMatchObject({ changed: false, idempotent: true });
+
+    const { data: ownerAlertsAfterRepeat } = await supabase
+      .from('participant_notifications')
+      .select('id')
+      .eq('participant_id', owner.id)
+      .eq('team_id', first.teamId)
+      .eq('type', 'team_invitation_declined');
+    expect(ownerAlertsAfterRepeat ?? []).toHaveLength(1);
+  });
+
   it('accept_team_invitation atomically confirms membership, fills the slot, and clears availability (#180)', async () => {
     const owner = await createParticipant('accept-owner');
     const invitee = await createParticipant('accept-invitee');

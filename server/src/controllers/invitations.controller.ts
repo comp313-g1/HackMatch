@@ -261,7 +261,7 @@ export async function getInvitationDetailHandler(
 
 /**
  * POST /api/invitations/:id/respond
- * US-019 / #179 — accept (FR-051 revalidation) or decline (FR-058).
+ * US-019 / #179 / #182 — accept atomically or decline with persisted owner alert.
  */
 export async function respondInvitationHandler(
   req: Request,

@@ -27,6 +27,23 @@ export interface TeamListingPatch {
   communicationLink?: string | null;
 }
 
+export interface DeclineInvitationEffects {
+  invitationChanged: boolean;
+  ownerAlertCreated: boolean;
+  inviteeAlertCreated: boolean;
+  availabilityChanged: false;
+  membershipChanged: false;
+  vacancyChanged: false;
+}
+
+export interface InvitationStatusAlertRecord {
+  audience: string;
+  type: string;
+  message: string;
+  notificationId?: string;
+  createdAt?: string;
+}
+
 export interface OpenTeamRecord {
   team: Team;
   event: { status: 'Published' | 'Archived' | 'Disabled'; end_date: string };
@@ -180,7 +197,7 @@ export interface ITeamsRepository {
     alerts: Array<{ audience: string; type: string; message: string }>;
     notice: string;
   }>;
-  /** Invitee decline Pending invitation (US-019 / #179 / FR-058); idempotent. */
+  /** Invitee decline Pending invitation (US-019 / #182 / FR-058); idempotent. */
   declineTeamInvitation(
     actorId: string,
     invitationId: string
@@ -190,7 +207,8 @@ export interface ITeamsRepository {
     idempotent: boolean;
     teamName: string;
     vacancyRole: string | null;
-    alerts: Array<{ audience: string; type: string; message: string }>;
+    alerts: InvitationStatusAlertRecord[];
+    effects: DeclineInvitationEffects;
     notice: string;
   }>;
   /** US-019 / #181 — FR-056/057 cascade helper (also usable after application approval). */
@@ -857,7 +875,8 @@ export const teamsRepository: ITeamsRepository = {
     idempotent: boolean;
     teamName: string;
     vacancyRole: string | null;
-    alerts: Array<{ audience: string; type: string; message: string }>;
+    alerts: InvitationStatusAlertRecord[];
+    effects: DeclineInvitationEffects;
     notice: string;
   }> {
     const client = getSupabaseClient();
@@ -867,14 +886,27 @@ export const teamsRepository: ITeamsRepository = {
     });
     if (error) throw error;
     const payload = data as {
+      error?: string;
+      details?: Record<string, unknown>;
       invitation: TeamRequest;
       changed: boolean;
       idempotent: boolean;
       teamName: string;
       vacancyRole?: string | null;
-      alerts?: Array<{ audience: string; type: string; message: string }>;
+      alerts?: InvitationStatusAlertRecord[];
+      effects?: DeclineInvitationEffects;
       notice: string;
     };
+
+    // Clock expiry must commit, so the RPC reports it as a failure payload.
+    if (payload.error) {
+      throw {
+        message: payload.error,
+        code: 'P0001',
+        detail: JSON.stringify(payload.details ?? {}),
+      };
+    }
+
     return {
       invitation: payload.invitation,
       changed: Boolean(payload.changed),
@@ -882,6 +914,14 @@ export const teamsRepository: ITeamsRepository = {
       teamName: payload.teamName,
       vacancyRole: payload.vacancyRole ?? null,
       alerts: payload.alerts ?? [],
+      effects: payload.effects ?? {
+        invitationChanged: Boolean(payload.changed),
+        ownerAlertCreated: false,
+        inviteeAlertCreated: false,
+        availabilityChanged: false,
+        membershipChanged: false,
+        vacancyChanged: false,
+      },
       notice: payload.notice,
     };
   },

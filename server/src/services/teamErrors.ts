@@ -89,7 +89,7 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   INVITATION_EXPIRED: {
     status: 409,
     message:
-      'This invitation has expired after 48 hours and can no longer be accepted.',
+      'This invitation has expired after 48 hours and can no longer be accepted or declined.',
   },
   INVITATION_NOT_ACCEPTABLE: {
     status: 409,

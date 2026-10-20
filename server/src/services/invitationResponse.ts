@@ -9,7 +9,7 @@ import {
   isInvitationExpiredByClock,
   isInvitationPendingAcceptable,
 } from '../db/invitationModel.js';
-import { teamsRepository } from '../db/teams.repository.js';
+import { teamsRepository, type DeclineInvitationEffects } from '../db/teams.repository.js';
 import type { TeamRequest } from '../db/types.js';
 import { acceptInvitation } from './invitationAcceptance.js';
 import { TeamServiceError, toTeamServiceError } from './teamErrors.js';
@@ -162,6 +162,8 @@ export interface InvitationStatusAlert {
   audience: 'invitee' | 'owner' | string;
   type: string;
   message: string;
+  notificationId?: string;
+  createdAt?: string;
 }
 
 export interface InvitationRespondResult {
@@ -211,14 +213,16 @@ export interface InvitationRespondResult {
     teamRequestsCanceled: number;
     teamNowFull: boolean;
   };
+  /** Explicit no-side-effect guarantees for a decline (#182 / FR-058). */
+  effects?: DeclineInvitationEffects;
   alerts: InvitationStatusAlert[];
   notice: string;
 }
 
 /**
- * Addressed PART responds to a Pending invitation (US-019 / #179 / #180 / #181).
+ * Addressed PART responds to a Pending invitation (US-019 / #179–#182).
  * - accept: membership commit (#180) + competing-request cascade (#181)
- * - decline: FR-058 Pending → Declined with owner/invitee alerts
+ * - decline: FR-058 Pending → Declined with owner/invitee alerts (#182)
  */
 export async function respondToInvitation(
   actorParticipantId: string,
@@ -312,6 +316,7 @@ export async function respondToInvitation(
       },
       changed: result.changed,
       idempotent: result.idempotent,
+      effects: result.effects,
       alerts: result.alerts,
       notice: result.notice,
     };
