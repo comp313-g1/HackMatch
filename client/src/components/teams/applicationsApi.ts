@@ -182,6 +182,38 @@ export interface OwnerApplicationReviewResponse {
   message: string | null;
 }
 
+export interface ApplicationApprovalResult {
+  approved: true;
+  application: {
+    id: string;
+    teamId: string;
+    eventId: string;
+    vacancyId: string | null;
+    applicantParticipantId: string;
+    status: string;
+    statusLabel: string;
+    requestType: 'Application';
+    resolvedAt: string | null;
+    teamName: string;
+    vacancyRole: string;
+  };
+  membership: {
+    id: string;
+    teamId: string;
+    eventId: string;
+    participantId: string;
+    role: string;
+    status: string;
+    joinedAt: string;
+  };
+  vacancy: { id: string; role: string; status: string };
+  memberCount: number;
+  maxTeamSize: number;
+  availabilityCleared: boolean;
+  membershipCommitted: boolean;
+  notice: string;
+}
+
 /** GET /api/teams/:teamId/applications — owner-only Pending Review queue (#188). */
 export async function fetchTeamApplications(
   teamId: string
@@ -189,6 +221,19 @@ export async function fetchTeamApplications(
   return authCall(() =>
     authFetch(`/api/teams/${encodeURIComponent(teamId)}/applications`, {
       method: 'GET',
+    })
+  );
+}
+
+/** POST /api/applications/:applicationId/approve — atomic owner approval (#190). */
+export async function approveTeamApplication(
+  applicationId: string
+): Promise<ApplicationApprovalResult> {
+  return authCall(() =>
+    authFetch(`/api/applications/${encodeURIComponent(applicationId)}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
     })
   );
 }

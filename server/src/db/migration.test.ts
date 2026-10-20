@@ -21,6 +21,45 @@ describe('Supabase migration ordering', () => {
   });
 });
 
+describe('0031_approve_team_application.sql atomic approval DDL (#190)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0031_approve_team_application.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('creates a service-role-only security-definer approval function', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+approve_team_application/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/REVOKE\s+ALL[\s\S]*FROM\s+PUBLIC\s*,\s*anon\s*,\s*authenticated/i);
+    expect(sql).toMatch(/GRANT\s+EXECUTE[\s\S]*TO\s+service_role/i);
+  });
+
+  it('serializes participant-event and team placement with the invitation lock keys', () => {
+    expect(sql).toMatch(/pg_advisory_xact_lock[\s\S]*hackmatch:accept:participant-event/i);
+    expect(sql).toMatch(/pg_advisory_xact_lock[\s\S]*hackmatch:accept:team/i);
+  });
+
+  it('revalidates owner, pending state, recruiting state, applicant, slot, and capacity', () => {
+    expect(sql).toMatch(/owner_participant_id\s*<>\s*p_actor/i);
+    expect(sql).toMatch(/v_req\.status\s*<>\s*'Pending'/i);
+    expect(sql).toMatch(/v_team\.recruitment_status\s*<>\s*'Open'/i);
+    expect(sql).toMatch(/v_event\.status\s*<>\s*'Published'/i);
+    expect(sql).toMatch(/v_applicant\.is_verified\s+IS\s+NOT\s+TRUE/i);
+    expect(sql).toMatch(/v_vacancy\.status\s*<>\s*'Open'/i);
+    expect(sql).toMatch(/v_member_count\s*>=\s*v_max_team_size/i);
+    expect(sql).toMatch(/uq_team_memberships_confirmed_per_event|unique_violation/i);
+  });
+
+  it('commits availability, membership, vacancy, request, and applicant alert together', () => {
+    expect(sql).toMatch(/UPDATE\s+event_availability[\s\S]*event_id\s*=\s*v_team\.event_id/i);
+    expect(sql).toMatch(/INSERT\s+INTO\s+team_memberships/i);
+    expect(sql).toMatch(/UPDATE\s+team_vacancies[\s\S]*status\s*=\s*'Filled'/i);
+    expect(sql).toMatch(/UPDATE\s+team_requests[\s\S]*status\s*=\s*'Accepted'/i);
+    expect(sql).toMatch(/team_application_approved/i);
+  });
+});
+
 describe('0001_create_participants_table.sql Migration DDL', () => {
   const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0001_create_participants_table.sql');
   const sql = fs.readFileSync(migrationPath, 'utf-8');

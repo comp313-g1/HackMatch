@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   APPLICATION_MESSAGE_MAX_LENGTH,
   MAX_PENDING_APPLICATIONS_PER_EVENT,
+  approveTeamApplication,
   fetchMyApplications,
   fetchTeamApplications,
   isApplicationMessageTooLong,
@@ -230,6 +231,59 @@ describe('applicationsApi (US-018 / #171)', () => {
       method: 'GET',
     });
     expect(result.empty).toBe(true);
+  });
+
+  it('POSTs an owner approval to the atomic application endpoint (#190)', async () => {
+    authFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          approved: true,
+          application: {
+            id: 'app-1',
+            teamId: 't1',
+            eventId: 'e1',
+            vacancyId: 'v1',
+            applicantParticipantId: 'p1',
+            status: 'Accepted',
+            statusLabel: 'Accepted',
+            requestType: 'Application',
+            resolvedAt: '2026-10-20T18:00:00.000Z',
+            teamName: 'Team',
+            vacancyRole: 'Backend',
+          },
+          membership: {
+            id: 'member-1',
+            teamId: 't1',
+            eventId: 'e1',
+            participantId: 'p1',
+            role: 'Member',
+            status: 'Confirmed',
+            joinedAt: '2026-10-20T18:00:00.000Z',
+          },
+          vacancy: { id: 'v1', role: 'Backend', status: 'Filled' },
+          memberCount: 3,
+          maxTeamSize: 4,
+          availabilityCleared: true,
+          membershipCommitted: true,
+          notice: 'Application approved and membership confirmed.',
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await approveTeamApplication('app-1');
+
+    expect(authFetchMock).toHaveBeenCalledWith('/api/applications/app-1/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(result).toMatchObject({
+      approved: true,
+      application: { status: 'Accepted' },
+      membership: { status: 'Confirmed' },
+      vacancy: { status: 'Filled' },
+    });
   });
 
   it('surfaces APPLICATION_PENDING_LIMIT with details (#174 / FR-054)', async () => {

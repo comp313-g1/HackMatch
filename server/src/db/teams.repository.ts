@@ -166,6 +166,25 @@ export interface ITeamsRepository {
     participantId: string,
     teamId: string
   ): Promise<Pick<TeamRequest, 'id'> | null>;
+  /** Load a single Application row for owner authorization (#190). */
+  findApplicationById(applicationId: string): Promise<TeamRequest | null>;
+  /** US-020 / #190 — atomically approve an application and confirm membership. */
+  approveTeamApplication(
+    actorId: string,
+    applicationId: string
+  ): Promise<{
+    approved: true;
+    application: TeamRequest;
+    membership: TeamMembership;
+    vacancy: TeamVacancy;
+    teamName: string;
+    vacancyRole: string;
+    memberCount: number;
+    maxTeamSize: number;
+    availabilityCleared: boolean;
+    membershipCommitted: boolean;
+    notice: string;
+  }>;
   /**
    * US-017 / #164 pending-quota probe: existing Pending invite for invitee/team
    * and/or for the vacancy slot (may be the same row).
@@ -790,6 +809,61 @@ export const teamsRepository: ITeamsRepository = {
       .maybeSingle();
     if (error) throw error;
     return (data as TeamRequest | null) ?? null;
+  },
+
+  async findApplicationById(applicationId: string): Promise<TeamRequest | null> {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('team_requests')
+      .select('*')
+      .eq('id', applicationId)
+      .eq('request_type', 'Application')
+      .maybeSingle();
+    if (error) throw error;
+    return (data as TeamRequest | null) ?? null;
+  },
+
+  async approveTeamApplication(
+    actorId: string,
+    applicationId: string
+  ): Promise<{
+    approved: true;
+    application: TeamRequest;
+    membership: TeamMembership;
+    vacancy: TeamVacancy;
+    teamName: string;
+    vacancyRole: string;
+    memberCount: number;
+    maxTeamSize: number;
+    availabilityCleared: boolean;
+    membershipCommitted: boolean;
+    notice: string;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('approve_team_application', {
+      p_actor: actorId,
+      p_application: applicationId,
+    });
+    if (error) throw error;
+    const payload = data as {
+      approved: boolean;
+      application: TeamRequest;
+      membership: TeamMembership;
+      vacancy: TeamVacancy;
+      teamName: string;
+      vacancyRole: string;
+      memberCount: number;
+      maxTeamSize: number;
+      availabilityCleared: boolean;
+      membershipCommitted: boolean;
+      notice: string;
+    };
+    return {
+      ...payload,
+      approved: true,
+      availabilityCleared: Boolean(payload.availabilityCleared),
+      membershipCommitted: payload.membershipCommitted !== false,
+    };
   },
 
   async markInvitationExpiredIfDue(

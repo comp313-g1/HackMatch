@@ -1,6 +1,6 @@
 import React from 'react';
-import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { ApplicationReviewCard } from './ApplicationReviewCard';
 import type { OwnerApplicationReviewItem } from './applicationsApi';
 
@@ -89,6 +89,25 @@ describe('ApplicationReviewCard (US-020 / #189 / FR-060)', () => {
 
     expect(screen.queryByText(/shared teammate contact/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/account email/i)).not.toBeInTheDocument();
+  });
+
+  it('offers approval and exposes an in-progress disabled state (#190)', () => {
+    const onApprove = vi.fn();
+    const { rerender } = render(
+      <ApplicationReviewCard application={application} onApprove={onApprove} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /approve application/i }));
+    expect(onApprove).toHaveBeenCalledWith(application.id);
+
+    rerender(
+      <ApplicationReviewCard
+        application={application}
+        onApprove={onApprove}
+        approving
+      />
+    );
+    expect(screen.getByRole('button', { name: /approving/i })).toBeDisabled();
   });
 });
 
