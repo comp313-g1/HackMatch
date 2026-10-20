@@ -16,43 +16,49 @@ const winning: CompetingRequestRow = {
 };
 
 describe('placementCascade pure planners (US-019 / #181 / FR-056 / FR-057)', () => {
-  it('cancels other event invitations and withdraws other applications for the same PART', () => {
+  it('cancels other pending requests for the same participant on the same team without canceling cross-team requests', () => {
     const pending: CompetingRequestRow[] = [
       winning,
       {
+        id: 'inv-same-team-other-slot',
+        participantId: 'part-a',
+        teamId: 'team-1',
+        vacancyId: 'vac-2',
+        requestType: 'Invitation',
+        status: 'Pending',
+      },
+      {
+        id: 'app-same-team-other-slot',
+        participantId: 'part-a',
+        teamId: 'team-1',
+        vacancyId: 'vac-3',
+        requestType: 'Application',
+        status: 'Pending',
+      },
+      {
         id: 'inv-other-team',
         participantId: 'part-a',
-        eventId: 'event-1',
         teamId: 'team-2',
         vacancyId: 'vac-9',
         requestType: 'Invitation',
         status: 'Pending',
       },
       {
-        id: 'app-same-event',
+        id: 'app-other-team',
         participantId: 'part-a',
-        eventId: 'event-1',
         teamId: 'team-3',
         vacancyId: 'vac-8',
         requestType: 'Application',
-        status: 'Pending',
-      },
-      {
-        id: 'inv-other-event',
-        participantId: 'part-a',
-        eventId: 'event-2',
-        teamId: 'team-4',
-        vacancyId: 'vac-7',
-        requestType: 'Invitation',
         status: 'Pending',
       },
     ];
 
     const plan = planCompetingRequestCancellation(winning, pending, false);
 
-    expect(plan.eventInvitationIds).toEqual(['inv-other-team']);
-    expect(plan.eventApplicationIds).toEqual(['app-same-event']);
-    expect(plan.eventInvitationIds).not.toContain('inv-other-event');
+    expect(plan.eventInvitationIds).toEqual(['inv-same-team-other-slot']);
+    expect(plan.eventApplicationIds).toEqual(['app-same-team-other-slot']);
+    expect(plan.eventInvitationIds).not.toContain('inv-other-team');
+    expect(plan.eventApplicationIds).not.toContain('app-other-team');
   });
 
   it('cancels remaining Pending requests for the filled slot', () => {

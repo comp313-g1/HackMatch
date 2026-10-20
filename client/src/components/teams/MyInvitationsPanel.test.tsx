@@ -295,6 +295,100 @@ describe('MyInvitationsPanel (US-019 / #179)', () => {
     expect(respondMock).toHaveBeenCalledWith('inv-1', 'accept');
   });
 
+  it('accepts event-free invitation and calls onViewRoster with teamId when eventId is omitted', async () => {
+    const eventFreeInv: invitationsApi.InviteeInvitationListItem = {
+      id: 'inv-event-free',
+      teamId: 't-event-free',
+      vacancyId: 'v1',
+      slotId: 'v1',
+      inviteeParticipantId: 'p1',
+      status: 'Pending',
+      statusLabel: 'Pending',
+      requestType: 'Invitation',
+      expiresAt: '2099-10-21T12:00:00.000Z',
+      createdAt: '2026-10-19T12:00:00.000Z',
+      resolvedAt: null,
+      cancelReason: null,
+      teamName: 'Decoupled Team',
+      vacancyRole: 'Fullstack',
+      expiredByClock: false,
+      canRespond: true,
+    };
+
+    fetchListMock.mockResolvedValue({
+      invitations: [eventFreeInv],
+      empty: false,
+      message: null,
+    });
+    fetchDetailMock.mockResolvedValue({
+      ...eventFreeInv,
+      permittedDetails: {
+        teamName: eventFreeInv.teamName,
+        vacancyRole: eventFreeInv.vacancyRole,
+        expiresAt: eventFreeInv.expiresAt,
+        statusLabel: 'Pending',
+      },
+    });
+    respondMock.mockResolvedValue({
+      decision: 'accept',
+      membershipCommitted: true,
+      invitation: {
+        ...eventFreeInv,
+        status: 'Accepted',
+        statusLabel: 'Accepted',
+      },
+      changed: true,
+      idempotent: false,
+      eligible: true,
+      membership: {
+        id: 'm1',
+        teamId: 't-event-free',
+        participantId: 'p1',
+        role: 'Member',
+        status: 'Confirmed',
+        joinedAt: '2026-10-20T12:00:00.000Z',
+      },
+      vacancy: {
+        id: 'v1',
+        status: 'Filled',
+        role: 'Fullstack',
+      },
+      memberCount: 2,
+      maxTeamSize: 4,
+      availabilityCleared: true,
+      cascade: {
+        eventInvitationsCanceled: 0,
+        eventApplicationsWithdrawn: 0,
+        slotRequestsCanceled: 0,
+        teamRequestsCanceled: 0,
+        teamNowFull: false,
+      },
+      alerts: [],
+      notice: 'Invitation accepted. Team membership is confirmed.',
+    });
+
+    const onViewRoster = vi.fn();
+    render(<MyInvitationsPanel onViewRoster={onViewRoster} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('select-invitation-inv-event-free')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('select-invitation-inv-event-free'));
+    await waitFor(() => {
+      expect(screen.getByTestId('accept-invitation-inv-event-free')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('accept-invitation-inv-event-free'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('invitation-respond-success')).toHaveTextContent(
+        /membership is confirmed/i
+      );
+    });
+    fireEvent.click(screen.getByTestId('roster-view-team'));
+    expect(onViewRoster).toHaveBeenCalledWith('t-event-free');
+    expect(respondMock).toHaveBeenCalledWith('inv-event-free', 'accept');
+  });
+
   it('shows the winning concurrent outcome, closes actions, and keeps selection (#184)', async () => {
     fetchListMock.mockResolvedValue({
       invitations: [pendingInv],

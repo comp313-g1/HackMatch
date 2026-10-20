@@ -107,6 +107,9 @@ describe('assertApplicationSubmissionContext (US-018 / #173)', () => {
             },
           ],
         }),
+        listConfirmedParticipantIdsForTeam: vi
+          .fn()
+          .mockResolvedValue(overrides?.confirmedIds ?? [ownerParticipant.id]),
         listConfirmedParticipantIdsForEvent: vi
           .fn()
           .mockResolvedValue(overrides?.confirmedIds ?? [ownerParticipant.id]),
@@ -156,7 +159,7 @@ describe('assertApplicationSubmissionContext (US-018 / #173)', () => {
     ).rejects.toMatchObject({ code: 'VACANCY_NOT_OPEN', status: 409 });
   });
 
-  it('rejects confirmed event member (US-018-T6)', async () => {
+  it('rejects confirmed team member (US-018-T6)', async () => {
     await expect(
       assertApplicationSubmissionContext(
         {
@@ -167,6 +170,19 @@ describe('assertApplicationSubmissionContext (US-018 / #173)', () => {
         passingDeps({ confirmedIds: [ownerParticipant.id, otherParticipant.id] })
       )
     ).rejects.toMatchObject({ code: 'APPLICANT_ALREADY_CONFIRMED', status: 409 });
+  });
+
+  it('allows a participant confirmed on another team to apply to target team', async () => {
+    await expect(
+      assertApplicationSubmissionContext(
+        {
+          actorParticipantId: otherParticipant.id,
+          teamId: sampleTeamId,
+          vacancyId: sampleVacancyId,
+        },
+        passingDeps({ confirmedIds: [ownerParticipant.id] })
+      )
+    ).resolves.toBeUndefined();
   });
 
   it('rejects unverified applicant before RPC (US-018-T6)', async () => {

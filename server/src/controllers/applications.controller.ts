@@ -124,15 +124,17 @@ export async function submitApplicationHandler(
   try {
     const actorId = req.participant!.id;
     const teamId = String(req.params.teamId || '').trim();
-    const { vacancyId, message } = req.body as {
-      vacancyId: string;
+    const { vacancyId, slotId, message } = req.body as {
+      vacancyId?: string;
+      slotId?: string;
       message: string | null;
     };
+    const targetVacancyId = (vacancyId ?? slotId ?? '').trim();
 
     const application = await submitApplication({
       actorParticipantId: actorId,
       teamId,
-      vacancyId,
+      vacancyId: targetVacancyId,
       message,
     });
 

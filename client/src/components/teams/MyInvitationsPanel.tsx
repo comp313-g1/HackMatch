@@ -15,13 +15,14 @@ export interface MyInvitationsPanelProps {
   disabled?: boolean;
   refreshKey?: number;
   onStatusNotice?: (notice: string) => void;
-  /** Navigate to the event team workspace after a successful accept (#185). */
-  onViewRoster?: (eventId: string) => void;
+  /** Navigate to the event or team workspace after a successful accept (#185). */
+  onViewRoster?: (teamOrEventId: string, teamId?: string) => void;
 }
 
 interface AcceptRosterSnapshot {
   teamName: string;
-  eventId: string;
+  teamId: string;
+  eventId?: string;
   vacancyRole: string | null;
   vacancyStatus: string | null;
   memberCount: number | null;
@@ -40,7 +41,8 @@ function acceptanceConflictMessage(
     case 'ALREADY_ACCEPTED':
       return 'This invitation was already accepted in another request and cannot be accepted again.';
     case 'EVENT_MEMBERSHIP_CONFIRMED':
-      return 'Another invitation was accepted first, so this invitation was canceled. You are already placed for this event.';
+    case 'INVITEE_ALREADY_CONFIRMED':
+      return 'Another invitation was accepted first, so this invitation was canceled. You are already a confirmed member of this team.';
     case 'SLOT_FILLED':
       return 'Another participant accepted first and filled this vacancy. This invitation was canceled.';
     case 'TEAM_FULL':
@@ -77,6 +79,7 @@ export function MyInvitationsPanel({
   function toAcceptRoster(result: InvitationRespondResult): AcceptRosterSnapshot {
     return {
       teamName: result.invitation.teamName,
+      teamId: result.invitation.teamId,
       eventId: result.invitation.eventId,
       vacancyRole: result.vacancy?.role ?? result.invitation.vacancyRole,
       vacancyStatus: result.vacancy?.status ?? null,
@@ -303,7 +306,10 @@ export function MyInvitationsPanel({
             viewState="success"
             onViewTeam={
               onViewRoster
-                ? () => onViewRoster(acceptRoster.eventId)
+                ? () =>
+                    onViewRoster(
+                      acceptRoster.eventId || acceptRoster.teamId
+                    )
                 : undefined
             }
           />

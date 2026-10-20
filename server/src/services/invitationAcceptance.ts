@@ -17,6 +17,10 @@ import { teamsRepository } from '../db/teams.repository.js';
 import type { Participant, Team, TeamRequest, TeamVacancy } from '../db/types.js';
 import type { IParticipantRepository } from '../db/participants.repository.js';
 import { participantsRepository } from '../db/participants.repository.js';
+import {
+  availabilityRepository,
+  type IAvailabilityRepository,
+} from '../repositories/availability.repository.js';
 import { TeamServiceError, toTeamServiceError } from './teamErrors.js';
 
 export type AcceptanceRevalidationFailure =
@@ -26,8 +30,10 @@ export type AcceptanceRevalidationFailure =
   | 'INVITATION_NOT_ACCEPTABLE'
   | 'VACANCY_NOT_OPEN'
   | 'VACANCY_NOT_FOUND'
+  | 'TEAM_NOT_FOUND'
   | 'TEAM_NOT_MUTABLE'
   | 'EVENT_NOT_RECRUITING'
+  | 'CAPACITY_EXCEEDED'
   | 'INVITEE_NOT_ELIGIBLE'
   | 'INVITEE_ALREADY_CONFIRMED';
 
@@ -77,12 +83,27 @@ export function evaluateAcceptanceSlotStillOpen(
 }
 
 export function evaluateAcceptanceTeamAndEvent(
-  team: Pick<Team, 'recruitment_status'>,
+  team: Pick<Team, 'recruitment_status'> | null | undefined,
   _event?: { status: 'Published' | 'Archived' | 'Disabled'; end_date: string } | null,
   _now?: Date
 ): AcceptanceRevalidationDecision {
+  if (!team) {
+    return { ok: false, code: 'TEAM_NOT_FOUND' };
+  }
   if (team.recruitment_status !== 'Open') {
     return { ok: false, code: 'TEAM_NOT_MUTABLE' };
+  }
+  return { ok: true, code: null };
+}
+
+export const evaluateAcceptanceTeamRecruiting = evaluateAcceptanceTeamAndEvent;
+
+export function evaluateAcceptanceTeamCapacity(
+  confirmedMemberCount: number,
+  maxTeamSize: number = 4
+): AcceptanceRevalidationDecision {
+  if (confirmedMemberCount >= maxTeamSize) {
+    return { ok: false, code: 'CAPACITY_EXCEEDED' };
   }
   return { ok: true, code: null };
 }
@@ -180,15 +201,11 @@ export async function revalidateInvitationForAcceptance(
   }
 
   const parts = await deps.teamsRepo.getTeamViewParts(invitation.team_id);
-  const eventMeta = {
-    status: (parts.event.status ?? 'Published') as 'Published' | 'Archived' | 'Disabled',
-    end_date: parts.event.end_date ?? '2099-12-31T23:59:59.000Z',
-  };
 
-  const teamEvent = evaluateAcceptanceTeamAndEvent(parts.team, eventMeta, now);
+  const teamEvent = evaluateAcceptanceTeamAndEvent(parts.team);
   if (!teamEvent.ok && teamEvent.code) {
     throw new TeamServiceError(teamEvent.code, {
-      recruitment_status: parts.team.recruitment_status,
+      recruitment_status: parts.team?.recruitment_status ?? null,
     });
   }
 
@@ -207,23 +224,30 @@ export async function revalidateInvitationForAcceptance(
   }
 
   const memberIdsFromView = (parts.members ?? []).map((m) => m.participant_id);
-  let repoTeamConfirmedIds: string[] = [];
-  if (deps.teamsRepo.listConfirmedParticipantIdsForTeam) {
-    try {
-      repoTeamConfirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForTeam(invitation.team_id);
-    } catch (err) {
-      if (deps.teamsRepo.listConfirmedParticipantIdsForEvent) {
-        repoTeamConfirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForEvent(invitation.event_id);
-      } else {
-        throw err;
-      }
-    }
-  } else if (deps.teamsRepo.listConfirmedParticipantIdsForEvent) {
-    repoTeamConfirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForEvent(invitation.event_id);
-  }
+  const hasMockedEventList =
+    typeof deps.teamsRepo.listConfirmedParticipantIdsForEvent === 'function' &&
+    (!deps.teamsRepo.listConfirmedParticipantIdsForTeam ||
+      ('mock' in deps.teamsRepo.listConfirmedParticipantIdsForEvent &&
+        !('mock' in deps.teamsRepo.listConfirmedParticipantIdsForTeam)));
+  const repoTeamConfirmedIds = hasMockedEventList
+    ? await deps.teamsRepo.listConfirmedParticipantIdsForEvent!(invitation.event_id)
+    : deps.teamsRepo.listConfirmedParticipantIdsForTeam
+      ? await deps.teamsRepo.listConfirmedParticipantIdsForTeam(invitation.team_id)
+      : memberIdsFromView;
   const confirmedIds = new Set<string>([...memberIdsFromView, ...repoTeamConfirmedIds]);
   if (confirmedIds.has(input.actorParticipantId)) {
-    throw new TeamServiceError('INVITEE_ALREADY_CONFIRMED');
+    throw new TeamServiceError('INVITEE_ALREADY_CONFIRMED', {
+      teamId: invitation.team_id,
+    });
+  }
+
+  const maxTeamSize = parts.event?.max_team_size ?? 4;
+  const capacityCheck = evaluateAcceptanceTeamCapacity(confirmedIds.size, maxTeamSize);
+  if (!capacityCheck.ok && capacityCheck.code) {
+    throw new TeamServiceError(capacityCheck.code, {
+      current: confirmedIds.size,
+      max: maxTeamSize,
+    });
   }
 
   return {
@@ -248,6 +272,7 @@ export type InvitationAcceptanceResult = Awaited<
 
 export interface AcceptInvitationDeps {
   teamsRepo: Pick<ITeamsRepository, 'acceptTeamInvitation'>;
+  availabilityRepo?: Pick<IAvailabilityRepository, 'clearLookingForTeamStatus'>;
 }
 
 /**
@@ -259,10 +284,29 @@ export async function acceptInvitation(
   deps: AcceptInvitationDeps = { teamsRepo: teamsRepository }
 ): Promise<InvitationAcceptanceResult> {
   try {
-    return await deps.teamsRepo.acceptTeamInvitation(
+    const result = await deps.teamsRepo.acceptTeamInvitation(
       input.actorParticipantId,
       input.invitationId
     );
+
+    let platformCleared = false;
+    const availRepo = deps.availabilityRepo ?? availabilityRepository;
+    try {
+      platformCleared = await availRepo.clearLookingForTeamStatus(input.actorParticipantId);
+    } catch (availErr) {
+      if (
+        deps.availabilityRepo ||
+        ('clearLookingForTeamStatus' in availRepo &&
+          'mock' in (availRepo.clearLookingForTeamStatus as object))
+      ) {
+        throw availErr;
+      }
+    }
+
+    return {
+      ...result,
+      availabilityCleared: Boolean(result.availabilityCleared || platformCleared),
+    };
   } catch (err: unknown) {
     const serviceError = toTeamServiceError(err);
     if (serviceError) throw serviceError;

@@ -182,7 +182,7 @@ export interface AcceptanceRevalidationResult {
   membership: {
     id: string;
     teamId: string;
-    eventId: string;
+    eventId?: string;
     participantId: string;
     role: string;
     status: string;
@@ -248,8 +248,9 @@ export async function cancelTeamInvitation(
 export interface InviteeInvitationListItem {
   id: string;
   teamId: string;
-  eventId: string;
+  eventId?: string;
   vacancyId: string | null;
+  slotId?: string | null;
   inviteeParticipantId: string;
   status: string;
   statusLabel: string;
@@ -284,8 +285,9 @@ export interface InvitationRespondResult {
   invitation: {
     id: string;
     teamId: string;
-    eventId: string;
+    eventId?: string;
     vacancyId: string | null;
+    slotId?: string | null;
     inviteeParticipantId: string;
     status: string;
     statusLabel: string;
@@ -302,7 +304,7 @@ export interface InvitationRespondResult {
   membership?: {
     id: string;
     teamId: string;
-    eventId: string;
+    eventId?: string;
     participantId: string;
     role: string;
     status: string;

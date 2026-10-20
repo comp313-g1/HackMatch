@@ -48,6 +48,7 @@ export interface OpenTeamsFilterErrors {
 export interface OpenTeamApplyTarget {
   teamId: string;
   vacancyId: string;
+  slotId?: string;
   role: ParticipantPrimaryRole;
   teamName: string;
 }

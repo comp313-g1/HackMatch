@@ -62,11 +62,10 @@ function MemberRow({
       <div className="flex items-center gap-2 min-w-0">
         <span className="font-medium text-forest-900 truncate">{member.displayName}</span>
         <span
-          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide border ${
-            member.role === 'Owner'
+          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide border ${member.role === 'Owner'
               ? 'bg-cream-100 text-ink border-cream-300'
               : 'bg-white text-ink-muted border-cream-200'
-          }`}
+            }`}
         >
           {member.role}
         </span>
@@ -158,7 +157,7 @@ export function RosterStatusView({
         className="p-4 text-center text-xs text-ink-muted border border-dashed border-cream-300 rounded-lg"
         data-testid="roster-status-empty"
       >
-        {emptyMessage || 'You are not on a team roster for this event yet.'}
+        {emptyMessage || 'You are not on a team roster yet.'}
       </div>
     );
   }
@@ -251,7 +250,7 @@ export function RosterStatusView({
           <dd className="font-semibold text-forest-900" data-testid="roster-your-status">
             {snapshot?.membershipStatus ||
               (viewerParticipantId &&
-              members.find((m) => m.participantId === viewerParticipantId)?.role) ||
+                members.find((m) => m.participantId === viewerParticipantId)?.role) ||
               'Member'}
             {snapshot?.membershipRole ? ` · ${snapshot.membershipRole}` : ''}
           </dd>
@@ -274,7 +273,7 @@ export function RosterStatusView({
             </>
           ) : null}
           {snapshot.availabilityCleared ? (
-            <span className="block mt-1">Looking-for-Team was cleared for this event.</span>
+            <span className="block mt-1">Looking-for-Team was cleared across the platform.</span>
           ) : null}
         </p>
       ) : null}

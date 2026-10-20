@@ -218,9 +218,14 @@ export async function leaveTeam(
   availabilityRestored: boolean;
   notice: string;
   leftParticipantId: string;
+  teamId: string;
 }> {
   try {
-    return await deps.repo.leaveTeam(actorId, teamId);
+    const result = await deps.repo.leaveTeam(actorId, teamId);
+    return {
+      ...result,
+      teamId: (result as { teamId?: string }).teamId ?? teamId,
+    };
   } catch (err: unknown) {
     const serviceError = toTeamServiceError(err);
     if (serviceError) throw serviceError;

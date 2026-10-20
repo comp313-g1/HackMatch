@@ -25,7 +25,6 @@ import {
   otherTokenHeader,
   ownerParticipant,
   sampleEventId,
-  sampleEventId2,
   sampleParts,
   sampleTeam,
   sampleTeamId,
@@ -119,10 +118,14 @@ describe('US-018 Applications Integration Suite (limits and permissions) #177', 
       },
       vacancies: [sampleVacancy],
     });
+    vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([
+      ownerParticipant.id,
+    ]);
     vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue([
       ownerParticipant.id,
     ]);
     vi.spyOn(teamsRepository, 'findPendingApplicationForTeam').mockResolvedValue(null);
+    vi.spyOn(teamsRepository, 'countPendingApplicationsForParticipant').mockResolvedValue(0);
     vi.spyOn(teamsRepository, 'countPendingApplicationsForEvent').mockResolvedValue(0);
   });
 
@@ -401,8 +404,26 @@ describe('US-018 Applications Integration Suite (limits and permissions) #177', 
       expect(submitSpy).not.toHaveBeenCalled();
     });
 
-    it('keeps another event independent of the per-event pending limit', async () => {
-      mockSuccessfulSubmission({ eventId: sampleEventId2, pendingCountForEvent: 1 });
+    it('enforces the atomic 3-pending-application cap platform-wide across teams with distinct backend shadow event_ids', async () => {
+      vi.spyOn(teamsRepository, 'countPendingApplicationsForParticipant').mockResolvedValue(3);
+      const submitSpy = vi.spyOn(teamsRepository, 'submitTeamApplication');
+
+      const res = await request(app)
+        .post(applyPath)
+        .set('Authorization', otherTokenHeader)
+        .send({ vacancyId: sampleVacancyId });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('APPLICATION_PENDING_LIMIT');
+      expect(res.body.errors._form).toMatch(/3 pending applications/i);
+      expect(submitSpy).not.toHaveBeenCalled();
+    });
+
+    it('allows a participant confirmed on another team to apply to an open slot on target team', async () => {
+      vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([
+        ownerParticipant.id,
+      ]);
+      mockSuccessfulSubmission();
 
       const res = await request(app)
         .post(applyPath)
@@ -411,13 +432,13 @@ describe('US-018 Applications Integration Suite (limits and permissions) #177', 
 
       expect(res.status).toBe(201);
       expect(res.body.application).toMatchObject({
-        eventId: sampleEventId2,
-        pendingCountForEvent: 1,
+        status: 'Pending',
+        vacancyId: sampleVacancyId,
       });
     });
 
-    it('blocks a participant already confirmed for the event before the RPC write', async () => {
-      vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue([
+    it('blocks a participant already confirmed for the target team before the RPC write', async () => {
+      vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([
         ownerParticipant.id,
         otherParticipant.id,
       ]);
@@ -453,40 +474,25 @@ describe('US-018 Applications Integration Suite (limits and permissions) #177', 
       {
         name: 'locked team',
         teamStatus: 'Locked' as const,
-        eventStatus: 'Published' as const,
         vacancies: [sampleVacancy],
         code: 'TEAM_NOT_MUTABLE',
       },
       {
-        name: 'archived event',
-        teamStatus: 'Open' as const,
-        eventStatus: 'Archived' as const,
-        vacancies: [sampleVacancy],
-        code: 'EVENT_NOT_RECRUITING',
-      },
-      {
         name: 'filled vacancy',
         teamStatus: 'Open' as const,
-        eventStatus: 'Published' as const,
         vacancies: [{ ...sampleVacancy, status: 'Filled' as const }],
         code: 'VACANCY_NOT_OPEN',
       },
       {
         name: 'vacancy belonging to no slot on the team',
         teamStatus: 'Open' as const,
-        eventStatus: 'Published' as const,
         vacancies: [],
         code: 'VACANCY_NOT_FOUND',
       },
-    ])('blocks $name before the RPC write', async ({ teamStatus, eventStatus, vacancies, code }) => {
+    ])('blocks $name before the RPC write', async ({ teamStatus, vacancies, code }) => {
       vi.spyOn(teamsRepository, 'getTeamViewParts').mockResolvedValue({
         ...sampleParts,
         team: { ...sampleTeam, recruitment_status: teamStatus },
-        event: {
-          max_team_size: 4,
-          status: eventStatus,
-          end_date: '2099-01-01T00:00:00.000Z',
-        },
         vacancies,
       });
       const submitSpy = vi.spyOn(teamsRepository, 'submitTeamApplication');

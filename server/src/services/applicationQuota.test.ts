@@ -49,6 +49,43 @@ describe('assertApplicationQuotas (US-018 / #174)', () => {
     vi.restoreAllMocks();
   });
 
+  it('passes when applicant has fewer than 3 Pending apps across the platform', async () => {
+    const participantCountSpy = vi.fn().mockResolvedValue(2);
+    await expect(
+      assertApplicationQuotas(
+        { actorParticipantId: otherParticipant.id, teamId: sampleTeamId },
+        {
+          teamsRepo: {
+            findTeamById: vi.fn().mockResolvedValue(sampleTeam),
+            findPendingApplicationForTeam: vi.fn().mockResolvedValue(null),
+            countPendingApplicationsForParticipant: participantCountSpy,
+          },
+        }
+      )
+    ).resolves.toBeUndefined();
+    expect(participantCountSpy).toHaveBeenCalledWith(otherParticipant.id);
+  });
+
+  it('throws APPLICATION_PENDING_LIMIT when applicant has 3 Pending apps across distinct teams', async () => {
+    const participantCountSpy = vi.fn().mockResolvedValue(3);
+    await expect(
+      assertApplicationQuotas(
+        { actorParticipantId: otherParticipant.id, teamId: sampleTeamId },
+        {
+          teamsRepo: {
+            findTeamById: vi.fn().mockResolvedValue(sampleTeam),
+            findPendingApplicationForTeam: vi.fn().mockResolvedValue(null),
+            countPendingApplicationsForParticipant: participantCountSpy,
+          },
+        }
+      )
+    ).rejects.toMatchObject({
+      code: 'APPLICATION_PENDING_LIMIT',
+      status: 409,
+    });
+    expect(participantCountSpy).toHaveBeenCalledWith(otherParticipant.id);
+  });
+
   it('passes when applicant has fewer than 3 Pending apps for the event', async () => {
     await expect(
       assertApplicationQuotas(

@@ -21,8 +21,11 @@ import type { TeamRequestStatus } from './types.js';
 
 export const APPLICATION_REQUEST_TYPE = 'Application' as const;
 
-/** FR-054 / US-018 AC 3 — concurrent Pending Review apps per PART per event. */
-export const MAX_PENDING_APPLICATIONS_PER_EVENT = 3;
+/** US-018 AC 3 — concurrent Pending Review apps per PART across the platform. */
+export const MAX_PENDING_APPLICATIONS = 3;
+
+/** FR-054 / US-018 AC 3 — legacy alias for concurrent Pending Review apps. */
+export const MAX_PENDING_APPLICATIONS_PER_EVENT = MAX_PENDING_APPLICATIONS;
 
 /** FR-053 / R-02 — optional applicant message length. */
 export const APPLICATION_MESSAGE_MAX_LENGTH = 250;

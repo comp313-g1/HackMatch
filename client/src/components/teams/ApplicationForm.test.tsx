@@ -62,7 +62,7 @@ describe('ApplicationForm (US-018 / #171)', () => {
     expect(screen.getByTestId('application-message-count')).toHaveTextContent(/5 \/ 250/i);
   });
 
-  it('shows FR-054 per-event pending quota hint (#174)', () => {
+  it('shows platform-wide pending quota hint (#174)', () => {
     render(
       <ApplicationForm
         target={target}
@@ -78,10 +78,7 @@ describe('ApplicationForm (US-018 / #171)', () => {
     );
 
     expect(screen.getByTestId('application-form-quota-hint')).toHaveTextContent(
-      /at most 3 pending applications per event/i
-    );
-    expect(screen.getByTestId('application-form-quota-hint')).toHaveTextContent(
-      /other events have separate limits/i
+      /at most 3 pending applications across the platform/i
     );
   });
 });
