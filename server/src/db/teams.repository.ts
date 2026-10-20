@@ -571,7 +571,7 @@ export const teamsRepository: ITeamsRepository = {
 
     return (rows || []).map((row: Record<string, unknown>) => {
       const vacancy = row.vacancy as { role?: string } | null;
-      const invitation = { ...row } as TeamRequest & { vacancy?: unknown };
+      const invitation = { ...row } as unknown as TeamRequest & { vacancy?: unknown };
       delete (invitation as { vacancy?: unknown }).vacancy;
       const profile = profileById.get(invitation.participant_id);
       return {

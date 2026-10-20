@@ -921,4 +921,41 @@ describe('0022_cancel_team_invitation.sql Migration DDL (US-017 / #166)', () => 
   });
 });
 
+describe('0023_create_team_application_model.sql Migration DDL (US-018 / #170)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0023_create_team_application_model.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('adds message column, Pending Application vacancy CHECK, and quota indexes', () => {
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+message\s+VARCHAR\(250\)/i);
+    expect(sql).toMatch(/chk_team_requests_application_message_length/i);
+    expect(sql).toMatch(/chk_team_requests_pending_application_requires_vacancy/i);
+    expect(sql).toMatch(/uq_team_requests_pending_application/i);
+    expect(sql).toMatch(/idx_team_requests_pending_application_per_event/i);
+    expect(sql).toMatch(/idx_team_requests_applicant_application_status/i);
+    expect(sql).toMatch(/idx_team_requests_team_application_status/i);
+  });
+
+  it('defines submit_team_application with atomic limit/duplicate checks and service_role grant', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+submit_team_application/i);
+    expect(sql).toMatch(/v_pending_count\s*>=\s*3/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'APPLICATION_PENDING_LIMIT'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'DUPLICATE_PENDING_APPLICATION'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'APPLICATION_MESSAGE_TOO_LONG'/i);
+    expect(sql).toMatch(/request_type\s*,\s*[\s\S]*'Application'/i);
+    expect(sql).toMatch(/expires_at[\s\S]*NULL/i);
+    expect(sql).toMatch(/team_application_submitted/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+submit_team_application\s*\(\s*UUID\s*,\s*UUID\s*,\s*UUID\s*,\s*TEXT\s*\)\s+TO\s+service_role/i
+    );
+  });
+});
+
 

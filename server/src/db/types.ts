@@ -332,6 +332,8 @@ export interface TeamRequest {
   resolved_at: string | null;
   /** Set for Invitation rows (48h TTL). Null for Application rows. */
   expires_at: string | null;
+  /** Optional applicant pitch for Application rows (max 250). Null for Invitation rows. */
+  message: string | null;
   created_at: string;
   updated_at: string;
 }
