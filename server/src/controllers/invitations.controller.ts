@@ -21,13 +21,13 @@ function fieldErrorsForInvitationCode(
     case 'VACANCY_NOT_FOUND':
     case 'VACANCY_NOT_OPEN':
     case 'SLOT_PENDING_INVITATION_EXISTS':
-      return { vacancyId: message };
+      return { vacancyId: message, slotId: message };
     case 'INVITEE_NOT_ELIGIBLE':
     case 'INVITEE_NOT_AVAILABLE':
     case 'INVITEE_ALREADY_CONFIRMED':
     case 'DUPLICATE_PENDING_INVITATION':
     case 'CANNOT_INVITE_SELF':
-      return { inviteeParticipantId: message };
+      return { inviteeParticipantId: message, inviteeId: message };
     case 'INVITATION_EXPIRED':
     case 'INVITATION_NOT_ACCEPTABLE':
     case 'INVITATION_ACCEPTANCE_CONFLICT':
@@ -71,11 +71,16 @@ export async function issueInvitationHandler(
   try {
     const actorId = req.participant!.id;
     const teamId = String(req.params.teamId || '').trim();
-    const { vacancyId, inviteeParticipantId, source } = req.body as {
-      vacancyId: string;
-      inviteeParticipantId: string;
-      source: 'recommendation' | 'direct';
+    const body = req.body as {
+      vacancyId?: string;
+      slotId?: string;
+      inviteeParticipantId?: string;
+      inviteeId?: string;
+      source?: 'recommendation' | 'direct';
     };
+    const vacancyId = String(body.slotId || body.vacancyId || '').trim();
+    const inviteeParticipantId = String(body.inviteeId || body.inviteeParticipantId || '').trim();
+    const source = body.source ?? 'direct';
 
     const invitation = await issueInvitation({
       actorParticipantId: actorId,
@@ -149,7 +154,9 @@ export async function acceptInvitationHandler(
         teamId: result.invitation.team_id,
         eventId: result.invitation.event_id,
         vacancyId: result.invitation.vacancy_id,
+        slotId: result.invitation.vacancy_id,
         inviteeParticipantId: result.invitation.participant_id,
+        inviteeId: result.invitation.participant_id,
         status: result.invitation.status,
         expiresAt: result.invitation.expires_at,
         teamName: result.teamName,

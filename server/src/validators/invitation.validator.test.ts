@@ -14,8 +14,26 @@ describe('validateIssueInvitationInput (US-017 / FR-048)', () => {
     expect(result.errors).toEqual({});
     expect(result.sanitized).toEqual({
       vacancyId,
+      slotId: vacancyId,
       inviteeParticipantId,
+      inviteeId: inviteeParticipantId,
       source: 'recommendation',
+    });
+  });
+
+  it('accepts slotId and inviteeId aliases without vacancyId or inviteeParticipantId', () => {
+    const result = validateIssueInvitationInput({
+      slotId: vacancyId,
+      inviteeId: inviteeParticipantId,
+      source: 'direct',
+    });
+    expect(result.errors).toEqual({});
+    expect(result.sanitized).toEqual({
+      vacancyId,
+      slotId: vacancyId,
+      inviteeParticipantId,
+      inviteeId: inviteeParticipantId,
+      source: 'direct',
     });
   });
 
@@ -43,5 +61,15 @@ describe('validateIssueInvitationInput (US-017 / FR-048)', () => {
     });
     expect(result.sanitized).toBeNull();
     expect(result.errors.message).toMatch(/Unknown field/i);
+  });
+
+  it('rejects obsolete eventId if passed in request body', () => {
+    const result = validateIssueInvitationInput({
+      slotId: vacancyId,
+      inviteeId: inviteeParticipantId,
+      eventId: '11111111-1111-4111-8111-111111111111',
+    });
+    expect(result.sanitized).toBeNull();
+    expect(result.errors.eventId).toMatch(/Unknown field "eventId"/i);
   });
 });

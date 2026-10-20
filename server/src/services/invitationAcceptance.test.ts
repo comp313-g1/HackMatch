@@ -85,7 +85,7 @@ describe('invitationAcceptance pure guards (US-017 / #165 / FR-051)', () => {
     ).toBe('VACANCY_NOT_OPEN');
   });
 
-  it('requires team/event still recruiting', () => {
+  it('requires team still recruiting (event-free model)', () => {
     expect(
       evaluateAcceptanceTeamAndEvent(
         { recruitment_status: 'Locked' },
@@ -98,8 +98,8 @@ describe('invitationAcceptance pure guards (US-017 / #165 / FR-051)', () => {
         { recruitment_status: 'Open' },
         { status: 'Archived', end_date: '2099-01-01T00:00:00.000Z' },
         now
-      ).code
-    ).toBe('EVENT_NOT_RECRUITING');
+      ).ok
+    ).toBe(true);
   });
 });
 
@@ -257,6 +257,9 @@ describe('revalidateInvitationForAcceptance (US-017 / #165)', () => {
           },
           vacancies: [sampleVacancy],
         }),
+        listConfirmedParticipantIdsForTeam: vi
+          .fn()
+          .mockResolvedValue([ownerParticipant.id]),
         listConfirmedParticipantIdsForEvent: vi
           .fn()
           .mockResolvedValue([ownerParticipant.id]),
@@ -333,5 +336,29 @@ describe('revalidateInvitationForAcceptance (US-017 / #165)', () => {
         passingDeps()
       )
     ).rejects.toMatchObject({ code: 'FORBIDDEN_NOT_INVITEE', status: 403 });
+  });
+
+  it('returns eligible when event is archived as long as team is Open', async () => {
+    const deps = passingDeps();
+    deps.teamsRepo.getTeamViewParts = vi.fn().mockResolvedValue({
+      ...sampleParts,
+      team: sampleTeam,
+      event: {
+        max_team_size: 4,
+        status: 'Archived' as const,
+        end_date: '2020-01-01T00:00:00.000Z',
+      },
+      vacancies: [sampleVacancy],
+    });
+
+    const result = await revalidateInvitationForAcceptance(
+      {
+        actorParticipantId: otherParticipant.id,
+        invitationId: pendingInvite().id,
+      },
+      deps
+    );
+
+    expect(result.eligible).toBe(true);
   });
 });

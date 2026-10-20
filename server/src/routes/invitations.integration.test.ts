@@ -92,6 +92,9 @@ function mockEligibleIssuanceContext(overrides?: {
   vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue(
     overrides?.confirmedIds ?? [ownerParticipant.id]
   );
+  vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue(
+    overrides?.confirmedIds ?? [ownerParticipant.id]
+  );
   vi.spyOn(teamsRepository, 'findPendingInvitationConflicts').mockResolvedValue({
     byInvitee: (overrides?.byInvitee as never) ?? null,
     bySlot: (overrides?.bySlot as never) ?? null,
@@ -227,6 +230,57 @@ describe('US-017 Invitations Integration Suite (permissions, issuance, cancel, a
         vacancyRole: 'Frontend',
       });
     });
+
+    it('issues Pending invitation using slotId and inviteeId aliases (event-free)', async () => {
+      const createdAt = '2026-10-19T15:00:00.000Z';
+      const expiresAt = '2026-10-21T15:00:00.000Z';
+      vi.spyOn(teamsRepository, 'issueTeamInvitation').mockResolvedValue({
+        invitation: {
+          id: invitationId,
+          team_id: sampleTeamId,
+          event_id: sampleEventId,
+          vacancy_id: sampleVacancyId,
+          participant_id: otherParticipant.id,
+          request_type: 'Invitation',
+          status: 'Pending',
+          cancel_reason: null,
+          resolved_at: null,
+          expires_at: expiresAt,
+          message: null,
+          created_at: createdAt,
+          updated_at: createdAt,
+        },
+        expiresAt,
+        vacancyRole: 'Frontend',
+        teamName: 'HackMatch Innovators',
+      });
+
+      const res = await request(app)
+        .post(invitePath)
+        .set('Authorization', validTokenHeader)
+        .send({
+          slotId: sampleVacancyId,
+          inviteeId: otherParticipant.id,
+          source: 'direct',
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.invitation).toMatchObject({
+        status: 'Pending',
+        slotId: sampleVacancyId,
+        vacancyId: sampleVacancyId,
+        inviteeId: otherParticipant.id,
+        inviteeParticipantId: otherParticipant.id,
+        expiresAt,
+        source: 'direct',
+      });
+      expect(teamsRepository.issueTeamInvitation).toHaveBeenCalledWith(
+        ownerParticipant.id,
+        sampleTeamId,
+        sampleVacancyId,
+        otherParticipant.id
+      );
+    });
   });
 
   describe('US-017-T2: duplicate pending invitations rejected', () => {
@@ -262,6 +316,58 @@ describe('US-017 Invitations Integration Suite (permissions, issuance, cancel, a
       expect(res.body.code).toBe('SLOT_PENDING_INVITATION_EXISTS');
       expect(res.body.errors.vacancyId).toMatch(/already has a pending invitation/i);
       expect(issueSpy).not.toHaveBeenCalled();
+    });
+
+    it('rejects candidate who is already confirmed on this team', async () => {
+      mockEligibleIssuanceContext({
+        confirmedIds: [ownerParticipant.id, otherParticipant.id],
+      });
+      const issueSpy = vi.spyOn(teamsRepository, 'issueTeamInvitation');
+
+      const res = await request(app)
+        .post(invitePath)
+        .set('Authorization', validTokenHeader)
+        .send(inviteBody);
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('INVITEE_ALREADY_CONFIRMED');
+      expect(res.body.errors.inviteeParticipantId).toBeTruthy();
+      expect(issueSpy).not.toHaveBeenCalled();
+    });
+
+    it('allows candidate who is confirmed on another team when looking for team platform-wide', async () => {
+      mockEligibleIssuanceContext({
+        confirmedIds: [ownerParticipant.id], // not confirmed on this team
+      });
+      const expiresAt = '2026-10-21T15:00:00.000Z';
+      vi.spyOn(teamsRepository, 'issueTeamInvitation').mockResolvedValue({
+        invitation: {
+          id: invitationId,
+          team_id: sampleTeamId,
+          event_id: sampleEventId,
+          vacancy_id: sampleVacancyId,
+          participant_id: otherParticipant.id,
+          request_type: 'Invitation',
+          status: 'Pending',
+          cancel_reason: null,
+          resolved_at: null,
+          expires_at: expiresAt,
+          message: null,
+          created_at: '2026-10-19T15:00:00.000Z',
+          updated_at: '2026-10-19T15:00:00.000Z',
+        },
+        expiresAt,
+        vacancyRole: 'Frontend',
+        teamName: 'HackMatch Innovators',
+      });
+
+      const res = await request(app)
+        .post(invitePath)
+        .set('Authorization', validTokenHeader)
+        .send(inviteBody);
+
+      expect(res.status).toBe(201);
+      expect(res.body.invitation.status).toBe('Pending');
     });
   });
 

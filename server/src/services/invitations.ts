@@ -32,9 +32,11 @@ export interface IssueInvitationInput {
 export interface IssuedInvitationView {
   id: string;
   teamId: string;
-  eventId: string;
+  eventId?: string;
   vacancyId: string | null;
+  slotId?: string | null;
   inviteeParticipantId: string;
+  inviteeId?: string;
   status: TeamRequest['status'];
   requestType: 'Invitation';
   expiresAt: string;
@@ -55,7 +57,9 @@ function toView(
     teamId: invitation.team_id,
     eventId: invitation.event_id,
     vacancyId: invitation.vacancy_id,
+    slotId: invitation.vacancy_id,
     inviteeParticipantId: invitation.participant_id,
+    inviteeId: invitation.participant_id,
     status: invitation.status,
     requestType: 'Invitation',
     expiresAt: meta.expiresAt || invitation.expires_at || '',
@@ -71,9 +75,11 @@ function toView(
 export interface OwnerInvitationListItem {
   id: string;
   teamId: string;
-  eventId: string;
+  eventId?: string;
   vacancyId: string | null;
+  slotId?: string | null;
   inviteeParticipantId: string;
+  inviteeId?: string;
   inviteeHandle: string | null;
   inviteeDisplayName: string;
   status: TeamRequest['status'];
@@ -174,7 +180,9 @@ export async function listOwnerInvitations(
       teamId: row.invitation.team_id,
       eventId: row.invitation.event_id,
       vacancyId: row.invitation.vacancy_id,
+      slotId: row.invitation.vacancy_id,
       inviteeParticipantId: row.invitation.participant_id,
+      inviteeId: row.invitation.participant_id,
       inviteeHandle: row.inviteeHandle,
       inviteeDisplayName: row.inviteeDisplayName,
       status: row.invitation.status,
@@ -209,9 +217,11 @@ export interface CanceledInvitationResult {
   invitation: {
     id: string;
     teamId: string;
-    eventId: string;
+    eventId?: string;
     vacancyId: string | null;
+    slotId?: string | null;
     inviteeParticipantId: string;
+    inviteeId?: string;
     status: TeamRequest['status'];
     requestType: 'Invitation';
     expiresAt: string | null;
@@ -247,7 +257,9 @@ export async function cancelInvitation(
         teamId: inv.team_id,
         eventId: inv.event_id,
         vacancyId: inv.vacancy_id,
+        slotId: inv.vacancy_id,
         inviteeParticipantId: inv.participant_id,
+        inviteeId: inv.participant_id,
         status: inv.status,
         requestType: 'Invitation',
         expiresAt: inv.expires_at,

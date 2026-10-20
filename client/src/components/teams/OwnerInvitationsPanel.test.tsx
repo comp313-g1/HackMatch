@@ -574,4 +574,74 @@ describe('OwnerInvitationsPanel (US-017 / #167 invite form + invitation view)', 
       expect(screen.queryByTestId('invitations-refreshing')).not.toBeInTheDocument();
     });
   });
+
+  it('supports slots prop alias and issues invitation successfully (event-free)', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        teamId: 't1',
+        invitations: [],
+        empty: true,
+        message: 'No invitations yet.',
+      })
+      .mockResolvedValueOnce({
+        teamId: 't1',
+        invitations: [
+          {
+            id: 'inv-slot',
+            teamId: 't1',
+            vacancyId: openVacancy.id,
+            slotId: openVacancy.id,
+            inviteeParticipantId: inviteeId,
+            inviteeId: inviteeId,
+            inviteeHandle: null,
+            inviteeDisplayName: 'Candidate',
+            status: 'Pending',
+            requestType: 'Invitation',
+            expiresAt: '2026-10-21T12:00:00.000Z',
+            createdAt: '2026-10-19T12:00:00.000Z',
+            resolvedAt: null,
+            vacancyRole: 'Frontend',
+            teamName: 'Team',
+            expiredByClock: false,
+          },
+        ],
+        empty: false,
+        message: null,
+      });
+
+    issueMock.mockResolvedValue({
+      id: 'inv-slot',
+      teamId: 't1',
+      slotId: openVacancy.id,
+      vacancyId: openVacancy.id,
+      inviteeId,
+      inviteeParticipantId: inviteeId,
+      status: 'Pending',
+      requestType: 'Invitation',
+      expiresAt: '2026-10-21T12:00:00.000Z',
+      createdAt: '2026-10-19T12:00:00.000Z',
+      teamName: 'Team',
+      vacancyRole: 'Frontend',
+      source: 'direct',
+      notice: 'Pending invitation created.',
+    });
+
+    render(<OwnerInvitationsPanel teamId="t1" slots={[openVacancy]} />);
+    await waitFor(() => expect(screen.getByTestId('send-invitation')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByTestId('invite-participant-input'), {
+      target: { value: inviteeId },
+    });
+    fireEvent.click(screen.getByTestId('send-invitation'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('invite-form-success')).toBeInTheDocument();
+    });
+    expect(issueMock).toHaveBeenCalledWith('t1', {
+      vacancyId: openVacancy.id,
+      inviteeParticipantId: inviteeId,
+      source: 'direct',
+    });
+    expect(screen.getByTestId('invitations-list')).toBeInTheDocument();
+  });
 });

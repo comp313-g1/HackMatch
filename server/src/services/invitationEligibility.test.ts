@@ -48,7 +48,7 @@ describe('invitationEligibility pure guards (US-017 / #163)', () => {
     expect(evaluateOpenSlot(sampleVacancy, sampleTeamId).ok).toBe(true);
   });
 
-  it('requires owner and mutable recruiting team/event', () => {
+  it('requires owner and mutable recruiting team', () => {
     const event = { status: 'Published' as const, end_date: '2099-01-01T00:00:00.000Z' };
     expect(
       evaluateOwnerAndTeamMutable(otherParticipant.id, sampleTeam, event).code
@@ -63,8 +63,8 @@ describe('invitationEligibility pure guards (US-017 / #163)', () => {
       evaluateOwnerAndTeamMutable(ownerParticipant.id, sampleTeam, {
         status: 'Archived',
         end_date: '2099-01-01T00:00:00.000Z',
-      }).code
-    ).toBe('EVENT_NOT_RECRUITING');
+      }).ok
+    ).toBe(true);
     expect(evaluateOwnerAndTeamMutable(ownerParticipant.id, sampleTeam, event).ok).toBe(true);
   });
 });
@@ -103,6 +103,9 @@ describe('assertInvitationIssuanceContext (US-017 / #163)', () => {
             },
           ],
         }),
+        listConfirmedParticipantIdsForTeam: vi
+          .fn()
+          .mockResolvedValue(overrides?.confirmedIds ?? [ownerParticipant.id]),
         listConfirmedParticipantIdsForEvent: vi
           .fn()
           .mockResolvedValue(overrides?.confirmedIds ?? [ownerParticipant.id]),
@@ -146,10 +149,10 @@ describe('assertInvitationIssuanceContext (US-017 / #163)', () => {
     ).rejects.toMatchObject({ code: 'TEAM_NOT_MUTABLE' });
   });
 
-  it('rejects when event is not recruiting', async () => {
+  it('allows invitation issuance when event is archived as long as team is Open', async () => {
     await expect(
       assertInvitationIssuanceContext(baseInput, passingDeps({ eventStatus: 'Archived' }))
-    ).rejects.toMatchObject({ code: 'EVENT_NOT_RECRUITING' });
+    ).resolves.toBeUndefined();
   });
 
   it('rejects when invitee is not Looking for Team', async () => {
@@ -158,13 +161,32 @@ describe('assertInvitationIssuanceContext (US-017 / #163)', () => {
     ).rejects.toMatchObject({ code: 'INVITEE_NOT_AVAILABLE' });
   });
 
-  it('rejects when invitee is already confirmed for the event', async () => {
+  it('rejects when invitee is already confirmed for this team', async () => {
     await expect(
       assertInvitationIssuanceContext(
         baseInput,
         passingDeps({ confirmedIds: [ownerParticipant.id, otherParticipant.id] })
       )
     ).rejects.toMatchObject({ code: 'INVITEE_ALREADY_CONFIRMED' });
+  });
+
+  it('allows invitation when invitee is confirmed on a different team but looking for team platform-wide', async () => {
+    const deps = passingDeps();
+    deps.teamsRepo.listConfirmedParticipantIdsForTeam = vi.fn().mockResolvedValue([ownerParticipant.id]);
+    await expect(assertInvitationIssuanceContext(baseInput, deps)).resolves.toBeUndefined();
+  });
+
+  it('allows invitation when invitee has platform-wide LFT enabled even if not bound to team shadow event', async () => {
+    const deps = passingDeps();
+    deps.availabilityRepo.findByParticipantId = vi.fn().mockResolvedValue({
+      participantId: otherParticipant.id,
+      isLooking: true,
+      desiredRole: 'Frontend',
+      commitmentHours: 10,
+      goal: 'Learning',
+      updatedAt: null,
+    });
+    await expect(assertInvitationIssuanceContext(baseInput, deps)).resolves.toBeUndefined();
   });
 
   it('rejects suspended invitee', async () => {
