@@ -20,6 +20,7 @@ function handleRecommendationError(err: unknown, res: Response, next: NextFuncti
 }
 
 /**
+ * GET /api/teams/:teamId/slots/:slotId/recommendations
  * GET /api/teams/:teamId/vacancies/:vacancyId/recommendations
  * Owner-only ranked candidates with FR-047 explanations (no internal ranking ids).
  */
@@ -31,12 +32,17 @@ export async function getVacancyRecommendationsHandler(
   try {
     const actorId = req.participant!.id;
     const teamId = String(req.params.teamId || '').trim();
-    const vacancyId = String(req.params.vacancyId || '').trim();
+    const slotOrVacancyId = String(req.params.slotId || req.params.vacancyId || '').trim();
 
-    const result = await getRecommendationsForOpenSlot(actorId, teamId, vacancyId);
+    const result = await getRecommendationsForOpenSlot(actorId, teamId, slotOrVacancyId);
 
     res.setHeader('Cache-Control', 'no-store');
-    res.status(200).json(omitInternalIdentifierFields(result));
+    res.status(200).json(
+      omitInternalIdentifierFields({
+        ...result,
+        slotId: result.vacancyId,
+      })
+    );
   } catch (err: unknown) {
     handleRecommendationError(err, res, next);
   }

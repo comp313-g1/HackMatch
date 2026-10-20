@@ -42,6 +42,7 @@ export interface RecommendationsResponse {
   status: 'ok' | 'degraded';
   teamId: string;
   vacancyId: string;
+  slotId?: string;
   slot: {
     vacancyId: string;
     role: string;
@@ -70,19 +71,10 @@ export class RecommendationsApiError extends Error {
   }
 }
 
-/**
- * GET /api/teams/:teamId/vacancies/:vacancyId/recommendations
- */
-export async function fetchVacancyRecommendations(
-  teamId: string,
-  vacancyId: string
-): Promise<RecommendationsResponse> {
+async function requestRecommendations(path: string): Promise<RecommendationsResponse> {
   let res: Response;
   try {
-    res = await authFetch(
-      `/api/teams/${encodeURIComponent(teamId)}/vacancies/${encodeURIComponent(vacancyId)}/recommendations`,
-      { method: 'GET' }
-    );
+    res = await authFetch(path, { method: 'GET' });
   } catch (err: unknown) {
     if (err instanceof AuthRequiredError) throw err;
     throw new RecommendationsApiError(
@@ -116,5 +108,29 @@ export async function fetchVacancyRecommendations(
     errBody.errors,
     errBody.details,
     errBody.error || `Request failed with status ${res.status}`
+  );
+}
+
+/**
+ * GET /api/teams/:teamId/slots/:slotId/recommendations
+ */
+export async function fetchSlotRecommendations(
+  teamId: string,
+  slotId: string
+): Promise<RecommendationsResponse> {
+  return requestRecommendations(
+    `/api/teams/${encodeURIComponent(teamId)}/slots/${encodeURIComponent(slotId)}/recommendations`
+  );
+}
+
+/**
+ * GET /api/teams/:teamId/vacancies/:vacancyId/recommendations
+ */
+export async function fetchVacancyRecommendations(
+  teamId: string,
+  vacancyId: string
+): Promise<RecommendationsResponse> {
+  return requestRecommendations(
+    `/api/teams/${encodeURIComponent(teamId)}/vacancies/${encodeURIComponent(vacancyId)}/recommendations`
   );
 }

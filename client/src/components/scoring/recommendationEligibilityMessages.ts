@@ -12,7 +12,7 @@ export interface RecommendationExclusionSummary {
 }
 
 export const EXCLUSION_EMPTY_HINT =
-  'Inactive accounts, participants not Looking for Team, and anyone already confirmed for this event are excluded.';
+  'Inactive accounts, participants not Looking for Team, and anyone already confirmed on this team are excluded.';
 
 export const EMPTY_RECOMMENDATIONS_MESSAGE = `No eligible candidates found for this open slot. ${EXCLUSION_EMPTY_HINT}`;
 
@@ -29,7 +29,7 @@ export function formatExclusionSummary(
     parts.push(`${exclusions.unavailable} not Looking for Team`);
   }
   if (exclusions.confirmed > 0) {
-    parts.push(`${exclusions.confirmed} already confirmed for this event`);
+    parts.push(`${exclusions.confirmed} already confirmed on this team`);
   }
   if (parts.length === 0) return EXCLUSION_EMPTY_HINT;
   return `Excluded from recommendations: ${parts.join(', ')}.`;

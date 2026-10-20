@@ -33,7 +33,7 @@ describe('recommendationEligibilityMessages', () => {
         totalExcluded: 6,
       })
     ).toBe(
-      'Excluded from recommendations: 1 inactive, 2 not Looking for Team, 3 already confirmed for this event.'
+      'Excluded from recommendations: 1 inactive, 2 not Looking for Team, 3 already confirmed on this team.'
     );
   });
 });
