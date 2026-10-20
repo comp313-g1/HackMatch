@@ -80,6 +80,44 @@ export interface ITeamsRepository {
     vacancyRole: string;
     teamName: string;
   }>;
+  /**
+   * US-017 / #164 pending-quota probe: existing Pending invite for invitee/team
+   * and/or for the vacancy slot (may be the same row).
+   */
+  findPendingInvitationConflicts(
+    teamId: string,
+    vacancyId: string,
+    inviteeParticipantId: string
+  ): Promise<{ byInvitee: TeamRequest | null; bySlot: TeamRequest | null }>;
+  /** Load a single Invitation row (US-017 / #165 acceptance revalidation). */
+  findInvitationById(invitationId: string): Promise<TeamRequest | null>;
+  /** Persist Expired when past expires_at (FR-051); restores pending quotas. */
+  markInvitationExpiredIfDue(
+    invitationId: string
+  ): Promise<{ invitation: TeamRequest; changed: boolean }>;
+  /** Owner cancel Pending invitation (US-017 / #166 / FR-052); idempotent. */
+  cancelTeamInvitation(
+    actorId: string,
+    invitationId: string
+  ): Promise<{
+    invitation: TeamRequest;
+    changed: boolean;
+    idempotent: boolean;
+    teamName: string;
+    vacancyRole: string | null;
+    alerts: Array<{ audience: string; type: string; message: string }>;
+    notice: string;
+  }>;
+  /** Owner outbound invitations for a team (US-017). */
+  listTeamInvitations(teamId: string): Promise<
+    Array<{
+      invitation: TeamRequest;
+      inviteeHandle: string | null;
+      inviteeDisplayName: string;
+      vacancyRole: string | null;
+      teamName: string;
+    }>
+  >;
   findOpenTeamRecords(options: { withMemberIdentities: boolean }): Promise<OpenTeamRecord[]>;
 }
 
@@ -385,6 +423,165 @@ export const teamsRepository: ITeamsRepository = {
       vacancyRole: payload.vacancyRole,
       teamName: payload.teamName,
     };
+  },
+
+  async findPendingInvitationConflicts(
+    teamId: string,
+    vacancyId: string,
+    inviteeParticipantId: string
+  ): Promise<{ byInvitee: TeamRequest | null; bySlot: TeamRequest | null }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('team_requests')
+      .select('*')
+      .eq('team_id', teamId)
+      .eq('request_type', 'Invitation')
+      .eq('status', 'Pending')
+      .or(`participant_id.eq.${inviteeParticipantId},vacancy_id.eq.${vacancyId}`);
+    if (error) throw error;
+
+    const rows = (data || []) as TeamRequest[];
+    const byInvitee =
+      rows.find((r) => r.participant_id === inviteeParticipantId) ?? null;
+    const bySlot = rows.find((r) => r.vacancy_id === vacancyId) ?? null;
+    return { byInvitee, bySlot };
+  },
+
+  async findInvitationById(invitationId: string): Promise<TeamRequest | null> {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('team_requests')
+      .select('*')
+      .eq('id', invitationId)
+      .eq('request_type', 'Invitation')
+      .maybeSingle();
+    if (error) throw error;
+    return (data as TeamRequest | null) ?? null;
+  },
+
+  async markInvitationExpiredIfDue(
+    invitationId: string
+  ): Promise<{ invitation: TeamRequest; changed: boolean }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('mark_team_invitation_expired_if_due', {
+      p_invitation: invitationId,
+    });
+    if (error) throw error;
+    const payload = data as { invitation: TeamRequest; changed: boolean };
+    return {
+      invitation: payload.invitation,
+      changed: Boolean(payload.changed),
+    };
+  },
+
+  async cancelTeamInvitation(
+    actorId: string,
+    invitationId: string
+  ): Promise<{
+    invitation: TeamRequest;
+    changed: boolean;
+    idempotent: boolean;
+    teamName: string;
+    vacancyRole: string | null;
+    alerts: Array<{ audience: string; type: string; message: string }>;
+    notice: string;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('cancel_team_invitation', {
+      p_actor: actorId,
+      p_invitation: invitationId,
+    });
+    if (error) throw error;
+    const payload = data as {
+      invitation: TeamRequest;
+      changed: boolean;
+      idempotent: boolean;
+      teamName: string;
+      vacancyRole?: string | null;
+      alerts?: Array<{ audience: string; type: string; message: string }>;
+      notice: string;
+    };
+    return {
+      invitation: payload.invitation,
+      changed: Boolean(payload.changed),
+      idempotent: Boolean(payload.idempotent),
+      teamName: payload.teamName,
+      vacancyRole: payload.vacancyRole ?? null,
+      alerts: payload.alerts ?? [],
+      notice: payload.notice,
+    };
+  },
+
+  async listTeamInvitations(teamId: string): Promise<
+    Array<{
+      invitation: TeamRequest;
+      inviteeHandle: string | null;
+      inviteeDisplayName: string;
+      vacancyRole: string | null;
+      teamName: string;
+    }>
+  > {
+    const client = getSupabaseClient();
+    const { data: teamRow, error: teamErr } = await client
+      .from('teams')
+      .select('id, name')
+      .eq('id', teamId)
+      .maybeSingle();
+    if (teamErr) throw teamErr;
+    if (!teamRow) return [];
+
+    const { data: rows, error } = await client
+      .from('team_requests')
+      .select('*, vacancy:team_vacancies(role)')
+      .eq('team_id', teamId)
+      .eq('request_type', 'Invitation')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    const inviteeIds = [...new Set((rows || []).map((r: { participant_id: string }) => r.participant_id))];
+    const profileById = new Map<string, { handle: string | null; full_name: string }>();
+
+    if (inviteeIds.length > 0) {
+      const { data: participants, error: partErr } = await client
+        .from('participants')
+        .select('id, full_name')
+        .in('id', inviteeIds);
+      if (partErr) throw partErr;
+
+      const { data: profiles, error: profileErr } = await client
+        .from('participant_profiles')
+        .select('participant_id, handle')
+        .in('participant_id', inviteeIds);
+      if (profileErr) throw profileErr;
+
+      const handleById = new Map(
+        (profiles || []).map((p: { participant_id: string; handle: string | null }) => [
+          p.participant_id,
+          p.handle,
+        ])
+      );
+      for (const p of participants || []) {
+        const row = p as { id: string; full_name: string };
+        profileById.set(row.id, {
+          handle: handleById.get(row.id) ?? null,
+          full_name: row.full_name,
+        });
+      }
+    }
+
+    return (rows || []).map((row: Record<string, unknown>) => {
+      const vacancy = row.vacancy as { role?: string } | null;
+      const invitation = { ...row } as TeamRequest & { vacancy?: unknown };
+      delete (invitation as { vacancy?: unknown }).vacancy;
+      const profile = profileById.get(invitation.participant_id);
+      return {
+        invitation,
+        inviteeHandle: profile?.handle ?? null,
+        inviteeDisplayName: profile?.full_name ?? 'Participant',
+        vacancyRole: vacancy?.role ?? null,
+        teamName: (teamRow as { name: string }).name,
+      };
+    });
   },
 
   async findOpenTeamRecords(options: { withMemberIdentities: boolean }): Promise<OpenTeamRecord[]> {

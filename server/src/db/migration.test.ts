@@ -786,4 +786,139 @@ describe('0018_create_team_invitation_issuance.sql Migration DDL (US-017 / FR-04
   });
 });
 
+describe('0019_complete_team_invitation_model.sql Migration DDL (US-017 / #161)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0019_complete_team_invitation_model.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('requires vacancy_id on Pending Invitation rows', () => {
+    expect(sql).toMatch(/chk_team_requests_pending_invite_requires_vacancy/i);
+    expect(sql).toMatch(
+      /request_type\s*=\s*'Invitation'[\s\S]*?status\s*=\s*'Pending'[\s\S]*?vacancy_id\s+IS\s+NULL/i
+    );
+  });
+
+  it('indexes Pending invitation expiry and invitation status lookups', () => {
+    expect(sql).toMatch(/idx_team_requests_pending_invite_expires/i);
+    expect(sql).toMatch(/idx_team_requests_invitee_invitation_status/i);
+    expect(sql).toMatch(/idx_team_requests_team_invitation_status/i);
+  });
+
+  it('defines validity and expiry helper functions with service_role grants', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+team_invitation_is_currently_valid/i);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+mark_team_invitation_expired_if_due/i);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+expire_due_team_invitations/i);
+    expect(sql).toMatch(/expires_at\s*<=\s*now\(\)/i);
+    expect(sql).toMatch(/status\s*=\s*'Expired'/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+team_invitation_is_currently_valid\s*\(\s*UUID\s*\)\s+TO\s+service_role/i
+    );
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+mark_team_invitation_expired_if_due\s*\(\s*UUID\s*\)\s+TO\s+service_role/i
+    );
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+expire_due_team_invitations\s*\(\s*INTEGER\s*\)\s+TO\s+service_role/i
+    );
+  });
+
+  it('writes basic status alerts when marking invitations Expired', () => {
+    expect(sql).toMatch(/team_invitation_expired/i);
+    expect(sql).toMatch(/INSERT\s+INTO\s+participant_notifications/i);
+  });
+});
+
+describe('0020_enforce_invitation_pending_quotas.sql Migration DDL (US-017 / #164)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0020_enforce_invitation_pending_quotas.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('replaces issue_team_invitation with explicit invitee/team and per-slot Pending checks', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+issue_team_invitation/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'DUPLICATE_PENDING_INVITATION'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'SLOT_PENDING_INVITATION_EXISTS'/i);
+    expect(sql).toMatch(
+      /request_type\s*=\s*'Invitation'\s+AND\s+status\s*=\s*'Pending'/i
+    );
+  });
+
+  it('keeps unique_violation mapping and service_role execute grant', () => {
+    expect(sql).toMatch(/WHEN\s+unique_violation\s+THEN/i);
+    expect(sql).toMatch(/uq_team_requests_pending_invite_per_slot/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+issue_team_invitation\s*\(\s*UUID\s*,\s*UUID\s*,\s*UUID\s*,\s*UUID\s*\)\s+TO\s+service_role/i
+    );
+  });
+});
+
+describe('0021_invitation_acceptance_revalidation.sql Migration DDL (US-017 / #165)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0021_invitation_acceptance_revalidation.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('strengthens validity with event recruiting checks and expiry-before-cleanup', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+team_invitation_is_currently_valid/i);
+    expect(sql).toMatch(/expires_at\s*<=\s*now\(\)/i);
+    expect(sql).toMatch(/v_event_status\s*<>\s*'Published'/i);
+  });
+
+  it('defines revalidate_team_invitation_for_acceptance with Expired and slot failures', () => {
+    expect(sql).toMatch(
+      /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+revalidate_team_invitation_for_acceptance/i
+    );
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'INVITATION_EXPIRED'/i);
+    expect(sql).toMatch(/RAISE\s+EXCEPTION\s+'VACANCY_NOT_OPEN'/i);
+    expect(sql).toMatch(/mark_team_invitation_expired_if_due/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+revalidate_team_invitation_for_acceptance\s*\(\s*UUID\s*,\s*UUID\s*\)\s+TO\s+service_role/i
+    );
+  });
+});
+
+describe('0022_cancel_team_invitation.sql Migration DDL (US-017 / #166)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0022_cancel_team_invitation.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('defines cancel_team_invitation with owner check, idempotency, and alerts', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+cancel_team_invitation/i);
+    expect(sql).toMatch(/FORBIDDEN_NOT_TEAM_OWNER/i);
+    expect(sql).toMatch(/INVITATION_NOT_CANCELABLE/i);
+    expect(sql).toMatch(/OWNER_CANCELED/i);
+    expect(sql).toMatch(/idempotent/i);
+    expect(sql).toMatch(/team_invitation_canceled/i);
+    expect(sql).toMatch(/INSERT\s+INTO\s+participant_notifications/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+cancel_team_invitation\s*\(\s*UUID\s*,\s*UUID\s*\)\s+TO\s+service_role/i
+    );
+  });
+});
+
 

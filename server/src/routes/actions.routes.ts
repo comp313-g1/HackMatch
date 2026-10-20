@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { requireVerifiedParticipant } from '../middleware/requireVerifiedParticipant.js';
+import { revalidateInvitationAcceptanceHandler } from '../controllers/invitations.controller.js';
 
 export const actionsRouter = Router();
 
@@ -30,11 +31,9 @@ actionsRouter.post(
   }
 );
 
-// 4. Invitation acceptance (US-017 / US-019 / AC 4)
+// 4. Invitation acceptance revalidation (US-017 / #165 / FR-051; membership commit is US-019)
 actionsRouter.post(
   '/invitations/:id/accept',
   requireVerifiedParticipant,
-  (_req: Request, res: Response) => {
-    res.status(200).json({ message: 'Invitation accepted' });
-  }
+  revalidateInvitationAcceptanceHandler
 );

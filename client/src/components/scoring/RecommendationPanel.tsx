@@ -21,6 +21,8 @@ export interface RecommendationPanelProps {
   vacancyLabel: string;
   /** When false, hide the load control (e.g. filled slot). */
   enabled?: boolean;
+  /** Notifies parent when a recommendation invite succeeds (refresh outbound list). */
+  onInvitationIssued?: (invitation: IssuedInvitation) => void;
 }
 
 type LoadState = 'idle' | 'loading' | 'success' | 'error';
@@ -34,6 +36,7 @@ export function RecommendationPanel({
   vacancyId,
   vacancyLabel,
   enabled = true,
+  onInvitationIssued,
 }: RecommendationPanelProps): React.JSX.Element | null {
   const [loadState, setLoadState] = useState<LoadState>('idle');
   const [result, setResult] = useState<RecommendationsResponse | null>(null);
@@ -91,6 +94,7 @@ export function RecommendationPanel({
         invitation.expiresAt
       ).toLocaleString()}.`
     );
+    onInvitationIssued?.(invitation);
   };
 
   return (
