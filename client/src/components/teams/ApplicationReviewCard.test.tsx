@@ -25,7 +25,7 @@ const application: OwnerApplicationReviewItem = {
   vacancyRole: 'AI/ML',
 };
 
-describe('ApplicationReviewCard (US-020 / #189 / FR-060)', () => {
+describe('ApplicationReviewCard (US-020 / #189 / #194 / FR-060)', () => {
   it('displays permitted profile fields, self-declared links, and the application note', () => {
     render(<ApplicationReviewCard application={application} />);
 
@@ -123,6 +123,9 @@ describe('ApplicationReviewCard (US-020 / #189 / FR-060)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /decline application/i }));
     expect(onDecline).toHaveBeenCalledWith(application.id);
+    expect(
+      screen.getByRole('group', { name: /decision controls for Maya Lin/i })
+    ).toBeInTheDocument();
 
     rerender(
       <ApplicationReviewCard
@@ -133,6 +136,10 @@ describe('ApplicationReviewCard (US-020 / #189 / FR-060)', () => {
       />
     );
     expect(screen.getByRole('button', { name: /declining/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /declining/i })).toHaveAttribute(
+      'aria-busy',
+      'true'
+    );
     expect(screen.getByRole('button', { name: /approve application/i })).toBeDisabled();
   });
 });

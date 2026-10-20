@@ -12,7 +12,7 @@ export interface ApplicationReviewCardProps {
 }
 
 /**
- * US-020 / #189 / FR-060 — permitted applicant profile and application note.
+ * US-020 / #189 / #194 / FR-060 — permitted profile, note, and decisions.
  * A prospective owner has ordinary authenticated-PART visibility; shared contact
  * handles remain hidden until the applicant becomes a confirmed teammate.
  */
@@ -71,12 +71,17 @@ export function ApplicationReviewCard({
       </section>
 
       {onApprove || onDecline ? (
-        <div className="flex flex-wrap justify-end gap-2 border-t border-cream-200 pt-3">
+        <div
+          className="flex flex-wrap justify-end gap-2 border-t border-cream-200 pt-3"
+          role="group"
+          aria-label={`Decision controls for ${application.applicantDisplayName}`}
+        >
           {onDecline ? (
             <button
               type="button"
               onClick={() => onDecline(application.id)}
               disabled={disabled || approving || declining}
+              aria-busy={declining}
               className="rounded-md border border-red-300 bg-white px-4 py-2 text-xs font-semibold text-red-800 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
               data-testid={`decline-application-${application.id}`}
             >
@@ -88,6 +93,7 @@ export function ApplicationReviewCard({
               type="button"
               onClick={() => onApprove(application.id)}
               disabled={disabled || approving || declining}
+              aria-busy={approving}
               className="rounded-md bg-forest px-4 py-2 text-xs font-semibold text-white hover:bg-forest-800 disabled:cursor-not-allowed disabled:opacity-50"
               data-testid={`approve-application-${application.id}`}
             >

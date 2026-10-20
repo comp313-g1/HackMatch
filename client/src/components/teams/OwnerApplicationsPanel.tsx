@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ApplicationsApiError,
   AuthRequiredError,
@@ -37,6 +37,9 @@ function decisionFailureMessage(
       requestedDecision === 'approve' ? 'approved' : 'declined'
     }. Refresh the review queue to see the latest state.`;
   }
+  if (err.code === 'NETWORK') {
+    return 'Network error. The decision was not confirmed; refresh the review queue before retrying.';
+  }
   return (
     err.errors?._form ||
     err.message ||
@@ -44,7 +47,18 @@ function decisionFailureMessage(
   );
 }
 
-/** US-020 / #188 / FR-060 — owner-only incoming application review queue. */
+function newestFirst(
+  applications: OwnerApplicationReviewItem[]
+): OwnerApplicationReviewItem[] {
+  return [...applications].sort((left, right) => {
+    const leftTime = Date.parse(left.createdAt);
+    const rightTime = Date.parse(right.createdAt);
+    if (Number.isNaN(leftTime) || Number.isNaN(rightTime)) return 0;
+    return rightTime - leftTime;
+  });
+}
+
+/** US-020 / #188 / #194 / FR-060 — owner-only application review and decisions. */
 export function OwnerApplicationsPanel({
   teamId,
   refreshKey = 0,
@@ -60,15 +74,25 @@ export function OwnerApplicationsPanel({
   const [decliningId, setDecliningId] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [approvalNotice, setApprovalNotice] = useState<string | null>(null);
+  const requestSequence = useRef(0);
+  const decisionSequence = useRef(0);
+  const visibleTeamId = useRef(teamId);
 
   const loadApplications = useCallback(async () => {
+    const requestId = ++requestSequence.current;
     setLoading(true);
     setError(null);
     try {
       const result = await fetchTeamApplications(teamId);
-      setApplications(result.applications);
+      if (requestId !== requestSequence.current) return;
+      if (result.teamId !== teamId) {
+        setError('Could not verify the application review response for this team.');
+        return;
+      }
+      setApplications(newestFirst(result.applications));
       setEmptyMessage(result.message);
     } catch (err: unknown) {
+      if (requestId !== requestSequence.current) return;
       if (err instanceof AuthRequiredError || (err instanceof ApplicationsApiError && err.status === 401)) {
         setError('You need to sign in to review applications.');
       } else if (err instanceof ApplicationsApiError && err.status === 403) {
@@ -83,20 +107,26 @@ export function OwnerApplicationsPanel({
         setError('Could not load incoming applications.');
       }
     } finally {
-      setLoading(false);
+      if (requestId === requestSequence.current) setLoading(false);
     }
   }, [teamId]);
 
   const handleApprove = async (applicationId: string) => {
-    if (disabled || approvingId || decliningId) return;
+    if (disabled || loading || approvingId || decliningId) return;
     const application = applications.find((item) => item.id === applicationId);
     if (!application) return;
+    const decisionId = ++decisionSequence.current;
+    const decisionTeamId = teamId;
 
     setApprovingId(applicationId);
     setApprovalError(null);
     setApprovalNotice(null);
     try {
       const result = await approveTeamApplication(applicationId);
+      if (
+        decisionId !== decisionSequence.current ||
+        visibleTeamId.current !== decisionTeamId
+      ) return;
       setApplications((current) => {
         const decidedVacancyId = result.vacancy?.id ?? application.vacancyId;
         const remaining = result.cascade.teamNowFull
@@ -122,6 +152,10 @@ export function OwnerApplicationsPanel({
       );
       onApproved?.(result, application);
     } catch (err: unknown) {
+      if (
+        decisionId !== decisionSequence.current ||
+        visibleTeamId.current !== decisionTeamId
+      ) return;
       if (err instanceof AuthRequiredError || (err instanceof ApplicationsApiError && err.status === 401)) {
         setApprovalError('You need to sign in before approving an application.');
       } else if (err instanceof ApplicationsApiError && err.status === 403) {
@@ -132,20 +166,26 @@ export function OwnerApplicationsPanel({
         setApprovalError('Could not approve this application.');
       }
     } finally {
-      setApprovingId(null);
+      if (decisionId === decisionSequence.current) setApprovingId(null);
     }
   };
 
   const handleDecline = async (applicationId: string) => {
-    if (disabled || approvingId || decliningId) return;
+    if (disabled || loading || approvingId || decliningId) return;
     const application = applications.find((item) => item.id === applicationId);
     if (!application) return;
+    const decisionId = ++decisionSequence.current;
+    const decisionTeamId = teamId;
 
     setDecliningId(applicationId);
     setApprovalError(null);
     setApprovalNotice(null);
     try {
       const result = await declineTeamApplication(applicationId);
+      if (
+        decisionId !== decisionSequence.current ||
+        visibleTeamId.current !== decisionTeamId
+      ) return;
       setApplications((current) => {
         const remaining = current.filter((item) => item.id !== applicationId);
         if (remaining.length === 0) setEmptyMessage('No pending applications to review.');
@@ -154,6 +194,10 @@ export function OwnerApplicationsPanel({
       setApprovalNotice(result.notice);
       onDeclined?.(result, application);
     } catch (err: unknown) {
+      if (
+        decisionId !== decisionSequence.current ||
+        visibleTeamId.current !== decisionTeamId
+      ) return;
       if (err instanceof AuthRequiredError || (err instanceof ApplicationsApiError && err.status === 401)) {
         setApprovalError('You need to sign in before declining an application.');
       } else if (err instanceof ApplicationsApiError && err.status === 403) {
@@ -164,15 +208,39 @@ export function OwnerApplicationsPanel({
         setApprovalError('Could not decline this application.');
       }
     } finally {
-      setDecliningId(null);
+      if (decisionId === decisionSequence.current) setDecliningId(null);
     }
   };
 
   useEffect(() => {
+    if (visibleTeamId.current !== teamId) {
+      decisionSequence.current += 1;
+      visibleTeamId.current = teamId;
+      setApplications([]);
+      setEmptyMessage(null);
+      setError(null);
+      setApprovalError(null);
+      setApprovalNotice(null);
+      setApprovingId(null);
+      setDecliningId(null);
+    }
     void loadApplications();
-  }, [loadApplications, refreshKey]);
+    return () => {
+      requestSequence.current += 1;
+    };
+  }, [loadApplications, refreshKey, teamId]);
 
-  const hasApplications = applications.length > 0;
+  useEffect(
+    () => () => {
+      decisionSequence.current += 1;
+    },
+    []
+  );
+
+  const currentApplications =
+    visibleTeamId.current === teamId ? applications : [];
+  const hasApplications = currentApplications.length > 0;
+  const decisionInProgress = Boolean(approvingId || decliningId);
 
   return (
     <section
@@ -189,14 +257,25 @@ export function OwnerApplicationsPanel({
             Pending Review applications are shown newest first.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void loadApplications()}
-          disabled={loading}
-          className="px-3 py-1 text-xs font-medium border border-cream-300 rounded bg-cream-50 hover:bg-cream-100 disabled:opacity-50"
-        >
-          {loading ? 'Loading…' : 'Refresh'}
-        </button>
+        <div className="flex items-center gap-2">
+          {!loading || hasApplications ? (
+            <span
+              className="rounded-full bg-cream-100 px-2 py-1 text-xs font-semibold text-forest-900"
+              aria-label={`${currentApplications.length} pending ${currentApplications.length === 1 ? 'application' : 'applications'}`}
+              data-testid="applications-pending-count"
+            >
+              {currentApplications.length} pending
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void loadApplications()}
+            disabled={loading || decisionInProgress}
+            className="px-3 py-1 text-xs font-medium border border-cream-300 rounded bg-cream-50 hover:bg-cream-100 disabled:opacity-50"
+          >
+            {loading ? 'Loading…' : 'Refresh'}
+          </button>
+        </div>
       </div>
 
       {loading && !hasApplications && (
@@ -210,6 +289,17 @@ export function OwnerApplicationsPanel({
           Refreshing applications… Existing applications remain visible.
         </p>
       )}
+
+      {decisionInProgress ? (
+        <p
+          role="status"
+          aria-live="polite"
+          data-testid="application-decision-progress"
+          className="text-xs text-ink-muted"
+        >
+          Saving the decision… Other review controls are temporarily disabled.
+        </p>
+      ) : null}
 
       {error && (
         <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900">
@@ -246,13 +336,13 @@ export function OwnerApplicationsPanel({
 
       {hasApplications && (
         <ul className="space-y-3" data-testid="applications-review-list">
-          {applications.map((application) => (
+          {currentApplications.map((application) => (
             <ApplicationReviewCard
               key={application.id}
               application={application}
               approving={approvingId === application.id}
               declining={decliningId === application.id}
-              disabled={disabled || Boolean(approvingId || decliningId)}
+              disabled={disabled || loading || decisionInProgress}
               onApprove={(id) => void handleApprove(id)}
               onDecline={(id) => void handleDecline(id)}
             />
