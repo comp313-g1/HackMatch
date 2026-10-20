@@ -163,3 +163,35 @@ export async function revalidateInvitationAcceptance(
     })
   );
 }
+
+export interface CanceledInvitationResult {
+  invitation: {
+    id: string;
+    teamId: string;
+    eventId: string;
+    vacancyId: string | null;
+    inviteeParticipantId: string;
+    status: string;
+    requestType: 'Invitation';
+    expiresAt: string | null;
+    resolvedAt: string | null;
+    cancelReason: string | null;
+    teamName: string;
+    vacancyRole: string | null;
+  };
+  changed: boolean;
+  idempotent: boolean;
+  alerts: Array<{ audience: string; type: string; message: string }>;
+  notice: string;
+}
+
+/** DELETE /api/invitations/:id — owner cancel Pending invite (#166 / FR-052). */
+export async function cancelTeamInvitation(
+  invitationId: string
+): Promise<CanceledInvitationResult> {
+  return authCall(() =>
+    authFetch(`/api/invitations/${encodeURIComponent(invitationId)}`, {
+      method: 'DELETE',
+    })
+  );
+}

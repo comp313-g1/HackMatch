@@ -95,6 +95,19 @@ export interface ITeamsRepository {
   markInvitationExpiredIfDue(
     invitationId: string
   ): Promise<{ invitation: TeamRequest; changed: boolean }>;
+  /** Owner cancel Pending invitation (US-017 / #166 / FR-052); idempotent. */
+  cancelTeamInvitation(
+    actorId: string,
+    invitationId: string
+  ): Promise<{
+    invitation: TeamRequest;
+    changed: boolean;
+    idempotent: boolean;
+    teamName: string;
+    vacancyRole: string | null;
+    alerts: Array<{ audience: string; type: string; message: string }>;
+    notice: string;
+  }>;
   /** Owner outbound invitations for a team (US-017). */
   listTeamInvitations(teamId: string): Promise<
     Array<{
@@ -458,6 +471,44 @@ export const teamsRepository: ITeamsRepository = {
     return {
       invitation: payload.invitation,
       changed: Boolean(payload.changed),
+    };
+  },
+
+  async cancelTeamInvitation(
+    actorId: string,
+    invitationId: string
+  ): Promise<{
+    invitation: TeamRequest;
+    changed: boolean;
+    idempotent: boolean;
+    teamName: string;
+    vacancyRole: string | null;
+    alerts: Array<{ audience: string; type: string; message: string }>;
+    notice: string;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('cancel_team_invitation', {
+      p_actor: actorId,
+      p_invitation: invitationId,
+    });
+    if (error) throw error;
+    const payload = data as {
+      invitation: TeamRequest;
+      changed: boolean;
+      idempotent: boolean;
+      teamName: string;
+      vacancyRole?: string | null;
+      alerts?: Array<{ audience: string; type: string; message: string }>;
+      notice: string;
+    };
+    return {
+      invitation: payload.invitation,
+      changed: Boolean(payload.changed),
+      idempotent: Boolean(payload.idempotent),
+      teamName: payload.teamName,
+      vacancyRole: payload.vacancyRole ?? null,
+      alerts: payload.alerts ?? [],
+      notice: payload.notice,
     };
   },
 

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
+  cancelTeamInvitation,
   fetchTeamInvitations,
   issueTeamInvitation,
   revalidateInvitationAcceptance,
@@ -131,5 +132,46 @@ describe('teams invitationsApi (US-017 / #162)', () => {
         invitationId: expect.stringMatching(/expired/i),
       },
     });
+  });
+
+  it('DELETEs invitation cancel and returns status alerts (#166)', async () => {
+    authFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          invitation: {
+            id: 'inv-1',
+            teamId: 't1',
+            eventId: 'e1',
+            vacancyId: 'v1',
+            inviteeParticipantId: 'p1',
+            status: 'Canceled',
+            requestType: 'Invitation',
+            expiresAt: '2026-10-21T00:00:00.000Z',
+            resolvedAt: '2026-10-19T15:00:00.000Z',
+            cancelReason: 'OWNER_CANCELED',
+            teamName: 'Team',
+            vacancyRole: 'Frontend',
+          },
+          changed: true,
+          idempotent: false,
+          alerts: [
+            {
+              audience: 'owner',
+              type: 'team_invitation_canceled',
+              message: 'You canceled the pending invitation.',
+            },
+          ],
+          notice: 'Pending invitation canceled.',
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await cancelTeamInvitation('inv-1');
+    expect(authFetchMock).toHaveBeenCalledWith('/api/invitations/inv-1', {
+      method: 'DELETE',
+    });
+    expect(result.invitation.status).toBe('Canceled');
+    expect(result.alerts[0].type).toBe('team_invitation_canceled');
   });
 });

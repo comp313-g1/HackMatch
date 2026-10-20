@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { issueInvitation, listOwnerInvitations } from './invitations.js';
+import { cancelInvitation, issueInvitation, listOwnerInvitations } from './invitations.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import {
   ownerParticipant,
@@ -303,5 +303,102 @@ describe('listOwnerInvitations (US-017 / #162)', () => {
 
     expect(result.invitations[0].status).toBe('Pending');
     expect(result.invitations[0].expiredByClock).toBe(true);
+  });
+});
+
+describe('cancelInvitation (US-017 / #166 / FR-052)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('cancels Pending invitation and returns basic status alerts (happy path)', async () => {
+    vi.spyOn(teamsRepository, 'cancelTeamInvitation').mockResolvedValue({
+      invitation: {
+        id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        team_id: sampleTeamId,
+        event_id: sampleEventId,
+        vacancy_id: sampleVacancyId,
+        participant_id: otherParticipant.id,
+        request_type: 'Invitation',
+        status: 'Canceled',
+        cancel_reason: 'OWNER_CANCELED',
+        resolved_at: '2026-10-19T15:00:00.000Z',
+        expires_at: '2026-10-21T12:00:00.000Z',
+        created_at: '2026-10-19T12:00:00.000Z',
+        updated_at: '2026-10-19T15:00:00.000Z',
+      },
+      changed: true,
+      idempotent: false,
+      teamName: 'HackMatch Innovators',
+      vacancyRole: 'Frontend',
+      alerts: [
+        {
+          audience: 'invitee',
+          type: 'team_invitation_canceled',
+          message: 'Your invitation was canceled by the team owner.',
+        },
+        {
+          audience: 'owner',
+          type: 'team_invitation_canceled',
+          message: 'You canceled the pending invitation.',
+        },
+      ],
+      notice: 'Pending invitation canceled. Quota for this slot and invitee is released.',
+    });
+
+    const result = await cancelInvitation(
+      ownerParticipant.id,
+      'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+    );
+
+    expect(result.invitation.status).toBe('Canceled');
+    expect(result.changed).toBe(true);
+    expect(result.alerts).toHaveLength(2);
+    expect(result.notice).toMatch(/canceled/i);
+  });
+
+  it('treats repeated cancel as idempotent success', async () => {
+    vi.spyOn(teamsRepository, 'cancelTeamInvitation').mockResolvedValue({
+      invitation: {
+        id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        team_id: sampleTeamId,
+        event_id: sampleEventId,
+        vacancy_id: sampleVacancyId,
+        participant_id: otherParticipant.id,
+        request_type: 'Invitation',
+        status: 'Canceled',
+        cancel_reason: 'OWNER_CANCELED',
+        resolved_at: '2026-10-19T14:00:00.000Z',
+        expires_at: '2026-10-21T12:00:00.000Z',
+        created_at: '2026-10-19T12:00:00.000Z',
+        updated_at: '2026-10-19T14:00:00.000Z',
+      },
+      changed: false,
+      idempotent: true,
+      teamName: 'HackMatch Innovators',
+      vacancyRole: 'Frontend',
+      alerts: [],
+      notice: 'Invitation was already canceled.',
+    });
+
+    const result = await cancelInvitation(
+      ownerParticipant.id,
+      'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+    );
+
+    expect(result.idempotent).toBe(true);
+    expect(result.changed).toBe(false);
+    expect(result.invitation.status).toBe('Canceled');
+  });
+
+  it('maps INVITATION_NOT_CANCELABLE from repository', async () => {
+    vi.spyOn(teamsRepository, 'cancelTeamInvitation').mockRejectedValue({
+      message: 'INVITATION_NOT_CANCELABLE',
+      code: 'P0001',
+    });
+
+    await expect(
+      cancelInvitation(ownerParticipant.id, 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee')
+    ).rejects.toMatchObject({ code: 'INVITATION_NOT_CANCELABLE', status: 409 });
   });
 });

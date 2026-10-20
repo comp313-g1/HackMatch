@@ -1,6 +1,10 @@
 import type { Request, Response, NextFunction } from 'express';
 import { revalidateInvitationForAcceptance } from '../services/invitationAcceptance.js';
-import { issueInvitation, listOwnerInvitations } from '../services/invitations.js';
+import {
+  cancelInvitation,
+  issueInvitation,
+  listOwnerInvitations,
+} from '../services/invitations.js';
 import { TEAM_ERROR_CATALOG, toTeamServiceError, type TeamErrorCode } from '../services/teamErrors.js';
 
 function fieldErrorsForInvitationCode(
@@ -20,6 +24,7 @@ function fieldErrorsForInvitationCode(
       return { inviteeParticipantId: message };
     case 'INVITATION_EXPIRED':
     case 'INVITATION_NOT_ACCEPTABLE':
+    case 'INVITATION_NOT_CANCELABLE':
     case 'INVITATION_NOT_FOUND':
       return { invitationId: message };
     default:
@@ -141,6 +146,37 @@ export async function revalidateInvitationAcceptanceHandler(
       },
       notice: result.notice,
     });
+  } catch (err: unknown) {
+    handleInvitationError(err, res, next);
+  }
+}
+
+/**
+ * DELETE /api/invitations/:id
+ * US-017 / #166 / FR-052 — owner cancels Pending invitation; basic status alerts for both.
+ */
+export async function cancelInvitationHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const invitationId = String(req.params.id || '').trim();
+    if (!invitationId) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(400).json({
+        error: 'Invitation id is required.',
+        code: 'VALIDATION_ERROR',
+        errors: { invitationId: 'Invitation id is required.' },
+      });
+      return;
+    }
+
+    const result = await cancelInvitation(actorId, invitationId);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json(result);
   } catch (err: unknown) {
     handleInvitationError(err, res, next);
   }

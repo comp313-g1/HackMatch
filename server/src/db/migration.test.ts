@@ -895,4 +895,30 @@ describe('0021_invitation_acceptance_revalidation.sql Migration DDL (US-017 / #1
   });
 });
 
+describe('0022_cancel_team_invitation.sql Migration DDL (US-017 / #166)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0022_cancel_team_invitation.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('defines cancel_team_invitation with owner check, idempotency, and alerts', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+cancel_team_invitation/i);
+    expect(sql).toMatch(/FORBIDDEN_NOT_TEAM_OWNER/i);
+    expect(sql).toMatch(/INVITATION_NOT_CANCELABLE/i);
+    expect(sql).toMatch(/OWNER_CANCELED/i);
+    expect(sql).toMatch(/idempotent/i);
+    expect(sql).toMatch(/team_invitation_canceled/i);
+    expect(sql).toMatch(/INSERT\s+INTO\s+participant_notifications/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+cancel_team_invitation\s*\(\s*UUID\s*,\s*UUID\s*\)\s+TO\s+service_role/i
+    );
+  });
+});
+
 

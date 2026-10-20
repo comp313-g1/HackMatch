@@ -198,3 +198,72 @@ export async function listOwnerInvitations(
         : null,
   };
 }
+
+export interface InvitationStatusAlert {
+  audience: 'invitee' | 'owner' | string;
+  type: string;
+  message: string;
+}
+
+export interface CanceledInvitationResult {
+  invitation: {
+    id: string;
+    teamId: string;
+    eventId: string;
+    vacancyId: string | null;
+    inviteeParticipantId: string;
+    status: TeamRequest['status'];
+    requestType: 'Invitation';
+    expiresAt: string | null;
+    resolvedAt: string | null;
+    cancelReason: string | null;
+    teamName: string;
+    vacancyRole: string | null;
+  };
+  changed: boolean;
+  idempotent: boolean;
+  alerts: InvitationStatusAlert[];
+  notice: string;
+}
+
+/**
+ * Owner cancels a Pending invitation (US-017 / #166 / FR-052).
+ * Releases pending quotas; writes basic status alerts for owner and invitee.
+ * Repeated cancel of an already-Canceled invite is idempotent.
+ */
+export async function cancelInvitation(
+  actorParticipantId: string,
+  invitationId: string
+): Promise<CanceledInvitationResult> {
+  try {
+    const result = await teamsRepository.cancelTeamInvitation(
+      actorParticipantId,
+      invitationId
+    );
+    const inv = result.invitation;
+    return {
+      invitation: {
+        id: inv.id,
+        teamId: inv.team_id,
+        eventId: inv.event_id,
+        vacancyId: inv.vacancy_id,
+        inviteeParticipantId: inv.participant_id,
+        status: inv.status,
+        requestType: 'Invitation',
+        expiresAt: inv.expires_at,
+        resolvedAt: inv.resolved_at,
+        cancelReason: inv.cancel_reason,
+        teamName: result.teamName,
+        vacancyRole: result.vacancyRole,
+      },
+      changed: result.changed,
+      idempotent: result.idempotent,
+      alerts: result.alerts,
+      notice: result.notice,
+    };
+  } catch (err: unknown) {
+    const mapped = toTeamServiceError(err);
+    if (mapped) throw mapped;
+    throw err;
+  }
+}

@@ -23,6 +23,7 @@ export type TeamErrorCode =
   | 'INVITATION_NOT_FOUND'
   | 'INVITATION_EXPIRED'
   | 'INVITATION_NOT_ACCEPTABLE'
+  | 'INVITATION_NOT_CANCELABLE'
   | 'FORBIDDEN_NOT_INVITEE';
 
 export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message: string }> = {
@@ -80,6 +81,10 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   INVITATION_NOT_ACCEPTABLE: {
     status: 409,
     message: 'This invitation is no longer acceptable (canceled, declined, or otherwise closed).',
+  },
+  INVITATION_NOT_CANCELABLE: {
+    status: 409,
+    message: 'Only Pending invitations can be canceled.',
   },
   FORBIDDEN_NOT_INVITEE: {
     status: 403,

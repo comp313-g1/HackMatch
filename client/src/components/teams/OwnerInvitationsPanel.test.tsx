@@ -11,11 +11,13 @@ vi.mock('./invitationsApi', async () => {
     ...actual,
     fetchTeamInvitations: vi.fn(),
     issueTeamInvitation: vi.fn(),
+    cancelTeamInvitation: vi.fn(),
   };
 });
 
 const fetchMock = vi.mocked(invitationsApi.fetchTeamInvitations);
 const issueMock = vi.mocked(invitationsApi.issueTeamInvitation);
+const cancelMock = vi.mocked(invitationsApi.cancelTeamInvitation);
 
 const openVacancy: TeamVacancyView = {
   id: '66666666-6666-4666-8666-666666666666',
@@ -30,6 +32,7 @@ describe('OwnerInvitationsPanel (US-017 / #162)', () => {
   beforeEach(() => {
     fetchMock.mockReset();
     issueMock.mockReset();
+    cancelMock.mockReset();
   });
 
   it('shows empty state after successful load with no invitations', async () => {
@@ -301,6 +304,98 @@ describe('OwnerInvitationsPanel (US-017 / #162)', () => {
     expect(screen.getByTestId('invitation-expiry-inv-expired')).toHaveTextContent(
       /acceptance is rejected/i
     );
+  });
+
+  it('cancels a Pending invitation and shows status alert (#166 / T4)', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        teamId: 't1',
+        invitations: [
+          {
+            id: 'inv-pending',
+            teamId: 't1',
+            eventId: 'e1',
+            vacancyId: openVacancy.id,
+            inviteeParticipantId: inviteeId,
+            inviteeHandle: 'mj',
+            inviteeDisplayName: 'MJ',
+            status: 'Pending',
+            requestType: 'Invitation',
+            expiresAt: '2026-10-21T12:00:00.000Z',
+            createdAt: '2026-10-19T12:00:00.000Z',
+            resolvedAt: null,
+            vacancyRole: 'Frontend',
+            teamName: 'Team',
+            expiredByClock: false,
+          },
+        ],
+        empty: false,
+        message: null,
+      })
+      .mockResolvedValueOnce({
+        teamId: 't1',
+        invitations: [
+          {
+            id: 'inv-pending',
+            teamId: 't1',
+            eventId: 'e1',
+            vacancyId: openVacancy.id,
+            inviteeParticipantId: inviteeId,
+            inviteeHandle: 'mj',
+            inviteeDisplayName: 'MJ',
+            status: 'Canceled',
+            requestType: 'Invitation',
+            expiresAt: '2026-10-21T12:00:00.000Z',
+            createdAt: '2026-10-19T12:00:00.000Z',
+            resolvedAt: '2026-10-19T15:00:00.000Z',
+            vacancyRole: 'Frontend',
+            teamName: 'Team',
+            expiredByClock: false,
+          },
+        ],
+        empty: false,
+        message: null,
+      });
+
+    cancelMock.mockResolvedValue({
+      invitation: {
+        id: 'inv-pending',
+        teamId: 't1',
+        eventId: 'e1',
+        vacancyId: openVacancy.id,
+        inviteeParticipantId: inviteeId,
+        status: 'Canceled',
+        requestType: 'Invitation',
+        expiresAt: '2026-10-21T12:00:00.000Z',
+        resolvedAt: '2026-10-19T15:00:00.000Z',
+        cancelReason: 'OWNER_CANCELED',
+        teamName: 'Team',
+        vacancyRole: 'Frontend',
+      },
+      changed: true,
+      idempotent: false,
+      alerts: [
+        {
+          audience: 'owner',
+          type: 'team_invitation_canceled',
+          message: 'You canceled the pending invitation for the Frontend slot on "Team".',
+        },
+      ],
+      notice: 'Pending invitation canceled. Quota for this slot and invitee is released.',
+    });
+
+    render(<OwnerInvitationsPanel teamId="t1" vacancies={[openVacancy]} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cancel-invitation-inv-pending')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('cancel-invitation-inv-pending'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('invitation-status-alert')).toHaveTextContent(/canceled/i);
+    });
+    expect(cancelMock).toHaveBeenCalledWith('inv-pending');
+    expect(screen.getByTestId('invitation-status-inv-pending')).toHaveTextContent('Canceled');
   });
 
   it('labels open slots that already have a Pending invitation (#164)', async () => {

@@ -3,6 +3,7 @@ import type { TeamVacancyView } from './teamTypes';
 import {
   AuthRequiredError,
   TeamInvitationsApiError,
+  cancelTeamInvitation,
   fetchTeamInvitations,
   issueTeamInvitation,
   type OwnerInvitationListItem,
@@ -20,7 +21,7 @@ export interface OwnerInvitationsPanelProps {
 type ListState = 'loading' | 'success' | 'error';
 
 /**
- * Owner-only US-017 invitation issuance + outbound list (#162).
+ * Owner-only US-017 invitation issuance, cancel (#166), and outbound list (#162).
  * Loading / success / empty / validation / error states; form values kept on failure.
  */
 export function OwnerInvitationsPanel({
@@ -42,7 +43,10 @@ export function OwnerInvitationsPanel({
     inviteeParticipantId?: string;
   }>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [statusAlert, setStatusAlert] = useState<string | null>(null);
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
 
   const pendingVacancyIds = new Set(
     invitations
@@ -98,6 +102,7 @@ export function OwnerInvitationsPanel({
     e.preventDefault();
     if (disabled || submitting) return;
     setSubmitError(null);
+    setCancelError(null);
     setSuccessNotice(null);
     if (!validateForm()) return;
 
@@ -148,6 +153,35 @@ export function OwnerInvitationsPanel({
       return 'Expired after 48 hours — acceptance is rejected';
     }
     return `Expires ${new Date(inv.expiresAt).toLocaleString()} (48h window)`;
+  };
+
+  const handleCancel = async (invitationId: string) => {
+    if (disabled || cancelingId) return;
+    setSubmitError(null);
+    setCancelError(null);
+    setSuccessNotice(null);
+    setStatusAlert(null);
+    setCancelingId(invitationId);
+    try {
+      const result = await cancelTeamInvitation(invitationId);
+      const ownerAlert = result.alerts.find((a) => a.audience === 'owner');
+      setSuccessNotice(result.notice);
+      setStatusAlert(ownerAlert?.message ?? 'Invitation status updated to Canceled.');
+      await loadList();
+    } catch (err: unknown) {
+      if (err instanceof AuthRequiredError) {
+        setCancelError('You need to sign in to cancel an invitation.');
+      } else if (err instanceof TeamInvitationsApiError) {
+        setCancelError(
+          err.message ||
+            'Could not cancel invitation. If this persists, apply migration 0022 and restart the API.'
+        );
+      } else {
+        setCancelError('Could not cancel invitation.');
+      }
+    } finally {
+      setCancelingId(null);
+    }
   };
 
   return (
@@ -252,6 +286,26 @@ export function OwnerInvitationsPanel({
           </div>
         ) : null}
 
+        {statusAlert ? (
+          <div
+            role="status"
+            className="text-xs text-forest-900 bg-cream-50 border border-cream-200 rounded p-2"
+            data-testid="invitation-status-alert"
+          >
+            {statusAlert}
+          </div>
+        ) : null}
+
+        {cancelError ? (
+          <div
+            role="alert"
+            className="text-xs text-red-800 space-y-1"
+            data-testid="cancel-invitation-error"
+          >
+            <p>{cancelError}</p>
+          </div>
+        ) : null}
+
         <button
           type="submit"
           disabled={disabled || submitting || openVacancies.length === 0}
@@ -314,6 +368,17 @@ export function OwnerInvitationsPanel({
                   <span data-testid={`invitation-expiry-${inv.id}`}>{expiryLabel(inv)}</span>
                 </p>
               </div>
+              {inv.status === 'Pending' && !inv.expiredByClock ? (
+                <button
+                  type="button"
+                  onClick={() => void handleCancel(inv.id)}
+                  disabled={disabled || cancelingId === inv.id}
+                  className="px-2 py-1 text-xs font-medium border border-cream-300 rounded bg-white hover:bg-cream-50 disabled:opacity-50"
+                  data-testid={`cancel-invitation-${inv.id}`}
+                >
+                  {cancelingId === inv.id ? 'Canceling…' : 'Cancel invite'}
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
