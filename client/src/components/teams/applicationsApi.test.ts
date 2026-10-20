@@ -106,7 +106,16 @@ describe('applicationsApi (US-018 / #171)', () => {
       new Response(
         JSON.stringify({
           code: 'DUPLICATE_PENDING_APPLICATION',
-          error: 'You already have a pending application for this team.',
+          error:
+            'You already have a pending application for this team. Withdraw it or wait for a decision before applying again.',
+          errors: {
+            _form:
+              'You already have a pending application for this team. Withdraw it or wait for a decision before applying again.',
+          },
+          details: {
+            teamId: 't1',
+            existingApplicationId: 'app-existing',
+          },
         }),
         { status: 409 }
       )
@@ -118,6 +127,13 @@ describe('applicationsApi (US-018 / #171)', () => {
       name: 'ApplicationsApiError',
       code: 'DUPLICATE_PENDING_APPLICATION',
       status: 409,
+      errors: {
+        _form: expect.stringMatching(/withdraw it or wait/i),
+      },
+      details: {
+        teamId: 't1',
+        existingApplicationId: 'app-existing',
+      },
     });
   });
 
@@ -201,9 +217,11 @@ describe('applicationsApi (US-018 / #171)', () => {
       new Response(
         JSON.stringify({
           code: 'APPLICATION_PENDING_LIMIT',
-          error: 'You already have 3 pending applications for this event.',
+          error:
+            'You already have 3 pending applications for this event. Withdraw one or wait for a decision before applying again.',
           errors: {
-            _form: 'You already have 3 pending applications for this event.',
+            _form:
+              'You already have 3 pending applications for this event. Withdraw one or wait for a decision before applying again.',
           },
           details: { limit: 3, pendingCount: 3 },
         }),

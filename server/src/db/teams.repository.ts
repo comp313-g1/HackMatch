@@ -119,6 +119,11 @@ export interface ITeamsRepository {
     alerts: Array<{ audience: string; type: string; message: string }>;
     notice: string;
   }>;
+  /** US-018 / #176 — detect an existing Pending Application for applicant/team. */
+  findPendingApplicationForTeam(
+    participantId: string,
+    teamId: string
+  ): Promise<Pick<TeamRequest, 'id'> | null>;
   /**
    * US-017 / #164 pending-quota probe: existing Pending invite for invitee/team
    * and/or for the vacancy slot (may be the same row).
@@ -583,6 +588,23 @@ export const teamsRepository: ITeamsRepository = {
       alerts: payload.alerts ?? [],
       notice: payload.notice,
     };
+  },
+
+  async findPendingApplicationForTeam(
+    participantId: string,
+    teamId: string
+  ): Promise<Pick<TeamRequest, 'id'> | null> {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('team_requests')
+      .select('id')
+      .eq('participant_id', participantId)
+      .eq('team_id', teamId)
+      .eq('request_type', 'Application')
+      .eq('status', 'Pending')
+      .maybeSingle();
+    if (error) throw error;
+    return (data as Pick<TeamRequest, 'id'> | null) ?? null;
   },
 
   async findPendingInvitationConflicts(

@@ -263,5 +263,34 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
     expect(eqStatus).toHaveBeenCalledWith('status', 'Confirmed');
     expect(ids).toEqual([ownerId, otherId]);
   });
+
+  it('findPendingApplicationForTeam returns only the applicant pending Application (#176)', async () => {
+    const participantId = 'p2000000-0000-4000-8000-000000000002';
+    const application = { id: 'a1000000-0000-4000-8000-000000000001' };
+    const maybeSingle = vi.fn().mockResolvedValue({ data: application, error: null });
+    const eqStatus = vi.fn().mockReturnValue({ maybeSingle });
+    const eqType = vi.fn().mockReturnValue({ eq: eqStatus });
+    const eqTeam = vi.fn().mockReturnValue({ eq: eqType });
+    const eqParticipant = vi.fn().mockReturnValue({ eq: eqTeam });
+    const select = vi.fn().mockReturnValue({ eq: eqParticipant });
+    const from = vi.fn().mockReturnValue({ select });
+
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+      from,
+    } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.findPendingApplicationForTeam(
+      participantId,
+      sampleTeam.id
+    );
+
+    expect(from).toHaveBeenCalledWith('team_requests');
+    expect(select).toHaveBeenCalledWith('id');
+    expect(eqParticipant).toHaveBeenCalledWith('participant_id', participantId);
+    expect(eqTeam).toHaveBeenCalledWith('team_id', sampleTeam.id);
+    expect(eqType).toHaveBeenCalledWith('request_type', 'Application');
+    expect(eqStatus).toHaveBeenCalledWith('status', 'Pending');
+    expect(result).toEqual(application);
+  });
 });
 

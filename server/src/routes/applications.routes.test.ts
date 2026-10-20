@@ -65,6 +65,7 @@ function mockEligibleApplyContext(overrides?: {
   vi.spyOn(teamsRepository, 'countPendingApplicationsForEvent').mockResolvedValue(
     overrides?.pendingCountForEvent ?? 0
   );
+  vi.spyOn(teamsRepository, 'findPendingApplicationForTeam').mockResolvedValue(null);
 }
 
 describe('POST /api/teams/:teamId/applications (US-018 / #172 / #173)', () => {
@@ -185,6 +186,7 @@ describe('POST /api/teams/:teamId/applications (US-018 / #172 / #173)', () => {
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('APPLICATION_PENDING_LIMIT');
     expect(res.body.errors._form).toMatch(/3 pending/i);
+    expect(res.body.errors._form).toMatch(/withdraw one or wait/i);
     expect(res.body.details).toMatchObject({ limit: 3, pendingCount: 3 });
     expect(rpcSpy).not.toHaveBeenCalled();
   });
@@ -202,6 +204,29 @@ describe('POST /api/teams/:teamId/applications (US-018 / #172 / #173)', () => {
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('DUPLICATE_PENDING_APPLICATION');
+    expect(res.body.errors._form).toMatch(/withdraw it or wait/i);
+  });
+
+  it('returns the duplicate error before the event limit when both conditions apply (#176)', async () => {
+    mockEligibleApplyContext({ pendingCountForEvent: 3 });
+    vi.spyOn(teamsRepository, 'findPendingApplicationForTeam').mockResolvedValue({
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    });
+    const rpcSpy = vi.spyOn(teamsRepository, 'submitTeamApplication');
+
+    const res = await request(app)
+      .post(applyPath)
+      .set('Authorization', otherTokenHeader)
+      .send({ vacancyId: sampleVacancyId });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('DUPLICATE_PENDING_APPLICATION');
+    expect(res.body.details).toEqual({
+      teamId: sampleTeamId,
+      existingApplicationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    });
+    expect(res.body.errors._form).toMatch(/withdraw it or wait/i);
+    expect(rpcSpy).not.toHaveBeenCalled();
   });
 
   it('returns 409 VACANCY_NOT_OPEN with vacancyId field error', async () => {
@@ -294,6 +319,24 @@ describe('POST /api/teams/:teamId/applications (US-018 / #172 / #173)', () => {
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('APPLICANT_ALREADY_CONFIRMED');
+    expect(rpcSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns safe 500 when the duplicate lookup fails and does not attempt the RPC', async () => {
+    vi.spyOn(teamsRepository, 'findPendingApplicationForTeam').mockRejectedValue(
+      new Error('database password=do-not-leak')
+    );
+    const rpcSpy = vi.spyOn(teamsRepository, 'submitTeamApplication');
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const res = await request(app)
+      .post(applyPath)
+      .set('Authorization', otherTokenHeader)
+      .send({ vacancyId: sampleVacancyId });
+
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('Internal Server Error');
+    expect(JSON.stringify(res.body)).not.toContain('do-not-leak');
     expect(rpcSpy).not.toHaveBeenCalled();
   });
 });

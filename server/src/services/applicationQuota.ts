@@ -1,8 +1,9 @@
 /**
  * US-018 / #174 / FR-054 — application pending quotas:
  * at most 3 Pending Review applications per PART per event.
- * Duplicate pending per team is enforced by unique index + RPC (FR-053);
- * this module focuses on the per-event concurrent limit.
+ * Duplicate pending per team is checked before the per-event quota so callers
+ * receive the most specific error. The unique index + RPC remain the atomic
+ * concurrency backstop (FR-053).
  *
  * Express preflight throws TeamServiceError; submit_team_application re-enforces
  * the same COUNT atomically under concurrency.
@@ -13,7 +14,9 @@ import type { ITeamsRepository } from '../db/teams.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import { TeamServiceError } from './teamErrors.js';
 
-export type ApplicationQuotaFailure = 'APPLICATION_PENDING_LIMIT';
+export type ApplicationQuotaFailure =
+  | 'DUPLICATE_PENDING_APPLICATION'
+  | 'APPLICATION_PENDING_LIMIT';
 
 export interface ApplicationQuotaDecision {
   ok: boolean;
@@ -45,7 +48,12 @@ export interface ApplicationQuotaInput {
 }
 
 export interface ApplicationQuotaDeps {
-  teamsRepo: Pick<ITeamsRepository, 'countPendingApplicationsForEvent' | 'findTeamById'>;
+  teamsRepo: Pick<
+    ITeamsRepository,
+    | 'countPendingApplicationsForEvent'
+    | 'findPendingApplicationForTeam'
+    | 'findTeamById'
+  >;
 }
 
 function resolveDeps(partial?: Partial<ApplicationQuotaDeps>): ApplicationQuotaDeps {
@@ -66,6 +74,17 @@ export async function assertApplicationQuotas(
   const team = await deps.teamsRepo.findTeamById(input.teamId);
   if (!team) {
     throw new TeamServiceError('TEAM_NOT_FOUND');
+  }
+
+  const duplicate = await deps.teamsRepo.findPendingApplicationForTeam(
+    input.actorParticipantId,
+    input.teamId
+  );
+  if (duplicate) {
+    throw new TeamServiceError('DUPLICATE_PENDING_APPLICATION', {
+      teamId: input.teamId,
+      existingApplicationId: duplicate.id,
+    });
   }
 
   const pendingCount = await deps.teamsRepo.countPendingApplicationsForEvent(

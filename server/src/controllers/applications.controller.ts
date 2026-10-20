@@ -48,7 +48,7 @@ function handleApplicationError(err: unknown, res: Response, next: NextFunction)
 
 /**
  * POST /api/teams/:teamId/applications
- * Verified PART applies to an open slot (US-018 / #172 / FR-053 / FR-054).
+ * Verified PART applies to an open slot (US-018 / #172 / #176 / FR-053 / FR-054).
  */
 export async function submitApplicationHandler(
   req: Request,

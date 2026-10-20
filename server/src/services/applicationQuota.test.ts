@@ -9,7 +9,24 @@ import {
   sampleEventId,
   sampleTeam,
   sampleTeamId,
+  sampleVacancyId,
 } from '../routes/team.testUtils.js';
+
+const existingApplication = {
+  id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  team_id: sampleTeamId,
+  event_id: sampleEventId,
+  vacancy_id: sampleVacancyId,
+  participant_id: otherParticipant.id,
+  request_type: 'Application' as const,
+  status: 'Pending' as const,
+  cancel_reason: null,
+  resolved_at: null,
+  expires_at: null,
+  message: null,
+  created_at: '2026-10-19T12:00:00.000Z',
+  updated_at: '2026-10-19T12:00:00.000Z',
+};
 
 describe('applicationQuota pure guards (US-018 / #174 / FR-054)', () => {
   it('allows pending counts below the limit of 3', () => {
@@ -39,6 +56,7 @@ describe('assertApplicationQuotas (US-018 / #174)', () => {
         {
           teamsRepo: {
             findTeamById: vi.fn().mockResolvedValue(sampleTeam),
+            findPendingApplicationForTeam: vi.fn().mockResolvedValue(null),
             countPendingApplicationsForEvent: vi.fn().mockResolvedValue(2),
           },
         }
@@ -55,6 +73,7 @@ describe('assertApplicationQuotas (US-018 / #174)', () => {
         {
           teamsRepo: {
             findTeamById: vi.fn().mockResolvedValue(sampleTeam),
+            findPendingApplicationForTeam: vi.fn().mockResolvedValue(null),
             countPendingApplicationsForEvent: countSpy,
           },
         }
@@ -72,6 +91,34 @@ describe('assertApplicationQuotas (US-018 / #174)', () => {
     expect(countSpy).toHaveBeenCalledWith(otherParticipant.id, sampleEventId);
   });
 
+  it('throws DUPLICATE_PENDING_APPLICATION before the event limit when both apply (#176)', async () => {
+    const duplicateSpy = vi.fn().mockResolvedValue(existingApplication);
+    const countSpy = vi.fn().mockResolvedValue(3);
+
+    await expect(
+      assertApplicationQuotas(
+        { actorParticipantId: otherParticipant.id, teamId: sampleTeamId },
+        {
+          teamsRepo: {
+            findTeamById: vi.fn().mockResolvedValue(sampleTeam),
+            findPendingApplicationForTeam: duplicateSpy,
+            countPendingApplicationsForEvent: countSpy,
+          },
+        }
+      )
+    ).rejects.toMatchObject({
+      code: 'DUPLICATE_PENDING_APPLICATION',
+      status: 409,
+      details: {
+        teamId: sampleTeamId,
+        existingApplicationId: existingApplication.id,
+      },
+    });
+
+    expect(duplicateSpy).toHaveBeenCalledWith(otherParticipant.id, sampleTeamId);
+    expect(countSpy).not.toHaveBeenCalled();
+  });
+
   it('throws TEAM_NOT_FOUND when the team cannot be resolved for quota', async () => {
     await expect(
       assertApplicationQuotas(
@@ -79,6 +126,7 @@ describe('assertApplicationQuotas (US-018 / #174)', () => {
         {
           teamsRepo: {
             findTeamById: vi.fn().mockResolvedValue(null),
+            findPendingApplicationForTeam: vi.fn(),
             countPendingApplicationsForEvent: vi.fn(),
           },
         }
