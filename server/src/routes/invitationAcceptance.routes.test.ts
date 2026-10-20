@@ -54,6 +54,7 @@ describe('POST /api/invitations/:id/accept (US-017 / #165 / FR-051)', () => {
       cancel_reason: null,
       resolved_at: null,
       expires_at: '2099-01-01T00:00:00.000Z',
+      message: null,
       created_at: '2026-10-19T12:00:00.000Z',
       updated_at: '2026-10-19T12:00:00.000Z',
     });
@@ -102,6 +103,7 @@ describe('POST /api/invitations/:id/accept (US-017 / #165 / FR-051)', () => {
       cancel_reason: null,
       resolved_at: null,
       expires_at: '2020-01-01T00:00:00.000Z',
+      message: null,
       created_at: '2019-12-30T00:00:00.000Z',
       updated_at: '2019-12-30T00:00:00.000Z',
     });
@@ -117,6 +119,7 @@ describe('POST /api/invitations/:id/accept (US-017 / #165 / FR-051)', () => {
         cancel_reason: null,
         resolved_at: '2020-01-01T00:00:00.000Z',
         expires_at: '2020-01-01T00:00:00.000Z',
+        message: null,
         created_at: '2019-12-30T00:00:00.000Z',
         updated_at: '2020-01-01T00:00:00.000Z',
       },

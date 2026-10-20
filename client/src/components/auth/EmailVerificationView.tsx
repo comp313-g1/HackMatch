@@ -240,7 +240,7 @@ export function EmailVerificationView({
           <div className="w-full p-4 bg-forest-50 border border-forest-100 text-forest-900 text-xs rounded-md text-left mb-6">
             <p className="font-semibold mb-1">Security Policy Notice:</p>
             <p>
-              In accordance with our security policy (US-001 AC 5), email verification does not automatically create an active session. You must sign in with your credentials and complete multi-factor authentication (MFA).
+              Email verification does not automatically create an active session. You must sign in with your credentials and complete multi-factor authentication (MFA).
             </p>
           </div>
 

@@ -15,6 +15,9 @@ import { MyTeamsPage } from './components/teams/MyTeamsPage';
 import { CreateTeamPage } from './components/teams/CreateTeamPage';
 import { LookingForTeamPage } from './components/LookingForTeamPage';
 import { OpenTeamsBoard } from './components/teams/OpenTeamsBoard';
+import { ApplicationFormPanel } from './components/teams/ApplicationFormPanel';
+import { MyApplicationsPanel } from './components/teams/MyApplicationsPanel';
+import type { OpenTeamApplyTarget } from './components/teams/openTeamsApi';
 import type { OtpChallenge } from './components/auth/providerSignIn';
 
 type View =
@@ -29,7 +32,8 @@ type View =
   | 'team'
   | 'create-team'
   | 'looking'
-  | 'browse-teams';
+  | 'browse-teams'
+  | 'applications';
 
 const getInitialView = (): View => {
   if (typeof window === 'undefined') return 'landing';
@@ -67,6 +71,9 @@ const getInitialView = (): View => {
   if (view === 'browse-teams' || view === 'open-teams') {
     return 'browse-teams';
   }
+  if (view === 'applications' || view === 'my-applications') {
+    return 'applications';
+  }
   return 'landing';
 };
 
@@ -76,6 +83,7 @@ export function App(): React.JSX.Element {
   const [verificationEmail, setVerificationEmail] = useState<string>('');
   const [recoveryEmail, setRecoveryEmail] = useState<string>('');
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
+  const [applyTarget, setApplyTarget] = useState<OpenTeamApplyTarget | null>(null);
   const [teamEventId, setTeamEventId] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
     const params = new URLSearchParams(window.location.search);
@@ -85,9 +93,6 @@ export function App(): React.JSX.Element {
   const [signingOut, setSigningOut] = useState<boolean>(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [otpChallenge, setOtpChallenge] = useState<OtpChallenge | null>(null);
-  const [healthStatus, setHealthStatus] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -95,24 +100,6 @@ export function App(): React.JSX.Element {
     });
     return () => unsubscribe();
   }, []);
-
-  const checkApiHealth = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Calls /api/health through Vite proxy in development
-      const response = await fetch('/api/health');
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      setHealthStatus(`Connected: status=${data.status}, time=${data.timestamp}`);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to reach API');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const goToLanding = () => {
     setStatusNotice(null);
@@ -185,12 +172,20 @@ export function App(): React.JSX.Element {
     setCurrentView('browse-teams');
   };
 
+  const goToApplications = () => {
+    setStatusNotice(null);
+    setApplyTarget(null);
+    setIsMobileMenuOpen(false);
+    setCurrentView('applications');
+  };
+
   const isAuthenticated =
     Boolean(currentUser) ||
     currentView === 'account' ||
     currentView === 'team' ||
     currentView === 'create-team' ||
     currentView === 'looking' ||
+    currentView === 'applications' ||
     currentView === 'mfa';
   const participantIdentifier =
     currentUser?.displayName ||
@@ -277,10 +272,13 @@ export function App(): React.JSX.Element {
                 </button>
                 <button
                   type="button"
-                  disabled
-                  title="Coming soon in Sprint 3"
-                  aria-disabled="true"
-                  className="hidden xl:inline text-sm font-medium text-ink-muted/60 cursor-not-allowed"
+                  onClick={goToApplications}
+                  aria-current={currentView === 'applications' ? 'page' : undefined}
+                  className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
+                    currentView === 'applications'
+                      ? 'text-forest-900 font-semibold'
+                      : 'text-ink-muted hover:text-forest-800'
+                  }`}
                 >
                   Applications
                 </button>
@@ -418,6 +416,13 @@ export function App(): React.JSX.Element {
                   className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
                 >
                   Looking for Team
+                </button>
+                <button
+                  type="button"
+                  onClick={goToApplications}
+                  className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
+                >
+                  Applications
                 </button>
                 <button
                   type="button"
@@ -568,13 +573,41 @@ export function App(): React.JSX.Element {
             />
           </section>
         ) : currentView === 'browse-teams' ? (
-          <OpenTeamsBoard
-            currentUser={currentUser}
-            onNavigateToSignIn={goToLogin}
-            onApply={(target) =>
-              setStatusNotice(`Applying to "${target.teamName}" (${target.role}) will be available with US-018.`)
-            }
-          />
+          <>
+            <ApplicationFormPanel
+              target={applyTarget}
+              onClose={() => setApplyTarget(null)}
+              onSuccess={(notice) => setStatusNotice(notice)}
+            />
+            <OpenTeamsBoard
+              currentUser={currentUser}
+              onNavigateToSignIn={goToLogin}
+              onApply={(target) => {
+                setStatusNotice(null);
+                setApplyTarget(target);
+              }}
+            />
+          </>
+        ) : currentView === 'applications' ? (
+          <section aria-labelledby="applications-heading">
+            <h2 id="applications-heading" className="sr-only">
+              My Applications
+            </h2>
+            <MfaGate
+              initialChallenge={otpChallenge}
+              onNavigateToSignIn={() => {
+                setStatusNotice(null);
+                setOtpChallenge(null);
+                setCurrentView('login');
+              }}
+            >
+              {() => (
+                <MyApplicationsPanel
+                  onStatusNotice={(notice) => setStatusNotice(notice)}
+                />
+              )}
+            </MfaGate>
+          </section>
         ) : currentView === 'account' ? (
           <section aria-labelledby="account-heading">
             <h2 id="account-heading" className="sr-only">
@@ -729,32 +762,8 @@ export function App(): React.JSX.Element {
       <footer className="border-t border-cream-200 bg-cream-50 py-6" role="contentinfo">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center text-sm text-ink-muted">
           <p>© 2026 HackMatch Team 1. All rights reserved.</p>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-            <p>COMP 313 Project 2</p>
-            <button
-              type="button"
-              onClick={checkApiHealth}
-              disabled={loading}
-              className="text-xs font-medium text-forest-700 underline hover:text-forest-900 focus:outline-none focus:ring-2 focus:ring-forest rounded disabled:opacity-50"
-            >
-              {loading ? 'Checking Health...' : 'Probe /api/health'}
-            </button>
-          </div>
+          <p>HackMatch</p>
         </div>
-        {(healthStatus || error) && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-3">
-            {healthStatus && (
-              <div role="status" className="text-xs text-forest-800 bg-forest-50 border border-forest-100 rounded px-3 py-2">
-                {healthStatus}
-              </div>
-            )}
-            {error && (
-              <div role="alert" className="text-xs text-red-800 bg-red-50 border border-red-200 rounded px-3 py-2">
-                Error: {error}
-              </div>
-            )}
-          </div>
-        )}
       </footer>
     </div>
   );

@@ -82,6 +82,50 @@ export interface ITeamsRepository {
     vacancyRole: string;
     teamName: string;
   }>;
+  /** US-018 / #172 applicant submission via submit_team_application (atomic FR-054). */
+  submitTeamApplication(
+    actorId: string,
+    teamId: string,
+    vacancyId: string,
+    message: string | null
+  ): Promise<{
+    application: TeamRequest;
+    vacancyRole: string;
+    teamName: string;
+    pendingCountForEvent: number;
+    notice: string;
+  }>;
+  /** US-018 / #174 — count Pending Applications for PART/event quota preflight. */
+  countPendingApplicationsForEvent(
+    participantId: string,
+    eventId: string
+  ): Promise<number>;
+  /** US-018 / #175 — applicant's applications across teams (status inspect). */
+  listMyApplications(participantId: string): Promise<
+    Array<{
+      application: TeamRequest;
+      vacancyRole: string | null;
+      teamName: string;
+    }>
+  >;
+  /** US-018 / #175 / FR-055 — applicant withdraw Pending application; idempotent. */
+  withdrawTeamApplication(
+    actorId: string,
+    applicationId: string
+  ): Promise<{
+    application: TeamRequest;
+    changed: boolean;
+    idempotent: boolean;
+    teamName: string;
+    vacancyRole: string | null;
+    alerts: Array<{ audience: string; type: string; message: string }>;
+    notice: string;
+  }>;
+  /** US-018 / #176 — detect an existing Pending Application for applicant/team. */
+  findPendingApplicationForTeam(
+    participantId: string,
+    teamId: string
+  ): Promise<Pick<TeamRequest, 'id'> | null>;
   /**
    * US-017 / #164 pending-quota probe: existing Pending invite for invitee/team
    * and/or for the vacancy slot (may be the same row).
@@ -439,6 +483,144 @@ export const teamsRepository: ITeamsRepository = {
     };
   },
 
+  async submitTeamApplication(
+    actorId: string,
+    teamId: string,
+    vacancyId: string,
+    message: string | null
+  ): Promise<{
+    application: TeamRequest;
+    vacancyRole: string;
+    teamName: string;
+    pendingCountForEvent: number;
+    notice: string;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('submit_team_application', {
+      p_actor: actorId,
+      p_team: teamId,
+      p_vacancy: vacancyId,
+      p_message: message,
+    });
+    if (error) throw error;
+    const payload = data as {
+      application: TeamRequest;
+      vacancyRole: string;
+      teamName: string;
+      pendingCountForEvent: number;
+      notice: string;
+    };
+    return {
+      application: payload.application,
+      vacancyRole: payload.vacancyRole,
+      teamName: payload.teamName,
+      pendingCountForEvent: payload.pendingCountForEvent,
+      notice: payload.notice,
+    };
+  },
+
+  async countPendingApplicationsForEvent(
+    participantId: string,
+    eventId: string
+  ): Promise<number> {
+    const client = getSupabaseClient();
+    const { count, error } = await client
+      .from('team_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('participant_id', participantId)
+      .eq('event_id', eventId)
+      .eq('request_type', 'Application')
+      .eq('status', 'Pending');
+    if (error) throw error;
+    return count ?? 0;
+  },
+
+  async listMyApplications(participantId: string): Promise<
+    Array<{
+      application: TeamRequest;
+      vacancyRole: string | null;
+      teamName: string;
+    }>
+  > {
+    const client = getSupabaseClient();
+    const { data: rows, error } = await client
+      .from('team_requests')
+      .select('*, vacancy:team_vacancies(role), team:teams(name)')
+      .eq('participant_id', participantId)
+      .eq('request_type', 'Application')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    return (rows || []).map(
+      (row: {
+        vacancy?: { role?: string } | null;
+        team?: { name?: string } | null;
+      } & TeamRequest) => {
+        const { vacancy, team, ...application } = row;
+        return {
+          application: application as TeamRequest,
+          vacancyRole: vacancy?.role ?? null,
+          teamName: team?.name ?? 'Unknown team',
+        };
+      }
+    );
+  },
+
+  async withdrawTeamApplication(
+    actorId: string,
+    applicationId: string
+  ): Promise<{
+    application: TeamRequest;
+    changed: boolean;
+    idempotent: boolean;
+    teamName: string;
+    vacancyRole: string | null;
+    alerts: Array<{ audience: string; type: string; message: string }>;
+    notice: string;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('withdraw_team_application', {
+      p_actor: actorId,
+      p_application: applicationId,
+    });
+    if (error) throw error;
+    const payload = data as {
+      application: TeamRequest;
+      changed: boolean;
+      idempotent: boolean;
+      teamName: string;
+      vacancyRole?: string | null;
+      alerts?: Array<{ audience: string; type: string; message: string }>;
+      notice: string;
+    };
+    return {
+      application: payload.application,
+      changed: Boolean(payload.changed),
+      idempotent: Boolean(payload.idempotent),
+      teamName: payload.teamName,
+      vacancyRole: payload.vacancyRole ?? null,
+      alerts: payload.alerts ?? [],
+      notice: payload.notice,
+    };
+  },
+
+  async findPendingApplicationForTeam(
+    participantId: string,
+    teamId: string
+  ): Promise<Pick<TeamRequest, 'id'> | null> {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('team_requests')
+      .select('id')
+      .eq('participant_id', participantId)
+      .eq('team_id', teamId)
+      .eq('request_type', 'Application')
+      .eq('status', 'Pending')
+      .maybeSingle();
+    if (error) throw error;
+    return (data as Pick<TeamRequest, 'id'> | null) ?? null;
+  },
+
   async findPendingInvitationConflicts(
     teamId: string,
     vacancyId: string,
@@ -585,7 +767,7 @@ export const teamsRepository: ITeamsRepository = {
 
     return (rows || []).map((row: Record<string, unknown>) => {
       const vacancy = row.vacancy as { role?: string } | null;
-      const invitation = ({ ...row } as unknown) as TeamRequest & { vacancy?: unknown };
+      const invitation = { ...row } as unknown as TeamRequest & { vacancy?: unknown };
       delete (invitation as { vacancy?: unknown }).vacancy;
       const profile = profileById.get(invitation.participant_id);
       return {
