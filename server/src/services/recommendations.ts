@@ -109,10 +109,13 @@ export interface RecommendationsResult {
 }
 
 export interface RecommendationsServiceDeps {
-  teamsRepo: Pick<
-    ITeamsRepository,
-    'getTeamViewParts' | 'listConfirmedParticipantIdsForEvent'
-  >;
+  teamsRepo: Pick<ITeamsRepository, 'getTeamViewParts'> &
+    Partial<
+      Pick<
+        ITeamsRepository,
+        'listConfirmedParticipantIdsForTeam' | 'listConfirmedParticipantIdsForEvent'
+      >
+    >;
   listCandidates: (deps?: AvailabilityServiceDeps) => Promise<AvailableCandidateCard[]>;
   availabilityDeps?: AvailabilityServiceDeps;
   participantsRepo: Pick<typeof participantsRepository, 'findById'>;
@@ -145,9 +148,7 @@ function resolveDeps(deps?: Partial<RecommendationsServiceDeps>): Recommendation
 function assertOwnerMayRequest(
   actorParticipantId: string,
   team: Team,
-  vacancy: TeamVacancy | undefined,
-  event: { status?: string; end_date?: string },
-  now: Date
+  vacancy: TeamVacancy | undefined
 ): asserts vacancy is TeamVacancy {
   if (team.owner_participant_id !== actorParticipantId) {
     throw new TeamServiceError('RECOMMENDATIONS_FORBIDDEN');
@@ -158,23 +159,6 @@ function assertOwnerMayRequest(
       reason: 'TEAM_NOT_RECRUITING',
       recruitmentStatus: team.recruitment_status,
     });
-  }
-
-  if (event.status && event.status !== 'Published') {
-    throw new TeamServiceError('SLOT_NOT_OPEN_FOR_RECOMMENDATIONS', {
-      reason: 'EVENT_NOT_RECRUITING',
-      eventStatus: event.status,
-    });
-  }
-
-  if (event.end_date) {
-    const end = new Date(event.end_date);
-    if (!Number.isNaN(end.getTime()) && end.getTime() < now.getTime()) {
-      throw new TeamServiceError('SLOT_NOT_OPEN_FOR_RECOMMENDATIONS', {
-        reason: 'EVENT_ENDED',
-        endDate: event.end_date,
-      });
-    }
   }
 
   if (!vacancy) {
@@ -279,11 +263,10 @@ export async function getRecommendationsForOpenSlot(
   partialDeps?: Partial<RecommendationsServiceDeps>
 ): Promise<RecommendationsResult> {
   const deps = resolveDeps(partialDeps);
-  const now = deps.now ? deps.now() : new Date();
   const parts = await deps.teamsRepo.getTeamViewParts(teamId);
   const vacancy = parts.vacancies.find((v) => v.id === vacancyId);
 
-  assertOwnerMayRequest(actorParticipantId, parts.team, vacancy, parts.event, now);
+  assertOwnerMayRequest(actorParticipantId, parts.team, vacancy);
 
   const slotView: RecommendationSlotView = {
     vacancyId: vacancy.id,
@@ -293,9 +276,22 @@ export async function getRecommendationsForOpenSlot(
     goal: parts.team.goal,
   };
 
-  const confirmedIds = new Set(
-    await deps.teamsRepo.listConfirmedParticipantIdsForEvent(parts.team.event_id)
-  );
+  const memberIdsFromView = (parts.members ?? []).map((m) => m.participant_id);
+  let repoTeamConfirmedIds: string[] = [];
+  if (deps.teamsRepo.listConfirmedParticipantIdsForTeam) {
+    try {
+      repoTeamConfirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForTeam(teamId);
+    } catch (err) {
+      if (deps.teamsRepo.listConfirmedParticipantIdsForEvent) {
+        repoTeamConfirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForEvent(parts.team.event_id);
+      } else {
+        throw err;
+      }
+    }
+  } else if (deps.teamsRepo.listConfirmedParticipantIdsForEvent) {
+    repoTeamConfirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForEvent(parts.team.event_id);
+  }
+  const confirmedIds = new Set<string>([...memberIdsFromView, ...repoTeamConfirmedIds]);
 
   const pool = await deps.listCandidates(deps.availabilityDeps);
 
@@ -307,6 +303,7 @@ export async function getRecommendationsForOpenSlot(
   const partitioned = partitionRecommendationCandidates(
     pool,
     {
+      teamId,
       eventId: parts.team.event_id,
       ownerParticipantId: parts.team.owner_participant_id,
       confirmedParticipantIds: confirmedIds,

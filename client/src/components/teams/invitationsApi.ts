@@ -64,7 +64,7 @@ export interface IssueInvitationPayload {
 export interface IssuedInvitation {
   id: string;
   teamId: string;
-  eventId: string;
+  eventId?: string;
   vacancyId: string | null;
   inviteeParticipantId: string;
   status: string;

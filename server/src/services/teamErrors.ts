@@ -58,7 +58,7 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   },
   SLOT_NOT_OPEN_FOR_RECOMMENDATIONS: {
     status: 409,
-    message: 'Recommendations require an open vacancy on a recruiting team in an active event.',
+    message: 'Recommendations require an open vacancy slot on an active, unlocked recruiting team.',
   },
   CANNOT_INVITE_SELF: { status: 400, message: 'You cannot invite yourself to your own team.' },
   INVITEE_NOT_ELIGIBLE: {

@@ -86,13 +86,23 @@ function activePart(id: string): Participant {
 function baseRecDeps(
   teamsRepo: {
     getTeamViewParts: ReturnType<typeof vi.fn>;
-    listConfirmedParticipantIdsForEvent: ReturnType<typeof vi.fn>;
+    listConfirmedParticipantIdsForTeam?: ReturnType<typeof vi.fn>;
+    listConfirmedParticipantIdsForEvent?: ReturnType<typeof vi.fn>;
   },
   listCandidates: () => Promise<AvailableCandidateCard[]>,
   extra: Partial<Parameters<typeof getRecommendationsForOpenSlot>[3]> = {}
 ) {
+  const defaultConfirmedTeam = teamsRepo.listConfirmedParticipantIdsForTeam
+    ? teamsRepo.listConfirmedParticipantIdsForTeam
+    : teamsRepo.listConfirmedParticipantIdsForEvent
+      ? teamsRepo.listConfirmedParticipantIdsForEvent
+      : vi.fn().mockResolvedValue([ownerId]);
+
   return {
-    teamsRepo,
+    teamsRepo: {
+      listConfirmedParticipantIdsForTeam: defaultConfirmedTeam,
+      ...teamsRepo,
+    },
     listCandidates,
     revalidateEligibility: false as const,
     participantsRepo: { findById: vi.fn() },
@@ -102,14 +112,14 @@ function baseRecDeps(
 }
 
 describe('filterEligibleRecommendationCandidates', () => {
-  it('excludes the owner and confirmed event participants', () => {
+  it('excludes the owner and confirmed team members', () => {
     const pool = [
       candidate(ownerId),
       candidate(confirmedId),
       candidate(otherId),
     ];
     const filtered = filterEligibleRecommendationCandidates(pool, {
-      eventId,
+      teamId,
       ownerParticipantId: ownerId,
       confirmedParticipantIds: new Set([confirmedId]),
     });
@@ -382,5 +392,65 @@ describe('getRecommendationsForOpenSlot', () => {
     expect(result.candidates.map((c) => c.handle)).toEqual(['amy', 'zoe']);
     expect(result.candidates.map((c) => c.rank)).toEqual([1, 2]);
     expect(result.candidates.every((c) => c.score === 100)).toBe(true);
+  });
+
+  it('recommends candidates with Looking for Team enabled regardless of shadow event_id and allows members of other teams who re-enabled LFT while excluding confirmed members of the requesting team', async () => {
+    const otherTeamMemberId = '77777777-7777-4777-8777-777777777777';
+    const thisTeamConfirmedId = confirmedId;
+
+    const teamsRepo = {
+      getTeamViewParts: vi.fn().mockResolvedValue({
+        team: baseTeam(),
+        event: { max_team_size: 4, status: 'Published', end_date: '2099-01-01T00:00:00.000Z' },
+        members: [{ participant_id: ownerId }, { participant_id: thisTeamConfirmedId }],
+        vacancies: [openVacancy()],
+      }),
+      listConfirmedParticipantIdsForTeam: vi.fn().mockResolvedValue([ownerId, thisTeamConfirmedId]),
+    };
+
+    const eligibleMultiTeamCandidate = candidate(otherTeamMemberId, {
+      handle: 'multiteam_dev',
+      displayName: 'Multi Team Dev',
+    });
+    const excludedCandidate = candidate(thisTeamConfirmedId);
+
+    const result = await getRecommendationsForOpenSlot(
+      ownerId,
+      teamId,
+      vacancyId,
+      baseRecDeps(teamsRepo, async () => [eligibleMultiTeamCandidate, excludedCandidate])
+    );
+
+    expect(result.status).toBe('ok');
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0].participantId).toBe(otherTeamMemberId);
+    expect(result.exclusions.confirmed).toBe(1);
+  });
+
+  it('does not block recommendations based on shadow event status or end_date when team and slot are Open', async () => {
+    const teamsRepo = {
+      getTeamViewParts: vi.fn().mockResolvedValue({
+        team: baseTeam(),
+        event: {
+          max_team_size: 4,
+          status: 'Archived', // Shadow event is archived
+          end_date: '2020-01-01T00:00:00.000Z', // Shadow event ended years ago
+        },
+        members: [],
+        vacancies: [openVacancy()],
+      }),
+      listConfirmedParticipantIdsForTeam: vi.fn().mockResolvedValue([ownerId]),
+    };
+
+    const result = await getRecommendationsForOpenSlot(
+      ownerId,
+      teamId,
+      vacancyId,
+      baseRecDeps(teamsRepo, async () => [candidate(otherId)])
+    );
+
+    expect(result.status).toBe('ok');
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0].participantId).toBe(otherId);
   });
 });

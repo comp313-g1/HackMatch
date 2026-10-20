@@ -17,7 +17,8 @@ import type { IssuedInvitation } from './invitationsApi';
 
 export interface RecommendationPanelProps {
   teamId: string;
-  vacancyId: string;
+  slotId?: string;
+  vacancyId?: string;
   vacancyLabel: string;
   /** When false, hide the load control (e.g. filled slot). */
   enabled?: boolean;
@@ -33,11 +34,13 @@ type LoadState = 'idle' | 'loading' | 'success' | 'error';
  */
 export function RecommendationPanel({
   teamId,
+  slotId,
   vacancyId,
   vacancyLabel,
   enabled = true,
   onInvitationIssued,
 }: RecommendationPanelProps): React.JSX.Element | null {
+  const resolvedSlotId = (slotId ?? vacancyId ?? '').trim();
   const [loadState, setLoadState] = useState<LoadState>('idle');
   const [result, setResult] = useState<RecommendationsResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -47,11 +50,12 @@ export function RecommendationPanel({
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (!resolvedSlotId) return;
     setLoadState('loading');
     setErrorMessage(null);
     // Keep previous result visible until new data arrives (NR-017).
     try {
-      const data = await fetchVacancyRecommendations(teamId, vacancyId);
+      const data = await fetchVacancyRecommendations(teamId, resolvedSlotId);
       setResult(data);
       setSelectedId(data.candidates[0]?.participantId ?? null);
       setLoadState('success');
@@ -65,7 +69,7 @@ export function RecommendationPanel({
       }
       setLoadState('error');
     }
-  }, [teamId, vacancyId]);
+  }, [teamId, resolvedSlotId]);
 
   if (!enabled) return null;
 
@@ -202,7 +206,7 @@ export function RecommendationPanel({
           {inviteCandidate ? (
             <InviteFromRecommendationForm
               teamId={teamId}
-              vacancyId={vacancyId}
+              vacancyId={resolvedSlotId}
               vacancyLabel={vacancyLabel}
               candidate={{
                 participantId: inviteCandidate.participantId,
@@ -216,11 +220,11 @@ export function RecommendationPanel({
 
           {!isDegraded && result.candidates.length > 1 ? (
             <div>
-              <label htmlFor={`rec-select-${vacancyId}`} className="block text-xs font-medium text-ink mb-1">
+              <label htmlFor={`rec-select-${resolvedSlotId}`} className="block text-xs font-medium text-ink mb-1">
                 Explain contributions for
               </label>
               <select
-                id={`rec-select-${vacancyId}`}
+                id={`rec-select-${resolvedSlotId}`}
                 value={selectedId ?? ''}
                 onChange={(e) => setSelectedId(e.target.value || null)}
                 className="w-full max-w-sm px-2 py-1.5 text-xs border border-cream-300 rounded bg-white"

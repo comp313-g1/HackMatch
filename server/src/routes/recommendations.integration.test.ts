@@ -99,6 +99,9 @@ function mockOwnerTeamContext(overrides?: {
     },
     vacancies: overrides?.vacancies ?? [frSlotVacancy],
   });
+  vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([
+    ownerParticipant.id,
+  ]);
   vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue([
     ownerParticipant.id,
   ]);
@@ -208,6 +211,10 @@ describe('US-015 Recommendations Integration Suite (scoring, permissions, exclus
   describe('US-015-T3: exclusions (not Looking for Team / confirmed / inactive)', () => {
     it('excludes candidates already confirmed for the event and reports exclusion counts', async () => {
       mockEligiblePool();
+      vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([
+        ownerParticipant.id,
+        otherParticipant.id,
+      ]);
       vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue([
         ownerParticipant.id,
         otherParticipant.id,
@@ -254,6 +261,46 @@ describe('US-015 Recommendations Integration Suite (scoring, permissions, exclus
       expect(res.body.empty).toBe(true);
       expect(res.body.exclusions.inactive).toBe(1);
       expect(res.body.candidates).toEqual([]);
+    });
+
+    it('supports multi-team participation: excludes confirmed member of requesting team while recommending member of another team who re-enabled Looking for Team', async () => {
+      const candidateOnOtherTeam: AvailableCandidateCard = {
+        participantId: 'p3000000-0000-4000-8000-000000000003',
+        displayName: 'Other Team Member',
+        handle: 'multiteam_pro',
+        institution: null,
+        primaryRole: 'Frontend',
+        desiredRole: 'Frontend',
+        commitmentHours: 10,
+        goal: 'Project Completion',
+        skills: ['React', 'TypeScript'],
+        portfolioLinks: [],
+        updatedAt: '2026-10-18T00:00:00.000Z',
+      };
+
+      const candidateOnThisTeam: AvailableCandidateCard = {
+        ...eligibleCandidate,
+        participantId: 'p4000000-0000-4000-8000-000000000004',
+      };
+
+      mockEligiblePool([candidateOnThisTeam, candidateOnOtherTeam]);
+
+      vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([
+        ownerParticipant.id,
+        candidateOnThisTeam.participantId,
+      ]);
+      vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue([
+        ownerParticipant.id,
+        candidateOnThisTeam.participantId,
+      ]);
+
+      const res = await request(app).get(recPath).set('Authorization', validTokenHeader);
+
+      expect(res.status).toBe(200);
+      expect(res.body.empty).toBe(false);
+      expect(res.body.candidates).toHaveLength(1);
+      expect(res.body.candidates[0].participantId).toBe(candidateOnOtherTeam.participantId);
+      expect(res.body.exclusions.confirmed).toBe(1);
     });
   });
 
@@ -408,6 +455,39 @@ describe('US-015 Recommendations Integration Suite (scoring, permissions, exclus
       expect(res.status).toBe(400);
       expect(res.body.code).toBe('VALIDATION_ERROR');
       expect(res.body.errors.vacancyId).toBeTruthy();
+    });
+
+    it('supports GET /api/teams/:teamId/slots/:slotId/recommendations route and validates slot UUID', async () => {
+      mockEligiblePool();
+
+      const okRes = await request(app)
+        .get(`/api/teams/${sampleTeamId}/slots/${sampleVacancyId}/recommendations`)
+        .set('Authorization', validTokenHeader);
+
+      expect(okRes.status).toBe(200);
+      expect(okRes.body.slotId).toBe(sampleVacancyId);
+
+      const invalidRes = await request(app)
+        .get(`/api/teams/${sampleTeamId}/slots/invalid-uuid/recommendations`)
+        .set('Authorization', validTokenHeader);
+
+      expect(invalidRes.status).toBe(400);
+      expect(invalidRes.body.code).toBe('VALIDATION_ERROR');
+      expect(invalidRes.body.errors.slotId).toBeTruthy();
+    });
+
+    it('does not block recommendations when external event is Archived or ended', async () => {
+      mockOwnerTeamContext({
+        status: 'Archived',
+        end_date: '2020-01-01T00:00:00.000Z',
+      });
+      mockEligiblePool();
+
+      const res = await request(app).get(recPath).set('Authorization', validTokenHeader);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('ok');
+      expect(res.body.candidates).toHaveLength(1);
     });
   });
 

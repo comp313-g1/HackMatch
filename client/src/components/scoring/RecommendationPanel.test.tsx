@@ -146,7 +146,7 @@ describe('RecommendationPanel (US-015 list / empty / fallback)', () => {
       expect(screen.getByTestId('recommendation-empty')).toBeInTheDocument();
     });
     expect(screen.getByTestId('recommendation-empty')).toHaveTextContent(/No eligible candidates/);
-    expect(screen.getByText(/already confirmed for this event/i)).toBeInTheDocument();
+    expect(screen.getByText(/already confirmed on this team/i)).toBeInTheDocument();
   });
 
   it('shows degraded fallback list without scores (NR-016)', async () => {
@@ -280,5 +280,20 @@ describe('RecommendationPanel (US-015 list / empty / fallback)', () => {
     expect(screen.getByText(/draft were kept/i)).toBeInTheDocument();
     expect(screen.getByTestId('recommendation-results')).toBeInTheDocument();
     expect(screen.getByTestId('invite-from-recommendation')).toBeInTheDocument();
+  });
+
+  it('accepts slotId prop without vacancyId or eventId and fetches recommendations', async () => {
+    fetchMock.mockResolvedValue(rankedResponse());
+
+    render(
+      <RecommendationPanel teamId="t1" slotId="slot-uuid-1" vacancyLabel="Backend slot" />
+    );
+
+    fireEvent.click(screen.getByTestId('load-recommendations'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recommendation-results')).toBeInTheDocument();
+    });
+    expect(fetchMock).toHaveBeenCalledWith('t1', 'slot-uuid-1');
   });
 });

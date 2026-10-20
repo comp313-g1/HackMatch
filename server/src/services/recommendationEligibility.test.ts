@@ -12,7 +12,6 @@ import type { Participant } from '../db/types.js';
 const ownerId = '11111111-1111-4111-8111-111111111111';
 const lookingId = '22222222-2222-4222-8222-222222222222';
 const confirmedId = '33333333-3333-4333-8333-333333333333';
-const eventId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 
 function card(id: string): AvailableCandidateCard {
   return {
@@ -70,8 +69,9 @@ describe('evaluateAvailabilityLooking (unavailable exclusion)', () => {
 });
 
 describe('evaluateRecommendationEligibility / partition (FR-046)', () => {
+  const sampleTeamId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   const context = {
-    eventId,
+    teamId: sampleTeamId,
     ownerParticipantId: ownerId,
     confirmedParticipantIds: new Set([confirmedId]),
   };
@@ -82,7 +82,21 @@ describe('evaluateRecommendationEligibility / partition (FR-046)', () => {
     ).toBe('is_team_owner');
     expect(
       evaluateRecommendationEligibility({ participantId: confirmedId }, context).reason
-    ).toBe('confirmed_for_event');
+    ).toBe('confirmed_on_team');
+  });
+
+  it('allows candidates confirmed on another team who have Looking for Team enabled (multi-team support)', () => {
+    const otherTeamMemberId = '44444444-4444-4444-8444-444444444444';
+    const eligibility = evaluateRecommendationEligibility(
+      { participantId: otherTeamMemberId },
+      context,
+      {
+        participant: part({ id: otherTeamMemberId }),
+        availability: { isLooking: true },
+      }
+    );
+    expect(eligibility.eligible).toBe(true);
+    expect(eligibility.reason).toBeNull();
   });
 
   it('revalidates inactive and unavailable when extras are provided', () => {

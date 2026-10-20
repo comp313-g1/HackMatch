@@ -389,6 +389,7 @@ export function VacancyPanel({
                 {vacancy.status === 'Open' && !disabled ? (
                   <RecommendationPanel
                     teamId={teamId}
+                    slotId={vacancy.id}
                     vacancyId={vacancy.id}
                     vacancyLabel={`${vacancy.role} slot`}
                     enabled

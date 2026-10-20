@@ -24,6 +24,8 @@ export interface TeamFieldErrors {
   role?: string;
   skills?: string;
   vacancies?: string;
+  slotId?: string;
+  vacancyId?: string;
   reason?: string;
   _form?: string;
   body?: string;
@@ -64,7 +66,7 @@ function normalizeGoal(raw: unknown): TeamGoal | null {
  * Validates teamId and optional vacancyId route parameters as valid UUIDs.
  */
 export function validateTeamIdParams(req: Request, res: Response, next: NextFunction): void {
-  const { teamId, vacancyId, participantId } = req.params;
+  const { teamId, vacancyId, slotId, participantId } = req.params;
 
   if (!teamId || typeof teamId !== 'string' || !UUID_REGEX.test(teamId.trim())) {
     res.setHeader('Cache-Control', 'no-store');
@@ -83,6 +85,18 @@ export function validateTeamIdParams(req: Request, res: Response, next: NextFunc
         error: 'Validation failed.',
         code: 'VALIDATION_ERROR',
         errors: { vacancyId: 'Invalid vacancy ID format.' },
+      });
+      return;
+    }
+  }
+
+  if (slotId !== undefined) {
+    if (typeof slotId !== 'string' || !UUID_REGEX.test(slotId.trim())) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(400).json({
+        error: 'Validation failed.',
+        code: 'VALIDATION_ERROR',
+        errors: { slotId: 'Invalid slot ID format.', vacancyId: 'Invalid vacancy ID format.' },
       });
       return;
     }

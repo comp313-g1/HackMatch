@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchVacancyRecommendations, RecommendationsApiError } from './recommendationsApi';
+import {
+  fetchVacancyRecommendations,
+  fetchSlotRecommendations,
+  RecommendationsApiError,
+} from './recommendationsApi';
 
 const authFetchMock = vi.fn();
 
@@ -87,5 +91,51 @@ describe('fetchVacancyRecommendations', () => {
       status: 403,
       code: 'FORBIDDEN_NOT_TEAM_OWNER',
     } satisfies Partial<RecommendationsApiError>);
+  });
+});
+
+describe('fetchSlotRecommendations', () => {
+  beforeEach(() => {
+    authFetchMock.mockReset();
+  });
+
+  it('calls /slots/:slotId/recommendations and returns response', async () => {
+    authFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: 'ok',
+          teamId: 't1',
+          slotId: 's1',
+          vacancyId: 's1',
+          slot: {
+            vacancyId: 's1',
+            role: 'Frontend',
+            requiredSkills: ['React'],
+            requestedHours: 20,
+            goal: 'Learning',
+          },
+          candidates: [],
+          empty: true,
+          message: null,
+          notice: 'self-declared',
+          exclusions: {
+            inactive: 0,
+            unavailable: 0,
+            confirmed: 0,
+            owner: 0,
+            totalExcluded: 0,
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+
+    const result = await fetchSlotRecommendations('t1', 's1');
+    expect(result.status).toBe('ok');
+    expect(result.slotId).toBe('s1');
+    expect(authFetchMock).toHaveBeenCalledWith(
+      '/api/teams/t1/slots/s1/recommendations',
+      expect.objectContaining({ method: 'GET' })
+    );
   });
 });

@@ -54,6 +54,13 @@ teamRouter.get('/:teamId', ...participantAuth, validateTeamIdParams, requireTeam
 teamRouter.patch('/:teamId', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateUpdateTeamBody, updateTeamHandler);
 teamRouter.post('/:teamId/vacancies', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateVacancyBody, addVacancyHandler);
 teamRouter.get(
+  '/:teamId/slots/:slotId/recommendations',
+  ...participantAuth,
+  validateTeamIdParams,
+  requireTeamOwner,
+  getVacancyRecommendationsHandler
+);
+teamRouter.get(
   '/:teamId/vacancies/:vacancyId/recommendations',
   ...participantAuth,
   validateTeamIdParams,
