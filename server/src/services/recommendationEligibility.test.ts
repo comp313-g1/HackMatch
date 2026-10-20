@@ -82,7 +82,7 @@ describe('evaluateRecommendationEligibility / partition (FR-046)', () => {
     ).toBe('is_team_owner');
     expect(
       evaluateRecommendationEligibility({ participantId: confirmedId }, context).reason
-    ).toBe('confirmed_for_event');
+    ).toBe('confirmed_on_team');
   });
 
   it('revalidates inactive and unavailable when extras are provided', () => {

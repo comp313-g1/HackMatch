@@ -45,6 +45,8 @@ export interface ITeamsRepository {
   findTeamById(teamId: string): Promise<Team | null>;
   findConfirmedTeamIdForParticipant(participantId: string, eventId: string): Promise<string | null>;
   findConfirmedTeamIdsForParticipant(participantId: string): Promise<string[]>;
+  /** US-015: participant ids with Confirmed membership in the requesting team. */
+  listConfirmedParticipantIdsForTeam(teamId: string): Promise<string[]>;
   /** FR-046: participant ids with Confirmed membership in the event (any team). */
   listConfirmedParticipantIdsForEvent(eventId: string): Promise<string[]>;
   getTeamViewParts(teamId: string): Promise<{
@@ -214,6 +216,18 @@ export const teamsRepository: ITeamsRepository = {
       .from('team_memberships')
       .select('participant_id')
       .eq('event_id', eventId)
+      .eq('status', 'Confirmed');
+
+    if (error) throw error;
+    return [...new Set((data || []).map((row: { participant_id: string }) => row.participant_id))];
+  },
+
+  async listConfirmedParticipantIdsForTeam(teamId: string): Promise<string[]> {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('team_memberships')
+      .select('participant_id')
+      .eq('team_id', teamId)
       .eq('status', 'Confirmed');
 
     if (error) throw error;
@@ -571,7 +585,7 @@ export const teamsRepository: ITeamsRepository = {
 
     return (rows || []).map((row: Record<string, unknown>) => {
       const vacancy = row.vacancy as { role?: string } | null;
-      const invitation = { ...row } as TeamRequest & { vacancy?: unknown };
+      const invitation = ({ ...row } as unknown) as TeamRequest & { vacancy?: unknown };
       delete (invitation as { vacancy?: unknown }).vacancy;
       const profile = profileById.get(invitation.participant_id);
       return {

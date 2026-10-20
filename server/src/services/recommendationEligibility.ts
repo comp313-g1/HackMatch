@@ -17,11 +17,14 @@ export type RecommendationExclusionReason =
   | 'inactive_unverified'
   | 'inactive_suspended'
   | 'unavailable_not_looking'
+  | 'confirmed_on_team'
   | 'confirmed_for_event'
   | 'is_team_owner';
 
 export interface RecommendationEligibilityContext {
-  eventId: string;
+  teamId?: string;
+  /** @deprecated Legacy shadow event identifier; optional for backward compatibility. */
+  eventId?: string;
   ownerParticipantId: string;
   confirmedParticipantIds: ReadonlySet<string>;
 }
@@ -49,7 +52,7 @@ export interface PartitionedRecommendationCandidates {
 }
 
 export const EXCLUSION_EMPTY_HINT =
-  'Inactive accounts, participants not Looking for Team, and anyone already confirmed for this event are excluded.';
+  'Inactive accounts, participants not Looking for Team, and anyone already confirmed on this team are excluded.';
 
 /** Active account gate used by FR-046 ("inactive accounts"). */
 export function evaluateParticipantActivity(
@@ -98,7 +101,7 @@ export function evaluateRecommendationEligibility(
   }
 
   if (context.confirmedParticipantIds.has(candidate.participantId)) {
-    return { eligible: false, reason: 'confirmed_for_event' };
+    return { eligible: false, reason: 'confirmed_on_team' };
   }
 
   if (extras && 'participant' in (extras ?? {})) {
@@ -133,6 +136,7 @@ function bumpSummary(
     case 'unavailable_not_looking':
       summary.unavailable += 1;
       break;
+    case 'confirmed_on_team':
     case 'confirmed_for_event':
       summary.confirmed += 1;
       break;
