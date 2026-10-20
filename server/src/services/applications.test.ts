@@ -5,17 +5,52 @@ import {
   otherParticipant,
   ownerParticipant,
   sampleEventId,
+  sampleParts,
+  sampleTeam,
   sampleTeamId,
+  sampleVacancy,
   sampleVacancyId,
 } from '../routes/team.testUtils.js';
 
-describe('submitApplication (US-018 / #172 / FR-053 / FR-054)', () => {
+function passingEligibility(overrides?: {
+  vacancyStatus?: 'Open' | 'Filled' | 'Removed';
+  recruitment_status?: 'Open' | 'Locked' | 'Disbanded';
+  confirmedIds?: string[];
+  applicant?: typeof otherParticipant;
+}) {
+  return {
+    teamsRepo: {
+      findTeamById: vi.fn().mockResolvedValue(sampleTeam),
+      getTeamViewParts: vi.fn().mockResolvedValue({
+        ...sampleParts,
+        team: {
+          ...sampleTeam,
+          recruitment_status: overrides?.recruitment_status ?? 'Open',
+        },
+        event: {
+          max_team_size: 4,
+          status: 'Published' as const,
+          end_date: '2099-01-01T00:00:00.000Z',
+        },
+        vacancies: [{ ...sampleVacancy, status: overrides?.vacancyStatus ?? 'Open' }],
+      }),
+      listConfirmedParticipantIdsForEvent: vi
+        .fn()
+        .mockResolvedValue(overrides?.confirmedIds ?? [ownerParticipant.id]),
+    },
+    participantsRepo: {
+      findById: vi.fn().mockResolvedValue(overrides?.applicant ?? otherParticipant),
+    },
+  };
+}
+
+describe('submitApplication (US-018 / #172 / #173)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
   it('maps RPC success to Pending Review application view (happy path)', async () => {
-    vi.spyOn(teamsRepository, 'submitTeamApplication').mockResolvedValue({
+    const rpcSpy = vi.spyOn(teamsRepository, 'submitTeamApplication').mockResolvedValue({
       application: {
         id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         team_id: sampleTeamId,
@@ -37,12 +72,15 @@ describe('submitApplication (US-018 / #172 / FR-053 / FR-054)', () => {
       notice: 'Pending Review application created. The team owner has been notified.',
     });
 
-    const view = await submitApplication({
-      actorParticipantId: otherParticipant.id,
-      teamId: sampleTeamId,
-      vacancyId: sampleVacancyId,
-      message: 'Interested in Frontend',
-    });
+    const view = await submitApplication(
+      {
+        actorParticipantId: otherParticipant.id,
+        teamId: sampleTeamId,
+        vacancyId: sampleVacancyId,
+        message: 'Interested in Frontend',
+      },
+      { eligibility: passingEligibility() }
+    );
 
     expect(view).toMatchObject({
       status: 'Pending',
@@ -52,7 +90,7 @@ describe('submitApplication (US-018 / #172 / FR-053 / FR-054)', () => {
       message: 'Interested in Frontend',
       pendingCountForEvent: 1,
     });
-    expect(teamsRepository.submitTeamApplication).toHaveBeenCalledWith(
+    expect(rpcSpy).toHaveBeenCalledWith(
       otherParticipant.id,
       sampleTeamId,
       sampleVacancyId,
@@ -60,7 +98,62 @@ describe('submitApplication (US-018 / #172 / FR-053 / FR-054)', () => {
     );
   });
 
-  it('maps APPLICATION_PENDING_LIMIT from Postgres exception', async () => {
+  it('blocks filled vacancy in Express preflight before RPC (#173)', async () => {
+    const rpcSpy = vi.spyOn(teamsRepository, 'submitTeamApplication');
+
+    await expect(
+      submitApplication(
+        {
+          actorParticipantId: otherParticipant.id,
+          teamId: sampleTeamId,
+          vacancyId: sampleVacancyId,
+          message: null,
+        },
+        { eligibility: passingEligibility({ vacancyStatus: 'Filled' }) }
+      )
+    ).rejects.toMatchObject({ code: 'VACANCY_NOT_OPEN', status: 409 });
+    expect(rpcSpy).not.toHaveBeenCalled();
+  });
+
+  it('blocks locked team in Express preflight before RPC (#173)', async () => {
+    const rpcSpy = vi.spyOn(teamsRepository, 'submitTeamApplication');
+
+    await expect(
+      submitApplication(
+        {
+          actorParticipantId: otherParticipant.id,
+          teamId: sampleTeamId,
+          vacancyId: sampleVacancyId,
+          message: null,
+        },
+        { eligibility: passingEligibility({ recruitment_status: 'Locked' }) }
+      )
+    ).rejects.toMatchObject({ code: 'TEAM_NOT_MUTABLE', status: 409 });
+    expect(rpcSpy).not.toHaveBeenCalled();
+  });
+
+  it('blocks confirmed event member in Express preflight (#173 / T6)', async () => {
+    const rpcSpy = vi.spyOn(teamsRepository, 'submitTeamApplication');
+
+    await expect(
+      submitApplication(
+        {
+          actorParticipantId: otherParticipant.id,
+          teamId: sampleTeamId,
+          vacancyId: sampleVacancyId,
+          message: null,
+        },
+        {
+          eligibility: passingEligibility({
+            confirmedIds: [ownerParticipant.id, otherParticipant.id],
+          }),
+        }
+      )
+    ).rejects.toMatchObject({ code: 'APPLICANT_ALREADY_CONFIRMED', status: 409 });
+    expect(rpcSpy).not.toHaveBeenCalled();
+  });
+
+  it('maps APPLICATION_PENDING_LIMIT from Postgres exception after preflight passes', async () => {
     vi.spyOn(teamsRepository, 'submitTeamApplication').mockRejectedValue({
       message: 'APPLICATION_PENDING_LIMIT',
       code: 'P0001',
@@ -68,12 +161,15 @@ describe('submitApplication (US-018 / #172 / FR-053 / FR-054)', () => {
     });
 
     await expect(
-      submitApplication({
-        actorParticipantId: otherParticipant.id,
-        teamId: sampleTeamId,
-        vacancyId: sampleVacancyId,
-        message: null,
-      })
+      submitApplication(
+        {
+          actorParticipantId: otherParticipant.id,
+          teamId: sampleTeamId,
+          vacancyId: sampleVacancyId,
+          message: null,
+        },
+        { eligibility: passingEligibility() }
+      )
     ).rejects.toMatchObject({
       code: 'APPLICATION_PENDING_LIMIT',
       status: 409,
@@ -84,38 +180,43 @@ describe('submitApplication (US-018 / #172 / FR-053 / FR-054)', () => {
     vi.spyOn(teamsRepository, 'submitTeamApplication').mockRejectedValue({
       message: 'duplicate key value violates unique constraint',
       code: '23505',
-      details: 'Key (team_id, participant_id)=(...) already exists. uq_team_requests_pending_application',
+      details:
+        'Key (team_id, participant_id)=(...) already exists. uq_team_requests_pending_application',
     });
 
     await expect(
-      submitApplication({
-        actorParticipantId: otherParticipant.id,
-        teamId: sampleTeamId,
-        vacancyId: sampleVacancyId,
-        message: null,
-      })
+      submitApplication(
+        {
+          actorParticipantId: otherParticipant.id,
+          teamId: sampleTeamId,
+          vacancyId: sampleVacancyId,
+          message: null,
+        },
+        { eligibility: passingEligibility() }
+      )
     ).rejects.toMatchObject({
       code: 'DUPLICATE_PENDING_APPLICATION',
       status: 409,
     });
   });
 
-  it('maps CANNOT_APPLY_TO_OWN_TEAM when owner applies', async () => {
-    vi.spyOn(teamsRepository, 'submitTeamApplication').mockRejectedValue({
-      message: 'CANNOT_APPLY_TO_OWN_TEAM',
-      code: 'P0001',
-    });
+  it('rejects owner applying via preflight CANNOT_APPLY_TO_OWN_TEAM (#173)', async () => {
+    const rpcSpy = vi.spyOn(teamsRepository, 'submitTeamApplication');
 
     await expect(
-      submitApplication({
-        actorParticipantId: ownerParticipant.id,
-        teamId: sampleTeamId,
-        vacancyId: sampleVacancyId,
-        message: null,
-      })
+      submitApplication(
+        {
+          actorParticipantId: ownerParticipant.id,
+          teamId: sampleTeamId,
+          vacancyId: sampleVacancyId,
+          message: null,
+        },
+        { eligibility: passingEligibility({ applicant: ownerParticipant }) }
+      )
     ).rejects.toMatchObject({
       code: 'CANNOT_APPLY_TO_OWN_TEAM',
       status: 400,
     });
+    expect(rpcSpy).not.toHaveBeenCalled();
   });
 });

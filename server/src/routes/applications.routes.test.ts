@@ -7,7 +7,10 @@ import {
   otherParticipant,
   ownerParticipant,
   sampleEventId,
+  sampleParts,
+  sampleTeam,
   sampleTeamId,
+  sampleVacancy,
   sampleVacancyId,
   validOtherDecodedToken,
   validOwnerDecodedToken,
@@ -35,11 +38,37 @@ vi.mock('../config/firebase.js', () => {
 
 const applyPath = `/api/teams/${sampleTeamId}/applications`;
 
-describe('POST /api/teams/:teamId/applications (US-018 / #172)', () => {
+function mockEligibleApplyContext(overrides?: {
+  vacancyStatus?: 'Open' | 'Filled' | 'Removed';
+  recruitment_status?: 'Open' | 'Locked' | 'Disbanded';
+  confirmedIds?: string[];
+}): void {
+  vi.spyOn(participantsRepository, 'findById').mockResolvedValue(otherParticipant);
+  vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(sampleTeam);
+  vi.spyOn(teamsRepository, 'getTeamViewParts').mockResolvedValue({
+    ...sampleParts,
+    team: {
+      ...sampleTeam,
+      recruitment_status: overrides?.recruitment_status ?? 'Open',
+    },
+    event: {
+      max_team_size: 4,
+      status: 'Published',
+      end_date: '2099-01-01T00:00:00.000Z',
+    },
+    vacancies: [{ ...sampleVacancy, status: overrides?.vacancyStatus ?? 'Open' }],
+  });
+  vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue(
+    overrides?.confirmedIds ?? [ownerParticipant.id]
+  );
+}
+
+describe('POST /api/teams/:teamId/applications (US-018 / #172 / #173)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockVerifyIdToken.mockResolvedValue(validOtherDecodedToken);
     vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(otherParticipant);
+    mockEligibleApplyContext();
   });
 
   it('rejects unauthenticated requests with 401', async () => {
@@ -203,13 +232,12 @@ describe('POST /api/teams/:teamId/applications (US-018 / #172)', () => {
     expect(res.body.code).toBe('EMAIL_NOT_VERIFIED');
   });
 
-  it('allows owner token path only if not applying as owner — owner applying is 400 from RPC', async () => {
+  it('rejects owner applying to own team via Express preflight (#173)', async () => {
     mockVerifyIdToken.mockResolvedValue(validOwnerDecodedToken);
     vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(ownerParticipant);
-    vi.spyOn(teamsRepository, 'submitTeamApplication').mockRejectedValue({
-      message: 'CANNOT_APPLY_TO_OWN_TEAM',
-      code: 'P0001',
-    });
+    vi.spyOn(participantsRepository, 'findById').mockResolvedValue(ownerParticipant);
+    vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(sampleTeam);
+    const rpcSpy = vi.spyOn(teamsRepository, 'submitTeamApplication');
 
     const res = await request(app)
       .post(applyPath)
@@ -218,5 +246,51 @@ describe('POST /api/teams/:teamId/applications (US-018 / #172)', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('CANNOT_APPLY_TO_OWN_TEAM');
+    expect(rpcSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects locked team with 409 TEAM_NOT_MUTABLE (#173)', async () => {
+    mockEligibleApplyContext({ recruitment_status: 'Locked' });
+    const rpcSpy = vi.spyOn(teamsRepository, 'submitTeamApplication');
+
+    const res = await request(app)
+      .post(applyPath)
+      .set('Authorization', otherTokenHeader)
+      .send({ vacancyId: sampleVacancyId });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('TEAM_NOT_MUTABLE');
+    expect(rpcSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects filled vacancy with 409 VACANCY_NOT_OPEN (#173)', async () => {
+    mockEligibleApplyContext({ vacancyStatus: 'Filled' });
+    const rpcSpy = vi.spyOn(teamsRepository, 'submitTeamApplication');
+
+    const res = await request(app)
+      .post(applyPath)
+      .set('Authorization', otherTokenHeader)
+      .send({ vacancyId: sampleVacancyId });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('VACANCY_NOT_OPEN');
+    expect(res.body.errors.vacancyId).toBeTruthy();
+    expect(rpcSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects confirmed event member with 409 APPLICANT_ALREADY_CONFIRMED (#173 / T6)', async () => {
+    mockEligibleApplyContext({
+      confirmedIds: [ownerParticipant.id, otherParticipant.id],
+    });
+    const rpcSpy = vi.spyOn(teamsRepository, 'submitTeamApplication');
+
+    const res = await request(app)
+      .post(applyPath)
+      .set('Authorization', otherTokenHeader)
+      .send({ vacancyId: sampleVacancyId });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('APPLICANT_ALREADY_CONFIRMED');
+    expect(rpcSpy).not.toHaveBeenCalled();
   });
 });
