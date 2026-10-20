@@ -219,11 +219,11 @@ describe('LandingPage component (Wireframe reference: landing-visitor.html)', ()
     expect(mockNavigateToRegister).toHaveBeenCalledTimes(1);
   });
 
-  it('renders visitor preview badge when currentUser is null', () => {
+  it('does not render the development-only role preview badge', () => {
     renderComponent();
 
-    expect(screen.getByText(/preview as/i)).toBeInTheDocument();
-    expect(screen.getByText(/visitor/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/role preview status/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/preview as/i)).not.toBeInTheDocument();
   });
 
   describe('Participant Mode (landing-participant.html)', () => {
@@ -244,11 +244,11 @@ describe('LandingPage component (Wireframe reference: landing-visitor.html)', ()
         />
       );
 
-    it('renders participant preview badge and participant hero CTAs', () => {
+    it('renders participant hero CTAs without the development-only preview badge', () => {
       renderParticipantComponent();
 
-      expect(screen.getByText(/preview as/i)).toBeInTheDocument();
-      expect(screen.getByText(/participant/i)).toBeInTheDocument();
+      expect(screen.queryByLabelText(/role preview status/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/preview as/i)).not.toBeInTheDocument();
 
       // Should show participant actions in hero, not Create account
       expect(screen.getByRole('button', { name: /^teams workspace$/i })).toBeInTheDocument();

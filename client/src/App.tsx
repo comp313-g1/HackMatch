@@ -88,9 +88,6 @@ export function App(): React.JSX.Element {
   const [signingOut, setSigningOut] = useState<boolean>(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [otpChallenge, setOtpChallenge] = useState<OtpChallenge | null>(null);
-  const [healthStatus, setHealthStatus] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -98,24 +95,6 @@ export function App(): React.JSX.Element {
     });
     return () => unsubscribe();
   }, []);
-
-  const checkApiHealth = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Calls /api/health through Vite proxy in development
-      const response = await fetch('/api/health');
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      setHealthStatus(`Connected: status=${data.status}, time=${data.timestamp}`);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to reach API');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const goToLanding = () => {
     setStatusNotice(null);
@@ -740,32 +719,8 @@ export function App(): React.JSX.Element {
       <footer className="border-t border-cream-200 bg-cream-50 py-6" role="contentinfo">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center text-sm text-ink-muted">
           <p>© 2026 HackMatch Team 1. All rights reserved.</p>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-            <p>COMP 313 Project 2</p>
-            <button
-              type="button"
-              onClick={checkApiHealth}
-              disabled={loading}
-              className="text-xs font-medium text-forest-700 underline hover:text-forest-900 focus:outline-none focus:ring-2 focus:ring-forest rounded disabled:opacity-50"
-            >
-              {loading ? 'Checking Health...' : 'Probe /api/health'}
-            </button>
-          </div>
+          <p>HackMatch</p>
         </div>
-        {(healthStatus || error) && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-3">
-            {healthStatus && (
-              <div role="status" className="text-xs text-forest-800 bg-forest-50 border border-forest-100 rounded px-3 py-2">
-                {healthStatus}
-              </div>
-            )}
-            {error && (
-              <div role="alert" className="text-xs text-red-800 bg-red-50 border border-red-200 rounded px-3 py-2">
-                Error: {error}
-              </div>
-            )}
-          </div>
-        )}
       </footer>
     </div>
   );
