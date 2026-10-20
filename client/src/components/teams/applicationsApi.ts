@@ -129,3 +129,74 @@ export async function submitTeamApplication(
   }
   return data as SubmittedApplication;
 }
+
+export interface MyApplicationListItem {
+  id: string;
+  teamId: string;
+  eventId: string;
+  vacancyId: string | null;
+  applicantParticipantId: string;
+  status: string;
+  statusLabel: string;
+  requestType: 'Application';
+  message: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  cancelReason: string | null;
+  teamName: string;
+  vacancyRole: string | null;
+  withdrawable: boolean;
+}
+
+export interface MyApplicationsListResult {
+  applications: MyApplicationListItem[];
+  empty: boolean;
+  message: string | null;
+}
+
+export interface ApplicationStatusAlert {
+  audience: string;
+  type: string;
+  message: string;
+}
+
+export interface WithdrawnApplicationResult {
+  application: {
+    id: string;
+    teamId: string;
+    eventId: string;
+    vacancyId: string | null;
+    applicantParticipantId: string;
+    status: string;
+    statusLabel: string;
+    requestType: 'Application';
+    message: string | null;
+    resolvedAt: string | null;
+    cancelReason: string | null;
+    teamName: string;
+    vacancyRole: string | null;
+  };
+  changed: boolean;
+  idempotent: boolean;
+  alerts: ApplicationStatusAlert[];
+  notice: string;
+}
+
+/** GET /api/applications/mine — applicant status list (US-018 / #175). */
+export async function fetchMyApplications(): Promise<MyApplicationsListResult> {
+  return authCall(() => authFetch('/api/applications/mine'));
+}
+
+/**
+ * POST /api/applications/:applicationId/withdraw — FR-055 self-withdraw (#175).
+ * Releases pending quota; returns basic owner/applicant status alerts.
+ */
+export async function withdrawTeamApplication(
+  applicationId: string
+): Promise<WithdrawnApplicationResult> {
+  return authCall(() =>
+    authFetch(`/api/applications/${encodeURIComponent(applicationId)}/withdraw`, {
+      method: 'POST',
+    })
+  );
+}

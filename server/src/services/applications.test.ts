@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { submitApplication } from './applications.js';
+import {
+  applicationStatusLabel,
+  listMyApplications,
+  submitApplication,
+  withdrawApplication,
+} from './applications.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import {
   otherParticipant,
@@ -255,5 +260,169 @@ describe('submitApplication (US-018 / #172 / #173 / #174)', () => {
       status: 400,
     });
     expect(rpcSpy).not.toHaveBeenCalled();
+  });
+});
+describe('listMyApplications / withdrawApplication (US-018 / #175 / FR-055)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('maps Pending to Pending Review status label', () => {
+    expect(applicationStatusLabel('Pending')).toBe('Pending Review');
+    expect(applicationStatusLabel('Withdrawn')).toBe('Withdrawn');
+  });
+
+  it('lists applicant applications with withdrawable flags (status inspect)', async () => {
+    vi.spyOn(teamsRepository, 'listMyApplications').mockResolvedValue([
+      {
+        application: {
+          id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          team_id: sampleTeamId,
+          event_id: sampleEventId,
+          vacancy_id: sampleVacancyId,
+          participant_id: otherParticipant.id,
+          request_type: 'Application',
+          status: 'Pending',
+          cancel_reason: null,
+          resolved_at: null,
+          expires_at: null,
+          message: 'Interested',
+          created_at: '2026-10-19T12:00:00.000Z',
+          updated_at: '2026-10-19T12:00:00.000Z',
+        },
+        vacancyRole: 'Frontend',
+        teamName: 'HackMatch Innovators',
+      },
+    ]);
+
+    const result = await listMyApplications(otherParticipant.id);
+
+    expect(result.empty).toBe(false);
+    expect(result.applications[0]).toMatchObject({
+      status: 'Pending',
+      statusLabel: 'Pending Review',
+      withdrawable: true,
+      teamName: 'HackMatch Innovators',
+      vacancyRole: 'Frontend',
+    });
+  });
+
+  it('returns empty guidance when the applicant has no applications', async () => {
+    vi.spyOn(teamsRepository, 'listMyApplications').mockResolvedValue([]);
+
+    const result = await listMyApplications(otherParticipant.id);
+
+    expect(result.empty).toBe(true);
+    expect(result.message).toMatch(/No applications yet/i);
+  });
+
+  it('withdraws Pending application and returns owner/applicant alerts (US-018-T5)', async () => {
+    vi.spyOn(teamsRepository, 'withdrawTeamApplication').mockResolvedValue({
+      application: {
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        team_id: sampleTeamId,
+        event_id: sampleEventId,
+        vacancy_id: sampleVacancyId,
+        participant_id: otherParticipant.id,
+        request_type: 'Application',
+        status: 'Withdrawn',
+        cancel_reason: 'APPLICANT_WITHDRAWN',
+        resolved_at: '2026-10-19T16:00:00.000Z',
+        expires_at: null,
+        message: 'Interested',
+        created_at: '2026-10-19T12:00:00.000Z',
+        updated_at: '2026-10-19T16:00:00.000Z',
+      },
+      changed: true,
+      idempotent: false,
+      teamName: 'HackMatch Innovators',
+      vacancyRole: 'Frontend',
+      alerts: [
+        {
+          audience: 'applicant',
+          type: 'team_application_withdrawn',
+          message: 'You withdrew your application.',
+        },
+        {
+          audience: 'owner',
+          type: 'team_application_withdrawn',
+          message: 'An applicant withdrew their Pending Review application.',
+        },
+      ],
+      notice:
+        'Pending Review application withdrawn. Your pending quota for this event is released.',
+    });
+
+    const result = await withdrawApplication(
+      otherParticipant.id,
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    );
+
+    expect(result.application.status).toBe('Withdrawn');
+    expect(result.application.statusLabel).toBe('Withdrawn');
+    expect(result.changed).toBe(true);
+    expect(result.alerts).toHaveLength(2);
+    expect(result.alerts.map((a) => a.audience)).toEqual(
+      expect.arrayContaining(['applicant', 'owner'])
+    );
+    expect(result.notice).toMatch(/withdrawn/i);
+  });
+
+  it('treats repeated withdraw as idempotent success', async () => {
+    vi.spyOn(teamsRepository, 'withdrawTeamApplication').mockResolvedValue({
+      application: {
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        team_id: sampleTeamId,
+        event_id: sampleEventId,
+        vacancy_id: sampleVacancyId,
+        participant_id: otherParticipant.id,
+        request_type: 'Application',
+        status: 'Withdrawn',
+        cancel_reason: 'APPLICANT_WITHDRAWN',
+        resolved_at: '2026-10-19T15:00:00.000Z',
+        expires_at: null,
+        message: null,
+        created_at: '2026-10-19T12:00:00.000Z',
+        updated_at: '2026-10-19T15:00:00.000Z',
+      },
+      changed: false,
+      idempotent: true,
+      teamName: 'HackMatch Innovators',
+      vacancyRole: 'Frontend',
+      alerts: [],
+      notice: 'Application was already withdrawn.',
+    });
+
+    const result = await withdrawApplication(
+      otherParticipant.id,
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    );
+
+    expect(result.idempotent).toBe(true);
+    expect(result.changed).toBe(false);
+    expect(result.application.status).toBe('Withdrawn');
+  });
+
+  it('maps APPLICATION_NOT_WITHDRAWABLE from repository', async () => {
+    vi.spyOn(teamsRepository, 'withdrawTeamApplication').mockRejectedValue({
+      message: 'APPLICATION_NOT_WITHDRAWABLE',
+      code: 'P0001',
+      detail: JSON.stringify({ status: 'Accepted' }),
+    });
+
+    await expect(
+      withdrawApplication(otherParticipant.id, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+    ).rejects.toMatchObject({ code: 'APPLICATION_NOT_WITHDRAWABLE', status: 409 });
+  });
+
+  it('maps FORBIDDEN_NOT_APPLICANT from repository', async () => {
+    vi.spyOn(teamsRepository, 'withdrawTeamApplication').mockRejectedValue({
+      message: 'FORBIDDEN_NOT_APPLICANT',
+      code: 'P0001',
+    });
+
+    await expect(
+      withdrawApplication(ownerParticipant.id, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+    ).rejects.toMatchObject({ code: 'FORBIDDEN_NOT_APPLICANT', status: 403 });
   });
 });

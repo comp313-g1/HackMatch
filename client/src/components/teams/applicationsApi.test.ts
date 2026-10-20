@@ -2,9 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   APPLICATION_MESSAGE_MAX_LENGTH,
   MAX_PENDING_APPLICATIONS_PER_EVENT,
+  fetchMyApplications,
   isApplicationMessageTooLong,
   normalizeApplicationMessage,
   submitTeamApplication,
+  withdrawTeamApplication,
 } from './applicationsApi';
 
 const authFetchMock = vi.fn();
@@ -117,6 +119,79 @@ describe('applicationsApi (US-018 / #171)', () => {
       code: 'DUPLICATE_PENDING_APPLICATION',
       status: 409,
     });
+  });
+
+  it('fetches My Applications and withdraws Pending rows (#175 / FR-055)', async () => {
+    authFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          applications: [
+            {
+              id: 'app-1',
+              teamId: 't1',
+              eventId: 'e1',
+              vacancyId: 'v1',
+              applicantParticipantId: 'p1',
+              status: 'Pending',
+              statusLabel: 'Pending Review',
+              requestType: 'Application',
+              message: null,
+              createdAt: '2026-10-19T12:00:00.000Z',
+              resolvedAt: null,
+              cancelReason: null,
+              teamName: 'Team',
+              vacancyRole: 'Frontend',
+              withdrawable: true,
+            },
+          ],
+          empty: false,
+          message: null,
+        }),
+        { status: 200 }
+      )
+    );
+
+    const listed = await fetchMyApplications();
+    expect(authFetchMock).toHaveBeenCalledWith('/api/applications/mine');
+    expect(listed.applications[0].statusLabel).toBe('Pending Review');
+
+    authFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          application: {
+            id: 'app-1',
+            teamId: 't1',
+            eventId: 'e1',
+            vacancyId: 'v1',
+            applicantParticipantId: 'p1',
+            status: 'Withdrawn',
+            statusLabel: 'Withdrawn',
+            requestType: 'Application',
+            message: null,
+            resolvedAt: '2026-10-19T16:00:00.000Z',
+            cancelReason: 'APPLICANT_WITHDRAWN',
+            teamName: 'Team',
+            vacancyRole: 'Frontend',
+          },
+          changed: true,
+          idempotent: false,
+          alerts: [
+            { audience: 'applicant', type: 'team_application_withdrawn', message: 'You withdrew.' },
+            { audience: 'owner', type: 'team_application_withdrawn', message: 'Applicant withdrew.' },
+          ],
+          notice: 'Pending Review application withdrawn.',
+        }),
+        { status: 200 }
+      )
+    );
+
+    const withdrawn = await withdrawTeamApplication('app-1');
+    expect(authFetchMock).toHaveBeenCalledWith(
+      '/api/applications/app-1/withdraw',
+      expect.objectContaining({ method: 'POST' })
+    );
+    expect(withdrawn.application.status).toBe('Withdrawn');
+    expect(withdrawn.alerts).toHaveLength(2);
   });
 
   it('surfaces APPLICATION_PENDING_LIMIT with details (#174 / FR-054)', async () => {

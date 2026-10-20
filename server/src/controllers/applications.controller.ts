@@ -1,5 +1,9 @@
 import type { Request, Response, NextFunction } from 'express';
-import { submitApplication } from '../services/applications.js';
+import {
+  listMyApplications,
+  submitApplication,
+  withdrawApplication,
+} from '../services/applications.js';
 import { TEAM_ERROR_CATALOG, toTeamServiceError, type TeamErrorCode } from '../services/teamErrors.js';
 
 function fieldErrorsForApplicationCode(
@@ -17,6 +21,9 @@ function fieldErrorsForApplicationCode(
     case 'APPLICANT_ALREADY_CONFIRMED':
     case 'APPLICANT_NOT_ELIGIBLE':
     case 'CANNOT_APPLY_TO_OWN_TEAM':
+    case 'APPLICATION_NOT_FOUND':
+    case 'APPLICATION_NOT_WITHDRAWABLE':
+    case 'FORBIDDEN_NOT_APPLICANT':
       return { _form: message };
     default:
       return undefined;
@@ -65,6 +72,57 @@ export async function submitApplicationHandler(
 
     res.setHeader('Cache-Control', 'no-store');
     res.status(201).json({ application });
+  } catch (err: unknown) {
+    handleApplicationError(err, res, next);
+  }
+}
+
+/**
+ * GET /api/applications/mine
+ * US-018 / #175 — applicant inspects application statuses.
+ */
+export async function listMyApplicationsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const result = await listMyApplications(actorId);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json(result);
+  } catch (err: unknown) {
+    handleApplicationError(err, res, next);
+  }
+}
+
+/**
+ * POST /api/applications/:applicationId/withdraw
+ * US-018 / #175 / FR-055 — applicant withdraws Pending Review; alerts both parties.
+ */
+export async function withdrawApplicationHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const applicationId = String(req.params.applicationId || '').trim();
+    if (!applicationId) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(400).json({
+        error: 'Application id is required.',
+        code: 'VALIDATION_ERROR',
+        errors: { applicationId: 'Application id is required.' },
+      });
+      return;
+    }
+
+    const result = await withdrawApplication(actorId, applicationId);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json(result);
   } catch (err: unknown) {
     handleApplicationError(err, res, next);
   }

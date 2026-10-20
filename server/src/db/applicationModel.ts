@@ -2,7 +2,8 @@
  * US-018 / #170 application model contract (PostgreSQL team_requests subset).
  *
  * Source of truth: migrations 0011 (base Application request_type + shared status),
- * 0023 (message, Pending slot CHECK, duplicate/3-pending indexes, submit RPC).
+ * 0023 (message, Pending slot CHECK, duplicate/3-pending indexes, submit RPC),
+ * 0024 (withdraw_team_application — FR-055).
  *
  * UI "Pending Review" maps to status = 'Pending' with request_type = 'Application'.
  * Applications leave expires_at NULL (invitation-only TTL).
@@ -10,7 +11,11 @@
  *
  * Quotas (FR-054): at most 3 Pending Applications per PART per event.
  * Duplicates (FR-053): at most one Pending Application per (team, applicant).
+ * Withdraw (FR-055): applicant-only Pending → Withdrawn; releases quota; alerts both parties.
  */
+
+/** cancel_reason written by withdraw_team_application (FR-055). */
+export const APPLICATION_WITHDRAW_CANCEL_REASON = 'APPLICANT_WITHDRAWN' as const;
 
 import type { TeamRequestStatus } from './types.js';
 

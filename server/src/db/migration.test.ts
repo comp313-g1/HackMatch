@@ -921,6 +921,32 @@ describe('0022_cancel_team_invitation.sql Migration DDL (US-017 / #166)', () => 
   });
 });
 
+describe('0024_withdraw_team_application.sql Migration DDL (US-018 / #175)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0024_withdraw_team_application.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('defines withdraw_team_application with applicant check, idempotency, and alerts', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+withdraw_team_application/i);
+    expect(sql).toMatch(/FORBIDDEN_NOT_APPLICANT/i);
+    expect(sql).toMatch(/APPLICATION_NOT_WITHDRAWABLE/i);
+    expect(sql).toMatch(/APPLICANT_WITHDRAWN/i);
+    expect(sql).toMatch(/idempotent/i);
+    expect(sql).toMatch(/team_application_withdrawn/i);
+    expect(sql).toMatch(/INSERT\s+INTO\s+participant_notifications/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+withdraw_team_application\s*\(\s*UUID\s*,\s*UUID\s*\)\s+TO\s+service_role/i
+    );
+  });
+});
+
 describe('0023_create_team_application_model.sql Migration DDL (US-018 / #170)', () => {
   const migrationPath = path.resolve(
     __dirname,

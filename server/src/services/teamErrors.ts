@@ -30,7 +30,10 @@ export type TeamErrorCode =
   | 'APPLICANT_ALREADY_CONFIRMED'
   | 'APPLICATION_MESSAGE_TOO_LONG'
   | 'DUPLICATE_PENDING_APPLICATION'
-  | 'APPLICATION_PENDING_LIMIT';
+  | 'APPLICATION_PENDING_LIMIT'
+  | 'APPLICATION_NOT_FOUND'
+  | 'APPLICATION_NOT_WITHDRAWABLE'
+  | 'FORBIDDEN_NOT_APPLICANT';
 
 export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message: string }> = {
   EVENT_NOT_FOUND: { status: 404, message: 'Event not found.' },
@@ -119,6 +122,15 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   APPLICATION_PENDING_LIMIT: {
     status: 409,
     message: 'You already have 3 pending applications for this event.',
+  },
+  APPLICATION_NOT_FOUND: { status: 404, message: 'Application not found.' },
+  APPLICATION_NOT_WITHDRAWABLE: {
+    status: 409,
+    message: 'Only Pending Review applications can be withdrawn.',
+  },
+  FORBIDDEN_NOT_APPLICANT: {
+    status: 403,
+    message: 'Only the applicant can withdraw this application.',
   },
 };
 

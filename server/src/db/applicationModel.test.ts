@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   APPLICATION_MESSAGE_MAX_LENGTH,
   APPLICATION_STATUSES,
+  APPLICATION_WITHDRAW_CANCEL_REASON,
   MAX_PENDING_APPLICATIONS_PER_EVENT,
   countsTowardPendingApplicationQuota,
   isApplicationMessageTooLong,
@@ -20,9 +21,10 @@ function readMigration(name: string): string {
   return fs.readFileSync(path.join(migrationsDir, name), 'utf-8');
 }
 
-describe('US-018 application model contract (#170)', () => {
+describe('US-018 application model contract (#170 / #175)', () => {
   const base = readMigration('0011_create_team_recruitment_tables.sql');
   const model = readMigration('0023_create_team_application_model.sql');
+  const withdraw = readMigration('0024_withdraw_team_application.sql');
 
   it('defines Application request_type and shared Pending status domain on team_requests', () => {
     expect(base).toMatch(/request_type\s+VARCHAR\(20\)\s+NOT\s+NULL\s+CHECK[\s\S]*'Application'/i);
@@ -63,6 +65,20 @@ describe('US-018 application model contract (#170)', () => {
     expect(model).toMatch(/INSERT\s+INTO\s+participant_notifications/i);
     expect(model).toMatch(
       /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+submit_team_application\s*\(\s*UUID\s*,\s*UUID\s*,\s*UUID\s*,\s*TEXT\s*\)\s+TO\s+service_role/i
+    );
+  });
+
+  it('defines withdraw_team_application with applicant-only FR-055 alerts (#175)', () => {
+    expect(APPLICATION_WITHDRAW_CANCEL_REASON).toBe('APPLICANT_WITHDRAWN');
+    expect(withdraw).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+withdraw_team_application/i);
+    expect(withdraw).toMatch(/FORBIDDEN_NOT_APPLICANT/i);
+    expect(withdraw).toMatch(/APPLICATION_NOT_WITHDRAWABLE/i);
+    expect(withdraw).toMatch(/status\s*=\s*'Withdrawn'/i);
+    expect(withdraw).toMatch(/APPLICANT_WITHDRAWN/i);
+    expect(withdraw).toMatch(/team_application_withdrawn/i);
+    expect(withdraw).toMatch(/INSERT\s+INTO\s+participant_notifications/i);
+    expect(withdraw).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+withdraw_team_application\s*\(\s*UUID\s*,\s*UUID\s*\)\s+TO\s+service_role/i
     );
   });
 

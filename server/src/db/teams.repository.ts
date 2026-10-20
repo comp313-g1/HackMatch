@@ -98,6 +98,27 @@ export interface ITeamsRepository {
     participantId: string,
     eventId: string
   ): Promise<number>;
+  /** US-018 / #175 — applicant's applications across teams (status inspect). */
+  listMyApplications(participantId: string): Promise<
+    Array<{
+      application: TeamRequest;
+      vacancyRole: string | null;
+      teamName: string;
+    }>
+  >;
+  /** US-018 / #175 / FR-055 — applicant withdraw Pending application; idempotent. */
+  withdrawTeamApplication(
+    actorId: string,
+    applicationId: string
+  ): Promise<{
+    application: TeamRequest;
+    changed: boolean;
+    idempotent: boolean;
+    teamName: string;
+    vacancyRole: string | null;
+    alerts: Array<{ audience: string; type: string; message: string }>;
+    notice: string;
+  }>;
   /**
    * US-017 / #164 pending-quota probe: existing Pending invite for invitee/team
    * and/or for the vacancy slot (may be the same row).
@@ -493,6 +514,75 @@ export const teamsRepository: ITeamsRepository = {
       .eq('status', 'Pending');
     if (error) throw error;
     return count ?? 0;
+  },
+
+  async listMyApplications(participantId: string): Promise<
+    Array<{
+      application: TeamRequest;
+      vacancyRole: string | null;
+      teamName: string;
+    }>
+  > {
+    const client = getSupabaseClient();
+    const { data: rows, error } = await client
+      .from('team_requests')
+      .select('*, vacancy:team_vacancies(role), team:teams(name)')
+      .eq('participant_id', participantId)
+      .eq('request_type', 'Application')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    return (rows || []).map(
+      (row: {
+        vacancy?: { role?: string } | null;
+        team?: { name?: string } | null;
+      } & TeamRequest) => {
+        const { vacancy, team, ...application } = row;
+        return {
+          application: application as TeamRequest,
+          vacancyRole: vacancy?.role ?? null,
+          teamName: team?.name ?? 'Unknown team',
+        };
+      }
+    );
+  },
+
+  async withdrawTeamApplication(
+    actorId: string,
+    applicationId: string
+  ): Promise<{
+    application: TeamRequest;
+    changed: boolean;
+    idempotent: boolean;
+    teamName: string;
+    vacancyRole: string | null;
+    alerts: Array<{ audience: string; type: string; message: string }>;
+    notice: string;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('withdraw_team_application', {
+      p_actor: actorId,
+      p_application: applicationId,
+    });
+    if (error) throw error;
+    const payload = data as {
+      application: TeamRequest;
+      changed: boolean;
+      idempotent: boolean;
+      teamName: string;
+      vacancyRole?: string | null;
+      alerts?: Array<{ audience: string; type: string; message: string }>;
+      notice: string;
+    };
+    return {
+      application: payload.application,
+      changed: Boolean(payload.changed),
+      idempotent: Boolean(payload.idempotent),
+      teamName: payload.teamName,
+      vacancyRole: payload.vacancyRole ?? null,
+      alerts: payload.alerts ?? [],
+      notice: payload.notice,
+    };
   },
 
   async findPendingInvitationConflicts(

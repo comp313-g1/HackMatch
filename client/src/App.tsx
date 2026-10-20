@@ -16,6 +16,7 @@ import { CreateTeamPage } from './components/teams/CreateTeamPage';
 import { LookingForTeamPage } from './components/LookingForTeamPage';
 import { OpenTeamsBoard } from './components/teams/OpenTeamsBoard';
 import { ApplicationFormPanel } from './components/teams/ApplicationFormPanel';
+import { MyApplicationsPanel } from './components/teams/MyApplicationsPanel';
 import type { OpenTeamApplyTarget } from './components/teams/openTeamsApi';
 import type { OtpChallenge } from './components/auth/providerSignIn';
 
@@ -31,7 +32,8 @@ type View =
   | 'team'
   | 'create-team'
   | 'looking'
-  | 'browse-teams';
+  | 'browse-teams'
+  | 'applications';
 
 const getInitialView = (): View => {
   if (typeof window === 'undefined') return 'landing';
@@ -68,6 +70,9 @@ const getInitialView = (): View => {
   }
   if (view === 'browse-teams' || view === 'open-teams') {
     return 'browse-teams';
+  }
+  if (view === 'applications' || view === 'my-applications') {
+    return 'applications';
   }
   return 'landing';
 };
@@ -167,12 +172,20 @@ export function App(): React.JSX.Element {
     setCurrentView('browse-teams');
   };
 
+  const goToApplications = () => {
+    setStatusNotice(null);
+    setApplyTarget(null);
+    setIsMobileMenuOpen(false);
+    setCurrentView('applications');
+  };
+
   const isAuthenticated =
     Boolean(currentUser) ||
     currentView === 'account' ||
     currentView === 'team' ||
     currentView === 'create-team' ||
     currentView === 'looking' ||
+    currentView === 'applications' ||
     currentView === 'mfa';
   const participantIdentifier =
     currentUser?.displayName ||
@@ -259,10 +272,13 @@ export function App(): React.JSX.Element {
                 </button>
                 <button
                   type="button"
-                  disabled
-                  title="Coming soon in Sprint 3"
-                  aria-disabled="true"
-                  className="hidden xl:inline text-sm font-medium text-ink-muted/60 cursor-not-allowed"
+                  onClick={goToApplications}
+                  aria-current={currentView === 'applications' ? 'page' : undefined}
+                  className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
+                    currentView === 'applications'
+                      ? 'text-forest-900 font-semibold'
+                      : 'text-ink-muted hover:text-forest-800'
+                  }`}
                 >
                   Applications
                 </button>
@@ -400,6 +416,13 @@ export function App(): React.JSX.Element {
                   className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
                 >
                   Looking for Team
+                </button>
+                <button
+                  type="button"
+                  onClick={goToApplications}
+                  className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
+                >
+                  Applications
                 </button>
                 <button
                   type="button"
@@ -565,6 +588,26 @@ export function App(): React.JSX.Element {
               }}
             />
           </>
+        ) : currentView === 'applications' ? (
+          <section aria-labelledby="applications-heading">
+            <h2 id="applications-heading" className="sr-only">
+              My Applications
+            </h2>
+            <MfaGate
+              initialChallenge={otpChallenge}
+              onNavigateToSignIn={() => {
+                setStatusNotice(null);
+                setOtpChallenge(null);
+                setCurrentView('login');
+              }}
+            >
+              {() => (
+                <MyApplicationsPanel
+                  onStatusNotice={(notice) => setStatusNotice(notice)}
+                />
+              )}
+            </MfaGate>
+          </section>
         ) : currentView === 'account' ? (
           <section aria-labelledby="account-heading">
             <h2 id="account-heading" className="sr-only">
