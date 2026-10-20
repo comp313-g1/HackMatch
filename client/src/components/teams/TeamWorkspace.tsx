@@ -269,7 +269,46 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
             refreshKey={invitationsRefreshKey}
           />
 
-          <OwnerApplicationsPanel teamId={team.id} />
+          <OwnerApplicationsPanel
+            teamId={team.id}
+            disabled={isLocked}
+            onApproved={(result, application) => {
+              setTeam((current) => {
+                if (!current) return current;
+                const alreadyListed = current.members.some(
+                  (member) => member.participantId === result.membership.participantId
+                );
+                return {
+                  ...current,
+                  members: alreadyListed
+                    ? current.members
+                    : [
+                        ...current.members,
+                        {
+                          participantId: result.membership.participantId,
+                          displayName: application.applicantDisplayName,
+                          role: 'Member',
+                          joinedAt: result.membership.joinedAt,
+                        },
+                      ],
+                  vacancies: current.vacancies.map((vacancy) =>
+                    vacancy.id === result.vacancy.id
+                      ? { ...vacancy, status: 'Filled' }
+                      : vacancy
+                  ),
+                  limits: {
+                    ...current.limits,
+                    confirmedMembers: result.memberCount,
+                    openSlots: Math.max(0, current.limits.openSlots - 1),
+                    remainingCapacity: Math.max(
+                      0,
+                      result.maxTeamSize - result.memberCount
+                    ),
+                  },
+                };
+              });
+            }}
+          />
 
           <TeamRosterPanel
             teamId={team.id}

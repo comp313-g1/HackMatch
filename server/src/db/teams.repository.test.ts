@@ -528,6 +528,36 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
     expect(result.cascade.eventApplicationsWithdrawn).toBe(1);
   });
 
+  it('approveTeamApplication calls the atomic approval RPC and returns committed state (#190)', async () => {
+    const payload = {
+      approved: true,
+      application: { id: 'application-1' },
+      membership: { id: 'membership-1' },
+      vacancy: { id: 'vacancy-1' },
+      teamName: sampleTeam.name,
+      vacancyRole: 'Backend',
+      memberCount: 2,
+      maxTeamSize: 4,
+      availabilityCleared: true,
+      membershipCommitted: true,
+      notice: 'Application approved.',
+    };
+    const rpc = vi.fn().mockResolvedValue({ data: payload, error: null });
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({ rpc } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.approveTeamApplication('owner-1', 'application-1');
+
+    expect(rpc).toHaveBeenCalledWith('approve_team_application', {
+      p_actor: 'owner-1',
+      p_application: 'application-1',
+    });
+    expect(result).toMatchObject({
+      approved: true,
+      availabilityCleared: true,
+      membershipCommitted: true,
+    });
+  });
+
   it('acceptTeamInvitation converts a committed expiry payload into a domain failure', async () => {
     const mockRpc = vi.fn().mockResolvedValue({
       data: {

@@ -4,6 +4,9 @@ import type { OwnerApplicationReviewItem } from './applicationsApi';
 
 export interface ApplicationReviewCardProps {
   application: OwnerApplicationReviewItem;
+  approving?: boolean;
+  disabled?: boolean;
+  onApprove?: (applicationId: string) => void;
 }
 
 /**
@@ -13,6 +16,9 @@ export interface ApplicationReviewCardProps {
  */
 export function ApplicationReviewCard({
   application,
+  approving = false,
+  disabled = false,
+  onApprove,
 }: ApplicationReviewCardProps): React.JSX.Element {
   return (
     <li
@@ -59,6 +65,20 @@ export function ApplicationReviewCard({
           {application.message || 'No application note provided.'}
         </p>
       </section>
+
+      {onApprove ? (
+        <div className="flex justify-end border-t border-cream-200 pt-3">
+          <button
+            type="button"
+            onClick={() => onApprove(application.id)}
+            disabled={disabled || approving}
+            className="rounded-md bg-forest px-4 py-2 text-xs font-semibold text-white hover:bg-forest-800 disabled:cursor-not-allowed disabled:opacity-50"
+            data-testid={`approve-application-${application.id}`}
+          >
+            {approving ? 'Approving…' : 'Approve Application'}
+          </button>
+        </div>
+      ) : null}
     </li>
   );
 }

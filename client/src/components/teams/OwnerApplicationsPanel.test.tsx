@@ -6,10 +6,15 @@ import * as applicationsApi from './applicationsApi';
 
 vi.mock('./applicationsApi', async () => {
   const actual = await vi.importActual<typeof import('./applicationsApi')>('./applicationsApi');
-  return { ...actual, fetchTeamApplications: vi.fn() };
+  return {
+    ...actual,
+    fetchTeamApplications: vi.fn(),
+    approveTeamApplication: vi.fn(),
+  };
 });
 
 const fetchMock = vi.mocked(applicationsApi.fetchTeamApplications);
+const approveMock = vi.mocked(applicationsApi.approveTeamApplication);
 const application: applicationsApi.OwnerApplicationReviewItem = {
   id: 'app-1',
   teamId: 'team-1',
@@ -31,9 +36,42 @@ const application: applicationsApi.OwnerApplicationReviewItem = {
   vacancyRole: 'Backend',
 };
 
-describe('OwnerApplicationsPanel (US-020 / #188)', () => {
+const approvalResult: applicationsApi.ApplicationApprovalResult = {
+  approved: true,
+  application: {
+    id: 'app-1',
+    teamId: 'team-1',
+    eventId: 'event-1',
+    vacancyId: 'vacancy-1',
+    applicantParticipantId: 'participant-1',
+    status: 'Accepted',
+    statusLabel: 'Accepted',
+    requestType: 'Application',
+    resolvedAt: '2026-10-20T18:00:00.000Z',
+    teamName: 'HackMatch Innovators',
+    vacancyRole: 'Backend',
+  },
+  membership: {
+    id: 'membership-1',
+    teamId: 'team-1',
+    eventId: 'event-1',
+    participantId: 'participant-1',
+    role: 'Member',
+    status: 'Confirmed',
+    joinedAt: '2026-10-20T18:00:00.000Z',
+  },
+  vacancy: { id: 'vacancy-1', role: 'Backend', status: 'Filled' },
+  memberCount: 3,
+  maxTeamSize: 4,
+  availabilityCleared: true,
+  membershipCommitted: true,
+  notice: 'Application approved and membership confirmed.',
+};
+
+describe('OwnerApplicationsPanel (US-020 / #188 / #190)', () => {
   beforeEach(() => {
     fetchMock.mockReset();
+    approveMock.mockReset();
   });
 
   it('shows an accessible loading state', () => {
@@ -158,5 +196,60 @@ describe('OwnerApplicationsPanel (US-020 / #188)', () => {
     expect(alert).toHaveTextContent(/previously loaded applications are still shown/i);
     expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
     expect(screen.getByText(application.message as string)).toBeInTheDocument();
+  });
+
+  it('approves an application, removes it from the queue, and reports success', async () => {
+    const onApproved = vi.fn();
+    fetchMock.mockResolvedValue({
+      teamId: 'team-1',
+      applications: [application],
+      empty: false,
+      message: null,
+    });
+    approveMock.mockResolvedValue(approvalResult);
+
+    render(<OwnerApplicationsPanel teamId="team-1" onApproved={onApproved} />);
+    fireEvent.click(await screen.findByRole('button', { name: /approve application/i }));
+
+    await waitFor(() => expect(approveMock).toHaveBeenCalledWith('app-1'));
+    expect(await screen.findByTestId('application-approval-success')).toHaveTextContent(
+      /membership confirmed/i
+    );
+    expect(screen.getByTestId('applications-empty')).toHaveTextContent(
+      /no pending applications/i
+    );
+    expect(screen.queryByText('Grace Hopper')).not.toBeInTheDocument();
+    expect(onApproved).toHaveBeenCalledWith(approvalResult, application);
+  });
+
+  it('preserves the review when an atomic capacity check rejects approval', async () => {
+    fetchMock.mockResolvedValue({
+      teamId: 'team-1',
+      applications: [application],
+      empty: false,
+      message: null,
+    });
+    approveMock.mockRejectedValue(
+      new applicationsApi.ApplicationsApiError(
+        409,
+        'TEAM_CAPACITY_REACHED',
+        { _form: 'This team is already at its maximum size.' },
+        { memberCount: 4, maxTeamSize: 4 },
+        'This team is already at its maximum size.'
+      )
+    );
+
+    render(<OwnerApplicationsPanel teamId="team-1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /approve application/i }));
+
+    expect(await screen.findByTestId('application-approval-error')).toHaveTextContent(
+      /maximum size/i
+    );
+    expect(screen.getByTestId('application-approval-error')).toHaveTextContent(
+      /review details were kept/i
+    );
+    expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
+    expect(screen.getByText(application.message as string)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /approve application/i })).toBeEnabled();
   });
 });

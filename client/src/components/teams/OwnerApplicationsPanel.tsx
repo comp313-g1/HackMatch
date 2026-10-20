@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ApplicationsApiError,
   AuthRequiredError,
+  approveTeamApplication,
   fetchTeamApplications,
+  type ApplicationApprovalResult,
   type OwnerApplicationReviewItem,
 } from './applicationsApi';
 import { ApplicationReviewCard } from './ApplicationReviewCard';
@@ -10,17 +12,27 @@ import { ApplicationReviewCard } from './ApplicationReviewCard';
 export interface OwnerApplicationsPanelProps {
   teamId: string;
   refreshKey?: number;
+  disabled?: boolean;
+  onApproved?: (
+    result: ApplicationApprovalResult,
+    application: OwnerApplicationReviewItem
+  ) => void;
 }
 
 /** US-020 / #188 / FR-060 — owner-only incoming application review queue. */
 export function OwnerApplicationsPanel({
   teamId,
   refreshKey = 0,
+  disabled = false,
+  onApproved,
 }: OwnerApplicationsPanelProps): React.JSX.Element {
   const [applications, setApplications] = useState<OwnerApplicationReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [emptyMessage, setEmptyMessage] = useState<string | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
+  const [approvalNotice, setApprovalNotice] = useState<string | null>(null);
 
   const loadApplications = useCallback(async () => {
     setLoading(true);
@@ -47,6 +59,38 @@ export function OwnerApplicationsPanel({
       setLoading(false);
     }
   }, [teamId]);
+
+  const handleApprove = async (applicationId: string) => {
+    if (disabled || approvingId) return;
+    const application = applications.find((item) => item.id === applicationId);
+    if (!application) return;
+
+    setApprovingId(applicationId);
+    setApprovalError(null);
+    setApprovalNotice(null);
+    try {
+      const result = await approveTeamApplication(applicationId);
+      setApplications((current) => {
+        const remaining = current.filter((item) => item.id !== applicationId);
+        if (remaining.length === 0) setEmptyMessage('No pending applications to review.');
+        return remaining;
+      });
+      setApprovalNotice(result.notice);
+      onApproved?.(result, application);
+    } catch (err: unknown) {
+      if (err instanceof AuthRequiredError || (err instanceof ApplicationsApiError && err.status === 401)) {
+        setApprovalError('You need to sign in before approving an application.');
+      } else if (err instanceof ApplicationsApiError && err.status === 403) {
+        setApprovalError('Only the team owner can approve this application.');
+      } else if (err instanceof ApplicationsApiError) {
+        setApprovalError(err.errors?._form || err.message || 'Could not approve this application.');
+      } else {
+        setApprovalError('Could not approve this application.');
+      }
+    } finally {
+      setApprovingId(null);
+    }
+  };
 
   useEffect(() => {
     void loadApplications();
@@ -105,6 +149,19 @@ export function OwnerApplicationsPanel({
         </div>
       )}
 
+      {approvalNotice ? (
+        <div role="status" data-testid="application-approval-success" className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+          {approvalNotice}
+        </div>
+      ) : null}
+
+      {approvalError ? (
+        <div role="alert" data-testid="application-approval-error" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+          <p>{approvalError}</p>
+          <p className="mt-1 text-xs">The application and all review details were kept.</p>
+        </div>
+      ) : null}
+
       {!loading && !error && !hasApplications && (
         <div role="status" data-testid="applications-empty" className="rounded-md bg-cream-50 p-4 text-sm text-ink-muted">
           {emptyMessage || 'No pending applications to review.'}
@@ -114,7 +171,13 @@ export function OwnerApplicationsPanel({
       {hasApplications && (
         <ul className="space-y-3" data-testid="applications-review-list">
           {applications.map((application) => (
-            <ApplicationReviewCard key={application.id} application={application} />
+            <ApplicationReviewCard
+              key={application.id}
+              application={application}
+              approving={approvingId === application.id}
+              disabled={disabled}
+              onApprove={(id) => void handleApprove(id)}
+            />
           ))}
         </ul>
       )}

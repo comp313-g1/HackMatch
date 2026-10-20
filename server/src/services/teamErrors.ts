@@ -36,6 +36,10 @@ export type TeamErrorCode =
   | 'APPLICATION_PENDING_LIMIT'
   | 'APPLICATION_NOT_FOUND'
   | 'APPLICATION_NOT_WITHDRAWABLE'
+  | 'APPLICATION_NOT_APPROVABLE'
+  | 'APPLICATION_APPLICANT_NOT_ELIGIBLE'
+  | 'APPLICATION_APPLICANT_ALREADY_CONFIRMED'
+  | 'APPLICATION_APPROVAL_CONFLICT'
   | 'FORBIDDEN_NOT_APPLICANT';
 
 export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message: string }> = {
@@ -148,6 +152,23 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   APPLICATION_NOT_WITHDRAWABLE: {
     status: 409,
     message: 'Only Pending Review applications can be withdrawn.',
+  },
+  APPLICATION_NOT_APPROVABLE: {
+    status: 409,
+    message: 'Only Pending Review applications can be approved.',
+  },
+  APPLICATION_APPLICANT_NOT_ELIGIBLE: {
+    status: 409,
+    message: 'This applicant is inactive, unverified, suspended, or otherwise ineligible.',
+  },
+  APPLICATION_APPLICANT_ALREADY_CONFIRMED: {
+    status: 409,
+    message: 'This applicant is already confirmed on a team for this event.',
+  },
+  APPLICATION_APPROVAL_CONFLICT: {
+    status: 409,
+    message:
+      'Another placement changed this application or team. Refresh applications before trying again.',
   },
   FORBIDDEN_NOT_APPLICANT: {
     status: 403,

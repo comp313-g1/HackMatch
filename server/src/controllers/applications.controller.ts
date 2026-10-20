@@ -6,6 +6,7 @@ import {
   withdrawApplication,
 } from '../services/applications.js';
 import { TEAM_ERROR_CATALOG, toTeamServiceError, type TeamErrorCode } from '../services/teamErrors.js';
+import { approveApplication } from '../services/applicationApproval.js';
 
 function fieldErrorsForApplicationCode(
   code: TeamErrorCode
@@ -24,10 +25,32 @@ function fieldErrorsForApplicationCode(
     case 'CANNOT_APPLY_TO_OWN_TEAM':
     case 'APPLICATION_NOT_FOUND':
     case 'APPLICATION_NOT_WITHDRAWABLE':
+    case 'APPLICATION_NOT_APPROVABLE':
+    case 'APPLICATION_APPLICANT_NOT_ELIGIBLE':
+    case 'APPLICATION_APPLICANT_ALREADY_CONFIRMED':
+    case 'APPLICATION_APPROVAL_CONFLICT':
     case 'FORBIDDEN_NOT_APPLICANT':
       return { _form: message };
     default:
       return undefined;
+  }
+}
+
+/** POST /api/applications/:applicationId/approve — atomic owner approval (#190). */
+export async function approveApplicationHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const result = await approveApplication({
+      actorParticipantId: req.participant!.id,
+      applicationId: String(req.params.applicationId || '').trim(),
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json(result);
+  } catch (err: unknown) {
+    handleApplicationError(err, res, next);
   }
 }
 
