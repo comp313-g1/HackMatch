@@ -107,7 +107,7 @@ describe('POST /api/teams/:teamId/lock (US-022 / #208 / FR-066)', () => {
     expect(res.headers['cache-control']).toMatch(/no-store/i);
   });
 
-  it('returns 409 BELOW_MIN_MEMBERS when the roster is underfilled (boundary)', async () => {
+  it('returns 409 BELOW_MIN_MEMBERS when the roster is underfilled (boundary / #212)', async () => {
     vi.spyOn(teamsRepository, 'lockTeam').mockRejectedValue(
       new TeamServiceError('BELOW_MIN_MEMBERS', {
         memberCount: 1,
@@ -120,11 +120,44 @@ describe('POST /api/teams/:teamId/lock (US-022 / #208 / FR-066)', () => {
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('BELOW_MIN_MEMBERS');
+    expect(res.body.error).toMatch(/not enough confirmed members/i);
     expect(res.body.details).toEqual({
       memberCount: 1,
       minRequired: 2,
       maxAllowed: 4,
     });
+  });
+
+  it('returns 409 ABOVE_MAX_MEMBERS when the roster exceeds the event maximum (#212)', async () => {
+    vi.spyOn(teamsRepository, 'lockTeam').mockRejectedValue(
+      new TeamServiceError('ABOVE_MAX_MEMBERS', {
+        memberCount: 5,
+        minRequired: 2,
+        maxAllowed: 4,
+      })
+    );
+
+    const res = await request(app).post(lockPath).set('Authorization', validTokenHeader);
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ABOVE_MAX_MEMBERS');
+    expect(res.body.error).toMatch(/too many confirmed members/i);
+    expect(res.body.details).toEqual({
+      memberCount: 5,
+      minRequired: 2,
+      maxAllowed: 4,
+    });
+  });
+
+  it('returns 409 MEMBER_CONFIRMED_ELSEWHERE for FR-083 conflicts (#212)', async () => {
+    vi.spyOn(teamsRepository, 'lockTeam').mockRejectedValue(
+      new TeamServiceError('MEMBER_CONFIRMED_ELSEWHERE', { conflictCount: 1 })
+    );
+
+    const res = await request(app).post(lockPath).set('Authorization', validTokenHeader);
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('MEMBER_CONFIRMED_ELSEWHERE');
   });
 
   it('returns 409 ALREADY_LOCKED when the team is already locked', async () => {

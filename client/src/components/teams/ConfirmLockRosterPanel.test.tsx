@@ -192,6 +192,42 @@ describe('ConfirmLockRosterPanel (US-022 / #211)', () => {
     expect(screen.getByTestId('confirm-lock-open')).toBeDisabled();
   });
 
+  it('disables Confirm & Lock when over max members (#212 / ABOVE_MAX)', async () => {
+    const overMax: RosterLockValidationResult = {
+      canLock: false,
+      reasons: [
+        {
+          code: 'ABOVE_MAX_MEMBERS',
+          message: 'Locking allows at most 4 confirmed members (currently 5).',
+          details: { memberCount: 5, minRequired: 2, maxAllowed: 4 },
+        },
+      ],
+      memberCount: 5,
+      minRequired: 2,
+      maxAllowed: 4,
+      recruitmentStatus: 'Open',
+      lockedAt: null,
+      openSlots: 0,
+      members: [
+        { participantId: 'p-owner', displayName: 'Ada', role: 'Owner' },
+        { participantId: 'p-2', displayName: 'B', role: 'Member' },
+        { participantId: 'p-3', displayName: 'C', role: 'Member' },
+        { participantId: 'p-4', displayName: 'D', role: 'Member' },
+        { participantId: 'p-5', displayName: 'E', role: 'Member' },
+      ],
+    };
+    vi.mocked(teamApi.validateTeamLock).mockResolvedValueOnce(overMax);
+
+    render(<ConfirmLockRosterPanel teamId="t-1" members={members} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-lock-reason-ABOVE_MAX_MEMBERS')).toHaveTextContent(
+        /at most 4/i
+      );
+    });
+    expect(screen.getByTestId('confirm-lock-open')).toBeDisabled();
+  });
+
   it('shows empty guidance when there are no confirmed members (empty)', async () => {
     vi.mocked(teamApi.validateTeamLock).mockResolvedValueOnce(emptyResult);
 

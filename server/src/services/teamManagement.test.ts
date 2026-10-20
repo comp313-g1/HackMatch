@@ -339,7 +339,7 @@ describe('teamManagement service unit tests (US-012 / #120)', () => {
       expect(result.team.lifecycle.reason).toBe('Locked');
     });
 
-    it('maps BELOW_MIN_MEMBERS from RPC failures', async () => {
+    it('maps BELOW_MIN_MEMBERS from RPC failures (#212)', async () => {
       const mockRepo = {
         lockTeam: vi.fn().mockRejectedValue({
           message: 'BELOW_MIN_MEMBERS',
@@ -355,6 +355,30 @@ describe('teamManagement service unit tests (US-012 / #120)', () => {
           expect((err as TeamServiceError).status).toBe(409);
           expect((err as TeamServiceError).details).toEqual({
             memberCount: 1,
+            minRequired: 2,
+            maxAllowed: 4,
+          });
+          return true;
+        }
+      );
+    });
+
+    it('maps ABOVE_MAX_MEMBERS from RPC failures (#212)', async () => {
+      const mockRepo = {
+        lockTeam: vi.fn().mockRejectedValue({
+          message: 'ABOVE_MAX_MEMBERS',
+          code: 'P0001',
+          detail: JSON.stringify({ memberCount: 5, minRequired: 2, maxAllowed: 4 }),
+        }),
+      } as unknown as ITeamsRepository;
+
+      await expect(lockTeam(actorId, teamId, { repo: mockRepo })).rejects.toSatisfy(
+        (err: unknown) => {
+          expect(err).toBeInstanceOf(TeamServiceError);
+          expect((err as TeamServiceError).code).toBe('ABOVE_MAX_MEMBERS');
+          expect((err as TeamServiceError).status).toBe(409);
+          expect((err as TeamServiceError).details).toEqual({
+            memberCount: 5,
             minRequired: 2,
             maxAllowed: 4,
           });

@@ -144,6 +144,42 @@ describe('0033_decline_team_application.sql decline DDL (#192)', () => {
   });
 });
 
+describe('lock min/max/concurrency SQL contract (#212 / US-022 / FR-066)', () => {
+  const lockSql = fs.readFileSync(
+    path.resolve(__dirname, '../../../supabase/migrations/0036_lock_team.sql'),
+    'utf-8'
+  );
+
+  it('enforces GREATEST(2, event min) and COALESCE(event max, 4)', () => {
+    expect(lockSql).toMatch(/GREATEST\s*\(\s*2\s*,\s*COALESCE\s*\(\s*v_event\.min_team_size/i);
+    expect(lockSql).toMatch(/COALESCE\s*\(\s*v_event\.max_team_size\s*,\s*4\s*\)/i);
+  });
+
+  it('raises BELOW_MIN_MEMBERS and ABOVE_MAX_MEMBERS before writing Locked', () => {
+    const lockFnIdx = lockSql.indexOf('CREATE OR REPLACE FUNCTION lock_team');
+    const lockBody = lockSql.slice(lockFnIdx);
+    const belowIdx = lockBody.search(/BELOW_MIN_MEMBERS/i);
+    const aboveIdx = lockBody.search(/ABOVE_MAX_MEMBERS/i);
+    // Prefer the UPDATE write, not earlier status comparisons.
+    const writeIdx = lockBody.search(
+      /UPDATE\s+teams[\s\S]*?recruitment_status\s*=\s*'Locked'/i
+    );
+    expect(belowIdx).toBeGreaterThan(-1);
+    expect(aboveIdx).toBeGreaterThan(-1);
+    expect(writeIdx).toBeGreaterThan(aboveIdx);
+    expect(writeIdx).toBeGreaterThan(belowIdx);
+  });
+
+  it('shares hackmatch:accept:team advisory lock between leave_team and lock_team', () => {
+    const leaveIdx = lockSql.indexOf('CREATE OR REPLACE FUNCTION leave_team');
+    const lockIdx = lockSql.indexOf('CREATE OR REPLACE FUNCTION lock_team');
+    const leaveSql = lockSql.slice(leaveIdx, lockIdx);
+    const lockBody = lockSql.slice(lockIdx);
+    expect(leaveSql).toMatch(/hackmatch:accept:team:/);
+    expect(lockBody).toMatch(/hackmatch:accept:team:/);
+  });
+});
+
 describe('post-lock mutation guards SQL contract (#210 / US-022 / FR-067)', () => {
   const listingSql = fs.readFileSync(
     path.resolve(__dirname, '../../../supabase/migrations/0013_create_team_listing_functions.sql'),
