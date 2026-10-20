@@ -134,6 +134,48 @@ describe('teams invitationsApi (US-017 / #167 shared client)', () => {
     });
   });
 
+  it('surfaces MFA_REQUIRED permission failures from issue endpoint (#168)', async () => {
+    authFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 'MFA_REQUIRED',
+          error: 'Multi-factor authentication is required.',
+        }),
+        { status: 403 }
+      )
+    );
+
+    await expect(
+      issueTeamInvitation('t1', {
+        vacancyId: 'v1',
+        inviteeParticipantId: 'p1',
+        source: 'direct',
+      })
+    ).rejects.toMatchObject({
+      name: 'InvitationsApiError',
+      code: 'MFA_REQUIRED',
+      status: 403,
+    });
+  });
+
+  it('surfaces FORBIDDEN_NOT_TEAM_OWNER on list (#168)', async () => {
+    authFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 'FORBIDDEN_NOT_TEAM_OWNER',
+          error: 'You are not the owner of this team.',
+        }),
+        { status: 403 }
+      )
+    );
+
+    await expect(fetchTeamInvitations('t1')).rejects.toMatchObject({
+      name: 'InvitationsApiError',
+      code: 'FORBIDDEN_NOT_TEAM_OWNER',
+      status: 403,
+    });
+  });
+
   it('DELETEs invitation cancel and returns status alerts (#166)', async () => {
     authFetchMock.mockResolvedValue(
       new Response(
