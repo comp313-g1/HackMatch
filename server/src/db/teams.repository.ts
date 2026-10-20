@@ -44,6 +44,20 @@ export interface InvitationStatusAlertRecord {
   createdAt?: string;
 }
 
+export interface TeamApplicationReviewRecord {
+  application: TeamRequest;
+  vacancyRole: string | null;
+  teamName: string;
+  applicant: {
+    displayName: string;
+    handle: string | null;
+    primaryRole: ParticipantPrimaryRole | null;
+    institution: string | null;
+    skills: string[];
+    portfolios: Array<{ url: string; label: string | null }>;
+  };
+}
+
 export interface OpenTeamRecord {
   team: Team;
   event: { status: 'Published' | 'Archived' | 'Disabled'; end_date: string };
@@ -132,6 +146,8 @@ export interface ITeamsRepository {
       teamName: string;
     }>
   >;
+  /** US-020 / #188 / FR-060 — owner review queue containing Pending applications only. */
+  listTeamApplications(teamId: string): Promise<TeamApplicationReviewRecord[]>;
   /** US-018 / #175 / FR-055 — applicant withdraw Pending application; idempotent. */
   withdrawTeamApplication(
     actorId: string,
@@ -1120,6 +1136,125 @@ export const teamsRepository: ITeamsRepository = {
         inviteeDisplayName: profile?.full_name ?? 'Participant',
         vacancyRole: vacancy?.role ?? null,
         teamName: (teamRow as { name: string }).name,
+      };
+    });
+  },
+
+  async listTeamApplications(teamId: string): Promise<TeamApplicationReviewRecord[]> {
+    const client = getSupabaseClient();
+    const { data: teamRow, error: teamErr } = await client
+      .from('teams')
+      .select('id, name')
+      .eq('id', teamId)
+      .maybeSingle();
+    if (teamErr) throw teamErr;
+    if (!teamRow) return [];
+
+    const { data: requestRows, error: requestErr } = await client
+      .from('team_requests')
+      .select('*, vacancy:team_vacancies(role)')
+      .eq('team_id', teamId)
+      .eq('request_type', 'Application')
+      .eq('status', 'Pending')
+      .order('created_at', { ascending: false });
+    if (requestErr) throw requestErr;
+
+    const rows = (requestRows || []) as Array<Record<string, unknown>>;
+    const applicantIds = [
+      ...new Set(rows.map((row) => String(row.participant_id))),
+    ];
+    const applicantById = new Map<
+      string,
+      TeamApplicationReviewRecord['applicant']
+    >();
+
+    if (applicantIds.length > 0) {
+      const [participantsResult, profilesResult, skillsResult, portfoliosResult] =
+        await Promise.all([
+          client.from('participants').select('id, full_name').in('id', applicantIds),
+          client
+            .from('participant_profiles')
+            .select('participant_id, handle, primary_role, institution')
+            .in('participant_id', applicantIds),
+          client
+            .from('participant_skills')
+            .select('participant_id, skill_name, created_at')
+            .in('participant_id', applicantIds)
+            .order('created_at', { ascending: true }),
+          client
+            .from('participant_portfolios')
+            .select('participant_id, url, label, created_at')
+            .in('participant_id', applicantIds)
+            .order('created_at', { ascending: true }),
+        ]);
+
+      if (participantsResult.error) throw participantsResult.error;
+      if (profilesResult.error) throw profilesResult.error;
+      if (skillsResult.error) throw skillsResult.error;
+      if (portfoliosResult.error) throw portfoliosResult.error;
+
+      const profileById = new Map(
+        (profilesResult.data || []).map((profile) => [
+          String(profile.participant_id),
+          profile as {
+            participant_id: string;
+            handle: string | null;
+            primary_role: ParticipantPrimaryRole | null;
+            institution: string | null;
+          },
+        ])
+      );
+      const skillsById = new Map<string, string[]>();
+      for (const skill of skillsResult.data || []) {
+        const participantId = String(skill.participant_id);
+        const existing = skillsById.get(participantId) ?? [];
+        existing.push(String(skill.skill_name));
+        skillsById.set(participantId, existing);
+      }
+      const portfoliosById = new Map<
+        string,
+        Array<{ url: string; label: string | null }>
+      >();
+      for (const portfolio of portfoliosResult.data || []) {
+        const participantId = String(portfolio.participant_id);
+        const existing = portfoliosById.get(participantId) ?? [];
+        existing.push({
+          url: String(portfolio.url),
+          label: portfolio.label == null ? null : String(portfolio.label),
+        });
+        portfoliosById.set(participantId, existing);
+      }
+
+      for (const participant of participantsResult.data || []) {
+        const participantId = String(participant.id);
+        const profile = profileById.get(participantId);
+        applicantById.set(participantId, {
+          displayName: String(participant.full_name || 'Participant'),
+          handle: profile?.handle ?? null,
+          primaryRole: profile?.primary_role ?? null,
+          institution: profile?.institution ?? null,
+          skills: skillsById.get(participantId) ?? [],
+          portfolios: portfoliosById.get(participantId) ?? [],
+        });
+      }
+    }
+
+    return rows.map((row) => {
+      const vacancy = row.vacancy as { role?: string } | null;
+      const application = { ...row } as unknown as TeamRequest & { vacancy?: unknown };
+      delete application.vacancy;
+      return {
+        application,
+        vacancyRole: vacancy?.role ?? null,
+        teamName: String((teamRow as { name: string }).name),
+        applicant: applicantById.get(application.participant_id) ?? {
+          displayName: 'Participant',
+          handle: null,
+          primaryRole: null,
+          institution: null,
+          skills: [],
+          portfolios: [],
+        },
       };
     });
   },

@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import {
   listMyApplications,
+  listOwnerApplications,
   submitApplication,
   withdrawApplication,
 } from '../services/applications.js';
@@ -27,6 +28,24 @@ function fieldErrorsForApplicationCode(
       return { _form: message };
     default:
       return undefined;
+  }
+}
+
+/** GET /api/teams/:teamId/applications — owner-only Pending Review queue (#188). */
+export async function listTeamApplicationsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const teamId = String(req.params.teamId || '').trim();
+    const result = await listOwnerApplications(actorId, teamId);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json(result);
+  } catch (err: unknown) {
+    handleApplicationError(err, res, next);
   }
 }
 

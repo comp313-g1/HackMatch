@@ -3,6 +3,7 @@ import {
   APPLICATION_MESSAGE_MAX_LENGTH,
   MAX_PENDING_APPLICATIONS_PER_EVENT,
   fetchMyApplications,
+  fetchTeamApplications,
   isApplicationMessageTooLong,
   normalizeApplicationMessage,
   submitTeamApplication,
@@ -208,6 +209,27 @@ describe('applicationsApi (US-018 / #171)', () => {
     );
     expect(withdrawn.application.status).toBe('Withdrawn');
     expect(withdrawn.alerts).toHaveLength(2);
+  });
+
+  it('fetches the owner application review queue (#188 / FR-060)', async () => {
+    authFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          teamId: 't1',
+          applications: [],
+          empty: true,
+          message: 'No pending applications to review.',
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await fetchTeamApplications('t1');
+
+    expect(authFetchMock).toHaveBeenCalledWith('/api/teams/t1/applications', {
+      method: 'GET',
+    });
+    expect(result.empty).toBe(true);
   });
 
   it('surfaces APPLICATION_PENDING_LIMIT with details (#174 / FR-054)', async () => {
