@@ -80,13 +80,16 @@ export function validateSubmitApplicationInput(raw: unknown): {
   }
 
   const resolvedId = String(targetIdRaw).trim();
+  const sanitized: SubmitApplicationInputSanitized = {
+    vacancyId: resolvedId,
+    message,
+  };
+  if (slotIdRaw !== undefined) {
+    sanitized.slotId = resolvedId;
+  }
   return {
     errors: {},
-    sanitized: {
-      vacancyId: resolvedId,
-      slotId: resolvedId,
-      message,
-    },
+    sanitized,
   };
 }
 
