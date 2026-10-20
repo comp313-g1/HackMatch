@@ -102,6 +102,7 @@ export interface ITeamsRepository {
   getTeamViewParts(teamId: string): Promise<{
     team: Team;
     event: {
+      min_team_size?: number | null;
       max_team_size: number | null;
       status?: 'Published' | 'Archived' | 'Disabled';
       end_date?: string;
@@ -450,7 +451,12 @@ export const teamsRepository: ITeamsRepository = {
 
   async getTeamViewParts(teamId: string): Promise<{
     team: Team;
-    event: { max_team_size: number | null };
+    event: {
+      min_team_size?: number | null;
+      max_team_size: number | null;
+      status?: 'Published' | 'Archived' | 'Disabled';
+      end_date?: string;
+    };
     members: Array<{
       participant_id: string;
       role: TeamMembershipRole;
@@ -470,14 +476,15 @@ export const teamsRepository: ITeamsRepository = {
       .single();
     if (teamError) throw teamError;
 
-    // 2. Event max_team_size, status, end_date (with graceful fallback if event is absent)
+    // 2. Event min/max team size, status, end_date (graceful fallback if event is absent)
     const { data: event } = await client
       .from('events')
-      .select('max_team_size, status, end_date')
+      .select('min_team_size, max_team_size, status, end_date')
       .eq('id', (team as Team).event_id)
       .maybeSingle();
 
     const safeEvent = event || {
+      min_team_size: 2,
       max_team_size: 4,
       status: 'Published' as const,
       end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
@@ -533,7 +540,12 @@ export const teamsRepository: ITeamsRepository = {
 
     return {
       team: team as Team,
-      event: safeEvent as { max_team_size: number | null },
+      event: safeEvent as {
+        min_team_size?: number | null;
+        max_team_size: number | null;
+        status?: 'Published' | 'Archived' | 'Disabled';
+        end_date?: string;
+      },
       members,
       vacancies: (vacancies || []) as TeamVacancy[],
     };

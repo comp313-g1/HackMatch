@@ -10,6 +10,7 @@ import {
   removeMember,
   disbandTeam,
   leaveTeam,
+  validateTeamLock,
 } from './teamApi';
 import { authFetch, AuthRequiredError } from '../../config/authFetch';
 import type { TeamView } from './teamTypes';
@@ -227,6 +228,34 @@ describe('teamApi client unit tests (US-012 / Task 8 / #125)', () => {
     });
     expect(result.availabilityRestored).toBe(true);
     expect(result.message).toMatch(/availability/i);
+  });
+
+  it('validateTeamLock calls GET /api/teams/:teamId/lock/validate (#207)', async () => {
+    vi.mocked(authFetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          validation: {
+            canLock: false,
+            reasons: [{ code: 'BELOW_MIN_MEMBERS', message: 'Need 2 members.' }],
+            memberCount: 1,
+            minRequired: 2,
+            maxAllowed: 4,
+            recruitmentStatus: 'Open',
+            lockedAt: null,
+            openSlots: 2,
+            members: [],
+          },
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await validateTeamLock('t-123');
+    expect(authFetch).toHaveBeenCalledWith('/api/teams/t-123/lock/validate', {
+      method: 'GET',
+    });
+    expect(result.canLock).toBe(false);
+    expect(result.minRequired).toBe(2);
   });
 
   it('maps HTTP errors into TeamApiError with structured details and code', async () => {

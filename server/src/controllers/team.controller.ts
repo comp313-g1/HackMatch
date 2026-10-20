@@ -13,6 +13,7 @@ import {
   leaveTeam,
 } from '../services/teamManagement.js';
 import { toTeamView } from '../services/teamView.js';
+import { validateRosterLockForOwner } from '../services/rosterLockValidation.js';
 import { teamsRepository, type TeamListingPatch } from '../db/teams.repository.js';
 import { toTeamServiceError } from '../services/teamErrors.js';
 import { listOpenTeams, type OpenTeamsViewer } from '../services/openTeams.js';
@@ -110,6 +111,28 @@ export async function getTeamHandler(req: Request, res: Response, next: NextFunc
 
     res.setHeader('Cache-Control', 'no-store');
     res.status(200).json({ team });
+  } catch (err: unknown) {
+    handleControllerError(err, res, next);
+  }
+}
+
+/**
+ * GET /api/teams/:teamId/lock/validate — US-022 / #207 / FR-066
+ * Owner-only, non-mutating preflight for roster lock eligibility.
+ */
+export async function validateLockHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const actorId = req.participant!.id;
+    const teamId = String(req.params.teamId);
+
+    const validation = await validateRosterLockForOwner(actorId, teamId);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({ validation });
   } catch (err: unknown) {
     handleControllerError(err, res, next);
   }

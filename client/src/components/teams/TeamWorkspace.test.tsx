@@ -10,6 +10,7 @@ vi.mock('./teamApi', async () => {
   return {
     ...actual,
     fetchMyTeam: vi.fn(),
+    validateTeamLock: vi.fn(),
   };
 });
 
@@ -52,6 +53,22 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.mocked(teamApi.validateTeamLock).mockResolvedValue({
+      canLock: false,
+      reasons: [
+        {
+          code: 'BELOW_MIN_MEMBERS',
+          message: 'Locking requires at least 2 confirmed members (currently 1).',
+        },
+      ],
+      memberCount: 1,
+      minRequired: 2,
+      maxAllowed: 4,
+      recruitmentStatus: 'Open',
+      lockedAt: null,
+      openSlots: 0,
+      members: [{ participantId: 'p-1', displayName: 'Ada Lovelace', role: 'Owner' }],
+    });
   });
 
   it('renders loading state initially with role="status" and aria-busy="true"', () => {
@@ -139,7 +156,8 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
       expect(screen.getByDisplayValue('HackMatch Innovators')).toBeInTheDocument();
       expect(screen.getByText('Recruiting Roles & Open Slots')).toBeInTheDocument();
       expect(screen.getByText('Team Roster')).toBeInTheDocument();
-      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+      expect(screen.getByTestId('roster-lock-validation-panel')).toBeInTheDocument();
+      expect(screen.getAllByText('Ada Lovelace').length).toBeGreaterThanOrEqual(1);
     });
   });
 

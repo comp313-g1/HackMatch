@@ -8,6 +8,7 @@ import { TeamRosterPanel } from './TeamRosterPanel';
 import { LeaveTeamPanel } from './LeaveTeamPanel';
 import { RosterStatusView } from './RosterStatusView';
 import { OwnerApplicationsPanel } from './OwnerApplicationsPanel';
+import { RosterLockValidationPanel } from './RosterLockValidationPanel';
 
 export interface TeamWorkspaceProps {
   eventId: string;
@@ -335,6 +336,13 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
                 };
               });
             }}
+          />
+
+          <RosterLockValidationPanel
+            teamId={team.id}
+            members={team.members}
+            disabled={isLocked}
+            refreshKey={invitationsRefreshKey}
           />
 
           <TeamRosterPanel

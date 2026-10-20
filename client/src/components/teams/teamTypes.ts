@@ -69,6 +69,40 @@ export interface TeamView {
   canLeave: boolean;
 }
 
+/** US-022 / #207 / FR-066 — owner-only lock preflight payload. */
+export type RosterLockValidationReasonCode =
+  | 'BELOW_MIN_MEMBERS'
+  | 'ABOVE_MAX_MEMBERS'
+  | 'TEAM_NOT_MUTABLE'
+  | 'ALREADY_LOCKED'
+  | 'EVENT_NOT_RECRUITING'
+  | 'MEMBER_CONFIRMED_ELSEWHERE'
+  | 'FORBIDDEN_NOT_TEAM_OWNER';
+
+export interface RosterLockValidationReason {
+  code: RosterLockValidationReasonCode;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+export interface RosterLockValidationMember {
+  participantId: string;
+  displayName: string;
+  role: TeamMembershipRole;
+}
+
+export interface RosterLockValidationResult {
+  canLock: boolean;
+  reasons: RosterLockValidationReason[];
+  memberCount: number;
+  minRequired: number;
+  maxAllowed: number;
+  recruitmentStatus: TeamRecruitmentStatus;
+  lockedAt: string | null;
+  openSlots: number;
+  members: RosterLockValidationMember[];
+}
+
 export interface TeamFieldErrors {
   name?: string;
   pitch?: string;
