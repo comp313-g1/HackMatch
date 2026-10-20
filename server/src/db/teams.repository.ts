@@ -44,6 +44,25 @@ export interface InvitationStatusAlertRecord {
   createdAt?: string;
 }
 
+export interface ApplicationDeclineEffects {
+  applicationChanged: boolean;
+  applicantAlertCreated: boolean;
+  ownerAlertCreated: boolean;
+  pendingQuotaReleased: boolean;
+  availabilityChanged: false;
+  membershipChanged: false;
+  vacancyChanged: false;
+  capacityChanged: false;
+}
+
+export interface ApplicationStatusAlertRecord {
+  audience: 'applicant' | 'owner';
+  type: string;
+  message: string;
+  notificationId?: string;
+  createdAt?: string;
+}
+
 export interface TeamApplicationReviewRecord {
   application: TeamRequest;
   vacancyRole: string | null;
@@ -191,6 +210,20 @@ export interface ITeamsRepository {
       teamRequestsCanceled: number;
       teamNowFull: boolean;
     };
+    notice: string;
+  }>;
+  /** US-020 / #192 — owner declines Pending Review without roster mutations. */
+  declineTeamApplication(
+    actorId: string,
+    applicationId: string
+  ): Promise<{
+    application: TeamRequest;
+    changed: boolean;
+    idempotent: boolean;
+    teamName: string;
+    vacancyRole: string | null;
+    alerts: ApplicationStatusAlertRecord[];
+    effects: ApplicationDeclineEffects;
     notice: string;
   }>;
   /**
@@ -896,6 +929,58 @@ export const teamsRepository: ITeamsRepository = {
         teamRequestsCanceled: cascade.teamRequestsCanceled ?? 0,
         teamNowFull: Boolean(cascade.teamNowFull),
       },
+    };
+  },
+
+  async declineTeamApplication(
+    actorId: string,
+    applicationId: string
+  ): Promise<{
+    application: TeamRequest;
+    changed: boolean;
+    idempotent: boolean;
+    teamName: string;
+    vacancyRole: string | null;
+    alerts: ApplicationStatusAlertRecord[];
+    effects: ApplicationDeclineEffects;
+    notice: string;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('decline_team_application', {
+      p_actor: actorId,
+      p_application: applicationId,
+    });
+    if (error) throw error;
+
+    const payload = data as {
+      application: TeamRequest;
+      changed: boolean;
+      idempotent: boolean;
+      teamName: string;
+      vacancyRole?: string | null;
+      alerts?: ApplicationStatusAlertRecord[];
+      effects?: ApplicationDeclineEffects;
+      notice: string;
+    };
+
+    return {
+      application: payload.application,
+      changed: Boolean(payload.changed),
+      idempotent: Boolean(payload.idempotent),
+      teamName: payload.teamName,
+      vacancyRole: payload.vacancyRole ?? null,
+      alerts: payload.alerts ?? [],
+      effects: payload.effects ?? {
+        applicationChanged: Boolean(payload.changed),
+        applicantAlertCreated: false,
+        ownerAlertCreated: false,
+        pendingQuotaReleased: Boolean(payload.changed),
+        availabilityChanged: false,
+        membershipChanged: false,
+        vacancyChanged: false,
+        capacityChanged: false,
+      },
+      notice: payload.notice,
     };
   },
 

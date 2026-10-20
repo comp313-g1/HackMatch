@@ -3,6 +3,7 @@ import {
   APPLICATION_MESSAGE_MAX_LENGTH,
   MAX_PENDING_APPLICATIONS_PER_EVENT,
   approveTeamApplication,
+  declineTeamApplication,
   fetchMyApplications,
   fetchTeamApplications,
   isApplicationMessageTooLong,
@@ -296,6 +297,66 @@ describe('applicationsApi (US-018 / #171)', () => {
         eventApplicationsWithdrawn: 2,
         slotRequestsCanceled: 1,
         teamNowFull: false,
+      },
+    });
+  });
+
+  it('POSTs an owner decline and returns basic alerts with unchanged effects (#192)', async () => {
+    authFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          decision: 'decline',
+          application: {
+            id: 'app-1',
+            teamId: 't1',
+            eventId: 'e1',
+            vacancyId: 'v1',
+            applicantParticipantId: 'p1',
+            status: 'Declined',
+            statusLabel: 'Declined',
+            requestType: 'Application',
+            message: 'Ready to help',
+            resolvedAt: '2026-10-20T18:00:00.000Z',
+            cancelReason: 'OWNER_DECLINED',
+            teamName: 'Team',
+            vacancyRole: 'Backend',
+          },
+          changed: true,
+          idempotent: false,
+          alerts: [
+            { audience: 'applicant', type: 'team_application_declined', message: 'Declined.' },
+            { audience: 'owner', type: 'team_application_declined', message: 'Declined.' },
+          ],
+          effects: {
+            applicationChanged: true,
+            applicantAlertCreated: true,
+            ownerAlertCreated: true,
+            pendingQuotaReleased: true,
+            availabilityChanged: false,
+            membershipChanged: false,
+            vacancyChanged: false,
+            capacityChanged: false,
+          },
+          notice: 'Application declined. The applicant was notified.',
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await declineTeamApplication('app-1');
+
+    expect(authFetchMock).toHaveBeenCalledWith('/api/applications/app-1/decline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(result).toMatchObject({
+      decision: 'decline',
+      application: { status: 'Declined', cancelReason: 'OWNER_DECLINED' },
+      effects: {
+        pendingQuotaReleased: true,
+        membershipChanged: false,
+        vacancyChanged: false,
       },
     });
   });

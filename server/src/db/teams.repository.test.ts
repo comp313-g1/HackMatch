@@ -603,6 +603,75 @@ describe('teamsRepository unit tests (US-012 / #119)', () => {
     });
   });
 
+  it('declineTeamApplication returns alerts and unchanged roster effects (#192)', async () => {
+    const timestamp = '2026-10-20T18:00:00.000Z';
+    const application = {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      team_id: sampleTeam.id,
+      event_id: sampleTeam.event_id,
+      vacancy_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      participant_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      request_type: 'Application',
+      status: 'Declined',
+      cancel_reason: 'OWNER_DECLINED',
+      resolved_at: timestamp,
+      expires_at: null,
+      message: 'Ready to help',
+      created_at: timestamp,
+      updated_at: timestamp,
+    } satisfies TeamRequest;
+    const payload = {
+      application,
+      changed: true,
+      idempotent: false,
+      teamName: sampleTeam.name,
+      vacancyRole: 'Backend',
+      alerts: [
+        {
+          audience: 'applicant' as const,
+          type: 'team_application_declined',
+          message: 'Your application was declined.',
+          notificationId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          createdAt: timestamp,
+        },
+        {
+          audience: 'owner' as const,
+          type: 'team_application_declined',
+          message: 'You declined an application.',
+          notificationId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          createdAt: timestamp,
+        },
+      ],
+      effects: {
+        applicationChanged: true,
+        applicantAlertCreated: true,
+        ownerAlertCreated: true,
+        pendingQuotaReleased: true,
+        availabilityChanged: false as const,
+        membershipChanged: false as const,
+        vacancyChanged: false as const,
+        capacityChanged: false as const,
+      },
+      notice: 'Application declined. The applicant was notified.',
+    };
+    const rpc = vi.fn().mockResolvedValue({ data: payload, error: null });
+    vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({ rpc } as unknown as SupabaseClient);
+
+    const result = await teamsRepository.declineTeamApplication('owner-1', application.id);
+
+    expect(rpc).toHaveBeenCalledWith('decline_team_application', {
+      p_actor: 'owner-1',
+      p_application: application.id,
+    });
+    expect(result).toEqual(payload);
+    expect(result.effects).toMatchObject({
+      pendingQuotaReleased: true,
+      membershipChanged: false,
+      vacancyChanged: false,
+      capacityChanged: false,
+    });
+  });
+
   it('acceptTeamInvitation converts a committed expiry payload into a domain failure', async () => {
     const mockRpc = vi.fn().mockResolvedValue({
       data: {

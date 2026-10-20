@@ -99,6 +99,51 @@ describe('0032_cancel_competing_requests_after_approval.sql cascade DDL (#191)',
   });
 });
 
+describe('0033_decline_team_application.sql decline DDL (#192)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0033_decline_team_application.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('creates a secured service-role-only decline function', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+decline_team_application/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/SET\s+search_path\s*=\s*public/i);
+    expect(sql).toMatch(
+      /REVOKE\s+ALL[\s\S]*?FROM\s+PUBLIC\s*,\s*anon\s*,\s*authenticated/i
+    );
+    expect(sql).toMatch(/GRANT\s+EXECUTE[\s\S]*?TO\s+service_role/i);
+  });
+
+  it('locks the Application and requires its owner and Pending state', () => {
+    expect(sql).toMatch(/request_type\s*=\s*'Application'[\s\S]*?FOR\s+UPDATE/i);
+    expect(sql).toMatch(/owner_participant_id\s*<>\s*p_actor/i);
+    expect(sql).toMatch(/FORBIDDEN_NOT_TEAM_OWNER/i);
+    expect(sql).toMatch(/v_req\.status\s*<>\s*'Pending'/i);
+    expect(sql).toMatch(/APPLICATION_NOT_DECLINABLE/i);
+  });
+
+  it('declines, releases pending quota, and creates applicant and owner alerts', () => {
+    expect(sql).toMatch(/status\s*=\s*'Declined'/i);
+    expect(sql).toMatch(/cancel_reason\s*=\s*'OWNER_DECLINED'/i);
+    expect(sql).toMatch(/team_application_declined/i);
+    expect(sql).toMatch(/'audience'\s*,\s*'applicant'/i);
+    expect(sql).toMatch(/'audience'\s*,\s*'owner'/i);
+    expect(sql).toMatch(/'pendingQuotaReleased'\s*,\s*TRUE/i);
+  });
+
+  it('reports unchanged roster, vacancy, capacity, and availability without mutating them', () => {
+    expect(sql).toMatch(/'availabilityChanged'\s*,\s*FALSE/i);
+    expect(sql).toMatch(/'membershipChanged'\s*,\s*FALSE/i);
+    expect(sql).toMatch(/'vacancyChanged'\s*,\s*FALSE/i);
+    expect(sql).toMatch(/'capacityChanged'\s*,\s*FALSE/i);
+    expect(sql).not.toMatch(/UPDATE\s+team_memberships/i);
+    expect(sql).not.toMatch(/UPDATE\s+team_vacancies/i);
+    expect(sql).not.toMatch(/UPDATE\s+event_availability/i);
+  });
+});
+
 describe('0001_create_participants_table.sql Migration DDL', () => {
   const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/0001_create_participants_table.sql');
   const sql = fs.readFileSync(migrationPath, 'utf-8');

@@ -109,5 +109,31 @@ describe('ApplicationReviewCard (US-020 / #189 / FR-060)', () => {
     );
     expect(screen.getByRole('button', { name: /approving/i })).toBeDisabled();
   });
+
+  it('offers decline and prevents overlapping decisions while it is in progress (#192)', () => {
+    const onApprove = vi.fn();
+    const onDecline = vi.fn();
+    const { rerender } = render(
+      <ApplicationReviewCard
+        application={application}
+        onApprove={onApprove}
+        onDecline={onDecline}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /decline application/i }));
+    expect(onDecline).toHaveBeenCalledWith(application.id);
+
+    rerender(
+      <ApplicationReviewCard
+        application={application}
+        onApprove={onApprove}
+        onDecline={onDecline}
+        declining
+      />
+    );
+    expect(screen.getByRole('button', { name: /declining/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /approve application/i })).toBeDisabled();
+  });
 });
 

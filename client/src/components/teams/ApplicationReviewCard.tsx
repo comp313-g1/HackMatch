@@ -5,8 +5,10 @@ import type { OwnerApplicationReviewItem } from './applicationsApi';
 export interface ApplicationReviewCardProps {
   application: OwnerApplicationReviewItem;
   approving?: boolean;
+  declining?: boolean;
   disabled?: boolean;
   onApprove?: (applicationId: string) => void;
+  onDecline?: (applicationId: string) => void;
 }
 
 /**
@@ -17,8 +19,10 @@ export interface ApplicationReviewCardProps {
 export function ApplicationReviewCard({
   application,
   approving = false,
+  declining = false,
   disabled = false,
   onApprove,
+  onDecline,
 }: ApplicationReviewCardProps): React.JSX.Element {
   return (
     <li
@@ -66,17 +70,30 @@ export function ApplicationReviewCard({
         </p>
       </section>
 
-      {onApprove ? (
-        <div className="flex justify-end border-t border-cream-200 pt-3">
-          <button
-            type="button"
-            onClick={() => onApprove(application.id)}
-            disabled={disabled || approving}
-            className="rounded-md bg-forest px-4 py-2 text-xs font-semibold text-white hover:bg-forest-800 disabled:cursor-not-allowed disabled:opacity-50"
-            data-testid={`approve-application-${application.id}`}
-          >
-            {approving ? 'Approving…' : 'Approve Application'}
-          </button>
+      {onApprove || onDecline ? (
+        <div className="flex flex-wrap justify-end gap-2 border-t border-cream-200 pt-3">
+          {onDecline ? (
+            <button
+              type="button"
+              onClick={() => onDecline(application.id)}
+              disabled={disabled || approving || declining}
+              className="rounded-md border border-red-300 bg-white px-4 py-2 text-xs font-semibold text-red-800 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+              data-testid={`decline-application-${application.id}`}
+            >
+              {declining ? 'Declining…' : 'Decline Application'}
+            </button>
+          ) : null}
+          {onApprove ? (
+            <button
+              type="button"
+              onClick={() => onApprove(application.id)}
+              disabled={disabled || approving || declining}
+              className="rounded-md bg-forest px-4 py-2 text-xs font-semibold text-white hover:bg-forest-800 disabled:cursor-not-allowed disabled:opacity-50"
+              data-testid={`approve-application-${application.id}`}
+            >
+              {approving ? 'Approving…' : 'Approve Application'}
+            </button>
+          ) : null}
         </div>
       ) : null}
     </li>
