@@ -9,6 +9,7 @@ import { LeaveTeamPanel } from './LeaveTeamPanel';
 import { RosterStatusView } from './RosterStatusView';
 import { OwnerApplicationsPanel } from './OwnerApplicationsPanel';
 import { RosterLockValidationPanel } from './RosterLockValidationPanel';
+import { POST_LOCK_UI_NOTICE } from './postLockGuards';
 
 export interface TeamWorkspaceProps {
   eventId: string;
@@ -162,7 +163,8 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
     if (!team.lifecycle || team.lifecycle.mutable) return null;
     switch (team.lifecycle.reason) {
       case 'Locked': {
-        const base = 'Team recruitment is locked. Editing and slot management are disabled.';
+        // US-022 / #210 / FR-067 — freeze leave, removals, slots, and disband.
+        const base = POST_LOCK_UI_NOTICE;
         if (!team.lockedAt) return base;
         return `${base} Locked at ${new Date(team.lockedAt).toLocaleString()}.`;
       }

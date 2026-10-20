@@ -11,6 +11,7 @@ import {
   validateTeamListingForm,
 } from './teamValidation';
 import { createTeam, updateTeam, TeamApiError, AuthRequiredError } from './teamApi';
+import { postLockMutationErrorMessage } from './postLockGuards';
 
 export interface TeamListingFormProps {
   mode: 'create' | 'edit';
@@ -106,7 +107,13 @@ export function TeamListingForm({
         if (err.errors) {
           setFieldErrors(err.errors);
         }
-        setFormError(err.message || 'An error occurred while saving.');
+        setFormError(
+          postLockMutationErrorMessage({
+            code: err.code,
+            message: err.message,
+            details: err.details,
+          }) || 'An error occurred while saving.'
+        );
         return;
       }
       setFormError(err instanceof Error ? err.message : 'An error occurred.');

@@ -451,7 +451,8 @@ describe('US-012 Client Integration Suite (TeamWorkspace & Lifecycle)', () => {
       status: 409,
       body: {
         code: 'TEAM_NOT_MUTABLE',
-        error: 'Team recruitment is locked. Changes can no longer be made.',
+        error:
+          'This roster is locked. Leaving, member removals, slot edits, and disbanding are not allowed.',
         details: { reason: 'Locked' },
       },
     };
@@ -465,7 +466,7 @@ describe('US-012 Client Integration Suite (TeamWorkspace & Lifecycle)', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/team recruitment is locked\. changes can no longer be made\./i)
+        screen.getByText(/this roster is locked\. leaving, member removals/i)
       ).toBeInTheDocument();
     });
 

@@ -16,6 +16,7 @@ import {
 import { toTeamView } from '../services/teamView.js';
 import { validateRosterLockForOwner } from '../services/rosterLockValidation.js';
 import { canceledRequestsLockMessage } from '../services/lockCancel.js';
+import { teamNotMutablePublicMessage } from '../services/postLockGuards.js';
 import { teamsRepository, type TeamListingPatch } from '../db/teams.repository.js';
 import { toTeamServiceError } from '../services/teamErrors.js';
 import { listOpenTeams, type OpenTeamsViewer } from '../services/openTeams.js';
@@ -47,8 +48,14 @@ function handleControllerError(err: unknown, res: Response, next: NextFunction):
       return;
     }
 
+    // US-022 / #210 / FR-067 — Locked roster gets an explicit freeze message.
+    const publicError =
+      serviceErr.code === 'TEAM_NOT_MUTABLE'
+        ? teamNotMutablePublicMessage(serviceErr.details)
+        : serviceErr.message;
+
     res.status(serviceErr.status).json({
-      error: serviceErr.message,
+      error: publicError,
       code: serviceErr.code,
       ...(serviceErr.details ? { details: serviceErr.details } : {}),
     });

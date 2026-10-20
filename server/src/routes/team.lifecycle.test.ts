@@ -34,7 +34,7 @@ vi.mock('../config/firebase.js', () => {
   };
 });
 
-describe('Team Lifecycle Lock Matrix & Member Removal (US-012 / Task 7 / #124)', () => {
+describe('Team Lifecycle Lock Matrix & Member Removal (US-012 / Task 7 / #124 / US-022 #210)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockVerifyIdToken.mockResolvedValue(validOwnerDecodedToken);
@@ -149,7 +149,12 @@ describe('Team Lifecycle Lock Matrix & Member Removal (US-012 / Task 7 / #124)',
 
           expect(res.status).toBe(409);
           expect(res.body.code).toBe('TEAM_NOT_MUTABLE');
-          expect(res.body.error).toBe('Team recruitment is not open or event is concluded.');
+          // #210 — Locked gets an explicit freeze message; other reasons keep catalog copy.
+          expect(res.body.error).toBe(
+            reason === 'Locked'
+              ? 'This roster is locked. Leaving, member removals, slot edits, and disbanding are not allowed.'
+              : 'Team recruitment is not open or event is concluded.'
+          );
           expect(res.body.details).toEqual({ reason });
 
           // Guarantee zero stack traces or raw database leaks

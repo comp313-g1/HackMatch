@@ -215,9 +215,13 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
 
     await waitFor(() => {
       const note = screen.getByRole('note');
-      expect(note).toHaveTextContent(/team recruitment is locked/i);
+      expect(note).toHaveTextContent(/roster is locked/i);
+      expect(note).toHaveTextContent(/leaving/i);
+      expect(note).toHaveTextContent(/slot edits/i);
+      expect(note).toHaveTextContent(/disbanding/i);
       expect(note).toHaveTextContent(/locked at/i);
       expect(screen.getByRole('button', { name: /save changes/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /\+ add open slot/i })).toBeDisabled();
       expect(screen.getByRole('button', { name: /disband team/i })).toBeDisabled();
     });
   });

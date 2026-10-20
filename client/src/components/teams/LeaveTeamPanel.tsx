@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { leaveTeam, TeamApiError, AuthRequiredError } from './teamApi';
+import { postLockMutationErrorMessage } from './postLockGuards';
 
 export interface LeaveTeamPanelProps {
   teamId: string;
@@ -52,7 +53,13 @@ export function LeaveTeamPanel({
       if (err instanceof AuthRequiredError) {
         setError('You need to sign in to leave a team.');
       } else if (err instanceof TeamApiError) {
-        setError(err.message || 'Could not leave the team.');
+        setError(
+          postLockMutationErrorMessage({
+            code: err.code,
+            message: err.message,
+            details: err.details,
+          }) || 'Could not leave the team.'
+        );
       } else {
         setError('Could not leave the team.');
       }

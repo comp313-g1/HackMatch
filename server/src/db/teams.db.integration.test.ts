@@ -916,6 +916,142 @@ describe.skipIf(isGated)('US-012 Real Postgres Integration Suite (Lifecycle & Co
     expect(nonOwnerErr?.message).toMatch(/FORBIDDEN_NOT_TEAM_OWNER|ALREADY_LOCKED/);
   });
 
+  // Scenario 13: Post-lock rejects leave / remove / slot edits / disband (#210 / FR-067)
+  it('Scenario 13: lock_team freezes leave, removals, slot edits, and disbanding', async () => {
+    const owner = await createTestParticipant('sc13-owner');
+    const member = await createTestParticipant('sc13-member');
+    const event = await createTestEvent('sc13-event', { max_team_size: 4 });
+
+    const { data: teamRes, error: teamErr } = await supabase.rpc('create_team_with_owner', {
+      p_owner_id: owner.id,
+      p_event_id: event.id,
+      p_name: `${PREFIX} Post Lock Guard Team`,
+      p_pitch: 'Testing post-lock mutation rejection.',
+      p_goal: 'Learning',
+      p_commitment_hours: 10,
+    });
+    expect(teamErr).toBeNull();
+    const teamId = teamRes.team.id;
+
+    await supabase.from('team_memberships').insert({
+      team_id: teamId,
+      event_id: event.id,
+      participant_id: member.id,
+      role: 'Member',
+      status: 'Confirmed',
+    });
+
+    const { data: vacRes } = await supabase.rpc('add_team_vacancy', {
+      p_actor: owner.id,
+      p_team: teamId,
+      p_role: 'Backend',
+      p_skills: ['Node.js'],
+    });
+    const vacancyId = vacRes.vacancy.id;
+
+    const { error: lockErr } = await supabase.rpc('lock_team', {
+      p_actor: owner.id,
+      p_team: teamId,
+    });
+    expect(lockErr).toBeNull();
+
+    const { data: membersBefore } = await supabase
+      .from('team_memberships')
+      .select('id, status')
+      .eq('team_id', teamId)
+      .eq('status', 'Confirmed');
+    const { data: vacsBefore } = await supabase
+      .from('team_vacancies')
+      .select('id, status, role')
+      .eq('team_id', teamId);
+    const { data: teamBefore } = await supabase
+      .from('teams')
+      .select('recruitment_status, locked_at, name')
+      .eq('id', teamId)
+      .single();
+    expect(teamBefore?.recruitment_status).toBe('Locked');
+
+    // Happy-path rejects: leave, remove, slot add/update/remove, disband
+    const leaveRes = await supabase.rpc('leave_team', {
+      p_actor: member.id,
+      p_team: teamId,
+    });
+    expect(leaveRes.error?.message).toMatch(/TEAM_NOT_MUTABLE/);
+
+    const removeRes = await supabase.rpc('remove_team_member', {
+      p_actor: owner.id,
+      p_team: teamId,
+      p_member: member.id,
+      p_reason: 'Attempted post-lock removal',
+    });
+    expect(removeRes.error?.message).toMatch(/TEAM_NOT_MUTABLE/);
+
+    const addVacRes = await supabase.rpc('add_team_vacancy', {
+      p_actor: owner.id,
+      p_team: teamId,
+      p_role: 'Frontend',
+      p_skills: ['React'],
+    });
+    expect(addVacRes.error?.message).toMatch(/TEAM_NOT_MUTABLE/);
+
+    const updateVacRes = await supabase.rpc('update_team_vacancy', {
+      p_actor: owner.id,
+      p_team: teamId,
+      p_vacancy: vacancyId,
+      p_role: 'AI/ML',
+      p_skills: ['Python'],
+    });
+    expect(updateVacRes.error?.message).toMatch(/TEAM_NOT_MUTABLE/);
+
+    const removeVacRes = await supabase.rpc('remove_team_vacancy', {
+      p_actor: owner.id,
+      p_team: teamId,
+      p_vacancy: vacancyId,
+    });
+    expect(removeVacRes.error?.message).toMatch(/TEAM_NOT_MUTABLE/);
+
+    const disbandRes = await supabase.rpc('disband_team', {
+      p_actor: owner.id,
+      p_team: teamId,
+    });
+    expect(disbandRes.error?.message).toMatch(/TEAM_NOT_MUTABLE/);
+
+    // Boundary / integrity: snapshot unchanged after rejected mutations
+    const { data: membersAfter } = await supabase
+      .from('team_memberships')
+      .select('id, status')
+      .eq('team_id', teamId)
+      .eq('status', 'Confirmed');
+    const { data: vacsAfter } = await supabase
+      .from('team_vacancies')
+      .select('id, status, role')
+      .eq('team_id', teamId);
+    const { data: teamAfter } = await supabase
+      .from('teams')
+      .select('recruitment_status, locked_at, name')
+      .eq('id', teamId)
+      .single();
+
+    expect(membersAfter).toEqual(membersBefore);
+    expect(vacsAfter).toEqual(vacsBefore);
+    expect(teamAfter).toEqual(teamBefore);
+
+    // Invalid input
+    const invalidLeave = await supabase.rpc('leave_team', {
+      p_actor: null,
+      p_team: teamId,
+    });
+    expect(invalidLeave.error?.message).toMatch(/VALIDATION_ERROR/);
+
+    // Unauthorized: non-owner cannot disband (even when locked, ownership still enforced first)
+    const attacker = await createTestParticipant('sc13-attacker');
+    const forbiddenDisband = await supabase.rpc('disband_team', {
+      p_actor: attacker.id,
+      p_team: teamId,
+    });
+    expect(forbiddenDisband.error?.message).toMatch(/FORBIDDEN_NOT_TEAM_OWNER/);
+  });
+
   // Scenario 11: Direct-anon denial verifies REVOKE permissions
   it('Scenario 11: Calling team functions directly with anon key client is denied', async () => {
     const anonKey = process.env.SUPABASE_ANON_KEY || 'fake-anon-key';

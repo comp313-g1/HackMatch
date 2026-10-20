@@ -144,6 +144,51 @@ describe('0033_decline_team_application.sql decline DDL (#192)', () => {
   });
 });
 
+describe('post-lock mutation guards SQL contract (#210 / US-022 / FR-067)', () => {
+  const listingSql = fs.readFileSync(
+    path.resolve(__dirname, '../../../supabase/migrations/0013_create_team_listing_functions.sql'),
+    'utf-8'
+  );
+  const cancelSql = fs.readFileSync(
+    path.resolve(__dirname, '../../../supabase/migrations/0014_create_team_cancellation_functions.sql'),
+    'utf-8'
+  );
+  const removalSql = fs.readFileSync(
+    path.resolve(__dirname, '../../../supabase/migrations/0015_create_team_member_removal_function.sql'),
+    'utf-8'
+  );
+  const leaveLockSql = fs.readFileSync(
+    path.resolve(__dirname, '../../../supabase/migrations/0036_lock_team.sql'),
+    'utf-8'
+  );
+
+  it('owner mutation guard rejects Locked via recruitment_status <> Open', () => {
+    expect(listingSql).toMatch(/lock_team_for_owner_mutation/i);
+    expect(listingSql).toMatch(/recruitment_status\s*<>\s*'Open'/i);
+    expect(listingSql).toMatch(/TEAM_NOT_MUTABLE/);
+  });
+
+  it('vacancy remove and disband go through lock_team_for_owner_mutation', () => {
+    expect(cancelSql).toMatch(/remove_team_vacancy/i);
+    expect(cancelSql).toMatch(/disband_team/i);
+    expect(cancelSql).toMatch(/lock_team_for_owner_mutation/i);
+  });
+
+  it('member removal goes through lock_team_for_owner_mutation', () => {
+    expect(removalSql).toMatch(/remove_team_member/i);
+    expect(removalSql).toMatch(/lock_team_for_owner_mutation/i);
+  });
+
+  it('leave_team rejects Locked recruitment after advisory serialization (#210)', () => {
+    const leaveIdx = leaveLockSql.indexOf('CREATE OR REPLACE FUNCTION leave_team');
+    const lockIdx = leaveLockSql.indexOf('CREATE OR REPLACE FUNCTION lock_team');
+    const leaveSql = leaveLockSql.slice(leaveIdx, lockIdx);
+    expect(leaveSql).toMatch(/recruitment_status\s*<>\s*'Open'/i);
+    expect(leaveSql).toMatch(/TEAM_NOT_MUTABLE/);
+    expect(leaveSql).toMatch(/reason',\s*v_team\.recruitment_status/i);
+  });
+});
+
 describe('0036_lock_team.sql atomic roster lock (#208 / US-022 / FR-066)', () => {
   const migrationPath = path.resolve(
     __dirname,

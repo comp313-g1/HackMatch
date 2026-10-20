@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { TeamView, TeamMemberView } from './teamTypes';
 import { codePointLength, validateRemovalReason } from './teamValidation';
 import { removeMember, disbandTeam, TeamApiError, AuthRequiredError } from './teamApi';
+import { postLockMutationErrorMessage } from './postLockGuards';
 
 export interface TeamRosterPanelProps {
   teamId: string;
@@ -88,7 +89,13 @@ export function TeamRosterPanel({
         return;
       }
       if (err instanceof TeamApiError) {
-        setRemovalError(err.message || 'Failed to remove member.');
+        setRemovalError(
+          postLockMutationErrorMessage({
+            code: err.code,
+            message: err.message,
+            details: err.details,
+          }) || 'Failed to remove member.'
+        );
         return;
       }
       setRemovalError(err instanceof Error ? err.message : 'Failed to remove member.');
@@ -113,7 +120,13 @@ export function TeamRosterPanel({
         return;
       }
       if (err instanceof TeamApiError) {
-        setDisbandError(err.message || 'Failed to disband the team.');
+        setDisbandError(
+          postLockMutationErrorMessage({
+            code: err.code,
+            message: err.message,
+            details: err.details,
+          }) || 'Failed to disband the team.'
+        );
         return;
       }
       setDisbandError(err instanceof Error ? err.message : 'Failed to disband the team.');
