@@ -62,6 +62,9 @@ function mockEligibleIssuanceContext(overrides?: {
   vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue(
     overrides?.confirmedIds ?? [ownerParticipant.id]
   );
+  vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue(
+    overrides?.confirmedIds ?? [ownerParticipant.id]
+  );
   vi.spyOn(teamsRepository, 'findPendingInvitationConflicts').mockResolvedValue({
     byInvitee: (overrides?.byInvitee as never) ?? null,
     bySlot: (overrides?.bySlot as never) ?? null,
@@ -264,7 +267,7 @@ describe('POST /api/teams/:teamId/invitations (US-017 / FR-048 / #163)', () => {
     expect(res.body.errors.inviteeParticipantId).toMatch(/Looking for Team/i);
   });
 
-  it('returns 409 when invitee is already confirmed for the event (#163)', async () => {
+  it('returns 409 when invitee is already confirmed for this team (#163)', async () => {
     mockEligibleIssuanceContext({
       confirmedIds: [ownerParticipant.id, otherParticipant.id],
     });
@@ -281,6 +284,60 @@ describe('POST /api/teams/:teamId/invitations (US-017 / FR-048 / #163)', () => {
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('INVITEE_ALREADY_CONFIRMED');
     expect(res.body.errors.inviteeParticipantId).toBeTruthy();
+    expect(res.body.errors.inviteeId).toBeTruthy();
+  });
+
+  it('allows invitation when invitee is confirmed on a different team but looking for team platform-wide using slotId and inviteeId aliases', async () => {
+    mockEligibleIssuanceContext({
+      confirmedIds: [ownerParticipant.id], // not confirmed on this team
+    });
+    const expiresAt = '2026-10-21T15:00:00.000Z';
+    vi.spyOn(teamsRepository, 'issueTeamInvitation').mockResolvedValue({
+      invitation: {
+        id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        team_id: sampleTeamId,
+        event_id: sampleEventId,
+        vacancy_id: sampleVacancyId,
+        participant_id: otherParticipant.id,
+        request_type: 'Invitation',
+        status: 'Pending',
+        cancel_reason: null,
+        resolved_at: null,
+        expires_at: expiresAt,
+        message: null,
+        created_at: '2026-10-19T15:00:00.000Z',
+        updated_at: '2026-10-19T15:00:00.000Z',
+      },
+      expiresAt,
+      vacancyRole: 'Frontend',
+      teamName: 'HackMatch Innovators',
+    });
+
+    const res = await request(app)
+      .post(invitePath)
+      .set('Authorization', validTokenHeader)
+      .send({
+        slotId: sampleVacancyId,
+        inviteeId: otherParticipant.id,
+        source: 'recommendation',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.invitation).toMatchObject({
+      status: 'Pending',
+      source: 'recommendation',
+      slotId: sampleVacancyId,
+      vacancyId: sampleVacancyId,
+      inviteeId: otherParticipant.id,
+      inviteeParticipantId: otherParticipant.id,
+      expiresAt,
+    });
+    expect(teamsRepository.issueTeamInvitation).toHaveBeenCalledWith(
+      ownerParticipant.id,
+      sampleTeamId,
+      sampleVacancyId,
+      otherParticipant.id
+    );
   });
 
   it('returns 409 + invitee field error when invitee already has Pending on team (#164)', async () => {

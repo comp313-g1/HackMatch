@@ -71,6 +71,9 @@ describe('POST /api/invitations/:id/accept (US-017 / #165 / FR-051)', () => {
     vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForEvent').mockResolvedValue([
       ownerParticipant.id,
     ]);
+    vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([
+      ownerParticipant.id,
+    ]);
   });
 
   it('rejects unauthenticated requests with 401', async () => {
@@ -169,5 +172,42 @@ describe('POST /api/invitations/:id/accept (US-017 / #165 / FR-051)', () => {
 
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('FORBIDDEN_NOT_INVITEE');
+  });
+
+  it('returns 409 INVITEE_ALREADY_CONFIRMED when acceptor is confirmed on this team', async () => {
+    vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([
+      ownerParticipant.id,
+      otherParticipant.id,
+    ]);
+
+    const res = await request(app)
+      .post(acceptPath)
+      .set('Authorization', otherTokenHeader)
+      .send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('INVITEE_ALREADY_CONFIRMED');
+    expect(res.body.errors.inviteeParticipantId).toBeTruthy();
+  });
+
+  it('allows acceptance when event is archived as long as team is Open (US-017 event-free)', async () => {
+    vi.spyOn(teamsRepository, 'getTeamViewParts').mockResolvedValue({
+      ...sampleParts,
+      team: sampleTeam,
+      event: {
+        max_team_size: 4,
+        status: 'Archived',
+        end_date: '2020-01-01T00:00:00.000Z',
+      },
+      vacancies: [sampleVacancy],
+    });
+
+    const res = await request(app)
+      .post(acceptPath)
+      .set('Authorization', otherTokenHeader)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.eligible).toBe(true);
   });
 });

@@ -79,6 +79,56 @@ describe('teams invitationsApi (US-017 / #167 shared client)', () => {
     expect(invitation.source).toBe('direct');
   });
 
+  it('POSTs direct invitation issuance with slotId and inviteeId aliases (event-free)', async () => {
+    authFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          invitation: {
+            id: 'inv-2',
+            teamId: 't1',
+            slotId: 'v1',
+            vacancyId: 'v1',
+            inviteeId: 'p1',
+            inviteeParticipantId: 'p1',
+            status: 'Pending',
+            requestType: 'Invitation',
+            expiresAt: '2026-10-21T00:00:00.000Z',
+            createdAt: '2026-10-19T00:00:00.000Z',
+            teamName: 'Team',
+            vacancyRole: 'Frontend',
+            source: 'direct',
+            notice: 'Pending invitation created.',
+          },
+        }),
+        { status: 201 }
+      )
+    );
+
+    const invitation = await issueTeamInvitation('t1', {
+      slotId: 'v1',
+      inviteeId: 'p1',
+      source: 'direct',
+    });
+
+    expect(authFetchMock).toHaveBeenCalledWith(
+      '/api/teams/t1/invitations',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          vacancyId: 'v1',
+          inviteeParticipantId: 'p1',
+          source: 'direct',
+          slotId: 'v1',
+          inviteeId: 'p1',
+        }),
+      })
+    );
+    expect(invitation.status).toBe('Pending');
+    expect(invitation.slotId).toBe('v1');
+    expect(invitation.inviteeId).toBe('p1');
+    expect(invitation.eventId).toBeUndefined();
+  });
+
   it('POSTs acceptance-time revalidation and returns eligible (#165)', async () => {
     authFetchMock.mockResolvedValue(
       new Response(

@@ -176,6 +176,19 @@ describe('assertInvitationIssuanceContext (US-017 / #163)', () => {
     await expect(assertInvitationIssuanceContext(baseInput, deps)).resolves.toBeUndefined();
   });
 
+  it('allows invitation when invitee has platform-wide LFT enabled even if not bound to team shadow event', async () => {
+    const deps = passingDeps();
+    deps.availabilityRepo.findByParticipantId = vi.fn().mockResolvedValue({
+      participantId: otherParticipant.id,
+      isLooking: true,
+      desiredRole: 'Frontend',
+      commitmentHours: 10,
+      goal: 'Learning',
+      updatedAt: null,
+    });
+    await expect(assertInvitationIssuanceContext(baseInput, deps)).resolves.toBeUndefined();
+  });
+
   it('rejects suspended invitee', async () => {
     await expect(
       assertInvitationIssuanceContext(
