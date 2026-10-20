@@ -265,6 +265,13 @@ export interface InvitationRespondResult {
   changed: boolean;
   idempotent: boolean;
   eligible?: boolean;
+  cascade?: {
+    eventInvitationsCanceled: number;
+    eventApplicationsWithdrawn: number;
+    slotRequestsCanceled: number;
+    teamRequestsCanceled: number;
+    teamNowFull: boolean;
+  };
   alerts: Array<{ audience: string; type: string; message: string }>;
   notice: string;
 }

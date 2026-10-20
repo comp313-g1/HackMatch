@@ -6,7 +6,6 @@ import {
   respondToInvitation,
 } from './invitationResponse.js';
 import { teamsRepository } from '../db/teams.repository.js';
-import * as invitationAcceptance from './invitationAcceptance.js';
 import {
   otherParticipant,
   ownerParticipant,
@@ -102,22 +101,54 @@ describe('invitationResponse (US-019 / #179)', () => {
     ).rejects.toMatchObject({ code: 'FORBIDDEN_NOT_INVITEE', status: 403 });
   });
 
-  it('accept decision runs FR-051 revalidation without membership commit', async () => {
-    vi.spyOn(invitationAcceptance, 'revalidateInvitationForAcceptance').mockResolvedValue({
-      eligible: true,
-      invitation: pendingInvitation,
-      expiresAt: pendingInvitation.expires_at!,
+  it('accept decision commits membership and returns competing-request cascade (#181)', async () => {
+    vi.spyOn(teamsRepository, 'acceptTeamInvitation').mockResolvedValue({
+      invitation: {
+        ...pendingInvitation,
+        status: 'Accepted',
+        resolved_at: '2026-10-19T16:00:00.000Z',
+      },
+      membership: { id: 'mem-1', role: 'Member', status: 'Confirmed' },
+      changed: true,
+      idempotent: false,
+      membershipCommitted: true,
       teamName: 'HackMatch Innovators',
       vacancyRole: 'Frontend',
-      notice: 'Invitation is still valid for acceptance.',
+      cascade: {
+        winningRequestId: invitationId,
+        eventInvitationsCanceled: 1,
+        eventApplicationsWithdrawn: 2,
+        slotRequestsCanceled: 1,
+        teamRequestsCanceled: 0,
+        teamNowFull: false,
+      },
+      alerts: [
+        {
+          audience: 'invitee',
+          type: 'team_invitation_accepted',
+          message: 'You accepted the invitation.',
+        },
+        {
+          audience: 'owner',
+          type: 'team_invitation_accepted',
+          message: 'An invitee accepted the invitation.',
+        },
+      ],
+      notice:
+        'Invitation accepted. Membership confirmed, the slot is filled, and competing pending requests for this event were cleared.',
     });
 
     const result = await respondToInvitation(otherParticipant.id, invitationId, 'accept');
 
     expect(result.decision).toBe('accept');
-    expect(result.membershipCommitted).toBe(false);
-    expect(result.eligible).toBe(true);
-    expect(result.notice).toMatch(/valid/i);
+    expect(result.membershipCommitted).toBe(true);
+    expect(result.invitation.status).toBe('Accepted');
+    expect(result.cascade).toMatchObject({
+      eventInvitationsCanceled: 1,
+      eventApplicationsWithdrawn: 2,
+      slotRequestsCanceled: 1,
+    });
+    expect(result.notice).toMatch(/competing pending requests/i);
   });
 
   it('decline decision commits Declined and returns owner/invitee alerts', async () => {

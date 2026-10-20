@@ -921,6 +921,36 @@ describe('0022_cancel_team_invitation.sql Migration DDL (US-017 / #166)', () => 
   });
 });
 
+describe('0026_cancel_competing_requests_on_placement.sql Migration DDL (US-019 / #181)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0026_cancel_competing_requests_on_placement.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('defines cascade helper and accept_team_invitation with FR-056/057 reasons', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+cancel_competing_requests_on_placement/i);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+accept_team_invitation/i);
+    expect(sql).toMatch(/EVENT_MEMBERSHIP_CONFIRMED/i);
+    expect(sql).toMatch(/SLOT_FILLED/i);
+    expect(sql).toMatch(/TEAM_FULL/i);
+    expect(sql).toMatch(/status\s*=\s*'Withdrawn'/i);
+    expect(sql).toMatch(/status\s*=\s*'Canceled'/i);
+    expect(sql).toMatch(/INSERT\s+INTO\s+team_memberships/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+cancel_competing_requests_on_placement/i
+    );
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+accept_team_invitation\s*\(\s*UUID\s*,\s*UUID\s*\)\s+TO\s+service_role/i
+    );
+  });
+});
+
 describe('0025_decline_team_invitation.sql Migration DDL (US-019 / #179)', () => {
   const migrationPath = path.resolve(
     __dirname,

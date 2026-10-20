@@ -1,7 +1,7 @@
 /**
- * US-019 / #179 — invitee invitation detail and respond (accept revalidation / decline).
+ * US-019 / #179–#181 — invitee invitation detail and respond.
  *
- * Accept path uses FR-051 revalidation (#165); membership commit remains sibling FR-056 work.
+ * Accept path commits membership (FR-056) and runs competing-request cascade (#181 / FR-057).
  * Decline commits FR-058 (Pending → Declined) with basic owner/invitee alerts.
  */
 
@@ -11,7 +11,6 @@ import {
 } from '../db/invitationModel.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import type { TeamRequest } from '../db/types.js';
-import { revalidateInvitationForAcceptance } from './invitationAcceptance.js';
 import { TeamServiceError, toTeamServiceError } from './teamErrors.js';
 
 export type InvitationResponseDecision = 'accept' | 'decline';
@@ -166,7 +165,7 @@ export interface InvitationStatusAlert {
 
 export interface InvitationRespondResult {
   decision: InvitationResponseDecision;
-  /** True only after FR-056 membership commit (not yet for accept revalidation). */
+  /** True after FR-056 membership commit on accept. */
   membershipCommitted: boolean;
   invitation: {
     id: string;
@@ -186,13 +185,21 @@ export interface InvitationRespondResult {
   changed: boolean;
   idempotent: boolean;
   eligible?: boolean;
+  /** Competing-request cascade summary after accept (#181 / FR-057). */
+  cascade?: {
+    eventInvitationsCanceled: number;
+    eventApplicationsWithdrawn: number;
+    slotRequestsCanceled: number;
+    teamRequestsCanceled: number;
+    teamNowFull: boolean;
+  };
   alerts: InvitationStatusAlert[];
   notice: string;
 }
 
 /**
- * Addressed PART responds to a Pending invitation (US-019 / #179).
- * - accept: FR-051 revalidation only (membership commit is sibling FR-056 work)
+ * Addressed PART responds to a Pending invitation (US-019 / #179 / #181).
+ * - accept: FR-056 membership commit + FR-057 competing-request cascade
  * - decline: FR-058 Pending → Declined with owner/invitee alerts
  */
 export async function respondToInvitation(
@@ -200,40 +207,46 @@ export async function respondToInvitation(
   invitationId: string,
   decision: InvitationResponseDecision
 ): Promise<InvitationRespondResult> {
-  if (decision === 'accept') {
-    const result = await revalidateInvitationForAcceptance({
-      actorParticipantId,
-      invitationId,
-    });
-    return {
-      decision: 'accept',
-      membershipCommitted: false,
-      invitation: {
-        id: result.invitation.id,
-        teamId: result.invitation.team_id,
-        eventId: result.invitation.event_id,
-        vacancyId: result.invitation.vacancy_id,
-        inviteeParticipantId: result.invitation.participant_id,
-        status: result.invitation.status,
-        statusLabel: 'Pending',
-        requestType: 'Invitation',
-        expiresAt: result.expiresAt,
-        resolvedAt: result.invitation.resolved_at,
-        cancelReason: result.invitation.cancel_reason,
-        teamName: result.teamName,
-        vacancyRole: result.vacancyRole,
-      },
-      changed: false,
-      idempotent: false,
-      eligible: true,
-      alerts: [],
-      notice:
-        result.notice ||
-        'Invitation is still valid. Membership confirmation will complete when acceptance is committed.',
-    };
-  }
-
   try {
+    if (decision === 'accept') {
+      const result = await teamsRepository.acceptTeamInvitation(
+        actorParticipantId,
+        invitationId
+      );
+      const inv = result.invitation;
+      return {
+        decision: 'accept',
+        membershipCommitted: result.membershipCommitted,
+        invitation: {
+          id: inv.id,
+          teamId: inv.team_id,
+          eventId: inv.event_id,
+          vacancyId: inv.vacancy_id,
+          inviteeParticipantId: inv.participant_id,
+          status: inv.status,
+          statusLabel: invitationStatusLabel(inv.status),
+          requestType: 'Invitation',
+          expiresAt: inv.expires_at,
+          resolvedAt: inv.resolved_at,
+          cancelReason: inv.cancel_reason,
+          teamName: result.teamName,
+          vacancyRole: result.vacancyRole,
+        },
+        changed: result.changed,
+        idempotent: result.idempotent,
+        eligible: true,
+        cascade: {
+          eventInvitationsCanceled: result.cascade.eventInvitationsCanceled,
+          eventApplicationsWithdrawn: result.cascade.eventApplicationsWithdrawn,
+          slotRequestsCanceled: result.cascade.slotRequestsCanceled,
+          teamRequestsCanceled: result.cascade.teamRequestsCanceled,
+          teamNowFull: result.cascade.teamNowFull,
+        },
+        alerts: result.alerts,
+        notice: result.notice,
+      };
+    }
+
     const result = await teamsRepository.declineTeamInvitation(
       actorParticipantId,
       invitationId

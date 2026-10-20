@@ -165,6 +165,47 @@ export interface ITeamsRepository {
     alerts: Array<{ audience: string; type: string; message: string }>;
     notice: string;
   }>;
+  /**
+   * US-019 / #181 — accept invitation, confirm membership, run competing-request cascade.
+   */
+  acceptTeamInvitation(
+    actorId: string,
+    invitationId: string
+  ): Promise<{
+    invitation: TeamRequest;
+    membership: Record<string, unknown> | null;
+    changed: boolean;
+    idempotent: boolean;
+    membershipCommitted: boolean;
+    teamName: string;
+    vacancyRole: string | null;
+    cascade: {
+      winningRequestId?: string;
+      eventInvitationsCanceled: number;
+      eventApplicationsWithdrawn: number;
+      slotRequestsCanceled: number;
+      teamRequestsCanceled: number;
+      teamNowFull: boolean;
+    };
+    alerts: Array<{ audience: string; type: string; message: string }>;
+    notice: string;
+  }>;
+  /** US-019 / #181 — FR-056/057 cascade helper (also usable after application approval). */
+  cancelCompetingRequestsOnPlacement(input: {
+    winningRequestId: string;
+    participantId: string;
+    eventId: string;
+    teamId: string;
+    vacancyId: string | null;
+    teamNowFull: boolean;
+  }): Promise<{
+    winningRequestId: string;
+    eventInvitationsCanceled: number;
+    eventApplicationsWithdrawn: number;
+    slotRequestsCanceled: number;
+    teamRequestsCanceled: number;
+    teamNowFull: boolean;
+  }>;
   /** Invitee inbound invitations (US-019 / #179). */
   listMyInvitations(participantId: string): Promise<
     Array<{
@@ -750,6 +791,118 @@ export const teamsRepository: ITeamsRepository = {
       vacancyRole: payload.vacancyRole ?? null,
       alerts: payload.alerts ?? [],
       notice: payload.notice,
+    };
+  },
+
+  async acceptTeamInvitation(
+    actorId: string,
+    invitationId: string
+  ): Promise<{
+    invitation: TeamRequest;
+    membership: Record<string, unknown> | null;
+    changed: boolean;
+    idempotent: boolean;
+    membershipCommitted: boolean;
+    teamName: string;
+    vacancyRole: string | null;
+    cascade: {
+      winningRequestId?: string;
+      eventInvitationsCanceled: number;
+      eventApplicationsWithdrawn: number;
+      slotRequestsCanceled: number;
+      teamRequestsCanceled: number;
+      teamNowFull: boolean;
+    };
+    alerts: Array<{ audience: string; type: string; message: string }>;
+    notice: string;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('accept_team_invitation', {
+      p_actor: actorId,
+      p_invitation: invitationId,
+    });
+    if (error) throw error;
+    const payload = data as {
+      invitation: TeamRequest;
+      membership?: Record<string, unknown> | null;
+      changed: boolean;
+      idempotent: boolean;
+      membershipCommitted: boolean;
+      teamName: string;
+      vacancyRole?: string | null;
+      cascade?: {
+        winningRequestId?: string;
+        eventInvitationsCanceled?: number;
+        eventApplicationsWithdrawn?: number;
+        slotRequestsCanceled?: number;
+        teamRequestsCanceled?: number;
+        teamNowFull?: boolean;
+      };
+      alerts?: Array<{ audience: string; type: string; message: string }>;
+      notice: string;
+    };
+    const cascade = payload.cascade ?? {};
+    return {
+      invitation: payload.invitation,
+      membership: payload.membership ?? null,
+      changed: Boolean(payload.changed),
+      idempotent: Boolean(payload.idempotent),
+      membershipCommitted: Boolean(payload.membershipCommitted),
+      teamName: payload.teamName,
+      vacancyRole: payload.vacancyRole ?? null,
+      cascade: {
+        winningRequestId: cascade.winningRequestId,
+        eventInvitationsCanceled: cascade.eventInvitationsCanceled ?? 0,
+        eventApplicationsWithdrawn: cascade.eventApplicationsWithdrawn ?? 0,
+        slotRequestsCanceled: cascade.slotRequestsCanceled ?? 0,
+        teamRequestsCanceled: cascade.teamRequestsCanceled ?? 0,
+        teamNowFull: Boolean(cascade.teamNowFull),
+      },
+      alerts: payload.alerts ?? [],
+      notice: payload.notice,
+    };
+  },
+
+  async cancelCompetingRequestsOnPlacement(input: {
+    winningRequestId: string;
+    participantId: string;
+    eventId: string;
+    teamId: string;
+    vacancyId: string | null;
+    teamNowFull: boolean;
+  }): Promise<{
+    winningRequestId: string;
+    eventInvitationsCanceled: number;
+    eventApplicationsWithdrawn: number;
+    slotRequestsCanceled: number;
+    teamRequestsCanceled: number;
+    teamNowFull: boolean;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('cancel_competing_requests_on_placement', {
+      p_winning_request_id: input.winningRequestId,
+      p_participant_id: input.participantId,
+      p_event_id: input.eventId,
+      p_team_id: input.teamId,
+      p_vacancy_id: input.vacancyId,
+      p_team_now_full: input.teamNowFull,
+    });
+    if (error) throw error;
+    const payload = data as {
+      winningRequestId: string;
+      eventInvitationsCanceled: number;
+      eventApplicationsWithdrawn: number;
+      slotRequestsCanceled: number;
+      teamRequestsCanceled: number;
+      teamNowFull: boolean;
+    };
+    return {
+      winningRequestId: payload.winningRequestId,
+      eventInvitationsCanceled: payload.eventInvitationsCanceled ?? 0,
+      eventApplicationsWithdrawn: payload.eventApplicationsWithdrawn ?? 0,
+      slotRequestsCanceled: payload.slotRequestsCanceled ?? 0,
+      teamRequestsCanceled: payload.teamRequestsCanceled ?? 0,
+      teamNowFull: Boolean(payload.teamNowFull),
     };
   },
 
