@@ -147,6 +147,27 @@ export interface ITeamsRepository {
     alerts: Array<{ audience: string; type: string; message: string }>;
     notice: string;
   }>;
+  /** Invitee decline Pending invitation (US-019 / #179 / FR-058); idempotent. */
+  declineTeamInvitation(
+    actorId: string,
+    invitationId: string
+  ): Promise<{
+    invitation: TeamRequest;
+    changed: boolean;
+    idempotent: boolean;
+    teamName: string;
+    vacancyRole: string | null;
+    alerts: Array<{ audience: string; type: string; message: string }>;
+    notice: string;
+  }>;
+  /** Invitee inbound invitations (US-019 / #179). */
+  listMyInvitations(participantId: string): Promise<
+    Array<{
+      invitation: TeamRequest;
+      vacancyRole: string | null;
+      teamName: string;
+    }>
+  >;
   /** Owner outbound invitations for a team (US-017). */
   listTeamInvitations(teamId: string): Promise<
     Array<{
@@ -670,6 +691,75 @@ export const teamsRepository: ITeamsRepository = {
       alerts: payload.alerts ?? [],
       notice: payload.notice,
     };
+  },
+
+  async declineTeamInvitation(
+    actorId: string,
+    invitationId: string
+  ): Promise<{
+    invitation: TeamRequest;
+    changed: boolean;
+    idempotent: boolean;
+    teamName: string;
+    vacancyRole: string | null;
+    alerts: Array<{ audience: string; type: string; message: string }>;
+    notice: string;
+  }> {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('decline_team_invitation', {
+      p_actor: actorId,
+      p_invitation: invitationId,
+    });
+    if (error) throw error;
+    const payload = data as {
+      invitation: TeamRequest;
+      changed: boolean;
+      idempotent: boolean;
+      teamName: string;
+      vacancyRole?: string | null;
+      alerts?: Array<{ audience: string; type: string; message: string }>;
+      notice: string;
+    };
+    return {
+      invitation: payload.invitation,
+      changed: Boolean(payload.changed),
+      idempotent: Boolean(payload.idempotent),
+      teamName: payload.teamName,
+      vacancyRole: payload.vacancyRole ?? null,
+      alerts: payload.alerts ?? [],
+      notice: payload.notice,
+    };
+  },
+
+  async listMyInvitations(participantId: string): Promise<
+    Array<{
+      invitation: TeamRequest;
+      vacancyRole: string | null;
+      teamName: string;
+    }>
+  > {
+    const client = getSupabaseClient();
+    const { data: rows, error } = await client
+      .from('team_requests')
+      .select('*, vacancy:team_vacancies(role), team:teams(name)')
+      .eq('participant_id', participantId)
+      .eq('request_type', 'Invitation')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    return (rows || []).map(
+      (row: {
+        vacancy?: { role?: string } | null;
+        team?: { name?: string } | null;
+      } & TeamRequest) => {
+        const { vacancy, team, ...invitation } = row;
+        return {
+          invitation: invitation as TeamRequest,
+          vacancyRole: vacancy?.role ?? null,
+          teamName: team?.name ?? 'Unknown team',
+        };
+      }
+    );
   },
 
   async listTeamInvitations(teamId: string): Promise<

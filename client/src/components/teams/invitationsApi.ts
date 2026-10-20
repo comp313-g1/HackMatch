@@ -210,3 +210,93 @@ export async function cancelTeamInvitation(
     })
   );
 }
+
+export interface InviteeInvitationListItem {
+  id: string;
+  teamId: string;
+  eventId: string;
+  vacancyId: string | null;
+  inviteeParticipantId: string;
+  status: string;
+  statusLabel: string;
+  requestType: 'Invitation';
+  expiresAt: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  cancelReason: string | null;
+  teamName: string;
+  vacancyRole: string | null;
+  expiredByClock: boolean;
+  canRespond: boolean;
+  permittedDetails?: {
+    teamName: string;
+    vacancyRole: string | null;
+    expiresAt: string | null;
+    statusLabel: string;
+  };
+}
+
+export interface InviteeInvitationsListResponse {
+  invitations: InviteeInvitationListItem[];
+  empty: boolean;
+  message: string | null;
+}
+
+export type InvitationResponseDecision = 'accept' | 'decline';
+
+export interface InvitationRespondResult {
+  decision: InvitationResponseDecision;
+  membershipCommitted: boolean;
+  invitation: {
+    id: string;
+    teamId: string;
+    eventId: string;
+    vacancyId: string | null;
+    inviteeParticipantId: string;
+    status: string;
+    statusLabel: string;
+    requestType: 'Invitation';
+    expiresAt: string | null;
+    resolvedAt: string | null;
+    cancelReason: string | null;
+    teamName: string;
+    vacancyRole: string | null;
+  };
+  changed: boolean;
+  idempotent: boolean;
+  eligible?: boolean;
+  alerts: Array<{ audience: string; type: string; message: string }>;
+  notice: string;
+}
+
+/** GET /api/invitations/mine — invitee inbound list (US-019 / #179). */
+export async function fetchMyInvitations(): Promise<InviteeInvitationsListResponse> {
+  return authCall(() => authFetch('/api/invitations/mine', { method: 'GET' }));
+}
+
+/** GET /api/invitations/:id — invitee detail with permitted team fields (#179). */
+export async function fetchInvitationDetail(
+  invitationId: string
+): Promise<InviteeInvitationListItem> {
+  const data = await authCall<{ invitation: InviteeInvitationListItem }>(() =>
+    authFetch(`/api/invitations/${encodeURIComponent(invitationId)}`, { method: 'GET' })
+  );
+  return data.invitation;
+}
+
+/**
+ * POST /api/invitations/:id/respond — accept (FR-051 revalidation) or decline (FR-058).
+ * Membership commit on accept remains sibling US-019 / FR-056 work.
+ */
+export async function respondToInvitation(
+  invitationId: string,
+  decision: InvitationResponseDecision
+): Promise<InvitationRespondResult> {
+  return authCall(() =>
+    authFetch(`/api/invitations/${encodeURIComponent(invitationId)}/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision }),
+    })
+  );
+}

@@ -216,4 +216,109 @@ describe('teams invitationsApi (US-017 / #167 shared client)', () => {
     expect(result.invitation.status).toBe('Canceled');
     expect(result.alerts[0].type).toBe('team_invitation_canceled');
   });
+
+  it('fetches my invitations, detail, and respond (#179)', async () => {
+    const {
+      fetchMyInvitations,
+      fetchInvitationDetail,
+      respondToInvitation,
+    } = await import('./invitationsApi');
+
+    authFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          invitations: [
+            {
+              id: 'inv-1',
+              teamId: 't1',
+              eventId: 'e1',
+              vacancyId: 'v1',
+              inviteeParticipantId: 'p1',
+              status: 'Pending',
+              statusLabel: 'Pending',
+              requestType: 'Invitation',
+              expiresAt: '2099-10-21T12:00:00.000Z',
+              createdAt: '2026-10-19T12:00:00.000Z',
+              resolvedAt: null,
+              cancelReason: null,
+              teamName: 'Team',
+              vacancyRole: 'Frontend',
+              expiredByClock: false,
+              canRespond: true,
+            },
+          ],
+          empty: false,
+          message: null,
+        }),
+        { status: 200 }
+      )
+    );
+
+    const listed = await fetchMyInvitations();
+    expect(authFetchMock).toHaveBeenCalledWith('/api/invitations/mine', { method: 'GET' });
+    expect(listed.invitations[0].canRespond).toBe(true);
+
+    authFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          invitation: {
+            ...listed.invitations[0],
+            permittedDetails: {
+              teamName: 'Team',
+              vacancyRole: 'Frontend',
+              expiresAt: '2099-10-21T12:00:00.000Z',
+              statusLabel: 'Pending',
+            },
+          },
+        }),
+        { status: 200 }
+      )
+    );
+
+    const detail = await fetchInvitationDetail('inv-1');
+    expect(authFetchMock).toHaveBeenCalledWith('/api/invitations/inv-1', { method: 'GET' });
+    expect(detail.permittedDetails?.teamName).toBe('Team');
+
+    authFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          decision: 'decline',
+          membershipCommitted: false,
+          invitation: {
+            id: 'inv-1',
+            teamId: 't1',
+            eventId: 'e1',
+            vacancyId: 'v1',
+            inviteeParticipantId: 'p1',
+            status: 'Declined',
+            statusLabel: 'Declined',
+            requestType: 'Invitation',
+            expiresAt: '2099-10-21T12:00:00.000Z',
+            resolvedAt: '2026-10-19T16:00:00.000Z',
+            cancelReason: 'INVITEE_DECLINED',
+            teamName: 'Team',
+            vacancyRole: 'Frontend',
+          },
+          changed: true,
+          idempotent: false,
+          alerts: [
+            { audience: 'invitee', type: 'team_invitation_declined', message: 'You declined.' },
+            { audience: 'owner', type: 'team_invitation_declined', message: 'Invitee declined.' },
+          ],
+          notice: 'Invitation declined.',
+        }),
+        { status: 200 }
+      )
+    );
+
+    const declined = await respondToInvitation('inv-1', 'decline');
+    expect(authFetchMock).toHaveBeenCalledWith(
+      '/api/invitations/inv-1/respond',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ decision: 'decline' }),
+      })
+    );
+    expect(declined.invitation.status).toBe('Declined');
+  });
 });

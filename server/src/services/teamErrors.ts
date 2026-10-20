@@ -24,6 +24,7 @@ export type TeamErrorCode =
   | 'INVITATION_EXPIRED'
   | 'INVITATION_NOT_ACCEPTABLE'
   | 'INVITATION_NOT_CANCELABLE'
+  | 'INVITATION_NOT_DECLINABLE'
   | 'FORBIDDEN_NOT_INVITEE'
   | 'CANNOT_APPLY_TO_OWN_TEAM'
   | 'APPLICANT_NOT_ELIGIBLE'
@@ -95,9 +96,13 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
     status: 409,
     message: 'Only Pending invitations can be canceled.',
   },
+  INVITATION_NOT_DECLINABLE: {
+    status: 409,
+    message: 'Only Pending invitations can be declined.',
+  },
   FORBIDDEN_NOT_INVITEE: {
     status: 403,
-    message: 'Only the invited participant can accept this invitation.',
+    message: 'Only the invited participant can respond to this invitation.',
   },
   CANNOT_APPLY_TO_OWN_TEAM: {
     status: 400,

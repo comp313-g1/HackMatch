@@ -921,6 +921,32 @@ describe('0022_cancel_team_invitation.sql Migration DDL (US-017 / #166)', () => 
   });
 });
 
+describe('0025_decline_team_invitation.sql Migration DDL (US-019 / #179)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0025_decline_team_invitation.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('defines decline_team_invitation with invitee check, idempotency, and alerts', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+decline_team_invitation/i);
+    expect(sql).toMatch(/FORBIDDEN_NOT_INVITEE/i);
+    expect(sql).toMatch(/INVITATION_NOT_DECLINABLE/i);
+    expect(sql).toMatch(/INVITEE_DECLINED/i);
+    expect(sql).toMatch(/idempotent/i);
+    expect(sql).toMatch(/team_invitation_declined/i);
+    expect(sql).toMatch(/INSERT\s+INTO\s+participant_notifications/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+decline_team_invitation\s*\(\s*UUID\s*,\s*UUID\s*\)\s+TO\s+service_role/i
+    );
+  });
+});
+
 describe('0024_withdraw_team_application.sql Migration DDL (US-018 / #175)', () => {
   const migrationPath = path.resolve(
     __dirname,
