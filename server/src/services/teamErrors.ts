@@ -36,6 +36,7 @@ export type TeamErrorCode =
   | 'APPLICATION_PENDING_LIMIT'
   | 'APPLICATION_NOT_FOUND'
   | 'APPLICATION_NOT_WITHDRAWABLE'
+  | 'APPLICATION_NOT_DECLINABLE'
   | 'APPLICATION_NOT_APPROVABLE'
   | 'APPLICATION_APPLICANT_NOT_ELIGIBLE'
   | 'APPLICATION_APPLICANT_ALREADY_CONFIRMED'
@@ -152,6 +153,10 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
   APPLICATION_NOT_WITHDRAWABLE: {
     status: 409,
     message: 'Only Pending Review applications can be withdrawn.',
+  },
+  APPLICATION_NOT_DECLINABLE: {
+    status: 409,
+    message: 'Only Pending Review applications can be declined.',
   },
   APPLICATION_NOT_APPROVABLE: {
     status: 409,

@@ -10,11 +10,13 @@ vi.mock('./applicationsApi', async () => {
     ...actual,
     fetchTeamApplications: vi.fn(),
     approveTeamApplication: vi.fn(),
+    declineTeamApplication: vi.fn(),
   };
 });
 
 const fetchMock = vi.mocked(applicationsApi.fetchTeamApplications);
 const approveMock = vi.mocked(applicationsApi.approveTeamApplication);
+const declineMock = vi.mocked(applicationsApi.declineTeamApplication);
 const application: applicationsApi.OwnerApplicationReviewItem = {
   id: 'app-1',
   teamId: 'team-1',
@@ -76,10 +78,55 @@ const approvalResult: applicationsApi.ApplicationApprovalResult = {
   notice: 'Application approved and membership confirmed.',
 };
 
-describe('OwnerApplicationsPanel (US-020 / #188 / #190 / #191)', () => {
+const declineResult: applicationsApi.ApplicationDeclineResult = {
+  decision: 'decline',
+  application: {
+    id: 'app-1',
+    teamId: 'team-1',
+    eventId: 'event-1',
+    vacancyId: 'vacancy-1',
+    applicantParticipantId: 'participant-1',
+    status: 'Declined',
+    statusLabel: 'Declined',
+    requestType: 'Application',
+    message: application.message,
+    resolvedAt: '2026-10-20T18:00:00.000Z',
+    cancelReason: 'OWNER_DECLINED',
+    teamName: 'HackMatch Innovators',
+    vacancyRole: 'Backend',
+  },
+  changed: true,
+  idempotent: false,
+  alerts: [
+    {
+      audience: 'applicant',
+      type: 'team_application_declined',
+      message: 'Your application to HackMatch Innovators was declined.',
+    },
+    {
+      audience: 'owner',
+      type: 'team_application_declined',
+      message: "Grace Hopper's application was declined.",
+    },
+  ],
+  effects: {
+    applicationChanged: true,
+    applicantAlertCreated: true,
+    ownerAlertCreated: true,
+    pendingQuotaReleased: true,
+    availabilityChanged: false,
+    membershipChanged: false,
+    vacancyChanged: false,
+    capacityChanged: false,
+  },
+  notice: 'Application declined. The applicant was notified and the vacancy remains open.',
+};
+
+describe('OwnerApplicationsPanel (US-020 / #188 / #190 / #191 / #192)', () => {
   beforeEach(() => {
     fetchMock.mockReset();
     approveMock.mockReset();
+    declineMock.mockReset();
   });
 
   it('shows an accessible loading state', () => {
@@ -220,7 +267,7 @@ describe('OwnerApplicationsPanel (US-020 / #188 / #190 / #191)', () => {
     fireEvent.click(await screen.findByRole('button', { name: /approve application/i }));
 
     await waitFor(() => expect(approveMock).toHaveBeenCalledWith('app-1'));
-    expect(await screen.findByTestId('application-approval-success')).toHaveTextContent(
+    expect(await screen.findByTestId('application-decision-success')).toHaveTextContent(
       /membership confirmed/i
     );
     expect(screen.getByTestId('applications-empty')).toHaveTextContent(
@@ -263,7 +310,7 @@ describe('OwnerApplicationsPanel (US-020 / #188 / #190 / #191)', () => {
     render(<OwnerApplicationsPanel teamId="team-1" />);
     fireEvent.click(await screen.findByTestId('approve-application-app-1'));
 
-    expect(await screen.findByTestId('application-approval-success')).toHaveTextContent(
+    expect(await screen.findByTestId('application-decision-success')).toHaveTextContent(
       /cleared 2 competing requests/i
     );
     expect(screen.queryByText('Grace Hopper')).not.toBeInTheDocument();
@@ -325,14 +372,80 @@ describe('OwnerApplicationsPanel (US-020 / #188 / #190 / #191)', () => {
     render(<OwnerApplicationsPanel teamId="team-1" />);
     fireEvent.click(await screen.findByRole('button', { name: /approve application/i }));
 
-    expect(await screen.findByTestId('application-approval-error')).toHaveTextContent(
+    expect(await screen.findByTestId('application-decision-error')).toHaveTextContent(
       /maximum size/i
     );
-    expect(screen.getByTestId('application-approval-error')).toHaveTextContent(
+    expect(screen.getByTestId('application-decision-error')).toHaveTextContent(
       /review details were kept/i
     );
     expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
     expect(screen.getByText(application.message as string)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /approve application/i })).toBeEnabled();
+  });
+
+  it('declines an application, reports both alerts, and leaves roster state unchanged', async () => {
+    const onDeclined = vi.fn();
+    fetchMock.mockResolvedValue({
+      teamId: 'team-1',
+      applications: [application],
+      empty: false,
+      message: null,
+    });
+    declineMock.mockResolvedValue(declineResult);
+
+    render(<OwnerApplicationsPanel teamId="team-1" onDeclined={onDeclined} />);
+    fireEvent.click(await screen.findByRole('button', { name: /decline application/i }));
+
+    await waitFor(() => expect(declineMock).toHaveBeenCalledWith('app-1'));
+    expect(await screen.findByTestId('application-decision-success')).toHaveTextContent(
+      /applicant was notified/i
+    );
+    expect(screen.getByTestId('applications-empty')).toHaveTextContent(
+      /no pending applications/i
+    );
+    expect(screen.queryByText('Grace Hopper')).not.toBeInTheDocument();
+    expect(declineResult.alerts.map((alert) => alert.audience)).toEqual([
+      'applicant',
+      'owner',
+    ]);
+    expect(declineResult.effects).toMatchObject({
+      pendingQuotaReleased: true,
+      availabilityChanged: false,
+      membershipChanged: false,
+      vacancyChanged: false,
+      capacityChanged: false,
+    });
+    expect(onDeclined).toHaveBeenCalledWith(declineResult, application);
+  });
+
+  it('preserves the review when a stale decline is rejected', async () => {
+    fetchMock.mockResolvedValue({
+      teamId: 'team-1',
+      applications: [application],
+      empty: false,
+      message: null,
+    });
+    declineMock.mockRejectedValue(
+      new applicationsApi.ApplicationsApiError(
+        409,
+        'APPLICATION_NOT_DECLINABLE',
+        { _form: 'Only Pending Review applications can be declined.' },
+        { status: 'Accepted' },
+        'Only Pending Review applications can be declined.'
+      )
+    );
+
+    render(<OwnerApplicationsPanel teamId="team-1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /decline application/i }));
+
+    expect(await screen.findByTestId('application-decision-error')).toHaveTextContent(
+      /only pending review applications/i
+    );
+    expect(screen.getByTestId('application-decision-error')).toHaveTextContent(
+      /review details were kept/i
+    );
+    expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
+    expect(screen.getByText(application.message as string)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /decline application/i })).toBeEnabled();
   });
 });

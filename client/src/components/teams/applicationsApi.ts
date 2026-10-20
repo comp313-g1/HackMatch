@@ -222,6 +222,45 @@ export interface ApplicationApprovalResult {
   notice: string;
 }
 
+export interface ApplicationDeclineResult {
+  decision: 'decline';
+  application: {
+    id: string;
+    teamId: string;
+    eventId: string;
+    vacancyId: string | null;
+    applicantParticipantId: string;
+    status: string;
+    statusLabel: string;
+    requestType: 'Application';
+    message: string | null;
+    resolvedAt: string | null;
+    cancelReason: string | null;
+    teamName: string;
+    vacancyRole: string | null;
+  };
+  changed: boolean;
+  idempotent: boolean;
+  alerts: Array<{
+    audience: 'applicant' | 'owner';
+    type: string;
+    message: string;
+    notificationId?: string;
+    createdAt?: string;
+  }>;
+  effects: {
+    applicationChanged: boolean;
+    applicantAlertCreated: boolean;
+    ownerAlertCreated: boolean;
+    pendingQuotaReleased: boolean;
+    availabilityChanged: false;
+    membershipChanged: false;
+    vacancyChanged: false;
+    capacityChanged: false;
+  };
+  notice: string;
+}
+
 /** GET /api/teams/:teamId/applications — owner-only Pending Review queue (#188). */
 export async function fetchTeamApplications(
   teamId: string
@@ -239,6 +278,19 @@ export async function approveTeamApplication(
 ): Promise<ApplicationApprovalResult> {
   return authCall(() =>
     authFetch(`/api/applications/${encodeURIComponent(applicationId)}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+  );
+}
+
+/** POST /api/applications/:applicationId/decline — owner decline (#192). */
+export async function declineTeamApplication(
+  applicationId: string
+): Promise<ApplicationDeclineResult> {
+  return authCall(() =>
+    authFetch(`/api/applications/${encodeURIComponent(applicationId)}/decline`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),

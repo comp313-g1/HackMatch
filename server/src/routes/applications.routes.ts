@@ -7,6 +7,7 @@ import { requireVerifiedParticipant } from '../middleware/requireVerifiedPartici
 import {
   listMyApplicationsHandler,
   approveApplicationHandler,
+  declineApplicationHandler,
   withdrawApplicationHandler,
 } from '../controllers/applications.controller.js';
 import { validateApplicationIdParam } from '../validators/applicationResponse.validator.js';
@@ -31,6 +32,12 @@ applicationsRouter.post(
   ...participantAuth,
   validateApplicationIdParam,
   approveApplicationHandler
+);
+applicationsRouter.post(
+  '/:applicationId/decline',
+  ...participantAuth,
+  validateApplicationIdParam,
+  declineApplicationHandler
 );
 applicationsRouter.post(
   '/:applicationId/withdraw',

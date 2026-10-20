@@ -3,7 +3,9 @@ import {
   ApplicationsApiError,
   AuthRequiredError,
   approveTeamApplication,
+  declineTeamApplication,
   fetchTeamApplications,
+  type ApplicationDeclineResult,
   type ApplicationApprovalResult,
   type OwnerApplicationReviewItem,
 } from './applicationsApi';
@@ -17,6 +19,10 @@ export interface OwnerApplicationsPanelProps {
     result: ApplicationApprovalResult,
     application: OwnerApplicationReviewItem
   ) => void;
+  onDeclined?: (
+    result: ApplicationDeclineResult,
+    application: OwnerApplicationReviewItem
+  ) => void;
 }
 
 /** US-020 / #188 / FR-060 — owner-only incoming application review queue. */
@@ -25,12 +31,14 @@ export function OwnerApplicationsPanel({
   refreshKey = 0,
   disabled = false,
   onApproved,
+  onDeclined,
 }: OwnerApplicationsPanelProps): React.JSX.Element {
   const [applications, setApplications] = useState<OwnerApplicationReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [emptyMessage, setEmptyMessage] = useState<string | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [decliningId, setDecliningId] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [approvalNotice, setApprovalNotice] = useState<string | null>(null);
 
@@ -61,7 +69,7 @@ export function OwnerApplicationsPanel({
   }, [teamId]);
 
   const handleApprove = async (applicationId: string) => {
-    if (disabled || approvingId) return;
+    if (disabled || approvingId || decliningId) return;
     const application = applications.find((item) => item.id === applicationId);
     if (!application) return;
 
@@ -104,6 +112,38 @@ export function OwnerApplicationsPanel({
       }
     } finally {
       setApprovingId(null);
+    }
+  };
+
+  const handleDecline = async (applicationId: string) => {
+    if (disabled || approvingId || decliningId) return;
+    const application = applications.find((item) => item.id === applicationId);
+    if (!application) return;
+
+    setDecliningId(applicationId);
+    setApprovalError(null);
+    setApprovalNotice(null);
+    try {
+      const result = await declineTeamApplication(applicationId);
+      setApplications((current) => {
+        const remaining = current.filter((item) => item.id !== applicationId);
+        if (remaining.length === 0) setEmptyMessage('No pending applications to review.');
+        return remaining;
+      });
+      setApprovalNotice(result.notice);
+      onDeclined?.(result, application);
+    } catch (err: unknown) {
+      if (err instanceof AuthRequiredError || (err instanceof ApplicationsApiError && err.status === 401)) {
+        setApprovalError('You need to sign in before declining an application.');
+      } else if (err instanceof ApplicationsApiError && err.status === 403) {
+        setApprovalError('Only the team owner can decline this application.');
+      } else if (err instanceof ApplicationsApiError) {
+        setApprovalError(err.errors?._form || err.message || 'Could not decline this application.');
+      } else {
+        setApprovalError('Could not decline this application.');
+      }
+    } finally {
+      setDecliningId(null);
     }
   };
 
@@ -165,13 +205,13 @@ export function OwnerApplicationsPanel({
       )}
 
       {approvalNotice ? (
-        <div role="status" data-testid="application-approval-success" className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+        <div role="status" data-testid="application-decision-success" className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
           {approvalNotice}
         </div>
       ) : null}
 
       {approvalError ? (
-        <div role="alert" data-testid="application-approval-error" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+        <div role="alert" data-testid="application-decision-error" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900">
           <p>{approvalError}</p>
           <p className="mt-1 text-xs">The application and all review details were kept.</p>
         </div>
@@ -190,8 +230,10 @@ export function OwnerApplicationsPanel({
               key={application.id}
               application={application}
               approving={approvingId === application.id}
-              disabled={disabled}
+              declining={decliningId === application.id}
+              disabled={disabled || Boolean(approvingId || decliningId)}
               onApprove={(id) => void handleApprove(id)}
+              onDecline={(id) => void handleDecline(id)}
             />
           ))}
         </ul>
