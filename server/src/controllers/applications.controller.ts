@@ -24,6 +24,9 @@ function fieldErrorsForApplicationCode(
     case 'APPLICANT_ALREADY_CONFIRMED':
     case 'APPLICANT_NOT_ELIGIBLE':
     case 'CANNOT_APPLY_TO_OWN_TEAM':
+    case 'CAPACITY_EXCEEDED':
+    case 'TEAM_NOT_MUTABLE':
+    case 'EVENT_NOT_RECRUITING':
     case 'APPLICATION_NOT_FOUND':
     case 'APPLICATION_NOT_WITHDRAWABLE':
     case 'APPLICATION_NOT_DECLINABLE':
