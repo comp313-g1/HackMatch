@@ -7,7 +7,6 @@ import { OwnerInvitationsPanel } from './OwnerInvitationsPanel';
 import { TeamRosterPanel } from './TeamRosterPanel';
 import { LeaveTeamPanel } from './LeaveTeamPanel';
 import { RosterStatusView } from './RosterStatusView';
-import { OwnerApplicationsPanel } from './OwnerApplicationsPanel';
 
 export interface TeamWorkspaceProps {
   eventId: string;
@@ -267,71 +266,6 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
             vacancies={team.vacancies}
             disabled={isLocked}
             refreshKey={invitationsRefreshKey}
-          />
-
-          <OwnerApplicationsPanel
-            teamId={team.id}
-            disabled={isLocked}
-            onApproved={(result, application) => {
-              // Approval may cancel outgoing invitations for the filled slot or
-              // the whole team; refresh the owner list to remove stale rows.
-              setInvitationsRefreshKey((key) => key + 1);
-              // A historical idempotent outcome can outlive a membership or
-              // vacancy (for example, after a later pre-lock leave/disband).
-              // Reload canonical state instead of fabricating either record.
-              if (
-                !result.membership ||
-                !result.vacancy ||
-                !result.membershipCommitted ||
-                result.membership.status !== 'Confirmed' ||
-                result.vacancy.status !== 'Filled'
-              ) {
-                void loadTeam();
-                return;
-              }
-              const approvedMembership = result.membership;
-              const filledVacancy = result.vacancy;
-              setTeam((current) => {
-                if (!current) return current;
-                const alreadyListed = current.members.some(
-                  (member) => member.participantId === approvedMembership.participantId
-                );
-                const vacancyWasOpen = current.vacancies.some(
-                  (vacancy) =>
-                    vacancy.id === filledVacancy.id && vacancy.status === 'Open'
-                );
-                return {
-                  ...current,
-                  members: alreadyListed
-                    ? current.members
-                    : [
-                        ...current.members,
-                        {
-                          participantId: approvedMembership.participantId,
-                          displayName: application.applicantDisplayName,
-                          role: 'Member',
-                          joinedAt: approvedMembership.joinedAt,
-                        },
-                      ],
-                  vacancies: current.vacancies.map((vacancy) =>
-                    vacancy.id === filledVacancy.id
-                      ? { ...vacancy, status: 'Filled' }
-                      : vacancy
-                  ),
-                  limits: {
-                    ...current.limits,
-                    confirmedMembers: result.memberCount,
-                    openSlots: vacancyWasOpen
-                      ? Math.max(0, current.limits.openSlots - 1)
-                      : current.limits.openSlots,
-                    remainingCapacity: Math.max(
-                      0,
-                      result.maxTeamSize - result.memberCount
-                    ),
-                  },
-                };
-              });
-            }}
           />
 
           <TeamRosterPanel
