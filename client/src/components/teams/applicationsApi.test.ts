@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   APPLICATION_MESSAGE_MAX_LENGTH,
   MAX_PENDING_APPLICATIONS_PER_EVENT,
+  approveTeamApplication,
+  declineTeamApplication,
   fetchMyApplications,
+  fetchTeamApplications,
   isApplicationMessageTooLong,
   normalizeApplicationMessage,
   submitTeamApplication,
@@ -208,6 +211,164 @@ describe('applicationsApi (US-018 / #171)', () => {
     );
     expect(withdrawn.application.status).toBe('Withdrawn');
     expect(withdrawn.alerts).toHaveLength(2);
+  });
+
+  it('fetches the owner application review queue (#188 / FR-060)', async () => {
+    authFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          teamId: 't1',
+          applications: [],
+          empty: true,
+          message: 'No pending applications to review.',
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await fetchTeamApplications('t1');
+
+    expect(authFetchMock).toHaveBeenCalledWith('/api/teams/t1/applications', {
+      method: 'GET',
+    });
+    expect(result.empty).toBe(true);
+  });
+
+  it('POSTs an owner approval to the atomic application endpoint (#190)', async () => {
+    authFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          approved: true,
+          changed: true,
+          idempotent: false,
+          existingOutcome: 'Accepted',
+          application: {
+            id: 'app-1',
+            teamId: 't1',
+            eventId: 'e1',
+            vacancyId: 'v1',
+            applicantParticipantId: 'p1',
+            status: 'Accepted',
+            statusLabel: 'Accepted',
+            requestType: 'Application',
+            resolvedAt: '2026-10-20T18:00:00.000Z',
+            teamName: 'Team',
+            vacancyRole: 'Backend',
+          },
+          membership: {
+            id: 'member-1',
+            teamId: 't1',
+            eventId: 'e1',
+            participantId: 'p1',
+            role: 'Member',
+            status: 'Confirmed',
+            joinedAt: '2026-10-20T18:00:00.000Z',
+          },
+          vacancy: { id: 'v1', role: 'Backend', status: 'Filled' },
+          memberCount: 3,
+          maxTeamSize: 4,
+          availabilityCleared: true,
+          membershipCommitted: true,
+          cascade: {
+            winningRequestId: 'app-1',
+            eventInvitationsCanceled: 1,
+            eventApplicationsWithdrawn: 2,
+            slotRequestsCanceled: 1,
+            teamRequestsCanceled: 0,
+            teamNowFull: false,
+          },
+          notice: 'Application approved and membership confirmed.',
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await approveTeamApplication('app-1');
+
+    expect(authFetchMock).toHaveBeenCalledWith('/api/applications/app-1/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(result).toMatchObject({
+      approved: true,
+      changed: true,
+      idempotent: false,
+      existingOutcome: 'Accepted',
+      application: { status: 'Accepted' },
+      membership: { status: 'Confirmed' },
+      vacancy: { status: 'Filled' },
+      cascade: {
+        eventInvitationsCanceled: 1,
+        eventApplicationsWithdrawn: 2,
+        slotRequestsCanceled: 1,
+        teamNowFull: false,
+      },
+    });
+  });
+
+  it('POSTs an owner decline and returns basic alerts with unchanged effects (#192)', async () => {
+    authFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          decision: 'decline',
+          application: {
+            id: 'app-1',
+            teamId: 't1',
+            eventId: 'e1',
+            vacancyId: 'v1',
+            applicantParticipantId: 'p1',
+            status: 'Declined',
+            statusLabel: 'Declined',
+            requestType: 'Application',
+            message: 'Ready to help',
+            resolvedAt: '2026-10-20T18:00:00.000Z',
+            cancelReason: 'OWNER_DECLINED',
+            teamName: 'Team',
+            vacancyRole: 'Backend',
+          },
+          changed: true,
+          idempotent: false,
+          existingOutcome: 'Declined',
+          alerts: [
+            { audience: 'applicant', type: 'team_application_declined', message: 'Declined.' },
+            { audience: 'owner', type: 'team_application_declined', message: 'Declined.' },
+          ],
+          effects: {
+            applicationChanged: true,
+            applicantAlertCreated: true,
+            ownerAlertCreated: true,
+            pendingQuotaReleased: true,
+            availabilityChanged: false,
+            membershipChanged: false,
+            vacancyChanged: false,
+            capacityChanged: false,
+          },
+          notice: 'Application declined. The applicant was notified.',
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await declineTeamApplication('app-1');
+
+    expect(authFetchMock).toHaveBeenCalledWith('/api/applications/app-1/decline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(result).toMatchObject({
+      decision: 'decline',
+      changed: true,
+      idempotent: false,
+      existingOutcome: 'Declined',
+      application: { status: 'Declined', cancelReason: 'OWNER_DECLINED' },
+      effects: {
+        pendingQuotaReleased: true,
+        membershipChanged: false,
+        vacancyChanged: false,
+      },
+    });
   });
 
   it('surfaces APPLICATION_PENDING_LIMIT with details (#174 / FR-054)', async () => {
