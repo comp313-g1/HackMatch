@@ -647,6 +647,12 @@ export function App(): React.JSX.Element {
               {() => (
                 <MyInvitationsPanel
                   onStatusNotice={(notice) => setStatusNotice(notice)}
+                  onViewRoster={(eventId) => {
+                    setStatusNotice(null);
+                    setIsMobileMenuOpen(false);
+                    setTeamEventId(eventId);
+                    setCurrentView('team');
+                  }}
                 />
               )}
             </MfaGate>

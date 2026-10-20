@@ -46,6 +46,7 @@ describe('MyTeamsPage component (teams.html wireframe)', () => {
       reason: null,
     },
     viewerRole: 'Owner',
+    viewerParticipantId: 'p-1',
     canLeave: false,
   };
 

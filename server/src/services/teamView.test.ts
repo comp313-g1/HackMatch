@@ -68,6 +68,7 @@ describe('teamView service unit tests (US-012 / #120)', () => {
     expect(view.members[0].role).toBe('Owner');
     expect(view.vacancies).toHaveLength(2);
     expect(view.viewerRole).toBeNull();
+    expect(view.viewerParticipantId).toBeNull();
     expect(view.canLeave).toBe(false);
     expect((view as unknown as Record<string, unknown>).owner_participant_id).toBeUndefined();
     expect((view.members[0] as unknown as Record<string, unknown>).email).toBeUndefined();
@@ -100,10 +101,12 @@ describe('teamView service unit tests (US-012 / #120)', () => {
 
     const memberView = toTeamView(parts, { viewerParticipantId: memberId });
     expect(memberView.viewerRole).toBe('Member');
+    expect(memberView.viewerParticipantId).toBe(memberId);
     expect(memberView.canLeave).toBe(true);
 
     const ownerView = toTeamView(parts, { viewerParticipantId: baseTeam.owner_participant_id });
     expect(ownerView.viewerRole).toBe('Owner');
+    expect(ownerView.viewerParticipantId).toBe(baseTeam.owner_participant_id);
     expect(ownerView.canLeave).toBe(false);
   });
 

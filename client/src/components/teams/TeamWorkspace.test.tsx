@@ -45,6 +45,7 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
       reason: null,
     },
     viewerRole: 'Owner',
+    viewerParticipantId: 'p-1',
     canLeave: false,
   };
 
@@ -141,6 +142,40 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
     });
   });
 
+  it('renders roster status view for confirmed non-owner members (#185)', async () => {
+    const memberTeam: TeamView = {
+      ...sampleTeam,
+      viewerRole: 'Member',
+      viewerParticipantId: 'p-member',
+      canLeave: true,
+      members: [
+        ...sampleTeam.members,
+        {
+          participantId: 'p-member',
+          displayName: 'Grace Hopper',
+          role: 'Member',
+          joinedAt: '2026-10-20T12:00:00.000Z',
+        },
+      ],
+      limits: {
+        ...sampleTeam.limits,
+        confirmedMembers: 2,
+        remainingCapacity: 2,
+      },
+    };
+    vi.mocked(teamApi.fetchMyTeam).mockResolvedValueOnce(memberTeam);
+
+    render(<TeamWorkspace eventId="e-123" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('roster-status-view')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('roster-team-name')).toHaveTextContent('HackMatch Innovators');
+    expect(screen.getByTestId('roster-you-badge')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /leave team/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /disband team/i })).not.toBeInTheDocument();
+  });
+
   it('renders read-only note banner and disables controls when team lifecycle is not mutable', async () => {
     const lockedTeam: TeamView = {
       ...sampleTeam,
@@ -150,6 +185,7 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
         reason: 'Locked',
       },
     viewerRole: 'Owner',
+    viewerParticipantId: 'p-1',
     canLeave: false,
     };
 

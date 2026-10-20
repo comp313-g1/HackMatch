@@ -39,6 +39,7 @@ describe('TeamListingForm component tests (US-012 / Task 8 / #125)', () => {
       reason: null,
     },
     viewerRole: 'Owner',
+    viewerParticipantId: 'p-1',
     canLeave: false,
   };
 

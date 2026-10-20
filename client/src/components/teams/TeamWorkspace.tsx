@@ -6,6 +6,7 @@ import { VacancyPanel } from './VacancyPanel';
 import { OwnerInvitationsPanel } from './OwnerInvitationsPanel';
 import { TeamRosterPanel } from './TeamRosterPanel';
 import { LeaveTeamPanel } from './LeaveTeamPanel';
+import { RosterStatusView } from './RosterStatusView';
 
 export interface TeamWorkspaceProps {
   eventId: string;
@@ -184,33 +185,21 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
           </div>
         )}
 
-        {isLocked && lifecycleNotice && (
-          <div
-            role="note"
-            className="p-4 bg-amber-50 border border-amber-200 text-amber-900 text-sm rounded-lg"
-          >
-            {lifecycleNotice}
-          </div>
-        )}
-
-        <section className="p-4 bg-white border border-cream-200 rounded-lg shadow-sm space-y-2">
-          <h3 className="text-base font-semibold text-forest-900">{team.name}</h3>
-          <p className="text-xs text-ink-muted">{team.pitch}</p>
-          <p className="text-xs text-ink-muted">
-            {team.limits.confirmedMembers} confirmed member
-            {team.limits.confirmedMembers === 1 ? '' : 's'}
-            {team.limits.maxTeamSize != null ? ` · max ${team.limits.maxTeamSize}` : ''}
-          </p>
-        </section>
-
-        <LeaveTeamPanel
-          teamId={team.id}
-          teamName={team.name}
-          disabled={!team.canLeave || isLocked}
-          onLeft={(notice) => {
-            setTeam(null);
-            setStatusNotice(notice);
-          }}
+        <RosterStatusView
+          team={team}
+          viewState="success"
+          viewerParticipantId={team.viewerParticipantId}
+          leaveSlot={
+            <LeaveTeamPanel
+              teamId={team.id}
+              teamName={team.name}
+              disabled={!team.canLeave || isLocked}
+              onLeft={(notice) => {
+                setTeam(null);
+                setStatusNotice(notice);
+              }}
+            />
+          }
         />
       </div>
     );

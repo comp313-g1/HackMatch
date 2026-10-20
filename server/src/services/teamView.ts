@@ -45,6 +45,8 @@ export interface TeamView {
   lifecycle: TeamLifecycle;
   /** Role of the authenticated viewer on this team, when known (US-019 leave). */
   viewerRole: TeamMembershipRole | null;
+  /** Participant id of the authenticated viewer when they are on the roster (#185). */
+  viewerParticipantId: string | null;
   /** Non-owner may leave while recruitment remains mutable (FR-059). */
   canLeave: boolean;
 }
@@ -88,6 +90,7 @@ export function toTeamView(
     ? members.find((m) => m.participantId === options.viewerParticipantId)
     : undefined;
   const viewerRole = viewerMember?.role ?? null;
+  const viewerParticipantId = viewerMember?.participantId ?? null;
   const canLeave = viewerRole === 'Member' && lifecycle.mutable;
 
   return {
@@ -111,6 +114,7 @@ export function toTeamView(
     },
     lifecycle,
     viewerRole,
+    viewerParticipantId,
     canLeave,
   };
 }

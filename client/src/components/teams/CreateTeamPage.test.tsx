@@ -46,6 +46,7 @@ describe('CreateTeamPage component', () => {
       reason: null,
     },
     viewerRole: 'Owner',
+    viewerParticipantId: 'p-1',
     canLeave: false,
   };
 

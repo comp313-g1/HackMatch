@@ -48,6 +48,7 @@ describe('VacancyPanel component tests (US-012 / Task 8 / #125)', () => {
     limits: mockLimits,
     lifecycle: { mutable: true, reason: null },
     viewerRole: 'Owner',
+    viewerParticipantId: 'p-1',
     canLeave: false,
   };
 

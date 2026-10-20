@@ -267,7 +267,8 @@ describe('MyInvitationsPanel (US-019 / #179)', () => {
       notice: 'Invitation accepted. Team membership is confirmed and the vacancy is filled.',
     });
 
-    render(<MyInvitationsPanel />);
+    const onViewRoster = vi.fn();
+    render(<MyInvitationsPanel onViewRoster={onViewRoster} />);
 
     await waitFor(() => {
       expect(screen.getByTestId('select-invitation-inv-1')).toBeInTheDocument();
@@ -286,6 +287,11 @@ describe('MyInvitationsPanel (US-019 / #179)', () => {
     expect(screen.getByTestId('invitation-status-alert')).toHaveTextContent(
       /team membership is confirmed/i
     );
+    expect(screen.getByTestId('invitation-accept-roster')).toBeInTheDocument();
+    expect(screen.getByTestId('roster-team-name')).toHaveTextContent(/HackMatch/i);
+    expect(screen.getByTestId('roster-your-status')).toHaveTextContent(/Confirmed/i);
+    fireEvent.click(screen.getByTestId('roster-view-team'));
+    expect(onViewRoster).toHaveBeenCalledWith(pendingInv.eventId);
     expect(respondMock).toHaveBeenCalledWith('inv-1', 'accept');
   });
 

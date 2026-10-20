@@ -25,6 +25,24 @@ function expiryLabel(inv: InviteeInvitationListItem): string {
   return `Expires ${new Date(inv.expiresAt).toLocaleString()} (48h window)`;
 }
 
+function statusBadgeClass(statusLabel: string): string {
+  switch (statusLabel) {
+    case 'Pending':
+      return 'bg-amber-50 text-amber-900 border-amber-200';
+    case 'Accepted':
+      return 'bg-emerald-50 text-emerald-900 border-emerald-200';
+    case 'Declined':
+      return 'bg-slate-100 text-slate-800 border-slate-200';
+    case 'Canceled':
+    case 'Withdrawn':
+      return 'bg-cream-100 text-ink-muted border-cream-200';
+    case 'Expired':
+      return 'bg-red-50 text-red-800 border-red-200';
+    default:
+      return 'bg-cream-50 text-ink border-cream-200';
+  }
+}
+
 /**
  * Invitee inbound invitations (US-019 / #179) — list, detail select, Accept/Decline.
  */
@@ -113,12 +131,13 @@ export function MyInvitationsView({
                     <span className="font-normal text-ink-muted"> · {inv.vacancyRole}</span>
                   ) : null}
                 </p>
-                <p className="text-ink-muted">
-                  Status:{' '}
-                  <span data-testid={`invitation-inbox-status-${inv.id}`}>
+                <p className="text-ink-muted flex flex-wrap items-center gap-2">
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${statusBadgeClass(inv.statusLabel || inv.status)}`}
+                    data-testid={`invitation-inbox-status-${inv.id}`}
+                  >
                     {inv.statusLabel || inv.status}
                   </span>
-                  {' · '}
                   <span data-testid={`invitation-inbox-expiry-${inv.id}`}>
                     {expiryLabel(inv)}
                   </span>

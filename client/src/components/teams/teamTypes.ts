@@ -61,6 +61,8 @@ export interface TeamView {
   lifecycle: TeamLifecycle;
   /** Role of the signed-in viewer on this team (US-019 leave). */
   viewerRole: TeamMembershipRole | null;
+  /** Participant id of the signed-in viewer when they are on this roster (#185). */
+  viewerParticipantId: string | null;
   /** True when the viewer is a confirmed non-owner and the team is still mutable. */
   canLeave: boolean;
 }

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { MyInvitationsView, type InvitationInboxListState } from './MyInvitationsView';
+import { RosterStatusView } from './RosterStatusView';
 import {
   AuthRequiredError,
   fetchInvitationDetail,
@@ -7,12 +8,28 @@ import {
   respondToInvitation,
   TeamInvitationsApiError,
   type InviteeInvitationListItem,
+  type InvitationRespondResult,
 } from './invitationsApi';
 
 export interface MyInvitationsPanelProps {
   disabled?: boolean;
   refreshKey?: number;
   onStatusNotice?: (notice: string) => void;
+  /** Navigate to the event team workspace after a successful accept (#185). */
+  onViewRoster?: (eventId: string) => void;
+}
+
+interface AcceptRosterSnapshot {
+  teamName: string;
+  eventId: string;
+  vacancyRole: string | null;
+  vacancyStatus: string | null;
+  memberCount: number | null;
+  maxTeamSize: number | null;
+  membershipRole: string | null;
+  membershipStatus: string | null;
+  joinedAt: string | null;
+  availabilityCleared: boolean;
 }
 
 function acceptanceConflictMessage(
@@ -43,6 +60,7 @@ export function MyInvitationsPanel({
   disabled = false,
   refreshKey = 0,
   onStatusNotice,
+  onViewRoster,
 }: MyInvitationsPanelProps): React.JSX.Element {
   const [invitations, setInvitations] = useState<InviteeInvitationListItem[]>([]);
   const [listState, setListState] = useState<InvitationInboxListState>('loading');
@@ -54,6 +72,22 @@ export function MyInvitationsPanel({
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [statusAlert, setStatusAlert] = useState<string | null>(null);
+  const [acceptRoster, setAcceptRoster] = useState<AcceptRosterSnapshot | null>(null);
+
+  function toAcceptRoster(result: InvitationRespondResult): AcceptRosterSnapshot {
+    return {
+      teamName: result.invitation.teamName,
+      eventId: result.invitation.eventId,
+      vacancyRole: result.vacancy?.role ?? result.invitation.vacancyRole,
+      vacancyStatus: result.vacancy?.status ?? null,
+      memberCount: result.memberCount ?? null,
+      maxTeamSize: result.maxTeamSize ?? null,
+      membershipRole: result.membership?.role ?? null,
+      membershipStatus: result.membership?.status ?? null,
+      joinedAt: result.membership?.joinedAt ?? null,
+      availabilityCleared: Boolean(result.availabilityCleared),
+    };
+  }
 
   const loadList = useCallback(async () => {
     setListState('loading');
@@ -109,6 +143,9 @@ export function MyInvitationsPanel({
     setFieldError(null);
     setSuccessNotice(null);
     setStatusAlert(null);
+    if (decision === 'decline') {
+      setAcceptRoster(null);
+    }
     setRespondingId(invitationId);
     try {
       const result = await respondToInvitation(invitationId, decision);
@@ -129,6 +166,9 @@ export function MyInvitationsPanel({
             ? 'Invitation accepted. Your team membership is confirmed.'
             : result.notice) + cascadeSummary
         );
+        if (result.membershipCommitted) {
+          setAcceptRoster(toAcceptRoster(result));
+        }
       }
       onStatusNotice?.(result.notice);
       setInvitations((prev) =>
@@ -253,6 +293,20 @@ export function MyInvitationsPanel({
           data-testid="invitation-status-alert"
         >
           {statusAlert}
+        </div>
+      ) : null}
+
+      {acceptRoster ? (
+        <div data-testid="invitation-accept-roster">
+          <RosterStatusView
+            snapshot={acceptRoster}
+            viewState="success"
+            onViewTeam={
+              onViewRoster
+                ? () => onViewRoster(acceptRoster.eventId)
+                : undefined
+            }
+          />
         </div>
       ) : null}
 
