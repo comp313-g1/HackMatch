@@ -174,7 +174,7 @@ describe('decideModerationCase (US-026 / #242)', () => {
   });
 
   it('hides a team listing and preserves memberships in the summary', async () => {
-    mockClient({});
+    const from = mockClient({});
     vi.spyOn(moderationRepository, 'findById').mockResolvedValue(openCase);
     vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(team);
     vi.spyOn(moderationRepository, 'insertActionRecord').mockResolvedValue({
@@ -207,6 +207,9 @@ describe('decideModerationCase (US-026 / #242)', () => {
     expect(result.safeStateSummary.effects).toEqual(
       expect.objectContaining({ membershipsPreserved: true, moderationStatus: 'Hidden' })
     );
+    // US-026 / #244 — hide must never touch historical membership rows.
+    expect(from).toHaveBeenCalledWith('teams');
+    expect(from).not.toHaveBeenCalledWith('team_memberships');
   });
 
   it('disables a team communication link with removal notice', async () => {

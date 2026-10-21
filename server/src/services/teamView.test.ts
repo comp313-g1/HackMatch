@@ -265,6 +265,40 @@ describe('teamView service unit tests (US-012 / #120)', () => {
       expect(view.lockedAt).toBeNull();
     });
   });
+
+  describe('owner-visible moderation fields (US-026 / #244)', () => {
+    it('projects Hidden status, hiddenAt, and link removal notice', () => {
+      const view = toTeamView({
+        team: {
+          ...baseTeam,
+          moderation_status: 'Hidden',
+          moderation_hidden_at: '2026-10-19T12:00:00.000Z',
+          link_removal_notice: 'A communication link was removed by moderation.',
+        },
+        event: { max_team_size: 4 },
+        members: [],
+        vacancies: [],
+      });
+
+      expect(view.moderationStatus).toBe('Hidden');
+      expect(view.moderationHiddenAt).toBe('2026-10-19T12:00:00.000Z');
+      expect(view.linkRemovalNotice).toMatch(/removed by moderation/i);
+      expect(view.members).toEqual([]);
+    });
+
+    it('defaults moderation fields when absent on legacy rows', () => {
+      const view = toTeamView({
+        team: baseTeam,
+        event: { max_team_size: 4 },
+        members: [],
+        vacancies: [],
+      });
+
+      expect(view.moderationStatus).toBe('None');
+      expect(view.moderationHiddenAt).toBeNull();
+      expect(view.linkRemovalNotice).toBeNull();
+    });
+  });
 });
 
 

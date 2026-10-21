@@ -162,6 +162,24 @@ describe('TeamWorkspace component tests (US-012 / Task 8 / #125)', () => {
     });
   });
 
+  it('shows moderation hidden notice for owners while workspace remains available (#244)', async () => {
+    const hiddenTeam: TeamView = {
+      ...sampleTeam,
+      moderationStatus: 'Hidden',
+      moderationHiddenAt: '2026-10-19T12:00:00.000Z',
+    };
+    vi.mocked(teamApi.fetchMyTeam).mockResolvedValueOnce(hiddenTeam);
+
+    render(<TeamWorkspace eventId="e-123" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('moderation-status-hidden')).toHaveTextContent(
+        /memberships are preserved/i
+      );
+      expect(screen.getByDisplayValue('HackMatch Innovators')).toBeInTheDocument();
+    });
+  });
+
   it('renders roster status view for confirmed non-owner members (#185)', async () => {
     const memberTeam: TeamView = {
       ...sampleTeam,

@@ -17,6 +17,7 @@ export const REMOVAL_REASON_MAX = 500;
 export type TeamRecruitmentStatus = 'Open' | 'Locked' | 'Disbanded';
 export type TeamMembershipRole = 'Owner' | 'Member';
 export type TeamLifecycleReason = 'Locked' | 'Disbanded' | 'EventNotRecruiting';
+export type TeamModerationStatus = 'None' | 'Warned' | 'Hidden';
 
 export interface TeamLifecycle {
   mutable: boolean;
@@ -55,6 +56,10 @@ export interface TeamView {
   recruitmentStatus: TeamRecruitmentStatus;
   /** Server-recorded roster lock timestamp when Locked (US-022 / FR-066 / #206). */
   lockedAt: string | null;
+  /** Owner/member-visible moderation state (US-026 / #244). */
+  moderationStatus?: TeamModerationStatus;
+  moderationHiddenAt?: string | null;
+  linkRemovalNotice?: string | null;
   createdAt: string;
   updatedAt: string;
   members: TeamMemberView[];
