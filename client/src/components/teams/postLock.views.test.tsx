@@ -93,7 +93,9 @@ describe('Post-lock UI freeze (US-022 / #210 / FR-067)', () => {
     render(<TeamWorkspace eventId="e-1" />);
 
     await waitFor(() => {
-      expect(screen.getByRole('note')).toHaveTextContent(POST_LOCK_UI_NOTICE);
+      expect(
+        screen.getByTestId('owner-locked-roster-banner')
+      ).toHaveTextContent(POST_LOCK_UI_NOTICE);
     });
 
     expect(screen.getByRole('button', { name: /\+ add open slot/i })).toBeDisabled();
