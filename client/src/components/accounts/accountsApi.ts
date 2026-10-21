@@ -231,14 +231,19 @@ export function formatDeletionSuccess(result: DeleteAccountResult): string {
   if (result.outcome === 'deletion_already_completed') {
     return `Deletion was already completed. Target completion was ${target}. ${result.request.targetNotice}`;
   }
+  const pseudoCount = result.lockedMembershipsPseudonymizedCount ?? 0;
+  const preserved = result.membershipIdsPreserved?.length ?? 0;
   const parts = [
     'Ownership-verified deletion completed.',
     result.livePiiErased ? 'Live identifying data was erased.' : null,
     result.sessionsRevoked ? 'Sessions revoked.' : null,
     result.firebaseUserDeleted ? 'Firebase user deleted.' : null,
+    result.lockedMembershipsPseudonymized
+      ? `Historical membership fields pseudonymized (${pseudoCount} locked roster row(s); ${preserved} membership row(s) preserved).`
+      : 'No locked membership rows required pseudonymization.',
     `Proposed target completion: ${target}.`,
     result.request.targetNotice,
-    'Locked memberships were preserved for later pseudonymization.',
+    'Locked roster memberships were not deleted.',
   ];
   return parts.filter(Boolean).join(' ');
 }

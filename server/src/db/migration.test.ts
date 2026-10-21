@@ -1740,4 +1740,35 @@ describe('0039_account_enforcement_models.sql (US-027 / #249)', () => {
   });
 });
 
+describe('0040_membership_identity_pseudonymization.sql (US-027 / #253)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0040_membership_identity_pseudonymization.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('adds identity snapshot and pseudonymized_at columns on team_memberships', () => {
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+identity_display_name/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+identity_handle/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+identity_email/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+identity_pseudonymized_at/i);
+  });
+
+  it('enforces pseudonymized rows clear email/handle and keep a display label', () => {
+    expect(sql).toMatch(/chk_team_memberships_identity_pseudonymized/i);
+    expect(sql).toMatch(/identity_handle\s+IS\s+NULL/i);
+    expect(sql).toMatch(/identity_email\s+IS\s+NULL/i);
+  });
+
+  it('indexes pseudonymized memberships for deletion audits', () => {
+    expect(sql).toMatch(/idx_team_memberships_identity_pseudonymized_at/i);
+    expect(sql).toMatch(/idx_team_memberships_participant_pseudonymized/i);
+  });
+});
+
 

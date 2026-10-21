@@ -106,7 +106,7 @@ export function DeleteAccountForm({
         <p className="mt-1 text-xs text-ink-muted">
           Records a verified deletion request with a proposed 30-day live-PII processing target
           (R-06 / NR-023 — not a legal-compliance claim). Unlocked team owners must disband first.
-          Locked roster memberships stay intact for later pseudonymization.
+          Locked roster memberships stay intact; historical identity fields are pseudonymized.
         </p>
       </div>
 

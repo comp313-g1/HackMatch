@@ -387,7 +387,9 @@ describe('ADMIN account-management list, detail, and suspend (US-027 / #248 / #2
         livePiiErased: true,
         firebaseUserDeleted: true,
         sessionsRevoked: true,
-        lockedMembershipsPseudonymized: false,
+        lockedMembershipsPseudonymized: true,
+        lockedMembershipsPseudonymizedCount: 1,
+        membershipIdsPreserved: ['11111111-1111-4111-8111-111111111111'],
         unlockedOwnedTeamIds: [],
         actionRecordId: 'rec-del-1',
       });

@@ -113,7 +113,9 @@ describe('accountsApi (US-027 / #251)', () => {
           livePiiErased: true,
           sessionsRevoked: true,
           firebaseUserDeleted: true,
-          lockedMembershipsPseudonymized: false,
+          lockedMembershipsPseudonymized: true,
+          lockedMembershipsPseudonymizedCount: 1,
+          membershipIdsPreserved: ['11111111-1111-4111-8111-111111111111'],
           unlockedOwnedTeamIds: [],
           actionRecordId: 'rec-1',
           account: { accountId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', state: 'Deactivated' },
@@ -145,5 +147,7 @@ describe('accountsApi (US-027 / #251)', () => {
     );
     expect(formatDeletionSuccess(result)).toMatch(/30-day|2026-11-20/i);
     expect(formatDeletionSuccess(result)).toMatch(/Live identifying data was erased/);
+    expect(formatDeletionSuccess(result)).toMatch(/pseudonymized/i);
+    expect(formatDeletionSuccess(result)).toMatch(/not deleted/i);
   });
 });

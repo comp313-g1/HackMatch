@@ -116,7 +116,9 @@ export interface DeleteAccountResult {
   livePiiErased: boolean;
   firebaseUserDeleted: boolean;
   sessionsRevoked: boolean;
-  lockedMembershipsPseudonymized: false;
+  lockedMembershipsPseudonymized: boolean;
+  lockedMembershipsPseudonymizedCount?: number;
+  membershipIdsPreserved?: string[];
   unlockedOwnedTeamIds: string[];
   actionRecordId: string | null;
 }

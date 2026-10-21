@@ -12,6 +12,7 @@ import { accountsRepository } from '../db/accounts.repository.js';
 import { getSupabaseClient } from '../db/client.js';
 import { firebaseAuth } from '../config/firebase.js';
 import { applySuspensionCascade } from './accountSuspensionCascade.js';
+import { pseudonymizeHistoricalMemberships } from './membershipPseudonymization.js';
 import type { Participant } from '../db/types.js';
 
 vi.mock('../config/firebase.js', () => ({
@@ -24,6 +25,14 @@ vi.mock('../config/firebase.js', () => ({
 vi.mock('./accountSuspensionCascade.js', () => ({
   applySuspensionCascade: vi.fn(),
 }));
+
+vi.mock('./membershipPseudonymization.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./membershipPseudonymization.js')>();
+  return {
+    ...actual,
+    pseudonymizeHistoricalMemberships: vi.fn(),
+  };
+});
 
 vi.mock('../db/client.js', () => ({
   getSupabaseClient: vi.fn(),
@@ -64,6 +73,13 @@ describe('requestAccountDeletion (US-027 / #252)', () => {
       availabilityCleared: true,
       ownedTeamsPaused: 0,
       membershipsPreserved: true,
+    });
+    vi.mocked(pseudonymizeHistoricalMemberships).mockResolvedValue({
+      lockedMembershipsPseudonymized: 1,
+      unlockedMembershipsPseudonymized: 0,
+      membershipIdsPreserved: ['11111111-1111-4111-8111-111111111111'],
+      lockedTeamIdsPreserved: ['cccccccc-cccc-4ccc-8ccc-cccccccccccc'],
+      membershipsDeleted: false,
     });
   });
 
@@ -282,13 +298,16 @@ describe('requestAccountDeletion (US-027 / #252)', () => {
     expect(result.outcome).toBe('deletion_completed');
     expect(result.livePiiErased).toBe(true);
     expect(result.firebaseUserDeleted).toBe(true);
-    expect(result.lockedMembershipsPseudonymized).toBe(false);
+    expect(result.lockedMembershipsPseudonymized).toBe(true);
+    expect(result.lockedMembershipsPseudonymizedCount).toBe(1);
+    expect(result.membershipIdsPreserved).toHaveLength(1);
     expect(result.request.targetCompletionAt).toBe(pending.target_completion_at);
     expect(result.request.targetNotice).toBe(DELETION_TARGET_NOTICE);
     expect(result.account.state).toBe('Deactivated');
     expect(firebaseAuth.revokeRefreshTokens).toHaveBeenCalledWith('fb-part-1');
     expect(firebaseAuth.deleteUser).toHaveBeenCalledWith('fb-part-1');
     expect(applySuspensionCascade).toHaveBeenCalledWith(part.id);
+    expect(pseudonymizeHistoricalMemberships).toHaveBeenCalledWith(part.id);
   });
 });
 

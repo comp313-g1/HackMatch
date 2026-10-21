@@ -329,7 +329,9 @@ describe('AccountEnforcementPage (US-027 / #251)', () => {
       livePiiErased: true,
       firebaseUserDeleted: true,
       sessionsRevoked: true,
-      lockedMembershipsPseudonymized: false,
+      lockedMembershipsPseudonymized: true,
+      lockedMembershipsPseudonymizedCount: 1,
+      membershipIdsPreserved: ['11111111-1111-4111-8111-111111111111'],
       unlockedOwnedTeamIds: [],
       actionRecordId: 'rec-1',
     });
@@ -353,6 +355,7 @@ describe('AccountEnforcementPage (US-027 / #251)', () => {
       expect(screen.getByTestId('delete-success')).toHaveTextContent(/Ownership-verified deletion completed/i);
     });
     expect(screen.getByTestId('delete-success')).toHaveTextContent(/2026-11-20/);
+    expect(screen.getByTestId('delete-success')).toHaveTextContent(/pseudonymized/i);
     expect(deleteMock).toHaveBeenCalledWith(account.accountId, {
       reason: 'Verified owner requested deletion',
       ownershipVerified: true,

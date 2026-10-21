@@ -10,6 +10,7 @@ import {
   type AdminAccountDetail,
 } from './accountManagement.js';
 import { applySuspensionCascade } from './accountSuspensionCascade.js';
+import { pseudonymizeHistoricalMemberships } from './membershipPseudonymization.js';
 
 export const DELETION_TARGET_NOTICE =
   'Proposed 30-day live-PII processing target under R-06 / NR-023; not an automatic legal-compliance claim.';
@@ -49,7 +50,10 @@ export interface DeleteAccountResult {
   livePiiErased: boolean;
   firebaseUserDeleted: boolean;
   sessionsRevoked: boolean;
-  lockedMembershipsPseudonymized: false;
+  /** True when locked (and historical) membership snapshots were pseudonymized; roster rows kept. */
+  lockedMembershipsPseudonymized: boolean;
+  lockedMembershipsPseudonymizedCount: number;
+  membershipIdsPreserved: string[];
   unlockedOwnedTeamIds: string[];
   actionRecordId: string | null;
 }
@@ -90,7 +94,7 @@ async function listOwnedUnlockedTeams(
 
 /**
  * Erase live identifying fields while keeping the participant row (locked roster FKs).
- * Historical locked-membership pseudonymization is deferred to US-027 / #253.
+ * Call after {@link pseudonymizeHistoricalMemberships} so roster snapshots are labeled first.
  */
 export async function eraseLiveAccountPii(participantId: string): Promise<{
   profileCleared: boolean;
@@ -214,6 +218,9 @@ async function processLiveDeletion(params: {
   }
 
   await applySuspensionCascade(target.id);
+
+  // #253 — pseudonymize historical membership snapshots; never delete locked roster rows.
+  const membershipPseudo = await pseudonymizeHistoricalMemberships(target.id);
   const eraseStats = await eraseLiveAccountPii(target.id);
 
   try {
@@ -233,17 +240,26 @@ async function processLiveDeletion(params: {
         sessionsRevoked,
         firebaseUserDeleted,
         livePiiErased: true,
+        lockedMembershipsPseudonymized: membershipPseudo.lockedMembershipsPseudonymized > 0,
       }
     );
   }
 
   const completedAt = new Date().toISOString();
+  const lockedMembershipsPseudonymized =
+    membershipPseudo.lockedMembershipsPseudonymized > 0 ||
+    membershipPseudo.membershipIdsPreserved.length === 0;
   const safeSummary = {
     credentialsIncluded: false,
     otpsIncluded: false,
     privateNotesIncluded: false,
     livePiiErased: true,
-    lockedMembershipsPseudonymized: false as const,
+    lockedMembershipsPseudonymized,
+    lockedMembershipsPseudonymizedCount: membershipPseudo.lockedMembershipsPseudonymized,
+    unlockedMembershipsPseudonymizedCount: membershipPseudo.unlockedMembershipsPseudonymized,
+    membershipIdsPreserved: membershipPseudo.membershipIdsPreserved,
+    lockedTeamIdsPreserved: membershipPseudo.lockedTeamIdsPreserved,
+    membershipsDeleted: false as const,
     sessionsRevoked,
     firebaseUserDeleted,
     profileCleared: eraseStats.profileCleared,
@@ -283,7 +299,9 @@ async function processLiveDeletion(params: {
     livePiiErased: true,
     firebaseUserDeleted,
     sessionsRevoked,
-    lockedMembershipsPseudonymized: false,
+    lockedMembershipsPseudonymized,
+    lockedMembershipsPseudonymizedCount: membershipPseudo.lockedMembershipsPseudonymized,
+    membershipIdsPreserved: membershipPseudo.membershipIdsPreserved,
     unlockedOwnedTeamIds,
     actionRecordId: actionRecord.id,
   };
@@ -354,6 +372,10 @@ export async function requestAccountDeletion(
 
     if (prior) {
       const detail = await getAdminAccountDetail(target.id);
+      const priorCount = Number(
+        (prior.safe_state_summary as { lockedMembershipsPseudonymizedCount?: number } | undefined)
+          ?.lockedMembershipsPseudonymizedCount ?? 0
+      );
       return {
         outcome: 'deletion_already_completed',
         request: toSafeDeletionRequestView(prior),
@@ -361,7 +383,17 @@ export async function requestAccountDeletion(
         livePiiErased: true,
         firebaseUserDeleted: true,
         sessionsRevoked: true,
-        lockedMembershipsPseudonymized: false,
+        lockedMembershipsPseudonymized: Boolean(
+          (prior.safe_state_summary as { lockedMembershipsPseudonymized?: boolean } | undefined)
+            ?.lockedMembershipsPseudonymized
+        ),
+        lockedMembershipsPseudonymizedCount: priorCount,
+        membershipIdsPreserved: Array.isArray(
+          (prior.safe_state_summary as { membershipIdsPreserved?: string[] } | undefined)
+            ?.membershipIdsPreserved
+        )
+          ? ((prior.safe_state_summary as { membershipIdsPreserved: string[] }).membershipIdsPreserved)
+          : [],
         unlockedOwnedTeamIds,
         actionRecordId: null,
       };

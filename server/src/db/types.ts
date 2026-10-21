@@ -377,6 +377,11 @@ export interface TeamMembership {
   removal_reason: string | null;
   joined_at: string;
   ended_at: string | null;
+  /** US-027 / #253 — roster label; becomes a non-identifying pseudonym after deletion. */
+  identity_display_name?: string | null;
+  identity_handle?: string | null;
+  identity_email?: string | null;
+  identity_pseudonymized_at?: string | null;
   created_at: string;
   updated_at: string;
 }
