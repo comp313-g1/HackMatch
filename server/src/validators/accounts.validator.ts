@@ -137,3 +137,71 @@ export const validateAccountIdParam: RequestHandler = (
   }
   next();
 };
+
+export const ACCOUNT_ENFORCEMENT_REASON_MAX = 2000;
+
+export interface SuspendAccountSanitized {
+  reason: string;
+}
+
+export function validateSuspendAccountInput(body: unknown): {
+  errors: AccountsFieldErrors;
+  sanitized: SuspendAccountSanitized | null;
+  submitted: Record<string, unknown>;
+} {
+  const record =
+    body && typeof body === 'object' && !Array.isArray(body)
+      ? (body as Record<string, unknown>)
+      : {};
+  const submitted: Record<string, unknown> = {
+    reason: record.reason ?? null,
+  };
+  const errors: AccountsFieldErrors = {};
+
+  const allowed = new Set(['reason']);
+  for (const key of Object.keys(record)) {
+    if (!allowed.has(key)) {
+      errors[key] = `Unknown field: ${key}.`;
+    }
+  }
+
+  const reasonRaw = record.reason;
+  let reason: string | undefined;
+  if (typeof reasonRaw !== 'string' || reasonRaw.trim().length === 0) {
+    errors.reason = 'A reason is required for every suspension.';
+  } else if ([...reasonRaw].length > ACCOUNT_ENFORCEMENT_REASON_MAX) {
+    errors.reason = `reason must be at most ${ACCOUNT_ENFORCEMENT_REASON_MAX} characters.`;
+  } else {
+    reason = reasonRaw.trim();
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { errors, sanitized: null, submitted };
+  }
+
+  return {
+    errors,
+    sanitized: { reason: reason! },
+    submitted,
+  };
+}
+
+export const validateSuspendAccountBody: RequestHandler = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  const result = validateSuspendAccountInput(req.body);
+  if (Object.keys(result.errors).length > 0) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(400).json({
+      error: 'Validation failed.',
+      code: 'VALIDATION_ERROR',
+      errors: result.errors,
+      submitted: result.submitted,
+    });
+    return;
+  }
+  req.body = result.sanitized;
+  next();
+};

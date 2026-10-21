@@ -5,16 +5,21 @@ import { app } from '../app.js';
 import { participantsRepository } from '../db/participants.repository.js';
 import { accountsRepository } from '../db/accounts.repository.js';
 import { profileRepository } from '../db/profile.repository.js';
+import { moderationRepository } from '../db/moderation.repository.js';
 import { MFA_CLAIM } from '../utils/mfaClaim.js';
 import type { Participant } from '../db/types.js';
 
 const mockVerifyIdToken = vi.fn();
+const mockRevokeRefreshTokens = vi.fn();
+const mockUpdateUser = vi.fn();
 
 vi.mock('../config/firebase.js', () => {
   const authMock = {
     verifyIdToken: (...args: unknown[]) => mockVerifyIdToken(...args),
     getUser: vi.fn(),
     setCustomUserClaims: vi.fn(),
+    revokeRefreshTokens: (...args: unknown[]) => mockRevokeRefreshTokens(...args),
+    updateUser: (...args: unknown[]) => mockUpdateUser(...args),
   };
   return {
     firebaseAuth: authMock,
@@ -55,7 +60,7 @@ const partParticipant: Participant = {
   updated_at: '2026-10-18T01:00:00.000Z',
 };
 
-describe('ADMIN account-management list and detail (US-027 / #248)', () => {
+describe('ADMIN account-management list, detail, and suspend (US-027 / #248 / #250)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockVerifyIdToken.mockResolvedValue({
@@ -65,6 +70,8 @@ describe('ADMIN account-management list and detail (US-027 / #248)', () => {
       auth_time: AUTH_TIME,
       [MFA_CLAIM]: AUTH_TIME,
     } as unknown as DecodedIdToken);
+    mockRevokeRefreshTokens.mockResolvedValue(undefined);
+    mockUpdateUser.mockResolvedValue({});
     vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(adminParticipant);
   });
 
@@ -199,6 +206,96 @@ describe('ADMIN account-management list and detail (US-027 / #248)', () => {
       expect(res.body.privacy.otpsIncluded).toBe(false);
       expect(res.body.privacy.privateTeamNotesIncluded).toBe(false);
       expect(JSON.stringify(res.body)).not.toMatch(/secret-discord|fb-part-1|otp_hash/i);
+    });
+  });
+
+  describe('POST /api/admin/accounts/:accountId/suspend (US-027 / #250)', () => {
+    it('rejects missing reason and echoes submitted draft', async () => {
+      const body = { reason: '   ' };
+      const res = await request(app)
+        .post(`/api/admin/accounts/${ACCOUNT_ID}/suspend`)
+        .set('Authorization', AUTH)
+        .send(body);
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('VALIDATION_ERROR');
+      expect(res.body.errors.reason).toMatch(/required/i);
+      expect(res.body.submitted).toEqual(body);
+      expect(mockRevokeRefreshTokens).not.toHaveBeenCalled();
+    });
+
+    it('returns 403 for PART callers', async () => {
+      mockVerifyIdToken.mockResolvedValue({
+        uid: 'fb-part-1',
+        email: 'part@example.com',
+        role: 'PART',
+        auth_time: AUTH_TIME,
+        [MFA_CLAIM]: AUTH_TIME,
+      } as unknown as DecodedIdToken);
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(partParticipant);
+
+      const res = await request(app)
+        .post(`/api/admin/accounts/${ACCOUNT_ID}/suspend`)
+        .set('Authorization', AUTH)
+        .send({ reason: 'Should not work' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('FORBIDDEN_ROLE');
+    });
+
+    it('suspends account, revokes sessions, and disables Firebase sign-in (happy path)', async () => {
+      vi.spyOn(participantsRepository, 'findById').mockResolvedValue(partParticipant);
+      vi.spyOn(participantsRepository, 'updateParticipant').mockResolvedValue({
+        ...partParticipant,
+        is_suspended: true,
+        suspended_at: '2026-10-21T12:00:00.000Z',
+        suspended_by: adminParticipant.id,
+        suspension_reason: 'Harassment',
+      });
+      vi.spyOn(moderationRepository, 'insertActionRecord').mockResolvedValue({
+        id: 'rec-suspend-1',
+        actor_id: adminParticipant.id,
+        target_type: 'account',
+        target_id: ACCOUNT_ID,
+        action_type: 'account_suspend',
+        reason: 'Harassment',
+        outcome: 'account_suspended',
+        safe_state_summary: {},
+        created_at: '2026-10-21T12:00:00.000Z',
+      });
+      vi.spyOn(accountsRepository, 'findById').mockResolvedValue({
+        ...partParticipant,
+        is_suspended: true,
+        suspended_at: '2026-10-21T12:00:00.000Z',
+        suspension_reason: 'Harassment',
+      });
+      vi.spyOn(profileRepository, 'findProfileByParticipantId').mockResolvedValue(null);
+      vi.spyOn(accountsRepository, 'listRelevantListings').mockResolvedValue([]);
+
+      const res = await request(app)
+        .post(`/api/admin/accounts/${ACCOUNT_ID}/suspend`)
+        .set('Authorization', AUTH)
+        .send({ reason: 'Harassment' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.outcome).toBe('account_suspended');
+      expect(res.body.sessionsRevoked).toBe(true);
+      expect(res.body.firebaseSignInDisabled).toBe(true);
+      expect(res.body.account.state).toBe('Suspended');
+      expect(mockRevokeRefreshTokens).toHaveBeenCalledWith('fb-part-1');
+      expect(mockUpdateUser).toHaveBeenCalledWith('fb-part-1', { disabled: true });
+    });
+
+    it('returns 404 when target account is missing', async () => {
+      vi.spyOn(participantsRepository, 'findById').mockResolvedValue(null);
+
+      const res = await request(app)
+        .post(`/api/admin/accounts/${ACCOUNT_ID}/suspend`)
+        .set('Authorization', AUTH)
+        .send({ reason: 'Missing' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe('ACCOUNT_NOT_FOUND');
     });
   });
 });

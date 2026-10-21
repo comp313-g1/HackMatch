@@ -1,10 +1,14 @@
 import type { Request, Response, NextFunction } from 'express';
-import type { AccountsListQuerySanitized } from '../validators/accounts.validator.js';
+import type {
+  AccountsListQuerySanitized,
+  SuspendAccountSanitized,
+} from '../validators/accounts.validator.js';
 import {
   AccountManagementError,
   getAdminAccountDetail,
   listAdminAccounts,
 } from '../services/accountManagement.js';
+import { suspendAccount } from '../services/accountSuspension.js';
 
 function handleAccountsError(err: unknown, res: Response, next: NextFunction): void {
   res.setHeader('Cache-Control', 'no-store');
@@ -51,6 +55,40 @@ export async function getAdminAccountDetailHandler(
     const detail = await getAdminAccountDetail(String(req.params.accountId));
     res.setHeader('Cache-Control', 'no-store');
     res.status(200).json(detail);
+  } catch (err: unknown) {
+    handleAccountsError(err, res, next);
+  }
+}
+
+/**
+ * POST /api/admin/accounts/:accountId/suspend — revoke sessions + block sign-in (#250).
+ */
+export async function suspendAdminAccountHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const actor = req.participant;
+    if (!actor) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(401).json({
+        error: 'Authentication required. Missing or malformed Authorization header.',
+        code: 'UNAUTHORIZED',
+      });
+      return;
+    }
+
+    const body = req.body as SuspendAccountSanitized;
+    const result = await suspendAccount({
+      actorParticipantId: actor.id,
+      actorRole: actor.role,
+      accountId: String(req.params.accountId),
+      reason: body.reason,
+    });
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json(result);
   } catch (err: unknown) {
     handleAccountsError(err, res, next);
   }

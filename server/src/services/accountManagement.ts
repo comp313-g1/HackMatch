@@ -6,7 +6,9 @@ import type { AccountsListQuerySanitized } from '../validators/accounts.validato
 export type AccountManagementErrorCode =
   | 'ACCOUNT_NOT_FOUND'
   | 'FORBIDDEN_ROLE'
-  | 'INVALID_TARGET';
+  | 'INVALID_TARGET'
+  | 'SELF_SUSPEND_FORBIDDEN'
+  | 'FIREBASE_REVOKE_FAILED';
 
 export class AccountManagementError extends Error {
   readonly status: number;

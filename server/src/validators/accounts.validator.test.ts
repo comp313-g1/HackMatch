@@ -5,6 +5,7 @@ import {
   parseAccountsListQuery,
   validateAccountIdParam,
   validateAccountsListQuery,
+  validateSuspendAccountInput,
 } from './accounts.validator.js';
 
 describe('parseAccountsListQuery (US-027 / #248)', () => {
@@ -85,5 +86,21 @@ describe('accounts validator middleware (US-027 / #248)', () => {
         submitted: { accountId: 'not-a-uuid' },
       })
     );
+  });
+});
+
+describe('validateSuspendAccountInput (US-027 / #250)', () => {
+  it('requires a non-empty reason and echoes submitted draft', () => {
+    const body = { reason: '  ' };
+    const result = validateSuspendAccountInput(body);
+    expect(result.sanitized).toBeNull();
+    expect(result.errors.reason).toMatch(/required/i);
+    expect(result.submitted).toEqual(body);
+  });
+
+  it('accepts a valid suspension reason', () => {
+    const result = validateSuspendAccountInput({ reason: 'Harassment of teammates' });
+    expect(result.errors).toEqual({});
+    expect(result.sanitized).toEqual({ reason: 'Harassment of teammates' });
   });
 });

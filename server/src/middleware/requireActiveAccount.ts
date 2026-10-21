@@ -30,7 +30,8 @@ export async function requireActiveAccount(
 
   try {
     const participant = await participantsRepository.findByFirebaseUid(uid);
-    if (participant?.is_suspended) {
+    // US-027 / #250 — suspended or deactivated accounts cannot renew sessions.
+    if (participant?.is_suspended || participant?.is_deactivated) {
       res.status(403).json({
         error: ACCOUNT_SUSPENDED_MESSAGE,
         code: 'ACCOUNT_SUSPENDED',
