@@ -1,4 +1,4 @@
-/** Client shapes for US-027 / #248–#251 ADMIN account enforcement. */
+/** Client shapes for US-027 / #248–#255 ADMIN account enforcement. */
 
 export type AccountState = 'Active' | 'Suspended' | 'Deactivated';
 export type AccountRole = 'PART' | 'ADMIN';

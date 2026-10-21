@@ -14,7 +14,7 @@ export interface SuspendAccountFormProps {
 }
 
 /**
- * ADMIN suspension form (US-027 / #250–#251).
+ * ADMIN suspension reason form (US-027 / #255 / FR-077).
  * Reason is mandatory; drafts are kept on validation errors (NR-017).
  */
 export function SuspendAccountForm({
@@ -30,6 +30,7 @@ export function SuspendAccountForm({
   const [localErrors, setLocalErrors] = useState<AccountsFieldErrors>({});
 
   const errors = { ...localErrors, ...fieldErrors };
+  const reasonLen = [...reason].length;
   const deactivated = accountState === 'Deactivated';
   const disabled = !accountId || deactivated || submitting;
 
@@ -126,10 +127,20 @@ export function SuspendAccountForm({
           value={reason}
           disabled={disabled}
           onChange={(e) => setReason(e.target.value)}
+          maxLength={REASON_MAX}
           aria-invalid={Boolean(errors.reason)}
-          aria-describedby={errors.reason ? 'suspend-reason-error' : undefined}
+          aria-describedby={
+            errors.reason ? 'suspend-reason-error' : 'suspend-reason-count'
+          }
           className={`${inputClass} ${errors.reason ? 'border-red-400' : 'border-cream-300'}`}
         />
+        <p
+          id="suspend-reason-count"
+          className="mt-1 text-xs text-ink-muted"
+          data-testid="suspend-reason-count"
+        >
+          {reasonLen}/{REASON_MAX}
+        </p>
         {errors.reason ? (
           <p id="suspend-reason-error" role="alert" className="mt-1 text-xs text-red-700">
             {errors.reason}

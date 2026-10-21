@@ -37,7 +37,16 @@ const account = {
   handle: 'ada',
 };
 
-describe('AccountEnforcementPage (US-027 / #251)', () => {
+const privacy = {
+  credentialsIncluded: false as const,
+  otpsIncluded: false as const,
+  privateTeamNotesIncluded: false as const,
+  privateContactsIncluded: false as const,
+  publicAdminSelfPromotionAllowed: false as const,
+  notice: 'Credentials, OTPs, and private team notes are not available.',
+};
+
+describe('AccountEnforcementPage (US-027 / #255)', () => {
   beforeEach(() => {
     probeMock.mockReset();
     fetchListMock.mockReset();
@@ -46,9 +55,12 @@ describe('AccountEnforcementPage (US-027 / #251)', () => {
     deleteMock.mockReset();
   });
 
-  it('shows access denied for non-ADMIN callers', async () => {
-    probeMock.mockResolvedValue('denied');
+  it('shows access loading then denied for non-ADMIN callers', async () => {
+    probeMock.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve('denied'), 20))
+    );
     render(<AccountEnforcementPage />);
+    expect(screen.getByTestId('accounts-access-loading')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('accounts-access-denied')).toBeInTheDocument();
     });
@@ -76,13 +88,7 @@ describe('AccountEnforcementPage (US-027 / #251)', () => {
         moderationStatus: 'None',
       },
       relevantListings: [],
-      privacy: {
-        credentialsIncluded: false,
-        otpsIncluded: false,
-        privateTeamNotesIncluded: false,
-        privateContactsIncluded: false,
-        notice: 'Credentials are not available.',
-      },
+      privacy,
     });
 
     render(<AccountEnforcementPage />);
@@ -90,6 +96,7 @@ describe('AccountEnforcementPage (US-027 / #251)', () => {
     await waitFor(() => {
       expect(screen.getByTestId('accounts-list')).toBeInTheDocument();
     });
+    expect(screen.getByTestId('account-detail-idle')).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId(`account-row-${account.accountId}`));
 
@@ -98,6 +105,44 @@ describe('AccountEnforcementPage (US-027 / #251)', () => {
     });
     expect(screen.getByTestId('account-detail-name')).toHaveTextContent('Ada Lovelace');
     expect(screen.getByTestId('account-privacy-notice')).toHaveTextContent(/Credentials/);
+    expect(screen.getByTestId('suspend-account-form')).toBeInTheDocument();
+    expect(screen.getByTestId('delete-account-form')).toBeInTheDocument();
+  });
+
+  it('applies role filter when searching accounts', async () => {
+    probeMock.mockResolvedValue('granted');
+    fetchListMock.mockResolvedValue([account]);
+    render(<AccountEnforcementPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId('accounts-list')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId('accounts-role-filter'), {
+      target: { value: 'PART' },
+    });
+    fireEvent.click(screen.getByTestId('accounts-search-submit'));
+
+    await waitFor(() => {
+      expect(fetchListMock).toHaveBeenCalledWith(
+        expect.objectContaining({ role: 'PART' })
+      );
+    });
+  });
+
+  it('shows detail load failure with retry', async () => {
+    probeMock.mockResolvedValue('granted');
+    fetchListMock.mockResolvedValue([account]);
+    fetchDetailMock.mockRejectedValue(
+      new accountsApi.AccountsApiError(404, 'ACCOUNT_NOT_FOUND', undefined, undefined, 'Account not found.')
+    );
+    render(<AccountEnforcementPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId(`account-row-${account.accountId}`)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId(`account-row-${account.accountId}`));
+    await waitFor(() => {
+      expect(screen.getByTestId('account-detail-error')).toHaveTextContent(/Account not found/);
+    });
   });
 
   it('shows list load failure', async () => {
@@ -118,13 +163,7 @@ describe('AccountEnforcementPage (US-027 / #251)', () => {
       account,
       profile: null,
       relevantListings: [],
-      privacy: {
-        credentialsIncluded: false,
-        otpsIncluded: false,
-        privateTeamNotesIncluded: false,
-        privateContactsIncluded: false,
-        notice: 'Privacy notice',
-      },
+      privacy,
     });
 
     render(<AccountEnforcementPage />);
@@ -167,13 +206,7 @@ describe('AccountEnforcementPage (US-027 / #251)', () => {
           isOwner: true,
         },
       ],
-      privacy: {
-        credentialsIncluded: false,
-        otpsIncluded: false,
-        privateTeamNotesIncluded: false,
-        privateContactsIncluded: false,
-        notice: 'Privacy notice',
-      },
+      privacy,
     });
     suspendMock.mockResolvedValue({
       account: { ...account, state: 'Suspended', suspensionReason: 'Harassment' },
@@ -222,13 +255,7 @@ describe('AccountEnforcementPage (US-027 / #251)', () => {
       account,
       profile: null,
       relevantListings: [],
-      privacy: {
-        credentialsIncluded: false,
-        otpsIncluded: false,
-        privateTeamNotesIncluded: false,
-        privateContactsIncluded: false,
-        notice: 'Privacy notice',
-      },
+      privacy,
     });
     suspendMock.mockRejectedValue(
       new accountsApi.AccountsApiError(
@@ -267,13 +294,7 @@ describe('AccountEnforcementPage (US-027 / #251)', () => {
       account,
       profile: null,
       relevantListings: [],
-      privacy: {
-        credentialsIncluded: false,
-        otpsIncluded: false,
-        privateTeamNotesIncluded: false,
-        privateContactsIncluded: false,
-        notice: 'Privacy notice',
-      },
+      privacy,
     });
 
     render(<AccountEnforcementPage />);
@@ -302,13 +323,7 @@ describe('AccountEnforcementPage (US-027 / #251)', () => {
       account,
       profile: null,
       relevantListings: [],
-      privacy: {
-        credentialsIncluded: false,
-        otpsIncluded: false,
-        privateTeamNotesIncluded: false,
-        privateContactsIncluded: false,
-        notice: 'Privacy notice',
-      },
+      privacy,
     });
     deleteMock.mockResolvedValue({
       outcome: 'deletion_completed',
@@ -369,13 +384,7 @@ describe('AccountEnforcementPage (US-027 / #251)', () => {
       account,
       profile: null,
       relevantListings: [],
-      privacy: {
-        credentialsIncluded: false,
-        otpsIncluded: false,
-        privateTeamNotesIncluded: false,
-        privateContactsIncluded: false,
-        notice: 'Privacy notice',
-      },
+      privacy,
     });
     deleteMock.mockRejectedValue(
       new accountsApi.AccountsApiError(

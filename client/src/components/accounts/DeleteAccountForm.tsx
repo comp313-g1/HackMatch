@@ -14,7 +14,7 @@ export interface DeleteAccountFormProps {
 }
 
 /**
- * ADMIN ownership-verified deletion form (US-027 / #252 / FR-078).
+ * ADMIN ownership-verified deletion reason form (US-027 / #255 / FR-078).
  * Requires reason + ownership confirmation; drafts kept on validation errors (NR-017).
  */
 export function DeleteAccountForm({
@@ -31,6 +31,7 @@ export function DeleteAccountForm({
   const [localErrors, setLocalErrors] = useState<AccountsFieldErrors>({});
 
   const errors = { ...localErrors, ...fieldErrors };
+  const reasonLen = [...reason].length;
   const alreadyGone = accountState === 'Deactivated';
   const disabled = !accountId || alreadyGone || submitting;
 
@@ -121,10 +122,20 @@ export function DeleteAccountForm({
           value={reason}
           disabled={disabled}
           onChange={(e) => setReason(e.target.value)}
+          maxLength={REASON_MAX}
           aria-invalid={Boolean(errors.reason)}
-          aria-describedby={errors.reason ? 'delete-reason-error' : undefined}
+          aria-describedby={
+            errors.reason ? 'delete-reason-error' : 'delete-reason-count'
+          }
           className={`${inputClass} ${errors.reason ? 'border-red-400' : 'border-cream-300'}`}
         />
+        <p
+          id="delete-reason-count"
+          className="mt-1 text-xs text-ink-muted"
+          data-testid="delete-reason-count"
+        >
+          {reasonLen}/{REASON_MAX}
+        </p>
         {errors.reason ? (
           <p id="delete-reason-error" role="alert" className="mt-1 text-xs text-red-700">
             {errors.reason}
