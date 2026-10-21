@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { Request, Response } from 'express';
 import {
+  ACCOUNT_ENFORCEMENT_REASON_MAX,
   MAX_ACCOUNTS_LIST_LIMIT,
   parseAccountsListQuery,
   validateAccountIdParam,
@@ -90,7 +91,7 @@ describe('accounts validator middleware (US-027 / #248)', () => {
   });
 });
 
-describe('validateSuspendAccountInput (US-027 / #250)', () => {
+describe('validateSuspendAccountInput (US-027 / #250 / #256)', () => {
   it('requires a non-empty reason and echoes submitted draft', () => {
     const body = { reason: '  ' };
     const result = validateSuspendAccountInput(body);
@@ -104,9 +105,17 @@ describe('validateSuspendAccountInput (US-027 / #250)', () => {
     expect(result.errors).toEqual({});
     expect(result.sanitized).toEqual({ reason: 'Harassment of teammates' });
   });
+
+  it('rejects reason above max length and preserves the submitted draft (boundary)', () => {
+    const body = { reason: 'r'.repeat(ACCOUNT_ENFORCEMENT_REASON_MAX + 1) };
+    const result = validateSuspendAccountInput(body);
+    expect(result.sanitized).toBeNull();
+    expect(result.errors.reason).toMatch(/at most/i);
+    expect(result.submitted).toEqual(body);
+  });
 });
 
-describe('validateDeleteAccountInput (US-027 / #252)', () => {
+describe('validateDeleteAccountInput (US-027 / #252 / #256)', () => {
   it('requires reason and ownershipVerified=true, preserving submitted draft', () => {
     const body = { reason: '  ', ownershipVerified: false };
     const result = validateDeleteAccountInput(body);
@@ -126,5 +135,16 @@ describe('validateDeleteAccountInput (US-027 / #252)', () => {
       reason: 'Verified owner requested deletion',
       ownershipVerified: true,
     });
+  });
+
+  it('rejects overlong deletion reason while keeping ownershipVerified draft (boundary)', () => {
+    const body = {
+      reason: 'd'.repeat(ACCOUNT_ENFORCEMENT_REASON_MAX + 1),
+      ownershipVerified: true,
+    };
+    const result = validateDeleteAccountInput(body);
+    expect(result.sanitized).toBeNull();
+    expect(result.errors.reason).toMatch(/at most/i);
+    expect(result.submitted).toEqual(body);
   });
 });
