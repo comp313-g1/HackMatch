@@ -6,6 +6,7 @@ import { participantsRepository } from '../db/participants.repository.js';
 import { accountsRepository } from '../db/accounts.repository.js';
 import { profileRepository } from '../db/profile.repository.js';
 import { moderationRepository } from '../db/moderation.repository.js';
+import { applySuspensionCascade } from '../services/accountSuspensionCascade.js';
 import { MFA_CLAIM } from '../utils/mfaClaim.js';
 import type { Participant } from '../db/types.js';
 
@@ -30,6 +31,17 @@ vi.mock('../config/firebase.js', () => {
     _resetFirebaseInstances: vi.fn(),
   };
 });
+
+vi.mock('../services/accountSuspensionCascade.js', () => ({
+  applySuspensionCascade: vi.fn().mockResolvedValue({
+    pendingIncomingRequestsCanceled: 0,
+    outgoingInvitationsCanceled: 0,
+    profileHidden: true,
+    availabilityCleared: false,
+    ownedTeamsPaused: 0,
+    membershipsPreserved: true,
+  }),
+}));
 
 const AUTH_TIME = Math.floor(Date.now() / 1000) - 30;
 const AUTH = 'Bearer valid-mfa-token';
@@ -72,6 +84,14 @@ describe('ADMIN account-management list, detail, and suspend (US-027 / #248 / #2
     } as unknown as DecodedIdToken);
     mockRevokeRefreshTokens.mockResolvedValue(undefined);
     mockUpdateUser.mockResolvedValue({});
+    vi.mocked(applySuspensionCascade).mockResolvedValue({
+      pendingIncomingRequestsCanceled: 0,
+      outgoingInvitationsCanceled: 0,
+      profileHidden: true,
+      availabilityCleared: false,
+      ownedTeamsPaused: 0,
+      membershipsPreserved: true,
+    });
     vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(adminParticipant);
   });
 
@@ -282,6 +302,12 @@ describe('ADMIN account-management list, detail, and suspend (US-027 / #248 / #2
       expect(res.body.sessionsRevoked).toBe(true);
       expect(res.body.firebaseSignInDisabled).toBe(true);
       expect(res.body.account.state).toBe('Suspended');
+      expect(res.body.effects).toEqual(
+        expect.objectContaining({
+          profileHidden: true,
+          membershipsPreserved: true,
+        })
+      );
       expect(mockRevokeRefreshTokens).toHaveBeenCalledWith('fb-part-1');
       expect(mockUpdateUser).toHaveBeenCalledWith('fb-part-1', { disabled: true });
     });

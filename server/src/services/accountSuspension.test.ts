@@ -5,6 +5,7 @@ import { moderationRepository } from '../db/moderation.repository.js';
 import { profileRepository } from '../db/profile.repository.js';
 import { accountsRepository } from '../db/accounts.repository.js';
 import { firebaseAuth } from '../config/firebase.js';
+import { applySuspensionCascade } from './accountSuspensionCascade.js';
 import type { Participant } from '../db/types.js';
 
 vi.mock('../config/firebase.js', () => ({
@@ -14,7 +15,20 @@ vi.mock('../config/firebase.js', () => ({
   },
 }));
 
-describe('suspendAccount (US-027 / #250)', () => {
+vi.mock('./accountSuspensionCascade.js', () => ({
+  applySuspensionCascade: vi.fn(),
+}));
+
+const cascadeEffects = {
+  pendingIncomingRequestsCanceled: 2,
+  outgoingInvitationsCanceled: 1,
+  profileHidden: true,
+  availabilityCleared: true,
+  ownedTeamsPaused: 1,
+  membershipsPreserved: true as const,
+};
+
+describe('suspendAccount (US-027 / #250 / #251)', () => {
   const adminId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   const part: Participant = {
     id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -33,6 +47,7 @@ describe('suspendAccount (US-027 / #250)', () => {
     vi.clearAllMocks();
     vi.mocked(firebaseAuth.revokeRefreshTokens).mockResolvedValue(undefined as never);
     vi.mocked(firebaseAuth.updateUser).mockResolvedValue({} as never);
+    vi.mocked(applySuspensionCascade).mockResolvedValue(cascadeEffects);
   });
 
   it('suspends account, revokes sessions, disables Firebase sign-in, and writes action record', async () => {
@@ -88,6 +103,16 @@ describe('suspendAccount (US-027 / #250)', () => {
     expect(result.alreadySuspended).toBe(false);
     expect(result.outcome).toBe('account_suspended');
     expect(result.account.state).toBe('Suspended');
+    expect(applySuspensionCascade).toHaveBeenCalledWith(part.id);
+    expect(result.effects).toEqual(cascadeEffects);
+    expect(moderationRepository.insertActionRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        safe_state_summary: expect.objectContaining({
+          effects: cascadeEffects,
+          credentialsIncluded: false,
+        }),
+      })
+    );
   });
 
   it('rejects self-suspension', async () => {

@@ -7,6 +7,10 @@ import {
   toSafeAdminAccountView,
   type AdminAccountDetail,
 } from './accountManagement.js';
+import {
+  applySuspensionCascade,
+  type SuspensionCascadeEffects,
+} from './accountSuspensionCascade.js';
 
 export interface SuspendAccountInput {
   actorParticipantId: string;
@@ -22,14 +26,17 @@ export interface SuspendAccountResult {
   alreadySuspended: boolean;
   outcome: 'account_suspended' | 'account_already_suspended';
   actionRecordId: string;
+  /** US-027 / #251 — cancel requests, hide profile, pause owned recruitment. */
+  effects: SuspensionCascadeEffects;
 }
 
 /**
- * ADMIN suspends an account (US-027 / #250 / AC 2):
+ * ADMIN suspends an account (US-027 / #250–#251 / AC 2):
  * 1. Persist suspension flags + reason in PostgreSQL (blocks renew via requireActiveAccount).
  * 2. Revoke Firebase refresh tokens (invalidate current sessions).
  * 3. Disable the Firebase user (blocks fresh sign-in at the IdP).
- * 4. Write a safe FR-079 action record (no credentials / OTPs).
+ * 4. Cascade: cancel pending requests, hide profile/LFT, pause owned Open recruitment (#251).
+ * 5. Write a safe FR-079 action record (no credentials / OTPs).
  */
 export async function suspendAccount(input: SuspendAccountInput): Promise<SuspendAccountResult> {
   if (input.actorRole !== 'ADMIN') {
@@ -93,6 +100,9 @@ export async function suspendAccount(input: SuspendAccountInput): Promise<Suspen
     );
   }
 
+  // #251 — cancel pending requests, hide profile, pause owned Open recruitment.
+  const effects = await applySuspensionCascade(updated.id);
+
   const outcome = alreadySuspended ? 'account_already_suspended' : 'account_suspended';
   const safeStateSummary = {
     accountId: updated.id,
@@ -100,6 +110,7 @@ export async function suspendAccount(input: SuspendAccountInput): Promise<Suspen
     sessionsRevoked,
     firebaseSignInDisabled,
     alreadySuspended,
+    effects,
     credentialsIncluded: false,
     otpsIncluded: false,
     privateContactsIncluded: false,
@@ -125,6 +136,7 @@ export async function suspendAccount(input: SuspendAccountInput): Promise<Suspen
     alreadySuspended,
     outcome,
     actionRecordId: actionRecord.id,
+    effects,
   };
 }
 

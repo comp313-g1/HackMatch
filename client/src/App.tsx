@@ -19,6 +19,7 @@ import { ApplicationFormPanel } from './components/teams/ApplicationFormPanel';
 import { MyApplicationsPanel } from './components/teams/MyApplicationsPanel';
 import { MyInvitationsPanel } from './components/teams/MyInvitationsPanel';
 import { ModerationSafetyPage } from './components/moderation/ModerationSafetyPage';
+import { AccountEnforcementPage } from './components/accounts/AccountEnforcementPage';
 import type { OpenTeamApplyTarget } from './components/teams/openTeamsApi';
 import type { OtpChallenge } from './components/auth/providerSignIn';
 
@@ -37,7 +38,8 @@ type View =
   | 'browse-teams'
   | 'applications'
   | 'invitations'
-  | 'moderation';
+  | 'moderation'
+  | 'accounts';
 
 const getInitialView = (): View => {
   if (typeof window === 'undefined') return 'landing';
@@ -83,6 +85,9 @@ const getInitialView = (): View => {
   }
   if (view === 'moderation' || view === 'safety-queue') {
     return 'moderation';
+  }
+  if (view === 'accounts' || view === 'account-enforcement') {
+    return 'accounts';
   }
   return 'landing';
 };
@@ -202,6 +207,12 @@ export function App(): React.JSX.Element {
     setCurrentView('moderation');
   };
 
+  const goToAccounts = () => {
+    setStatusNotice(null);
+    setIsMobileMenuOpen(false);
+    setCurrentView('accounts');
+  };
+
   const isAuthenticated =
     Boolean(currentUser) ||
     currentView === 'account' ||
@@ -211,6 +222,7 @@ export function App(): React.JSX.Element {
     currentView === 'applications' ||
     currentView === 'invitations' ||
     currentView === 'moderation' ||
+    currentView === 'accounts' ||
     currentView === 'mfa';
   const participantIdentifier =
     currentUser?.displayName ||
@@ -330,6 +342,18 @@ export function App(): React.JSX.Element {
                   }`}
                 >
                   Moderation
+                </button>
+                <button
+                  type="button"
+                  onClick={goToAccounts}
+                  aria-current={currentView === 'accounts' ? 'page' : undefined}
+                  className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
+                    currentView === 'accounts'
+                      ? 'text-forest-900 font-semibold'
+                      : 'text-ink-muted hover:text-forest-800'
+                  }`}
+                >
+                  Accounts
                 </button>
                 <button
                   type="button"
@@ -477,6 +501,13 @@ export function App(): React.JSX.Element {
                   className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
                 >
                   Moderation
+                </button>
+                <button
+                  type="button"
+                  onClick={goToAccounts}
+                  className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
+                >
+                  Accounts
                 </button>
                 <button
                   type="button"
@@ -727,6 +758,29 @@ export function App(): React.JSX.Element {
             >
               {() => (
                 <ModerationSafetyPage
+                  onNavigateAway={() => {
+                    setStatusNotice(null);
+                    setCurrentView('landing');
+                  }}
+                />
+              )}
+            </MfaGate>
+          </section>
+        ) : currentView === 'accounts' ? (
+          <section aria-labelledby="accounts-heading">
+            <h2 id="accounts-heading" className="sr-only">
+              Administrative Account Enforcement
+            </h2>
+            <MfaGate
+              initialChallenge={otpChallenge}
+              onNavigateToSignIn={() => {
+                setStatusNotice(null);
+                setOtpChallenge(null);
+                setCurrentView('login');
+              }}
+            >
+              {() => (
+                <AccountEnforcementPage
                   onNavigateAway={() => {
                     setStatusNotice(null);
                     setCurrentView('landing');
