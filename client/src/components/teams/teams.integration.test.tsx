@@ -356,7 +356,7 @@ describe('US-012 Client Integration Suite (TeamWorkspace & Lifecycle)', () => {
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
 
     await waitFor(() => {
-      expect(screen.getAllByText('Bob Hacker').length).toBeGreaterThan(0);
+      expect(screen.getByText('Bob Hacker')).toBeInTheDocument();
     });
 
     // Attempt removal
@@ -376,7 +376,7 @@ describe('US-012 Client Integration Suite (TeamWorkspace & Lifecycle)', () => {
     fireEvent.click(screen.getByRole('button', { name: /confirm remove/i }));
 
     await waitFor(() => {
-      expect(screen.queryAllByText('Bob Hacker')).toHaveLength(0);
+      expect(screen.queryByText('Bob Hacker')).not.toBeInTheDocument();
     });
 
     // 7. Disband Team (with alertdialog confirmation and Cancel verification)
