@@ -58,6 +58,7 @@ export interface AdminAccountDetail {
     otpsIncluded: false;
     privateTeamNotesIncluded: false;
     privateContactsIncluded: false;
+    publicAdminSelfPromotionAllowed?: false;
     notice: string;
   };
 }

@@ -139,7 +139,10 @@ describe('ADMIN account-management list, detail, and suspend (US-027 / #248 / #2
       const res = await request(app).get('/api/admin/accounts').set('Authorization', AUTH);
 
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ accounts: [] });
+      expect(res.body.accounts).toEqual([]);
+      expect(res.body.privacy.credentialsIncluded).toBe(false);
+      expect(res.body.privacy.otpsIncluded).toBe(false);
+      expect(res.body.privacy.publicAdminSelfPromotionAllowed).toBe(false);
     });
 
     it('returns accounts with identifier, role, and state (happy path)', async () => {
@@ -168,7 +171,8 @@ describe('ADMIN account-management list, detail, and suspend (US-027 / #248 / #2
           handle: 'ada',
         })
       );
-      expect(JSON.stringify(res.body)).not.toMatch(/fb-part-1|secret|firebase_uid|otp/i);
+      expect(JSON.stringify(res.body)).not.toMatch(/fb-part-1|firebase_uid|otp_hash|password/i);
+      expect(res.body.privacy.otpsIncluded).toBe(false);
     });
 
     it('rejects invalid state query and echoes submitted values', async () => {
@@ -203,6 +207,29 @@ describe('ADMIN account-management list, detail, and suspend (US-027 / #248 / #2
 
       expect(res.status).toBe(404);
       expect(res.body.code).toBe('ACCOUNT_NOT_FOUND');
+    });
+
+    it('scrubs credentials, OTPs, and private notes from error details (#254)', async () => {
+      const accountSuspension = await import('../services/accountSuspension.js');
+      const { AccountManagementError } = await import('../services/accountManagement.js');
+      vi.spyOn(accountSuspension, 'suspendAccount').mockRejectedValue(
+        new AccountManagementError(502, 'FIREBASE_REVOKE_FAILED', 'Firebase failed', {
+          firebase_uid: 'fb-leak',
+          otp_hash: 'otp-leak',
+          workspace_note: 'secret note',
+          sessionsRevoked: false,
+        })
+      );
+
+      const res = await request(app)
+        .post(`/api/admin/accounts/${ACCOUNT_ID}/suspend`)
+        .set('Authorization', AUTH)
+        .send({ reason: 'Harassment' });
+
+      expect(res.status).toBe(502);
+      expect(JSON.stringify(res.body)).not.toMatch(/fb-leak|otp-leak|secret note/i);
+      expect(res.body.privacy.credentialsIncluded).toBe(false);
+      expect(res.body.details.sessionsRevoked).toBe(false);
     });
 
     it('returns sanitized detail with relevant listings and privacy flags', async () => {

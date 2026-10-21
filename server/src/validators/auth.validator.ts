@@ -1,4 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
+import {
+  evaluateAdminSelfPromotionAttempt,
+  sanitizeSubmittedAccountDraft,
+} from '../services/accountPrivacy.js';
 
 export interface RegistrationFieldErrors {
   fullName?: string;
@@ -55,27 +59,23 @@ export function validateRegisterPayload(
     return;
   }
 
-  // 1. Role boundary & ADMIN protection (US-001 AC 4 / US-001-T6 / FR-001)
-  if (body.role !== undefined && body.role !== null) {
-    const rawRole = String(body.role).trim().toUpperCase();
-    if (rawRole !== 'PART') {
-      res.status(403).json({
-        error: 'Public registration cannot grant administrative privileges.',
-      });
-      return;
-    }
-  }
-
+  // 1. Role boundary & ADMIN protection (US-001 AC 4 / US-027 / #254)
+  const privilegeKeys: Record<string, unknown> = {};
   for (const key of PRIVILEGE_ESCALATION_KEYS) {
-    if (
-      (body as Record<string, unknown>)[key] !== undefined &&
-      (body as Record<string, unknown>)[key] !== null
-    ) {
-      res.status(403).json({
-        error: 'Public registration cannot grant administrative privileges.',
-      });
-      return;
-    }
+    privilegeKeys[key] = (body as Record<string, unknown>)[key];
+  }
+  const selfPromotion = evaluateAdminSelfPromotionAttempt({
+    role: body.role,
+    privilegeKeys,
+  });
+  if (selfPromotion) {
+    res.status(403).json({
+      error: selfPromotion.message,
+      code: selfPromotion.code,
+      // NR-017 — keep non-secret draft fields; never echo password.
+      submitted: sanitizeSubmittedAccountDraft(body),
+    });
+    return;
   }
 
   const fieldErrors: RegistrationFieldErrors = {};

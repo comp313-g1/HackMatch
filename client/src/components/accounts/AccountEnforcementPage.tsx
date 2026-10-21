@@ -282,8 +282,8 @@ export function AccountEnforcementPage({
       <header className="space-y-1">
         <h2 className="font-display text-2xl font-semibold text-forest-900">Account enforcement</h2>
         <p className="text-sm text-ink-muted">
-          Inspect account status and suspend non-compliant accounts. Credentials, OTPs, and private
-          team notes are never shown.
+          Inspect account status and suspend or delete non-compliant accounts. Credentials, OTPs,
+          and private team notes are never shown. Public ADMIN self-promotion is prohibited.
         </p>
       </header>
 

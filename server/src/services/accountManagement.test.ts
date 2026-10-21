@@ -130,6 +130,7 @@ describe('accountManagement (US-027 / #248)', () => {
       otpsIncluded: false,
       privateTeamNotesIncluded: false,
       privateContactsIncluded: false,
+      publicAdminSelfPromotionAllowed: false,
       notice: ACCOUNT_PRIVACY_NOTICE,
     });
     expect(JSON.stringify(detail)).not.toMatch(/private@im|fb-part-secret|otp_hash/i);

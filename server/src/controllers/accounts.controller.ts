@@ -8,18 +8,23 @@ import {
   AccountManagementError,
   getAdminAccountDetail,
   listAdminAccounts,
+  toSafeAccountApiPayload,
 } from '../services/accountManagement.js';
 import { suspendAccount } from '../services/accountSuspension.js';
 import { requestAccountDeletion } from '../services/accountDeletion.js';
+import { accountPrivacyFlags } from '../services/accountPrivacy.js';
 
 function handleAccountsError(err: unknown, res: Response, next: NextFunction): void {
   res.setHeader('Cache-Control', 'no-store');
   if (err instanceof AccountManagementError) {
-    res.status(err.status).json({
-      error: err.message,
-      code: err.code,
-      ...(err.details ? { details: err.details } : {}),
-    });
+    res.status(err.status).json(
+      toSafeAccountApiPayload({
+        error: err.message,
+        code: err.code,
+        ...(err.details ? { details: err.details } : {}),
+        privacy: accountPrivacyFlags(),
+      })
+    );
     return;
   }
   next(err);
@@ -39,7 +44,12 @@ export async function listAdminAccountsHandler(
     }) as AccountsListQuerySanitized;
     const accounts = await listAdminAccounts(query);
     res.setHeader('Cache-Control', 'no-store');
-    res.status(200).json({ accounts });
+    res.status(200).json(
+      toSafeAccountApiPayload({
+        accounts,
+        privacy: accountPrivacyFlags(),
+      })
+    );
   } catch (err: unknown) {
     handleAccountsError(err, res, next);
   }
@@ -56,7 +66,7 @@ export async function getAdminAccountDetailHandler(
   try {
     const detail = await getAdminAccountDetail(String(req.params.accountId));
     res.setHeader('Cache-Control', 'no-store');
-    res.status(200).json(detail);
+    res.status(200).json(toSafeAccountApiPayload(detail));
   } catch (err: unknown) {
     handleAccountsError(err, res, next);
   }
@@ -90,7 +100,12 @@ export async function suspendAdminAccountHandler(
     });
 
     res.setHeader('Cache-Control', 'no-store');
-    res.status(200).json(result);
+    res.status(200).json(
+      toSafeAccountApiPayload({
+        ...result,
+        privacy: accountPrivacyFlags(),
+      })
+    );
   } catch (err: unknown) {
     handleAccountsError(err, res, next);
   }
@@ -125,7 +140,12 @@ export async function deleteAdminAccountHandler(
     });
 
     res.setHeader('Cache-Control', 'no-store');
-    res.status(200).json(result);
+    res.status(200).json(
+      toSafeAccountApiPayload({
+        ...result,
+        privacy: accountPrivacyFlags(),
+      })
+    );
   } catch (err: unknown) {
     handleAccountsError(err, res, next);
   }

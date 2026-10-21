@@ -2,6 +2,13 @@ import { accountsRepository } from '../db/accounts.repository.js';
 import { profileRepository } from '../db/profile.repository.js';
 import type { Participant, ParticipantPrimaryRole, ParticipantRole } from '../db/types.js';
 import type { AccountsListQuerySanitized } from '../validators/accounts.validator.js';
+import {
+  ACCOUNT_PRIVACY_NOTICE,
+  accountPrivacyFlags,
+  scrubPrivateAccountFields,
+} from './accountPrivacy.js';
+
+export { ACCOUNT_PRIVACY_NOTICE };
 
 export type AccountManagementErrorCode =
   | 'ACCOUNT_NOT_FOUND'
@@ -75,17 +82,8 @@ export interface AdminAccountDetail {
   };
   profile: AdminAccountProfileSummary | null;
   relevantListings: AdminAccountListingSummary[];
-  privacy: {
-    credentialsIncluded: false;
-    otpsIncluded: false;
-    privateTeamNotesIncluded: false;
-    privateContactsIncluded: false;
-    notice: string;
-  };
+  privacy: ReturnType<typeof accountPrivacyFlags>;
 }
-
-export const ACCOUNT_PRIVACY_NOTICE =
-  'Credentials, OTPs, private contact handles, and private team notes are not available through account-management endpoints.';
 
 function toAccountState(participant: Participant): AccountState {
   if (participant.is_deactivated) return 'Deactivated';
@@ -186,12 +184,11 @@ export async function getAdminAccountDetail(accountId: string): Promise<AdminAcc
       membershipRole: row.membership_role,
       isOwner: row.is_owner,
     })),
-    privacy: {
-      credentialsIncluded: false,
-      otpsIncluded: false,
-      privateTeamNotesIncluded: false,
-      privateContactsIncluded: false,
-      notice: ACCOUNT_PRIVACY_NOTICE,
-    },
+    privacy: accountPrivacyFlags(),
   };
+}
+
+/** Scrub private fields from any account-management response envelope. */
+export function toSafeAccountApiPayload<T>(payload: T): T {
+  return scrubPrivateAccountFields(payload);
 }
