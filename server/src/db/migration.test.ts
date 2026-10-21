@@ -1630,6 +1630,28 @@ describe('0030_handle_concurrent_invitation_acceptance.sql Migration DDL (US-019
   });
 });
 
+describe('0038_moderation_enforcement_fields.sql decide actions (US-026 / #242)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0038_moderation_enforcement_fields.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('adds team hide and URL-removal fields', () => {
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+moderation_hidden_at\s+TIMESTAMPTZ/i);
+    expect(sql).toMatch(/moderation_status/i);
+    expect(sql).toMatch(/link_removal_notice/i);
+    expect(sql).toMatch(/chk_teams_moderation_hidden_matches_status/i);
+  });
+
+  it('adds case resolution metadata for decide actions', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+moderation_cases/i);
+    expect(sql).toMatch(/resolved_at\s+TIMESTAMPTZ/i);
+    expect(sql).toMatch(/last_action_type/i);
+    expect(sql).toMatch(/dismiss.*redact.*warn.*hide.*disable_url/is);
+  });
+});
+
 describe('0037_create_moderation_cases.sql moderation queue schema (US-026 / #239 / FR-075)', () => {
   const migrationPath = path.resolve(
     __dirname,

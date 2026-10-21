@@ -36,6 +36,11 @@ function TargetBody({ target }: { target: SanitizedModerationTarget }): React.JS
           Goal: {t.goal} · {t.commitmentHours}h · Owner:{' '}
           {t.ownerHandle?.trim() || t.ownerDisplayName || '—'}
         </p>
+        {t.moderationStatus && t.moderationStatus !== 'None' ? (
+          <p className="text-xs text-ink" data-testid="moderation-target-status">
+            Moderation status: {t.moderationStatus}
+          </p>
+        ) : null}
         {t.communicationLink ? (
           <p className="text-xs break-all">
             <span className="text-ink-muted">Communication link: </span>
@@ -47,6 +52,11 @@ function TargetBody({ target }: { target: SanitizedModerationTarget }): React.JS
             >
               {t.communicationLink}
             </a>
+          </p>
+        ) : null}
+        {t.linkRemovalNotice ? (
+          <p className="text-xs text-amber-900" data-testid="moderation-link-removal-notice">
+            {t.linkRemovalNotice}
           </p>
         ) : null}
       </div>

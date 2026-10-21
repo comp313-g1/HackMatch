@@ -2,6 +2,12 @@
 
 export type ModerationTargetType = 'team' | 'profile' | 'url';
 export type ModerationCaseStatus = 'Open' | 'Dismissed' | 'Resolved';
+export type ModerationDecisionAction =
+  | 'dismiss'
+  | 'redact'
+  | 'warn'
+  | 'hide'
+  | 'disable_url';
 
 export interface ModerationCaseView {
   id: string;
@@ -13,6 +19,8 @@ export interface ModerationCaseView {
   flaggedUrl: string | null;
   createdAt: string;
   createdBy: string;
+  lastActionType?: string | null;
+  resolvedAt?: string | null;
 }
 
 export interface SanitizedTeamTarget {
@@ -28,6 +36,8 @@ export interface SanitizedTeamTarget {
     eventId: string;
     ownerHandle: string | null;
     ownerDisplayName: string | null;
+    moderationStatus?: string;
+    linkRemovalNotice?: string | null;
   };
 }
 
@@ -79,9 +89,22 @@ export interface ModerationFieldErrors {
   targetId?: string;
   reason?: string;
   flaggedUrl?: string;
+  action?: string;
   body?: string;
   _form?: string;
   [key: string]: string | undefined;
+}
+
+export interface DecideModerationCaseInput {
+  action: ModerationDecisionAction;
+  reason: string;
+}
+
+export interface DecideModerationCaseResult {
+  case: ModerationCaseView;
+  action: ModerationDecisionAction;
+  outcome: string;
+  safeStateSummary: Record<string, unknown>;
 }
 
 export type ModerationListState = 'loading' | 'success' | 'error';

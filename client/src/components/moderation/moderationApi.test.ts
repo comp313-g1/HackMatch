@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   createModerationCase,
+  decideModerationCase,
   fetchModerationCaseDetail,
   fetchModerationCases,
   probeAdminModerationAccess,
@@ -134,6 +135,51 @@ describe('moderationApi (US-026 / #241)', () => {
     const detail = await fetchModerationCaseDetail('1');
     expect(detail.case.id).toBe('1');
     expect(detail.target.type).toBe('team');
+  });
+
+  it('decideModerationCase returns action outcome on success', async () => {
+    authFetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        case: {
+          id: '1',
+          targetType: 'team',
+          targetId: 't',
+          reason: 'spam',
+          status: 'Resolved',
+          reportCount: 0,
+          flaggedUrl: null,
+          createdAt: '2026-10-18T12:00:00.000Z',
+          createdBy: 'a',
+          lastActionType: 'hide',
+        },
+        action: 'hide',
+        outcome: 'listing_hidden',
+        safeStateSummary: { credentialsIncluded: false },
+      })
+    );
+    const result = await decideModerationCase('1', {
+      action: 'hide',
+      reason: 'Phishing listing',
+    });
+    expect(result.action).toBe('hide');
+    expect(result.outcome).toBe('listing_hidden');
+  });
+
+  it('decideModerationCase echoes submitted values when reason is missing', async () => {
+    const input = { action: 'dismiss' as const, reason: '' };
+    authFetchMock.mockResolvedValueOnce(
+      jsonResponse(400, {
+        code: 'VALIDATION_ERROR',
+        error: 'Validation failed.',
+        errors: { reason: 'A reason is required for every moderation decision.' },
+        submitted: input,
+      })
+    );
+    await expect(decideModerationCase('1', input)).rejects.toMatchObject({
+      status: 400,
+      errors: { reason: expect.any(String) },
+      submitted: input,
+    });
   });
 
   it('createModerationCase echoes submitted field errors on 400', async () => {

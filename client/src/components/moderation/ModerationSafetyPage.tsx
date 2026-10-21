@@ -3,6 +3,7 @@ import {
   AuthRequiredError,
   ModerationApiError,
   createModerationCase,
+  decideModerationCase,
   fetchModerationCaseDetail,
   fetchModerationCases,
   probeAdminModerationAccess,
@@ -11,8 +12,10 @@ import {
 import { ModerationQueueView } from './ModerationQueueView';
 import { ModerationCaseView } from './ModerationCaseView';
 import { OpenModerationCaseForm } from './OpenModerationCaseForm';
+import { ModerationActionPanel } from './ModerationActionPanel';
 import type {
   CreateModerationCaseInput,
+  DecideModerationCaseInput,
   ModerationAccessState,
   ModerationCaseDetail,
   ModerationCaseView as CaseRow,
@@ -49,6 +52,11 @@ export function ModerationSafetyPage({
   const [fieldErrors, setFieldErrors] = useState<ModerationFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
+
+  const [deciding, setDeciding] = useState(false);
+  const [decideFieldErrors, setDecideFieldErrors] = useState<ModerationFieldErrors>({});
+  const [decideFormError, setDecideFormError] = useState<string | null>(null);
+  const [decideSuccess, setDecideSuccess] = useState<string | null>(null);
 
   const checkAccess = useCallback(async () => {
     setAccessState('loading');
@@ -123,7 +131,43 @@ export function ModerationSafetyPage({
 
   const handleSelect = (caseId: string) => {
     setSelectedCaseId(caseId);
+    setDecideFieldErrors({});
+    setDecideFormError(null);
+    setDecideSuccess(null);
     void loadDetail(caseId);
+  };
+
+  const handleDecide = async (input: DecideModerationCaseInput) => {
+    if (!selectedCaseId) return;
+    setDeciding(true);
+    setDecideFieldErrors({});
+    setDecideFormError(null);
+    setDecideSuccess(null);
+    try {
+      const result = await decideModerationCase(selectedCaseId, input);
+      setDecideSuccess(`Applied ${result.action}. Outcome: ${result.outcome}.`);
+      setCases((prev) =>
+        sortCasesNewestFirst(prev.map((c) => (c.id === result.case.id ? result.case : c)))
+      );
+      setDetail((prev) =>
+        prev && prev.case.id === result.case.id ? { ...prev, case: result.case } : prev
+      );
+      void loadDetail(result.case.id);
+      void loadQueue();
+    } catch (err: unknown) {
+      if (err instanceof AuthRequiredError) {
+        setDecideFormError('You need to sign in as an administrator.');
+      } else if (err instanceof ModerationApiError) {
+        if (err.errors) setDecideFieldErrors(err.errors);
+        setDecideFormError(
+          err.message || 'Could not apply the decision. Your entered values were kept.'
+        );
+      } else {
+        setDecideFormError('Could not apply the decision. Your entered values were kept.');
+      }
+    } finally {
+      setDeciding(false);
+    }
   };
 
   const handleOpenCase = async (input: CreateModerationCaseInput) => {
@@ -253,7 +297,19 @@ export function ModerationSafetyPage({
               setDetail(null);
               setDetailState('idle');
               setDetailError(null);
+              setDecideFieldErrors({});
+              setDecideFormError(null);
+              setDecideSuccess(null);
             }}
+          />
+          <ModerationActionPanel
+            caseId={selectedCaseId}
+            caseStatus={detail?.case.status ?? null}
+            submitting={deciding}
+            fieldErrors={decideFieldErrors}
+            formError={decideFormError}
+            successNotice={decideSuccess}
+            onSubmit={handleDecide}
           />
         </section>
       </div>

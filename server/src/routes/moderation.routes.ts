@@ -3,11 +3,13 @@ import { requireModerationAdmin } from '../middleware/requireModerationAdmin.js'
 import { requireJsonObjectBody } from '../validators/team.validator.js';
 import {
   validateCreateModerationCaseBody,
+  validateDecideModerationCaseBody,
   validateModerationCaseIdParam,
   validateModerationQueueQuery,
 } from '../validators/moderation.validator.js';
 import {
   createModerationCaseHandler,
+  decideModerationCaseHandler,
   getModerationCaseDetailHandler,
   listModerationCasesHandler,
 } from '../controllers/moderation.controller.js';
@@ -33,4 +35,12 @@ moderationRouter.post(
   requireJsonObjectBody,
   validateCreateModerationCaseBody,
   createModerationCaseHandler
+);
+
+moderationRouter.post(
+  '/cases/:caseId/decide',
+  validateModerationCaseIdParam,
+  requireJsonObjectBody,
+  validateDecideModerationCaseBody,
+  decideModerationCaseHandler
 );

@@ -1,12 +1,16 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { ModerationCaseStatus } from '../db/types.js';
-import type { CreateModerationCaseSanitized } from '../validators/moderation.validator.js';
+import type {
+  CreateModerationCaseSanitized,
+  DecideModerationCaseSanitized,
+} from '../validators/moderation.validator.js';
 import {
   createModerationCase,
   getModerationCaseDetail,
   listModerationQueue,
   ModerationServiceError,
 } from '../services/moderationCases.js';
+import { decideModerationCase } from '../services/moderationDecisions.js';
 
 function handleModerationError(err: unknown, res: Response, next: NextFunction): void {
   res.setHeader('Cache-Control', 'no-store');
@@ -90,6 +94,46 @@ export async function createModerationCaseHandler(
 
     res.setHeader('Cache-Control', 'no-store');
     res.status(201).json({ case: created });
+  } catch (err: unknown) {
+    handleModerationError(err, res, next);
+  }
+}
+
+/**
+ * POST /api/admin/moderation/cases/:caseId/decide — dismiss/redact/warn/hide/disable_url (#242).
+ */
+export async function decideModerationCaseHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const actor = req.participant;
+    if (!actor) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(401).json({
+        error: 'Authentication required. Missing or malformed Authorization header.',
+        code: 'UNAUTHORIZED',
+      });
+      return;
+    }
+
+    const body = req.body as DecideModerationCaseSanitized;
+    const result = await decideModerationCase({
+      actorParticipantId: actor.id,
+      actorRole: actor.role,
+      caseId: String(req.params.caseId),
+      action: body.action,
+      reason: body.reason,
+    });
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({
+      case: result.case,
+      action: result.action,
+      outcome: result.outcome,
+      safeStateSummary: result.safeStateSummary,
+    });
   } catch (err: unknown) {
     handleModerationError(err, res, next);
   }

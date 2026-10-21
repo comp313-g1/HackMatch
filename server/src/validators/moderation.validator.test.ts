@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from 'express';
 import {
   validateCreateModerationCaseInput,
   validateCreateModerationCaseBody,
+  validateDecideModerationCaseInput,
   MODERATION_REASON_MAX,
 } from './moderation.validator.js';
 
@@ -64,6 +65,36 @@ describe('validateCreateModerationCaseInput (US-026 / #239)', () => {
   it('rejects unknown fields', () => {
     const result = validateCreateModerationCaseInput({ ...validTeam, secret: 'nope' });
     expect(result.errors.secret).toBeTruthy();
+  });
+});
+
+describe('validateDecideModerationCaseInput (US-026 / #242)', () => {
+  it('requires a non-empty reason and echoes submitted draft', () => {
+    const body = { action: 'hide', reason: '  ' };
+    const result = validateDecideModerationCaseInput(body);
+    expect(result.sanitized).toBeNull();
+    expect(result.errors.reason).toMatch(/required/i);
+    expect(result.submitted).toEqual(body);
+  });
+
+  it('accepts a valid hide decision', () => {
+    const result = validateDecideModerationCaseInput({
+      action: 'hide',
+      reason: 'Phishing listing',
+    });
+    expect(result.errors).toEqual({});
+    expect(result.sanitized).toEqual({
+      action: 'hide',
+      reason: 'Phishing listing',
+    });
+  });
+
+  it('rejects unknown actions', () => {
+    const result = validateDecideModerationCaseInput({
+      action: 'ban',
+      reason: 'Nope',
+    });
+    expect(result.errors.action).toBeTruthy();
   });
 });
 

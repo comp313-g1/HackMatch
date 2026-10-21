@@ -1,6 +1,8 @@
 import { authFetch, AuthRequiredError } from '../../config/authFetch';
 import type {
   CreateModerationCaseInput,
+  DecideModerationCaseInput,
+  DecideModerationCaseResult,
   ModerationCaseDetail,
   ModerationCaseView,
   ModerationFieldErrors,
@@ -173,4 +175,38 @@ export function sortCasesNewestFirst(cases: ModerationCaseView[]): ModerationCas
   return [...cases].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
+}
+
+/**
+ * POST /api/admin/moderation/cases/:caseId/decide — dismiss/redact/warn/hide/disable_url (#242).
+ * On validation failure, field errors and submitted values are returned (NR-017).
+ */
+export async function decideModerationCase(
+  caseId: string,
+  input: DecideModerationCaseInput
+): Promise<DecideModerationCaseResult> {
+  let res: Response;
+  try {
+    res = await authFetch(`/api/admin/moderation/cases/${caseId}/decide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+  } catch (err: unknown) {
+    if (err instanceof AuthRequiredError) throw err;
+    throw new ModerationApiError(
+      0,
+      'NETWORK',
+      { _form: 'Network error. Your entered values have been kept.' },
+      input,
+      'Network error. Your entered values have been kept.'
+    );
+  }
+
+  if (res.ok) {
+    return (await res.json()) as DecideModerationCaseResult;
+  }
+
+  const body = await parseErrorBody(res);
+  throwFromResponse(res, body, input);
 }

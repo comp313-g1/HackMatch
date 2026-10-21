@@ -1,8 +1,11 @@
 import { getSupabaseClient } from './client.js';
 import type {
+  CreateEventActionRecordDTO,
   CreateModerationCaseDTO,
+  EventActionRecord,
   ModerationCase,
   ModerationCaseStatus,
+  ModerationDecisionAction,
 } from './types.js';
 
 export interface ListModerationCasesOptions {
@@ -10,10 +13,18 @@ export interface ListModerationCasesOptions {
   limit?: number;
 }
 
+export interface ResolveModerationCaseInput {
+  status: ModerationCaseStatus;
+  lastActionType: ModerationDecisionAction;
+  resolvedAt: string;
+}
+
 export interface IModerationRepository {
   createCase(data: CreateModerationCaseDTO): Promise<ModerationCase>;
   findById(id: string): Promise<ModerationCase | null>;
   listNewestFirst(options?: ListModerationCasesOptions): Promise<ModerationCase[]>;
+  resolveCase(id: string, input: ResolveModerationCaseInput): Promise<ModerationCase>;
+  insertActionRecord(data: CreateEventActionRecordDTO): Promise<EventActionRecord>;
 }
 
 const DEFAULT_QUEUE_LIMIT = 100;
@@ -72,5 +83,42 @@ export const moderationRepository: IModerationRepository = {
     const { data, error } = await query;
     if (error) throw error;
     return (data || []) as ModerationCase[];
+  },
+
+  async resolveCase(id: string, input: ResolveModerationCaseInput): Promise<ModerationCase> {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('moderation_cases')
+      .update({
+        status: input.status,
+        last_action_type: input.lastActionType,
+        resolved_at: input.resolvedAt,
+      })
+      .eq('id', id)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return data as ModerationCase;
+  },
+
+  async insertActionRecord(data: CreateEventActionRecordDTO): Promise<EventActionRecord> {
+    const client = getSupabaseClient();
+    const { data: record, error } = await client
+      .from('event_action_records')
+      .insert({
+        actor_id: data.actor_id,
+        target_type: data.target_type,
+        target_id: data.target_id,
+        action_type: data.action_type,
+        reason: data.reason,
+        outcome: data.outcome,
+        safe_state_summary: data.safe_state_summary,
+      })
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return record as EventActionRecord;
   },
 };

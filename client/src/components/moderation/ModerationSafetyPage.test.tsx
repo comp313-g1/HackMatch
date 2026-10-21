@@ -12,6 +12,7 @@ vi.mock('./moderationApi', async () => {
     fetchModerationCases: vi.fn(),
     fetchModerationCaseDetail: vi.fn(),
     createModerationCase: vi.fn(),
+    decideModerationCase: vi.fn(),
   };
 });
 
@@ -19,6 +20,7 @@ const probeMock = vi.mocked(moderationApi.probeAdminModerationAccess);
 const fetchCasesMock = vi.mocked(moderationApi.fetchModerationCases);
 const fetchDetailMock = vi.mocked(moderationApi.fetchModerationCaseDetail);
 const createMock = vi.mocked(moderationApi.createModerationCase);
+const decideMock = vi.mocked(moderationApi.decideModerationCase);
 
 const older = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -50,6 +52,7 @@ describe('ModerationSafetyPage (US-026 / #241)', () => {
     fetchCasesMock.mockReset();
     fetchDetailMock.mockReset();
     createMock.mockReset();
+    decideMock.mockReset();
   });
 
   it('shows access denied for non-ADMIN callers', async () => {
@@ -163,6 +166,55 @@ describe('ModerationSafetyPage (US-026 / #241)', () => {
     });
     expect(createMock).toHaveBeenCalled();
     expect(screen.getByTestId(`moderation-case-row-${created.id}`)).toBeInTheDocument();
+  });
+
+  it('applies hide decision from the action panel and shows success', async () => {
+    probeMock.mockResolvedValue('granted');
+    fetchCasesMock.mockResolvedValue([newer]);
+    fetchDetailMock.mockResolvedValue({
+      case: newer,
+      target: {
+        type: 'profile',
+        profile: {
+          participantId: newer.targetId,
+          handle: 'ada',
+          primaryRole: 'Frontend',
+          institution: null,
+          displayName: 'Ada',
+          skills: [],
+          portfolios: [],
+        },
+      },
+    });
+    decideMock.mockResolvedValue({
+      case: { ...newer, status: 'Resolved', lastActionType: 'hide' },
+      action: 'hide',
+      outcome: 'listing_hidden',
+      safeStateSummary: { credentialsIncluded: false },
+    });
+
+    render(<ModerationSafetyPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId(`moderation-case-row-${newer.id}`)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId(`moderation-case-row-${newer.id}`));
+    await waitFor(() => {
+      expect(screen.getByTestId('moderation-action-panel')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('moderation-action-hide'));
+    fireEvent.change(screen.getByTestId('moderation-decision-reason'), {
+      target: { value: 'Phishing listing' },
+    });
+    fireEvent.click(screen.getByTestId('moderation-action-submit'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('moderation-action-success')).toHaveTextContent(/hide/i);
+    });
+    expect(decideMock).toHaveBeenCalledWith(newer.id, {
+      action: 'hide',
+      reason: 'Phishing listing',
+    });
   });
 
   it('keeps form draft when create returns validation errors', async () => {

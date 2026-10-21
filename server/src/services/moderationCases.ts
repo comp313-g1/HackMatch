@@ -11,6 +11,7 @@ import type {
 export type ModerationServiceErrorCode =
   | 'TARGET_NOT_FOUND'
   | 'CASE_NOT_FOUND'
+  | 'CASE_CLOSED'
   | 'FORBIDDEN_ROLE'
   | 'INVALID_TARGET';
 
@@ -53,6 +54,8 @@ export interface ModerationCaseView {
   flaggedUrl: string | null;
   createdAt: string;
   createdBy: string;
+  lastActionType?: string | null;
+  resolvedAt?: string | null;
 }
 
 export interface SanitizedTeamTarget {
@@ -68,6 +71,8 @@ export interface SanitizedTeamTarget {
     eventId: string;
     ownerHandle: string | null;
     ownerDisplayName: string | null;
+    moderationStatus: string;
+    linkRemovalNotice: string | null;
   };
 }
 
@@ -116,6 +121,8 @@ export function toModerationCaseView(row: ModerationCase): ModerationCaseView {
     flaggedUrl: row.flagged_url,
     createdAt: row.created_at,
     createdBy: row.created_by,
+    lastActionType: row.last_action_type ?? null,
+    resolvedAt: row.resolved_at ?? null,
   };
 }
 
@@ -176,6 +183,8 @@ async function loadSanitizedTeamTarget(teamId: string): Promise<SanitizedTeamTar
       eventId: team.event_id,
       ownerHandle: ownerProfile?.handle ?? null,
       ownerDisplayName: owner?.full_name ?? null,
+      moderationStatus: team.moderation_status ?? 'None',
+      linkRemovalNotice: team.link_removal_notice ?? null,
     },
   };
 }
