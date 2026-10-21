@@ -205,6 +205,25 @@ describe('moderationApi (US-026 / #241)', () => {
     });
   });
 
+  it('decideModerationCase surfaces 403 FORBIDDEN_ROLE for non-ADMIN callers (#246)', async () => {
+    authFetchMock.mockResolvedValueOnce(
+      jsonResponse(403, { code: 'FORBIDDEN_ROLE', error: 'denied' })
+    );
+    await expect(
+      decideModerationCase('1', { action: 'hide', reason: 'Nope' })
+    ).rejects.toMatchObject({
+      status: 403,
+      code: 'FORBIDDEN_ROLE',
+    });
+  });
+
+  it('probeAdminModerationAccess returns denied on 401 for visitors (#246)', async () => {
+    authFetchMock.mockResolvedValueOnce(
+      jsonResponse(401, { code: 'UNAUTHORIZED', error: 'missing token' })
+    );
+    await expect(probeAdminModerationAccess()).resolves.toBe('denied');
+  });
+
   it('createModerationCase echoes submitted field errors on 400', async () => {
     const input = {
       targetType: 'team' as const,

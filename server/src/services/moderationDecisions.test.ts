@@ -261,6 +261,42 @@ describe('decideModerationCase (US-026 / #242)', () => {
     );
   });
 
+  it('warns a team listing and notifies the owner', async () => {
+    mockClient({});
+    vi.spyOn(moderationRepository, 'findById').mockResolvedValue(openCase);
+    vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(team);
+    vi.spyOn(moderationRepository, 'insertActionRecord').mockResolvedValue({
+      id: 'rec-warn',
+      actor_id: openCase.created_by,
+      target_type: 'moderation_team',
+      target_id: openCase.target_id,
+      action_type: 'moderation_warn',
+      reason: 'Borderline pitch',
+      outcome: 'warning_recorded',
+      safe_state_summary: {},
+      created_at: '2026-10-18T12:00:00.000Z',
+    });
+    vi.spyOn(moderationRepository, 'resolveCase').mockResolvedValue({
+      ...openCase,
+      status: 'Resolved',
+      last_action_type: 'warn',
+      resolved_at: '2026-10-18T12:00:00.000Z',
+    });
+
+    const result = await decideModerationCase({
+      actorParticipantId: openCase.created_by,
+      actorRole: 'ADMIN',
+      caseId: openCase.id,
+      action: 'warn',
+      reason: 'Borderline pitch',
+    });
+
+    expect(result.outcome).toBe('warning_recorded');
+    expect(result.safeStateSummary.effects).toEqual(
+      expect.objectContaining({ moderationStatus: 'Warned', ownerNotified: true })
+    );
+  });
+
   it('rejects decisions on already closed cases', async () => {
     vi.spyOn(moderationRepository, 'findById').mockResolvedValue({
       ...openCase,

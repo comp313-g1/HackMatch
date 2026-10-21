@@ -252,6 +252,56 @@ describe('ModerationSafetyPage (US-026 / #241)', () => {
     });
   });
 
+  it('keeps decision reason draft when decide returns validation errors (#246)', async () => {
+    probeMock.mockResolvedValue('granted');
+    fetchCasesMock.mockResolvedValue([newer]);
+    fetchDetailMock.mockResolvedValue({
+      case: newer,
+      target: {
+        type: 'profile',
+        profile: {
+          participantId: newer.targetId,
+          handle: 'ada',
+          primaryRole: null,
+          institution: null,
+          displayName: 'Ada',
+          skills: [],
+          portfolios: [],
+        },
+      },
+    });
+    decideMock.mockRejectedValue(
+      new moderationApi.ModerationApiError(
+        400,
+        'VALIDATION_ERROR',
+        { reason: 'A reason is required for every moderation decision.' },
+        { action: 'hide', reason: 'kept draft' },
+        'Validation failed.'
+      )
+    );
+
+    render(<ModerationSafetyPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId(`moderation-case-row-${newer.id}`)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId(`moderation-case-row-${newer.id}`));
+    await waitFor(() => {
+      expect(screen.getByTestId('moderation-action-panel')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('moderation-action-hide'));
+    fireEvent.change(screen.getByTestId('moderation-decision-reason'), {
+      target: { value: 'kept draft' },
+    });
+    fireEvent.click(screen.getByTestId('moderation-action-submit'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('moderation-action-form-error')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('moderation-decision-reason')).toHaveValue('kept draft');
+    expect(screen.getByTestId('moderation-action-hide')).toBeChecked();
+  });
+
   it('keeps form draft when create returns validation errors', async () => {
     probeMock.mockResolvedValue('granted');
     fetchCasesMock.mockResolvedValue([]);

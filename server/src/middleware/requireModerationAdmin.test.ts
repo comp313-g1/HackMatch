@@ -108,6 +108,16 @@ const moderationPaths = [
     label: 'target-detail',
   },
   { method: 'post' as const, path: '/api/admin/moderation/cases', label: 'create' },
+  {
+    method: 'get' as const,
+    path: `/api/admin/moderation/cases/${CASE_ID}/action-records`,
+    label: 'action-records',
+  },
+  {
+    method: 'post' as const,
+    path: `/api/admin/moderation/cases/${CASE_ID}/decide`,
+    label: 'decide',
+  },
 ];
 
 const createBody = {
@@ -157,6 +167,8 @@ describe('Protect moderation routes with ADMIN RBAC (US-026 / #240 / FR-082)', (
     });
   });
 
+  const decideBody = { action: 'dismiss', reason: 'Not actionable' };
+
   function call(
     method: 'get' | 'post',
     path: string,
@@ -164,7 +176,10 @@ describe('Protect moderation routes with ADMIN RBAC (US-026 / #240 / FR-082)', (
   ) {
     const req = request(app)[method](path);
     if (opts?.auth) req.set('Authorization', opts.auth);
-    if (method === 'post') req.send(opts?.body ?? createBody);
+    if (method === 'post') {
+      const defaultBody = path.endsWith('/decide') ? decideBody : createBody;
+      req.send(opts?.body ?? defaultBody);
+    }
     return req;
   }
 
