@@ -16,6 +16,7 @@ import { invitationsRouter } from './routes/invitations.routes.js';
 import { applicationsRouter } from './routes/applications.routes.js';
 import { scoringRouter } from './routes/scoring.routes.js';
 import { moderationRouter } from './routes/moderation.routes.js';
+import { accountsRouter } from './routes/accounts.routes.js';
 import { securityConfig } from './config/security.js';
 import { createRequireHttps } from './middleware/requireHttps.js';
 
@@ -55,6 +56,7 @@ app.use('/api/invitations', invitationsRouter);
 app.use('/api/applications', applicationsRouter);
 app.use('/api/scoring', scoringRouter);
 app.use('/api/admin/moderation', moderationRouter);
+app.use('/api/admin/accounts', accountsRouter);
 app.use('/api', actionsRouter);
 
 // Fallback 404 handler
