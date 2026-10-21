@@ -303,9 +303,12 @@ describe('auth.validator unit tests (US-001 AC 1 / T2 / AC 4 / T6)', () => {
         validateRegisterPayload(req, res as unknown as Response, next);
         expect(next).not.toHaveBeenCalled();
         expect(res.statusCode).toBe(403);
-        expect((res.body as { error: string }).error).toBe(
-          'Public registration cannot grant administrative privileges.'
+        expect((res.body as { code: string }).code).toBe('ADMIN_SELF_PROMOTION_FORBIDDEN');
+        expect((res.body as { error: string }).error).toMatch(/ADMIN is prohibited/i);
+        expect((res.body as { submitted: { password: string } }).submitted.password).toBe(
+          '[redacted]'
         );
+        expect((res.body as { submitted: { fullName: string } }).submitted.fullName).toBe('');
       });
 
       it('exports expected PRIVILEGE_ESCALATION_KEYS list', () => {
@@ -343,8 +346,10 @@ describe('auth.validator unit tests (US-001 AC 1 / T2 / AC 4 / T6)', () => {
           validateRegisterPayload(req, res as unknown as Response, next);
           expect(next).not.toHaveBeenCalled();
           expect(res.statusCode).toBe(403);
-          expect((res.body as { error: string }).error).toBe(
-            'Public registration cannot grant administrative privileges.'
+          expect((res.body as { code: string }).code).toBe('ADMIN_SELF_PROMOTION_FORBIDDEN');
+          expect((res.body as { error: string }).error).toMatch(/ADMIN is prohibited/i);
+          expect((res.body as { submitted: { password: string } }).submitted.password).toBe(
+            '[redacted]'
           );
         }
       });

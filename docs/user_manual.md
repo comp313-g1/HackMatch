@@ -6,7 +6,7 @@
 | Delivery         | Must-Have — MVP                                                                                         |
 | Visuals          | **Screenshot placeholders** for every figure — replace with real captures when available                |
 | Sources of truth | `docs/02_user_stories/user_stories.md`, `docs/04_requirements/functional_nonfunctional_requirements.md` |
-| Version          | v2.0 · Sprint 1 (implemented Must-Haves)                                                                |
+| Version          | v2.1 · Sprint 2 (adds US-026 moderation + US-027 account enforcement)                                   |
 
 ## Contents
 
@@ -28,30 +28,34 @@
 16. [US-019 Respond to a team invitation](#16-us-019-respond-to-a-team-invitation)
 17. [US-020 Approve or decline an application](#17-us-020-approve-or-decline-an-application)
 18. [US-022 Confirm and lock a team roster](#18-us-022-confirm-and-lock-a-team-roster)
-19. [Appendix A Requirement mapping](#appendix-a-requirement-mapping)
-20. [Appendix B How to replace screenshot placeholders](#appendix-b-how-to-replace-screenshot-placeholders)
+19. [US-026 Administrative content moderation and safety queue](#19-us-026-administrative-content-moderation-and-safety-queue)
+20. [US-027 Administrative account management and enforcement](#20-us-027-administrative-account-management-and-enforcement)
+21. [Appendix A Requirement mapping](#appendix-a-requirement-mapping)
+22. [Appendix B How to replace screenshot placeholders](#appendix-b-how-to-replace-screenshot-placeholders)
 
 ## 1. Scope and exclusions
 
 This manual describes what a user can see, do, and be told by the system for **Must-Have stories that are implemented in the current product**. It is not an implementation specification.
 
-| Topic              | Description                                                                                                                                                                                                                                                                 |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **In scope**       | US-001, US-002, US-003, US-004, US-005, US-006, US-011, US-012, US-013, US-015, US-017, US-018, US-019, US-020, US-022                                                                                                                                                         |
-| **Out of scope**   | Must-Have stories **not yet implemented** in the client: US-008, US-009, US-010 (hackathon listing / ADMIN event lifecycle), US-026, US-027 (ADMIN moderation and account enforcement). Should-Have / May-Have stories (US-007, US-014, US-016, US-021, US-023–025, US-028–029). |
-| Screenshots        | Every figure uses a **placeholder** image path. Replace with a real product capture; do not invent UI the product does not show.                                                                                                                                            |
+| Topic              | Description                                                                                                                                                                                                 |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **In scope**       | US-001, US-002, US-003, US-004, US-005, US-006, US-011, US-012, US-013, US-015, US-017, US-018, US-019, US-020, US-022, **US-026**, **US-027**                                                                 |
+| **Out of scope**   | Must-Have stories **not yet implemented** in the client: US-008, US-009, US-010 (hackathon listing / ADMIN event lifecycle). Should-Have / May-Have stories (US-007, US-014, US-016, US-021, US-023–025, US-028–029). |
+| Screenshots        | Every figure uses a **placeholder** image path under `docs/assets/screenshots/`. Replace with a real product capture; do not invent UI the product does not show.                                           |
 
 ## 2. Roles and terminology
 
-| Identifier | Meaning                 | What it does in this manual                                                                                 |
-| ---------- | ----------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `VISITOR`  | Unauthenticated visitor | Can register or start OAuth; cannot use protected recruitment features.                                     |
-| `PART`     | Participant account     | Public registration target. Can maintain a profile, declare availability, browse/apply, own or join teams.  |
-| `LEAD`     | Team owner context      | Not a global role — ownership of a specific team (invite, review applications, lock roster).                |
-| `ADMIN`    | Platform administrator  | Provisioned only by a deployment operator (custom claim). No public registration path creates `ADMIN`.      |
+| Identifier | Meaning                 | What it does in this manual                                                                                                                      |
+| ---------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `VISITOR`  | Unauthenticated visitor | Can register or start OAuth; cannot use protected recruitment or admin features.                                                                 |
+| `PART`     | Participant account     | Public registration target. Can maintain a profile, declare availability, browse/apply, own or join teams. Cannot open Moderation or Accounts.   |
+| `LEAD`     | Team owner context      | Not a global role — ownership of a specific team (invite, review applications, lock roster). May see moderation status on their own listing.     |
+| `ADMIN`    | Platform administrator  | Provisioned only by a deployment operator (custom claim). Sees **Moderation** and **Accounts** nav after OTP. No public path creates `ADMIN`.   |
 
 - **Unverified** — account exists, mailbox not proven; team features stay gated.
 - **Pre-authentication** — password or OAuth succeeded, but the email login code has not; no usable session yet.
+- **Suspended** — ADMIN enforcement state; sessions cannot renew and sign-in is blocked (see §20).
+- **Deactivated** — ownership-verified deletion completed; live identifying fields are erased.
 
 ## 3. Three ground rules
 
@@ -168,15 +172,15 @@ This manual describes what a user can see, do, and be told by the system for **M
 
 ![Figure 3.2 Session and sign-out — screenshot placeholder](assets/screenshots/PLACEHOLDER-us-003-figure-3-2-session.png)
 
-**Figure 3.2** Active session — protected nav (teams, availability, applications, invitations); Sign out.
+**Figure 3.2** Active session — protected nav (teams, availability, applications, invitations; ADMIN also sees Moderation and Accounts); Sign out.
 
 ### 6.3 Errors and prompts
 
-| Scenario                    | What the user sees                                      |
-| --------------------------- | ------------------------------------------------------- |
-| Wrong password              | Generic failure (does not reveal whether email exists). |
-| Suspended account           | Cannot start or renew a session.                        |
-| Replay after sign-out       | Protected requests fail.                                |
+| Scenario                    | What the user sees                                                                 |
+| --------------------------- | ---------------------------------------------------------------------------------- |
+| Wrong password              | Generic failure (does not reveal whether email exists).                            |
+| Suspended account           | Access denied (`ACCOUNT_SUSPENDED`); cannot start or renew a session (US-027).     |
+| Replay after sign-out       | Protected requests fail.                                                           |
 
 ---
 
@@ -325,6 +329,7 @@ This manual describes what a user can see, do, and be told by the system for **M
 1. Create a team for a verified recruiting event (name, pitch ≤ 500 chars, goal, hours, optional communication link).
 2. As owner, edit listing, add/update/remove open slots, remove non-owner members (with reason), or disband **before lock**.
 3. Confirmed members see a read-only roster status view; owners use the team workspace controls.
+4. If an ADMIN hides the listing (US-026), the owner still opens the workspace and sees a clear moderation status notice; ordinary discovery no longer shows the team.
 
 ### 11.2 Screenshots (placeholders)
 
@@ -345,6 +350,12 @@ This manual describes what a user can see, do, and be told by the system for **M
 ![Figure 12.3 Member roster status — screenshot placeholder](assets/screenshots/PLACEHOLDER-us-012-figure-12-3-member-status.png)
 
 **Figure 12.3** Member view — roster status without owner controls.
+
+> **[Screenshot placeholder]** Owner moderation status notice after ADMIN hide.
+
+![Figure 12.4 Moderation status notice — screenshot placeholder](assets/screenshots/PLACEHOLDER-us-012-figure-12-4-moderation-status.png)
+
+**Figure 12.4** Moderation status — owner-visible notice when the listing is hidden or link-removed (US-026).
 
 ---
 
@@ -553,6 +564,130 @@ This manual describes what a user can see, do, and be told by the system for **M
 
 ---
 
+## 19. US-026 Administrative content moderation and safety queue
+
+**Delivery** Must-Have / MVP · **Role** `ADMIN` (PART / Visitor denied)
+
+> As a Platform Administrator, I want to review flagged team content and malicious links in a moderation queue, so that the platform remains safe, compliant, and free of phishing threats.
+
+### 19.1 What the ADMIN does
+
+1. Sign in as an operator-provisioned `ADMIN`, complete the email login code (US-004), then open **Moderation** in the nav.
+2. Review the safety queue (**newest cases first**). Each row shows target type, short target id, reason, time, and report count when present.
+3. Open a case to inspect safe target detail (team listing, profile summary, or flagged URL). Credentials and private contacts are never shown.
+4. Optionally **open a new case** with target type (`team` / `profile` / `url`), target UUID, mandatory reason, and https flagged URL when the target is a URL.
+5. Decide with a mandatory reason: dismiss, redact text, warn, hide listing, or disable a malicious URL. A basic action record is written for each decision.
+6. After hide or URL disable, ordinary discovery excludes the unsafe content; team owners can still see status on their workspace (see Figure 12.4).
+
+### 19.2 What PART and Visitors see
+
+- **Moderation** controls and APIs return access denied (401 / 403). There is no public reporting modal yet (US-025 is post-MVP).
+- Hidden team listings disappear from **Browse teams**; owners keep a status notice in the team workspace.
+
+### 19.3 Screenshots (placeholders)
+
+> **[Screenshot placeholder]** Safety queue (newest first).
+
+![Figure 26.1 Moderation queue — screenshot placeholder](assets/screenshots/PLACEHOLDER-us-026-figure-26-1-queue.png)
+
+**Figure 26.1** Safety queue — cases ordered newest first with target, reason, and time.
+
+> **[Screenshot placeholder]** Open moderation case form.
+
+![Figure 26.2 Open case form — screenshot placeholder](assets/screenshots/PLACEHOLDER-us-026-figure-26-2-open-case.png)
+
+**Figure 26.2** Open a case — target type, UUID, reason; https URL when target is `url`. Draft values stay if validation fails.
+
+> **[Screenshot placeholder]** Case detail + decide actions.
+
+![Figure 26.3 Case decide panel — screenshot placeholder](assets/screenshots/PLACEHOLDER-us-026-figure-26-3-decide.png)
+
+**Figure 26.3** Case view — safe target summary, decide actions with mandatory reason, success/error banners.
+
+> **[Screenshot placeholder]** Access denied for non-ADMIN.
+
+![Figure 26.4 Moderation access denied — screenshot placeholder](assets/screenshots/PLACEHOLDER-us-026-figure-26-4-access-denied.png)
+
+**Figure 26.4** Access denied — PART or Visitor cannot use the safety queue.
+
+### 19.4 Errors and prompts
+
+| Scenario                         | What the user sees                                                                 |
+| -------------------------------- | ---------------------------------------------------------------------------------- |
+| Missing / blank decide reason    | Field error; entered values kept.                                                  |
+| Case already closed              | Clear closed-case message; decide actions unavailable.                             |
+| Invalid target UUID / http URL   | Validation errors with draft preserved.                                            |
+| PART or Visitor opens Moderation | Access denied; no queue data.                                                     |
+| Hide / disable URL success       | Success notice; listing/link removed from ordinary discovery; action recorded.     |
+
+---
+
+## 20. US-027 Administrative account management and enforcement
+
+**Delivery** Must-Have / MVP · **Role** `ADMIN` (PART / Visitor denied)
+
+> As a Platform Administrator, I want to suspend or deactivate non-compliant accounts, so that bad actors cannot harass students or disrupt team formation.
+
+### 20.1 What the ADMIN does
+
+1. Sign in as `ADMIN`, complete OTP, then open **Accounts** in the nav.
+2. Search and filter accounts by text, state (Active / Suspended / Deactivated), and role (PART / ADMIN). Select a row to inspect detail.
+3. Review account identifier, role, state, profile summary, and relevant team listings. Credentials, OTPs, and private team notes are never shown.
+4. **Suspend** with a mandatory reason. The system revokes sessions, blocks sign-in, cancels pending invitations/applications, hides the profile, clears Looking-for-Team, and pauses recruitment on owned unlocked Open teams. Confirmed memberships stay intact.
+5. **Ownership-verified deletion** with a mandatory reason and ownership confirmation checkbox. Live identifying data enters the deletion workflow under a proposed **30-day** processing target (product policy R-06 / NR-023 — not an automatic legal-compliance claim). Historical locked-roster identity fields are pseudonymized; membership rows are kept.
+6. If the target still owns unlocked teams, deletion is **blocked** until those teams are disbanded; the entered reason and confirmation stay on screen.
+
+### 20.2 What PART and Visitors see
+
+- **Accounts** controls and APIs return access denied.
+- A suspended participant cannot renew a session or use protected features (clear `ACCOUNT_SUSPENDED` denial).
+- Public registration never offers an `ADMIN` role (self-promotion forbidden).
+
+### 20.3 Screenshots (placeholders)
+
+> **[Screenshot placeholder]** Account list with search and filters.
+
+![Figure 27.1 Account list — screenshot placeholder](assets/screenshots/PLACEHOLDER-us-027-figure-27-1-list.png)
+
+**Figure 27.1** Accounts list — search, state/role filters, empty and error states; selection opens detail.
+
+> **[Screenshot placeholder]** Account detail (safe fields only).
+
+![Figure 27.2 Account detail — screenshot placeholder](assets/screenshots/PLACEHOLDER-us-027-figure-27-2-detail.png)
+
+**Figure 27.2** Account detail — identifier, role, state, profile summary, relevant listings, privacy notice.
+
+> **[Screenshot placeholder]** Suspend account reason form.
+
+![Figure 27.3 Suspend form — screenshot placeholder](assets/screenshots/PLACEHOLDER-us-027-figure-27-3-suspend.png)
+
+**Figure 27.3** Suspend form — mandatory reason, cascade success notice, draft kept on validation/API failure.
+
+> **[Screenshot placeholder]** Ownership-verified deletion form.
+
+![Figure 27.4 Deletion form — screenshot placeholder](assets/screenshots/PLACEHOLDER-us-027-figure-27-4-delete.png)
+
+**Figure 27.4** Deletion form — reason + ownership checkbox; blocked-until-disband or 30-day target success outcomes.
+
+> **[Screenshot placeholder]** Access denied for non-ADMIN.
+
+![Figure 27.5 Accounts access denied — screenshot placeholder](assets/screenshots/PLACEHOLDER-us-027-figure-27-5-access-denied.png)
+
+**Figure 27.5** Access denied — only platform administrators manage accounts.
+
+### 20.4 Errors and prompts
+
+| Scenario                                      | What the user sees                                                                 |
+| --------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Blank suspend / delete reason                 | Field error; draft kept.                                                           |
+| Ownership not confirmed                       | Checkbox error; reason draft kept.                                                 |
+| Unlocked owner has not disbanded              | Deletion blocked with team names; draft kept.                                      |
+| Firebase / revoke failure on suspend          | Explicit failure; account may already be marked suspended — retry guidance.        |
+| PART or Visitor opens Accounts                | Access denied.                                                                     |
+| Suspended user tries to sign in / renew       | Access denied; no usable session.                                                  |
+
+---
+
 ## Appendix A Requirement mapping
 
 | Stories (implemented)     | User-facing theme                                                                 |
@@ -561,11 +696,13 @@ This manual describes what a user can see, do, and be told by the system for **M
 | US-005                    | Password recovery without bypassing OTP                                           |
 | US-006                    | Profile fields and privacy boundaries                                             |
 | US-011                    | Looking-for-Team availability                                                     |
-| US-012                    | Team create / edit / vacancies / remove / disband (pre-lock)                      |
+| US-012                    | Team create / edit / vacancies / remove / disband (pre-lock); moderation status   |
 | US-013                    | Browse / filter open teams                                                        |
 | US-015                    | Owner candidate recommendations                                                   |
 | US-017 – US-020           | Invite, apply, accept/decline, owner application decisions                        |
 | US-022                    | Confirm & lock roster; freeze post-lock mutations                                 |
+| US-026                    | ADMIN safety queue, case open/decide, hide listing / disable URL                  |
+| US-027                    | ADMIN account inspect, suspend cascade, ownership-verified deletion               |
 
 Detailed FR/NR identifiers remain in `docs/04_requirements/functional_nonfunctional_requirements.md`.
 
@@ -573,10 +710,11 @@ Detailed FR/NR identifiers remain in `docs/04_requirements/functional_nonfunctio
 
 ## Appendix B How to replace screenshot placeholders
 
-1. Capture the real UI for each figure caption above.
+1. Capture the real UI for each figure caption above (including new US-026 / US-027 figures).
 2. Save under `docs/assets/screenshots/` using the same `PLACEHOLDER-us-…` filename, **or** update the image path in this file.
 3. Keep figure numbers and captions stable so reviewers can match acceptance checklists.
-4. Do not add screenshots for Must-Have stories that are **not** implemented yet (US-008, US-009, US-010, US-026, US-027).
+4. Until a real capture exists, leave the placeholder path in place (broken-image is expected in preview).
+5. Do not add screenshots for Must-Have stories that are **not** implemented yet (US-008, US-009, US-010).
 
 ---
 

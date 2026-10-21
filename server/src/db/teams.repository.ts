@@ -1,4 +1,5 @@
 import { getSupabaseClient } from './client.js';
+import { resolveMembershipDisplayName } from '../services/membershipPseudonymization.js';
 import type {
   Team,
   TeamMembership,
@@ -504,16 +505,28 @@ export const teamsRepository: ITeamsRepository = {
       end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
     };
 
-    // 3. Confirmed memberships
+    // 3. Confirmed memberships (prefer #253 pseudonymized identity snapshots on locked rosters)
     const { data: memberships, error: memberError } = await client
       .from('team_memberships')
-      .select('participant_id, role, joined_at')
+      .select(
+        'participant_id, role, joined_at, identity_display_name, identity_handle, identity_pseudonymized_at'
+      )
       .eq('team_id', teamId)
       .eq('status', 'Confirmed')
       .order('joined_at', { ascending: true });
     if (memberError) throw memberError;
 
-    const pIds = ((memberships || []) as Array<{ participant_id: string }>).map((m) => m.participant_id);
+    type MembershipRow = {
+      participant_id: string;
+      role: TeamMembershipRole;
+      joined_at: string;
+      identity_display_name: string | null;
+      identity_handle: string | null;
+      identity_pseudonymized_at: string | null;
+    };
+
+    const membershipRows = (memberships || []) as MembershipRow[];
+    const pIds = membershipRows.map((m) => m.participant_id);
     const participantMap: Record<string, { full_name: string }> = {};
     const profileMap: Record<string, { handle: string | null }> = {};
 
@@ -536,13 +549,23 @@ export const teamsRepository: ITeamsRepository = {
       }
     }
 
-    const members = ((memberships || []) as Array<{ participant_id: string; role: TeamMembershipRole; joined_at: string }>).map((m) => ({
-      participant_id: m.participant_id,
-      role: m.role,
-      joined_at: m.joined_at,
-      full_name: participantMap[m.participant_id]?.full_name || 'Participant',
-      handle: profileMap[m.participant_id]?.handle || null,
-    }));
+    const members = membershipRows.map((m) => {
+      const resolved = resolveMembershipDisplayName({
+        identityPseudonymizedAt: m.identity_pseudonymized_at,
+        identityDisplayName: m.identity_display_name,
+        handle: m.identity_pseudonymized_at
+          ? m.identity_handle
+          : profileMap[m.participant_id]?.handle || null,
+        fullName: participantMap[m.participant_id]?.full_name || null,
+      });
+      return {
+        participant_id: m.participant_id,
+        role: m.role,
+        joined_at: m.joined_at,
+        full_name: resolved.displayName,
+        handle: resolved.handle,
+      };
+    });
 
     // 4. Open or Filled vacancies
     const { data: vacancies } = await client
@@ -1556,7 +1579,11 @@ export const teamsRepository: ITeamsRepository = {
       team_memberships(
         participant_id,
         role,
-        status${withMemberIdentities ? ', participants(full_name, participant_profiles(handle))' : ''}
+        status${
+          withMemberIdentities
+            ? ', identity_display_name, identity_pseudonymized_at, participants(full_name, participant_profiles(handle))'
+            : ''
+        }
       )
     `.replace(/\s+/g, ' ').trim();
 
@@ -1616,6 +1643,21 @@ export const teamsRepository: ITeamsRepository = {
                 : participantData.participant_profiles) as { handle?: string | null } | undefined;
               handle = profileData?.handle ?? null;
             }
+          }
+
+          if (withMemberIdentities) {
+            const resolved = resolveMembershipDisplayName({
+              identityPseudonymizedAt: (m.identity_pseudonymized_at as string | null) ?? null,
+              identityDisplayName: (m.identity_display_name as string | null) ?? null,
+              handle,
+              fullName,
+            });
+            return {
+              participant_id: String(m.participant_id),
+              role: m.role as TeamMembershipRole,
+              full_name: resolved.displayName,
+              handle: resolved.handle,
+            };
           }
 
           return {

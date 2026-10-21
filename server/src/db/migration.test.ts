@@ -1700,4 +1700,75 @@ describe('0037_create_moderation_cases.sql moderation queue schema (US-026 / #23
   });
 });
 
+describe('0039_account_enforcement_models.sql (US-027 / #249)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0039_account_enforcement_models.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('extends participants with suspension actor/reason and deactivation fields', () => {
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+suspended_by/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+suspension_reason/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+is_deactivated\s+BOOLEAN\s+NOT\s+NULL\s+DEFAULT\s+FALSE/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+deactivated_at/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+deactivation_reason/i);
+    expect(sql).toMatch(/chk_participants_suspension_fields/i);
+    expect(sql).toMatch(/chk_participants_deactivation_fields/i);
+    expect(sql).toMatch(/chk_participants_deactivated_implies_suspended/i);
+  });
+
+  it('creates account_deletion_requests with ownership verification and 30-day target', () => {
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+account_deletion_requests/i);
+    expect(sql).toMatch(/ownership_verified/i);
+    expect(sql).toMatch(/BlockedNeedsDisband/i);
+    expect(sql).toMatch(/INTERVAL\s+'30\s+days'/i);
+    expect(sql).toMatch(/target_completion_at/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+account_deletion_requests\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+  });
+
+  it('enforces ADMIN-only creation and one open deletion request per participant', () => {
+    expect(sql).toMatch(/check_account_deletion_request_admin_actor/i);
+    expect(sql).toMatch(/Deletion requests may only be created by ADMIN actors/i);
+    expect(sql).toMatch(/uq_account_deletion_requests_open_participant/i);
+    expect(sql).toMatch(/status\s+IN\s*\(\s*'Pending',\s*'BlockedNeedsDisband',\s*'Processing'\s*\)/i);
+  });
+});
+
+describe('0040_membership_identity_pseudonymization.sql (US-027 / #253)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0040_membership_identity_pseudonymization.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('adds identity snapshot and pseudonymized_at columns on team_memberships', () => {
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+identity_display_name/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+identity_handle/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+identity_email/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+identity_pseudonymized_at/i);
+  });
+
+  it('enforces pseudonymized rows clear email/handle and keep a display label', () => {
+    expect(sql).toMatch(/chk_team_memberships_identity_pseudonymized/i);
+    expect(sql).toMatch(/identity_handle\s+IS\s+NULL/i);
+    expect(sql).toMatch(/identity_email\s+IS\s+NULL/i);
+  });
+
+  it('indexes pseudonymized memberships for deletion audits', () => {
+    expect(sql).toMatch(/idx_team_memberships_identity_pseudonymized_at/i);
+    expect(sql).toMatch(/idx_team_memberships_participant_pseudonymized/i);
+  });
+});
+
 

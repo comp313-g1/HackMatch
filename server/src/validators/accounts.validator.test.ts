@@ -1,0 +1,150 @@
+import { describe, it, expect, vi } from 'vitest';
+import type { Request, Response } from 'express';
+import {
+  ACCOUNT_ENFORCEMENT_REASON_MAX,
+  MAX_ACCOUNTS_LIST_LIMIT,
+  parseAccountsListQuery,
+  validateAccountIdParam,
+  validateAccountsListQuery,
+  validateDeleteAccountInput,
+  validateSuspendAccountInput,
+} from './accounts.validator.js';
+
+describe('parseAccountsListQuery (US-027 / #248)', () => {
+  it('accepts empty query with default limit', () => {
+    const result = parseAccountsListQuery({});
+    expect(result.errors).toEqual({});
+    expect(result.sanitized).toEqual({ limit: 50 });
+  });
+
+  it('accepts role, state, q, and limit filters', () => {
+    const result = parseAccountsListQuery({
+      role: 'PART',
+      state: 'Suspended',
+      q: 'ada',
+      limit: '25',
+    });
+    expect(result.errors).toEqual({});
+    expect(result.sanitized).toEqual({
+      role: 'PART',
+      state: 'Suspended',
+      q: 'ada',
+      limit: 25,
+    });
+  });
+
+  it('rejects invalid state and echoes submitted values', () => {
+    const result = parseAccountsListQuery({ state: 'Banned', limit: '10' });
+    expect(result.sanitized).toBeNull();
+    expect(result.errors.state).toMatch(/Active, Suspended, or Deactivated/);
+    expect(result.submitted.state).toBe('Banned');
+  });
+
+  it(`rejects limit above ${MAX_ACCOUNTS_LIST_LIMIT}`, () => {
+    const result = parseAccountsListQuery({ limit: String(MAX_ACCOUNTS_LIST_LIMIT + 1) });
+    expect(result.errors.limit).toMatch(/between 1 and/);
+    expect(result.submitted.limit).toBe(String(MAX_ACCOUNTS_LIST_LIMIT + 1));
+  });
+});
+
+describe('accounts validator middleware (US-027 / #248)', () => {
+  it('validateAccountsListQuery responds 400 with submitted draft', () => {
+    const req = { query: { role: 'SUPER' } } as unknown as Request;
+    const json = vi.fn();
+    const status = vi.fn(() => ({ json }));
+    const res = {
+      setHeader: vi.fn(),
+      status,
+      locals: {},
+    } as unknown as Response;
+    const next = vi.fn();
+
+    validateAccountsListQuery(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(400);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'VALIDATION_ERROR',
+        submitted: expect.objectContaining({ role: 'SUPER' }),
+      })
+    );
+  });
+
+  it('validateAccountIdParam rejects non-UUID and preserves submitted value', () => {
+    const req = { params: { accountId: 'not-a-uuid' } } as unknown as Request;
+    const json = vi.fn();
+    const status = vi.fn(() => ({ json }));
+    const res = { setHeader: vi.fn(), status } as unknown as Response;
+    const next = vi.fn();
+
+    validateAccountIdParam(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(400);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'VALIDATION_ERROR',
+        submitted: { accountId: 'not-a-uuid' },
+      })
+    );
+  });
+});
+
+describe('validateSuspendAccountInput (US-027 / #250 / #256)', () => {
+  it('requires a non-empty reason and echoes submitted draft', () => {
+    const body = { reason: '  ' };
+    const result = validateSuspendAccountInput(body);
+    expect(result.sanitized).toBeNull();
+    expect(result.errors.reason).toMatch(/required/i);
+    expect(result.submitted).toEqual(body);
+  });
+
+  it('accepts a valid suspension reason', () => {
+    const result = validateSuspendAccountInput({ reason: 'Harassment of teammates' });
+    expect(result.errors).toEqual({});
+    expect(result.sanitized).toEqual({ reason: 'Harassment of teammates' });
+  });
+
+  it('rejects reason above max length and preserves the submitted draft (boundary)', () => {
+    const body = { reason: 'r'.repeat(ACCOUNT_ENFORCEMENT_REASON_MAX + 1) };
+    const result = validateSuspendAccountInput(body);
+    expect(result.sanitized).toBeNull();
+    expect(result.errors.reason).toMatch(/at most/i);
+    expect(result.submitted).toEqual(body);
+  });
+});
+
+describe('validateDeleteAccountInput (US-027 / #252 / #256)', () => {
+  it('requires reason and ownershipVerified=true, preserving submitted draft', () => {
+    const body = { reason: '  ', ownershipVerified: false };
+    const result = validateDeleteAccountInput(body);
+    expect(result.sanitized).toBeNull();
+    expect(result.errors.reason).toMatch(/required/i);
+    expect(result.errors.ownershipVerified).toMatch(/must be true/i);
+    expect(result.submitted).toEqual(body);
+  });
+
+  it('accepts ownership-verified deletion payload', () => {
+    const result = validateDeleteAccountInput({
+      reason: 'Verified owner requested deletion',
+      ownershipVerified: true,
+    });
+    expect(result.errors).toEqual({});
+    expect(result.sanitized).toEqual({
+      reason: 'Verified owner requested deletion',
+      ownershipVerified: true,
+    });
+  });
+
+  it('rejects overlong deletion reason while keeping ownershipVerified draft (boundary)', () => {
+    const body = {
+      reason: 'd'.repeat(ACCOUNT_ENFORCEMENT_REASON_MAX + 1),
+      ownershipVerified: true,
+    };
+    const result = validateDeleteAccountInput(body);
+    expect(result.sanitized).toBeNull();
+    expect(result.errors.reason).toMatch(/at most/i);
+    expect(result.submitted).toEqual(body);
+  });
+});

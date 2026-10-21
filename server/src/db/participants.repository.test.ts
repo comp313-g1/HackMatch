@@ -235,6 +235,34 @@ describe('participantsRepository unit tests (US-001 T1 / AC 3)', () => {
     });
   });
 
+  describe('updateParticipant role protection (US-027 / #254)', () => {
+    it('rejects role changes through public updates (ADMIN self-promotion failure)', async () => {
+      await expect(
+        participantsRepository.updateParticipant('part-uuid-101', { role: 'ADMIN' })
+      ).rejects.toThrow(/Role changes are not allowed/i);
+    });
+
+    it('allows non-role updates (happy path)', async () => {
+      const updated = { ...mockParticipant, is_suspended: true };
+      const mockSingle = vi.fn().mockResolvedValue({ data: updated, error: null });
+      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
+      const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
+      const mockFrom = vi.fn().mockReturnValue({ update: mockUpdate });
+
+      vi.spyOn(clientModule, 'getSupabaseClient').mockReturnValue({
+        from: mockFrom,
+      } as unknown as SupabaseClient);
+
+      const result = await participantsRepository.updateParticipant('part-uuid-101', {
+        is_suspended: true,
+        suspension_reason: 'Harassment',
+      });
+      expect(result.is_suspended).toBe(true);
+      expect(mockUpdate).toHaveBeenCalled();
+    });
+  });
+
   describe('provisionAdminParticipant', () => {
     const adminParticipant: Participant = {
       id: 'part-uuid-admin',

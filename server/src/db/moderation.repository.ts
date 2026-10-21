@@ -1,4 +1,6 @@
 import { getSupabaseClient } from './client.js';
+import { scrubPrivateAccountFields } from '../services/accountPrivacy.js';
+import { scrubPrivateModerationFields } from '../services/moderationPrivacy.js';
 import type {
   CreateEventActionRecordDTO,
   CreateModerationCaseDTO,
@@ -105,6 +107,13 @@ export const moderationRepository: IModerationRepository = {
 
   async insertActionRecord(data: CreateEventActionRecordDTO): Promise<EventActionRecord> {
     const client = getSupabaseClient();
+    // US-026 / #245 & US-027 / #254 — never persist credentials, OTPs, or private notes.
+    const summary = data.safe_state_summary ?? {};
+    const scrubbedSummary =
+      typeof data.action_type === 'string' && data.action_type.startsWith('account_')
+        ? scrubPrivateAccountFields(summary)
+        : scrubPrivateModerationFields(summary);
+
     const { data: record, error } = await client
       .from('event_action_records')
       .insert({
@@ -114,7 +123,7 @@ export const moderationRepository: IModerationRepository = {
         action_type: data.action_type,
         reason: data.reason,
         outcome: data.outcome,
-        safe_state_summary: data.safe_state_summary,
+        safe_state_summary: scrubbedSummary,
       })
       .select('*')
       .single();

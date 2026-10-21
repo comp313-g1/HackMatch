@@ -65,6 +65,12 @@ export const participantsRepository: IParticipantRepository = {
   },
 
   async updateParticipant(id: string, data: UpdateParticipantDTO): Promise<Participant> {
+    // US-027 / #254 — public updates must never self-promote or change roles.
+    if (data.role !== undefined) {
+      throw new Error(
+        'UnauthorizedRoleError: Role changes are not allowed through account updates. Use operator provisioning for ADMIN.'
+      );
+    }
     const client = getSupabaseClient();
     const { data: record, error } = await client
       .from('participants')

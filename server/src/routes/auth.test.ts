@@ -327,9 +327,10 @@ describe('Auth Routes (POST /api/auth/register)', () => {
         .send({ ...validPayload, role: 'ADMIN' });
 
       expect(response.status).toBe(403);
-      expect(response.body).toEqual({
-        error: 'Public registration cannot grant administrative privileges.',
-      });
+      expect(response.body.code).toBe('ADMIN_SELF_PROMOTION_FORBIDDEN');
+      expect(response.body.error).toMatch(/ADMIN is prohibited/i);
+      expect(response.body.submitted.password).toBe('[redacted]');
+      expect(response.body.submitted.role).toBe('ADMIN');
       expect(mockCreateUser).not.toHaveBeenCalled();
       expect(participantsRepository.createParticipant).not.toHaveBeenCalled();
     });
@@ -340,7 +341,7 @@ describe('Auth Routes (POST /api/auth/register)', () => {
         .send({ ...validPayload, role: 'admin' });
 
       expect(response.status).toBe(403);
-      expect(response.body.error).toBe('Public registration cannot grant administrative privileges.');
+      expect(response.body.error).toBe('Public registration or self-promotion to ADMIN is prohibited. Administrator accounts are created only through authorized operator provisioning.');
       expect(mockCreateUser).not.toHaveBeenCalled();
     });
 
@@ -350,7 +351,7 @@ describe('Auth Routes (POST /api/auth/register)', () => {
         .send({ ...validPayload, role: 'SUPERADMIN' });
 
       expect(response.status).toBe(403);
-      expect(response.body.error).toBe('Public registration cannot grant administrative privileges.');
+      expect(response.body.error).toBe('Public registration or self-promotion to ADMIN is prohibited. Administrator accounts are created only through authorized operator provisioning.');
       expect(mockCreateUser).not.toHaveBeenCalled();
     });
 
@@ -369,9 +370,9 @@ describe('Auth Routes (POST /api/auth/register)', () => {
           .send({ ...validPayload, ...alias });
 
         expect(response.status).toBe(403);
-        expect(response.body).toEqual({
-          error: 'Public registration cannot grant administrative privileges.',
-        });
+        expect(response.body.code).toBe('ADMIN_SELF_PROMOTION_FORBIDDEN');
+        expect(response.body.error).toMatch(/ADMIN is prohibited/i);
+        expect(response.body.submitted.password).toBe('[redacted]');
         expect(mockCreateUser).not.toHaveBeenCalled();
         expect(participantsRepository.createParticipant).not.toHaveBeenCalled();
       }
@@ -594,9 +595,9 @@ describe('Auth Routes (POST /api/auth/register)', () => {
         });
 
       expect(response.status).toBe(403);
-      expect(response.body).toEqual({
-        error: 'Public registration cannot grant administrative privileges.',
-      });
+      expect(response.body.code).toBe('ADMIN_SELF_PROMOTION_FORBIDDEN');
+      expect(response.body.error).toMatch(/ADMIN is prohibited/i);
+      expect(response.body.submitted.password).toBe('[redacted]');
     });
   });
 
