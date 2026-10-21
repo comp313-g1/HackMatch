@@ -10,6 +10,13 @@ export interface Participant {
   /** Set by US-027 admin suspension; blocked at login/session renew by US-003. */
   is_suspended?: boolean;
   suspended_at?: string | null;
+  suspended_by?: string | null;
+  suspension_reason?: string | null;
+  /** Soft deactivation (US-027 / #249); implies is_suspended. */
+  is_deactivated?: boolean;
+  deactivated_at?: string | null;
+  deactivated_by?: string | null;
+  deactivation_reason?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -30,6 +37,59 @@ export interface UpdateParticipantDTO {
   is_verified?: boolean;
   is_suspended?: boolean;
   suspended_at?: string | null;
+  suspended_by?: string | null;
+  suspension_reason?: string | null;
+  is_deactivated?: boolean;
+  deactivated_at?: string | null;
+  deactivated_by?: string | null;
+  deactivation_reason?: string | null;
+}
+
+/** Ownership-verified deletion request lifecycle (US-027 / #249 / AC 3). */
+export type AccountDeletionRequestStatus =
+  | 'Pending'
+  | 'BlockedNeedsDisband'
+  | 'Processing'
+  | 'Completed'
+  | 'Canceled';
+
+export interface AccountDeletionRequest {
+  id: string;
+  participant_id: string;
+  requested_by: string;
+  reason: string;
+  status: AccountDeletionRequestStatus;
+  ownership_verified: boolean;
+  ownership_verified_at: string | null;
+  ownership_verified_by: string | null;
+  blocked_reason: string | null;
+  target_completion_at: string;
+  completed_at: string | null;
+  safe_state_summary: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateAccountDeletionRequestDTO {
+  participant_id: string;
+  requested_by: string;
+  reason: string;
+  ownership_verified?: boolean;
+  ownership_verified_at?: string | null;
+  ownership_verified_by?: string | null;
+  status?: AccountDeletionRequestStatus;
+  blocked_reason?: string | null;
+  safe_state_summary?: Record<string, unknown>;
+}
+
+export interface UpdateAccountDeletionRequestDTO {
+  status?: AccountDeletionRequestStatus;
+  ownership_verified?: boolean;
+  ownership_verified_at?: string | null;
+  ownership_verified_by?: string | null;
+  blocked_reason?: string | null;
+  completed_at?: string | null;
+  safe_state_summary?: Record<string, unknown>;
 }
 
 export type OAuthProvider = 'google' | 'github' | 'google.com' | 'github.com';

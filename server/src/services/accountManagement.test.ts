@@ -46,12 +46,23 @@ describe('accountManagement (US-027 / #248)', () => {
       state: 'Active',
       isVerified: true,
       suspendedAt: null,
+      suspensionReason: null,
+      deactivatedAt: null,
+      deactivationReason: null,
       createdAt: part.created_at,
       handle: 'ada',
     });
     expect((active as unknown as Record<string, unknown>).firebase_uid).toBeUndefined();
 
     expect(toSafeAdminAccountView(suspended).state).toBe('Suspended');
+    expect(
+      toSafeAdminAccountView({
+        ...suspended,
+        is_deactivated: true,
+        deactivated_at: '2026-10-20T00:00:00.000Z',
+        deactivation_reason: 'Repeated abuse',
+      }).state
+    ).toBe('Deactivated');
   });
 
   it('lists accounts newest-first with handles and without credential fields', async () => {

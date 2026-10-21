@@ -33,7 +33,7 @@ describe('parseAccountsListQuery (US-027 / #248)', () => {
   it('rejects invalid state and echoes submitted values', () => {
     const result = parseAccountsListQuery({ state: 'Banned', limit: '10' });
     expect(result.sanitized).toBeNull();
-    expect(result.errors.state).toMatch(/Active or Suspended/);
+    expect(result.errors.state).toMatch(/Active, Suspended, or Deactivated/);
     expect(result.submitted.state).toBe('Banned');
   });
 

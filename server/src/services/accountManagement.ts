@@ -27,7 +27,7 @@ export class AccountManagementError extends Error {
   }
 }
 
-export type AccountState = 'Active' | 'Suspended';
+export type AccountState = 'Active' | 'Suspended' | 'Deactivated';
 
 /** List card — account identifier, role, state; no credentials / OTPs (US-027 AC 1). */
 export interface AdminAccountListItem {
@@ -38,6 +38,9 @@ export interface AdminAccountListItem {
   state: AccountState;
   isVerified: boolean;
   suspendedAt: string | null;
+  suspensionReason: string | null;
+  deactivatedAt: string | null;
+  deactivationReason: string | null;
   createdAt: string;
   handle: string | null;
 }
@@ -77,7 +80,9 @@ export const ACCOUNT_PRIVACY_NOTICE =
   'Credentials, OTPs, private contact handles, and private team notes are not available through account-management endpoints.';
 
 function toAccountState(participant: Participant): AccountState {
-  return participant.is_suspended ? 'Suspended' : 'Active';
+  if (participant.is_deactivated) return 'Deactivated';
+  if (participant.is_suspended) return 'Suspended';
+  return 'Active';
 }
 
 /**
@@ -96,6 +101,9 @@ export function toSafeAdminAccountView(
     state: toAccountState(participant),
     isVerified: participant.is_verified,
     suspendedAt: participant.suspended_at ?? null,
+    suspensionReason: participant.suspension_reason ?? null,
+    deactivatedAt: participant.deactivated_at ?? null,
+    deactivationReason: participant.deactivation_reason ?? null,
     createdAt: participant.created_at,
     handle: options?.handle ?? null,
   };
@@ -106,7 +114,18 @@ export async function listAdminAccounts(
 ): Promise<AdminAccountListItem[]> {
   const rows = await accountsRepository.listForAdmin({
     role: query.role,
-    isSuspended: query.state === 'Suspended' ? true : query.state === 'Active' ? false : undefined,
+    isSuspended:
+      query.state === 'Suspended' || query.state === 'Deactivated'
+        ? true
+        : query.state === 'Active'
+          ? false
+          : undefined,
+    isDeactivated:
+      query.state === 'Deactivated'
+        ? true
+        : query.state === 'Active' || query.state === 'Suspended'
+          ? false
+          : undefined,
     q: query.q,
     limit: query.limit,
   });

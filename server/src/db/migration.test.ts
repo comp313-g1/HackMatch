@@ -1700,4 +1700,44 @@ describe('0037_create_moderation_cases.sql moderation queue schema (US-026 / #23
   });
 });
 
+describe('0039_account_enforcement_models.sql (US-027 / #249)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0039_account_enforcement_models.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(0);
+  });
+
+  it('extends participants with suspension actor/reason and deactivation fields', () => {
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+suspended_by/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+suspension_reason/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+is_deactivated\s+BOOLEAN\s+NOT\s+NULL\s+DEFAULT\s+FALSE/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+deactivated_at/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+deactivation_reason/i);
+    expect(sql).toMatch(/chk_participants_suspension_fields/i);
+    expect(sql).toMatch(/chk_participants_deactivation_fields/i);
+    expect(sql).toMatch(/chk_participants_deactivated_implies_suspended/i);
+  });
+
+  it('creates account_deletion_requests with ownership verification and 30-day target', () => {
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+account_deletion_requests/i);
+    expect(sql).toMatch(/ownership_verified/i);
+    expect(sql).toMatch(/BlockedNeedsDisband/i);
+    expect(sql).toMatch(/INTERVAL\s+'30\s+days'/i);
+    expect(sql).toMatch(/target_completion_at/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+account_deletion_requests\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+  });
+
+  it('enforces ADMIN-only creation and one open deletion request per participant', () => {
+    expect(sql).toMatch(/check_account_deletion_request_admin_actor/i);
+    expect(sql).toMatch(/Deletion requests may only be created by ADMIN actors/i);
+    expect(sql).toMatch(/uq_account_deletion_requests_open_participant/i);
+    expect(sql).toMatch(/status\s+IN\s*\(\s*'Pending',\s*'BlockedNeedsDisband',\s*'Processing'\s*\)/i);
+  });
+});
+
 

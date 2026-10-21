@@ -1,7 +1,7 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { UUID_REGEX } from './team.validator.js';
 
-export type AccountListStateFilter = 'Active' | 'Suspended';
+export type AccountListStateFilter = 'Active' | 'Suspended' | 'Deactivated';
 export type AccountListRoleFilter = 'PART' | 'ADMIN';
 
 export interface AccountsFieldErrors {
@@ -50,8 +50,8 @@ export function parseAccountsListQuery(query: Request['query']): {
   let state: AccountListStateFilter | undefined;
   if (query.state !== undefined) {
     const raw = Array.isArray(query.state) ? query.state[0] : query.state;
-    if (raw !== 'Active' && raw !== 'Suspended') {
-      errors.state = 'state must be Active or Suspended.';
+    if (raw !== 'Active' && raw !== 'Suspended' && raw !== 'Deactivated') {
+      errors.state = 'state must be Active, Suspended, or Deactivated.';
     } else {
       state = raw;
     }

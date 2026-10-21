@@ -4,6 +4,7 @@ import type { Participant, ParticipantRole, TeamRecruitmentStatus } from './type
 export interface AdminAccountListFilters {
   role?: ParticipantRole;
   isSuspended?: boolean;
+  isDeactivated?: boolean;
   /** Case-insensitive substring match against email or full_name. */
   q?: string;
   limit: number;
@@ -30,7 +31,7 @@ export const accountsRepository: IAccountsRepository = {
     let query = client
       .from('participants')
       .select(
-        'id, email, full_name, role, is_verified, is_suspended, suspended_at, created_at, updated_at'
+        'id, email, full_name, role, is_verified, is_suspended, suspended_at, suspended_by, suspension_reason, is_deactivated, deactivated_at, deactivated_by, deactivation_reason, created_at, updated_at'
       )
       .order('created_at', { ascending: false })
       .limit(filters.limit);
@@ -40,6 +41,9 @@ export const accountsRepository: IAccountsRepository = {
     }
     if (filters.isSuspended !== undefined) {
       query = query.eq('is_suspended', filters.isSuspended);
+    }
+    if (filters.isDeactivated !== undefined) {
+      query = query.eq('is_deactivated', filters.isDeactivated);
     }
     if (filters.q) {
       // Search account identifiers only (email / display name). Never OTP/credential tables.
@@ -60,7 +64,7 @@ export const accountsRepository: IAccountsRepository = {
     const { data, error } = await client
       .from('participants')
       .select(
-        'id, email, full_name, role, is_verified, is_suspended, suspended_at, created_at, updated_at'
+        'id, email, full_name, role, is_verified, is_suspended, suspended_at, suspended_by, suspension_reason, is_deactivated, deactivated_at, deactivated_by, deactivation_reason, created_at, updated_at'
       )
       .eq('id', accountId)
       .maybeSingle();
