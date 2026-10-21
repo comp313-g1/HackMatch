@@ -5,6 +5,7 @@ import {
   parseAccountsListQuery,
   validateAccountIdParam,
   validateAccountsListQuery,
+  validateDeleteAccountInput,
   validateSuspendAccountInput,
 } from './accounts.validator.js';
 
@@ -102,5 +103,28 @@ describe('validateSuspendAccountInput (US-027 / #250)', () => {
     const result = validateSuspendAccountInput({ reason: 'Harassment of teammates' });
     expect(result.errors).toEqual({});
     expect(result.sanitized).toEqual({ reason: 'Harassment of teammates' });
+  });
+});
+
+describe('validateDeleteAccountInput (US-027 / #252)', () => {
+  it('requires reason and ownershipVerified=true, preserving submitted draft', () => {
+    const body = { reason: '  ', ownershipVerified: false };
+    const result = validateDeleteAccountInput(body);
+    expect(result.sanitized).toBeNull();
+    expect(result.errors.reason).toMatch(/required/i);
+    expect(result.errors.ownershipVerified).toMatch(/must be true/i);
+    expect(result.submitted).toEqual(body);
+  });
+
+  it('accepts ownership-verified deletion payload', () => {
+    const result = validateDeleteAccountInput({
+      reason: 'Verified owner requested deletion',
+      ownershipVerified: true,
+    });
+    expect(result.errors).toEqual({});
+    expect(result.sanitized).toEqual({
+      reason: 'Verified owner requested deletion',
+      ownershipVerified: true,
+    });
   });
 });

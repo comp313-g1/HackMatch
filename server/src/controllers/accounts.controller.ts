@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import type {
   AccountsListQuerySanitized,
+  DeleteAccountSanitized,
   SuspendAccountSanitized,
 } from '../validators/accounts.validator.js';
 import {
@@ -9,6 +10,7 @@ import {
   listAdminAccounts,
 } from '../services/accountManagement.js';
 import { suspendAccount } from '../services/accountSuspension.js';
+import { requestAccountDeletion } from '../services/accountDeletion.js';
 
 function handleAccountsError(err: unknown, res: Response, next: NextFunction): void {
   res.setHeader('Cache-Control', 'no-store');
@@ -85,6 +87,41 @@ export async function suspendAdminAccountHandler(
       actorRole: actor.role,
       accountId: String(req.params.accountId),
       reason: body.reason,
+    });
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json(result);
+  } catch (err: unknown) {
+    handleAccountsError(err, res, next);
+  }
+}
+
+/**
+ * POST /api/admin/accounts/:accountId/delete — ownership-verified deletion + 30-day target (#252).
+ */
+export async function deleteAdminAccountHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const actor = req.participant;
+    if (!actor) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(401).json({
+        error: 'Authentication required. Missing or malformed Authorization header.',
+        code: 'UNAUTHORIZED',
+      });
+      return;
+    }
+
+    const body = req.body as DeleteAccountSanitized;
+    const result = await requestAccountDeletion({
+      actorParticipantId: actor.id,
+      actorRole: actor.role,
+      accountId: String(req.params.accountId),
+      reason: body.reason,
+      ownershipVerified: body.ownershipVerified,
     });
 
     res.setHeader('Cache-Control', 'no-store');

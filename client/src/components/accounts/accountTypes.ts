@@ -9,6 +9,7 @@ export type AccountsDetailState = 'idle' | 'loading' | 'success' | 'error';
 
 export interface AccountsFieldErrors {
   reason?: string;
+  ownershipVerified?: string;
   q?: string;
   state?: string;
   role?: string;
@@ -85,4 +86,37 @@ export interface AccountsListQuery {
   state?: AccountState;
   role?: AccountRole;
   limit?: number;
+}
+
+export type AccountDeletionRequestStatus =
+  | 'Pending'
+  | 'BlockedNeedsDisband'
+  | 'Processing'
+  | 'Completed'
+  | 'Canceled';
+
+export interface SafeDeletionRequestView {
+  id: string;
+  participantId: string;
+  status: AccountDeletionRequestStatus;
+  ownershipVerified: boolean;
+  ownershipVerifiedAt: string | null;
+  blockedReason: string | null;
+  targetCompletionAt: string;
+  completedAt: string | null;
+  reason: string;
+  createdAt: string;
+  targetNotice: string;
+}
+
+export interface DeleteAccountResult {
+  outcome: 'deletion_completed' | 'deletion_blocked_needs_disband' | 'deletion_already_completed';
+  request: SafeDeletionRequestView;
+  account: AdminAccountListItem;
+  livePiiErased: boolean;
+  firebaseUserDeleted: boolean;
+  sessionsRevoked: boolean;
+  lockedMembershipsPseudonymized: false;
+  unlockedOwnedTeamIds: string[];
+  actionRecordId: string | null;
 }

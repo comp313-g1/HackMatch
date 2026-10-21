@@ -2,13 +2,16 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   AccountsApiError,
   AuthRequiredError,
+  deleteAdminAccount,
   fetchAdminAccountDetail,
   fetchAdminAccounts,
   formatCascadeSuccess,
+  formatDeletionSuccess,
   probeAdminAccountsAccess,
   suspendAdminAccount,
 } from './accountsApi';
 import { SuspendAccountForm } from './SuspendAccountForm';
+import { DeleteAccountForm } from './DeleteAccountForm';
 import type {
   AccountState,
   AccountsAccessState,
@@ -24,8 +27,8 @@ export interface AccountEnforcementPageProps {
 }
 
 /**
- * ADMIN account inspection + suspension with cascade outcomes
- * (US-027 / #248–#251). Form values are preserved when validation fails (NR-017).
+ * ADMIN account inspection, suspension cascade, and ownership-verified deletion
+ * (US-027 / #248–#252). Form values are preserved when validation fails (NR-017).
  */
 export function AccountEnforcementPage({
   onNavigateAway,
@@ -50,6 +53,11 @@ export function AccountEnforcementPage({
   const [suspendFieldErrors, setSuspendFieldErrors] = useState<AccountsFieldErrors>({});
   const [suspendFormError, setSuspendFormError] = useState<string | null>(null);
   const [suspendSuccess, setSuspendSuccess] = useState<string | null>(null);
+
+  const [deleting, setDeleting] = useState(false);
+  const [deleteFieldErrors, setDeleteFieldErrors] = useState<AccountsFieldErrors>({});
+  const [deleteFormError, setDeleteFormError] = useState<string | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
 
   const checkAccess = useCallback(async () => {
     setAccessState('loading');
@@ -132,6 +140,9 @@ export function AccountEnforcementPage({
     setSuspendFieldErrors({});
     setSuspendFormError(null);
     setSuspendSuccess(null);
+    setDeleteFieldErrors({});
+    setDeleteFormError(null);
+    setDeleteSuccess(null);
     void loadDetail(accountId);
   };
 
@@ -167,6 +178,48 @@ export function AccountEnforcementPage({
       }
     } finally {
       setSuspending(false);
+    }
+  };
+
+  const handleDelete = async (input: { reason: string; ownershipVerified: true }) => {
+    if (!selectedAccountId) return;
+    setDeleting(true);
+    setDeleteFieldErrors({});
+    setDeleteFormError(null);
+    setDeleteSuccess(null);
+    try {
+      const result = await deleteAdminAccount(selectedAccountId, input);
+      setDeleteSuccess(formatDeletionSuccess(result));
+      setAccounts((prev) =>
+        prev.map((a) => (a.accountId === result.account.accountId ? result.account : a))
+      );
+      setDetail((prev) =>
+        prev && prev.account.accountId === result.account.accountId
+          ? { ...prev, account: result.account }
+          : prev
+      );
+      void loadDetail(result.account.accountId);
+      void loadList();
+    } catch (err: unknown) {
+      if (err instanceof AuthRequiredError) {
+        setDeleteFormError('You need to sign in as an administrator.');
+      } else if (err instanceof AccountsApiError) {
+        if (err.errors) setDeleteFieldErrors(err.errors);
+        if (err.code === 'UNLOCKED_OWNER_MUST_DISBAND') {
+          setDeleteFormError(
+            err.message ||
+              'Deletion is blocked until the owner disbands unlocked teams. Your entered values were kept.'
+          );
+        } else {
+          setDeleteFormError(
+            err.message || 'Could not process deletion. Your entered values were kept.'
+          );
+        }
+      } else {
+        setDeleteFormError('Could not process deletion. Your entered values were kept.');
+      }
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -477,6 +530,16 @@ export function AccountEnforcementPage({
             formError={suspendFormError}
             successNotice={suspendSuccess}
             onSubmit={handleSuspend}
+          />
+
+          <DeleteAccountForm
+            accountId={selectedAccountId}
+            accountState={detail?.account.state ?? null}
+            submitting={deleting}
+            fieldErrors={deleteFieldErrors}
+            formError={deleteFormError}
+            successNotice={deleteSuccess}
+            onSubmit={handleDelete}
           />
         </section>
       </div>

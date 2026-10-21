@@ -4,6 +4,7 @@ import type {
   AccountsListQuery,
   AdminAccountDetail,
   AdminAccountListItem,
+  DeleteAccountResult,
   SuspendAccountResult,
 } from './accountTypes';
 
@@ -188,6 +189,56 @@ export function formatCascadeSuccess(result: SuspendAccountResult): string {
       : 'Looking-for-Team was already inactive.',
     `Paused recruitment on ${effects.ownedTeamsPaused} owned Open team(s).`,
     'Confirmed memberships were preserved.',
+  ];
+  return parts.filter(Boolean).join(' ');
+}
+
+/**
+ * POST /api/admin/accounts/:accountId/delete — ownership-verified deletion (#252).
+ */
+export async function deleteAdminAccount(
+  accountId: string,
+  input: { reason: string; ownershipVerified: true }
+): Promise<DeleteAccountResult> {
+  let res: Response;
+  try {
+    res = await authFetch(`/api/admin/accounts/${accountId}/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+  } catch (err: unknown) {
+    if (err instanceof AuthRequiredError) throw err;
+    throw new AccountsApiError(
+      0,
+      'NETWORK',
+      { _form: 'Network error. Your entered deletion values were kept.' },
+      input,
+      'Network error. Your entered deletion values were kept.'
+    );
+  }
+
+  if (res.ok) {
+    return (await res.json()) as DeleteAccountResult;
+  }
+
+  const body = await parseErrorBody(res);
+  throwFromResponse(res, body, input);
+}
+
+export function formatDeletionSuccess(result: DeleteAccountResult): string {
+  const target = new Date(result.request.targetCompletionAt).toISOString();
+  if (result.outcome === 'deletion_already_completed') {
+    return `Deletion was already completed. Target completion was ${target}. ${result.request.targetNotice}`;
+  }
+  const parts = [
+    'Ownership-verified deletion completed.',
+    result.livePiiErased ? 'Live identifying data was erased.' : null,
+    result.sessionsRevoked ? 'Sessions revoked.' : null,
+    result.firebaseUserDeleted ? 'Firebase user deleted.' : null,
+    `Proposed target completion: ${target}.`,
+    result.request.targetNotice,
+    'Locked memberships were preserved for later pseudonymization.',
   ];
   return parts.filter(Boolean).join(' ');
 }

@@ -13,6 +13,8 @@ import type { Participant } from '../db/types.js';
 const mockVerifyIdToken = vi.fn();
 const mockRevokeRefreshTokens = vi.fn();
 const mockUpdateUser = vi.fn();
+const mockDeleteUser = vi.fn();
+const mockRequestAccountDeletion = vi.fn();
 
 vi.mock('../config/firebase.js', () => {
   const authMock = {
@@ -21,6 +23,7 @@ vi.mock('../config/firebase.js', () => {
     setCustomUserClaims: vi.fn(),
     revokeRefreshTokens: (...args: unknown[]) => mockRevokeRefreshTokens(...args),
     updateUser: (...args: unknown[]) => mockUpdateUser(...args),
+    deleteUser: (...args: unknown[]) => mockDeleteUser(...args),
   };
   return {
     firebaseAuth: authMock,
@@ -42,6 +45,14 @@ vi.mock('../services/accountSuspensionCascade.js', () => ({
     membershipsPreserved: true,
   }),
 }));
+
+vi.mock('../services/accountDeletion.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/accountDeletion.js')>();
+  return {
+    ...actual,
+    requestAccountDeletion: (...args: unknown[]) => mockRequestAccountDeletion(...args),
+  };
+});
 
 const AUTH_TIME = Math.floor(Date.now() / 1000) - 30;
 const AUTH = 'Bearer valid-mfa-token';
@@ -84,6 +95,8 @@ describe('ADMIN account-management list, detail, and suspend (US-027 / #248 / #2
     } as unknown as DecodedIdToken);
     mockRevokeRefreshTokens.mockResolvedValue(undefined);
     mockUpdateUser.mockResolvedValue({});
+    mockDeleteUser.mockResolvedValue(undefined);
+    mockRequestAccountDeletion.mockReset();
     vi.mocked(applySuspensionCascade).mockResolvedValue({
       pendingIncomingRequestsCanceled: 0,
       outgoingInvitationsCanceled: 0,
@@ -322,6 +335,104 @@ describe('ADMIN account-management list, detail, and suspend (US-027 / #248 / #2
 
       expect(res.status).toBe(404);
       expect(res.body.code).toBe('ACCOUNT_NOT_FOUND');
+    });
+  });
+
+  describe('POST /api/admin/accounts/:accountId/delete (US-027 / #252)', () => {
+    it('rejects missing ownershipVerified and echoes submitted draft', async () => {
+      const body = { reason: 'Owner asked', ownershipVerified: false };
+      const res = await request(app)
+        .post(`/api/admin/accounts/${ACCOUNT_ID}/delete`)
+        .set('Authorization', AUTH)
+        .send(body);
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('VALIDATION_ERROR');
+      expect(res.body.errors.ownershipVerified).toMatch(/ownershipVerified must be true/i);
+      expect(res.body.submitted).toEqual(body);
+      expect(mockRequestAccountDeletion).not.toHaveBeenCalled();
+    });
+
+    it('completes ownership-verified deletion workflow (happy path)', async () => {
+      mockRequestAccountDeletion.mockResolvedValue({
+        outcome: 'deletion_completed',
+        request: {
+          id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          participantId: ACCOUNT_ID,
+          status: 'Completed',
+          ownershipVerified: true,
+          ownershipVerifiedAt: '2026-10-21T12:00:00.000Z',
+          blockedReason: null,
+          targetCompletionAt: '2026-11-20T12:00:00.000Z',
+          completedAt: '2026-10-21T12:05:00.000Z',
+          reason: 'Verified owner requested deletion',
+          createdAt: '2026-10-21T12:00:00.000Z',
+          targetNotice: 'Proposed 30-day live-PII processing target',
+        },
+        account: {
+          accountId: ACCOUNT_ID,
+          email: 'deleted+bbbb@deleted.invalid',
+          fullName: 'Deleted User',
+          role: 'PART',
+          state: 'Deactivated',
+          isVerified: false,
+          suspendedAt: '2026-10-21T12:05:00.000Z',
+          suspensionReason: 'Account deletion processed',
+          deactivatedAt: '2026-10-21T12:05:00.000Z',
+          deactivationReason: 'Ownership-verified deletion completed',
+          createdAt: partParticipant.created_at,
+          handle: null,
+          updatedAt: '2026-10-21T12:05:00.000Z',
+        },
+        livePiiErased: true,
+        firebaseUserDeleted: true,
+        sessionsRevoked: true,
+        lockedMembershipsPseudonymized: false,
+        unlockedOwnedTeamIds: [],
+        actionRecordId: 'rec-del-1',
+      });
+
+      const res = await request(app)
+        .post(`/api/admin/accounts/${ACCOUNT_ID}/delete`)
+        .set('Authorization', AUTH)
+        .send({ reason: 'Verified owner requested deletion', ownershipVerified: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body.outcome).toBe('deletion_completed');
+      expect(res.body.livePiiErased).toBe(true);
+      expect(res.body.request.targetCompletionAt).toBe('2026-11-20T12:00:00.000Z');
+      expect(mockRequestAccountDeletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accountId: ACCOUNT_ID,
+          reason: 'Verified owner requested deletion',
+          ownershipVerified: true,
+          actorRole: 'ADMIN',
+        })
+      );
+    });
+
+    it('returns 409 when unlocked owner must disband first', async () => {
+      const { AccountManagementError } = await import('../services/accountManagement.js');
+      mockRequestAccountDeletion.mockRejectedValue(
+        new AccountManagementError(
+          409,
+          'UNLOCKED_OWNER_MUST_DISBAND',
+          'Owner must disband 1 unlocked team(s) before deletion can proceed: Rocket.',
+          {
+            outcome: 'deletion_blocked_needs_disband',
+            unlockedOwnedTeamIds: ['cccccccc-cccc-4ccc-8ccc-cccccccccccc'],
+          }
+        )
+      );
+
+      const res = await request(app)
+        .post(`/api/admin/accounts/${ACCOUNT_ID}/delete`)
+        .set('Authorization', AUTH)
+        .send({ reason: 'Verified owner requested deletion', ownershipVerified: true });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('UNLOCKED_OWNER_MUST_DISBAND');
+      expect(res.body.details.outcome).toBe('deletion_blocked_needs_disband');
     });
   });
 });

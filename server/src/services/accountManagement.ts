@@ -8,7 +8,13 @@ export type AccountManagementErrorCode =
   | 'FORBIDDEN_ROLE'
   | 'INVALID_TARGET'
   | 'SELF_SUSPEND_FORBIDDEN'
-  | 'FIREBASE_REVOKE_FAILED';
+  | 'SELF_DELETE_FORBIDDEN'
+  | 'OWNERSHIP_NOT_VERIFIED'
+  | 'UNLOCKED_OWNER_MUST_DISBAND'
+  | 'DELETION_ALREADY_OPEN'
+  | 'DELETION_ALREADY_COMPLETED'
+  | 'FIREBASE_REVOKE_FAILED'
+  | 'FIREBASE_DELETE_FAILED';
 
 export class AccountManagementError extends Error {
   readonly status: number;

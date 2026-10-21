@@ -4,9 +4,11 @@ import { requireJsonObjectBody } from '../validators/team.validator.js';
 import {
   validateAccountIdParam,
   validateAccountsListQuery,
+  validateDeleteAccountBody,
   validateSuspendAccountBody,
 } from '../validators/accounts.validator.js';
 import {
+  deleteAdminAccountHandler,
   getAdminAccountDetailHandler,
   listAdminAccountsHandler,
   suspendAdminAccountHandler,
@@ -15,8 +17,7 @@ import {
 export const accountsRouter = Router();
 
 /**
- * US-027 / #248–#250 — ADMIN account list/detail and suspension.
- * Deletion workflow ships in later US-027 tasks.
+ * US-027 / #248–#252 — ADMIN account list/detail, suspension, and ownership-verified deletion.
  */
 accountsRouter.use(...requireAccountsAdmin);
 
@@ -34,4 +35,12 @@ accountsRouter.post(
   requireJsonObjectBody,
   validateSuspendAccountBody,
   suspendAdminAccountHandler
+);
+
+accountsRouter.post(
+  '/:accountId/delete',
+  validateAccountIdParam,
+  requireJsonObjectBody,
+  validateDeleteAccountBody,
+  deleteAdminAccountHandler
 );
