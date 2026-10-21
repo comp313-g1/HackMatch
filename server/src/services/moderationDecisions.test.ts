@@ -134,6 +134,7 @@ describe('decideModerationCase (US-026 / #242)', () => {
         safe_state_summary: expect.objectContaining({
           credentialsIncluded: false,
           privateContactsIncluded: false,
+          privateWorkspaceAccessGranted: false,
         }),
       })
     );

@@ -116,9 +116,12 @@ function TargetBody({ target }: { target: SanitizedModerationTarget }): React.JS
   );
 }
 
+const DEFAULT_PRIVACY_NOTICE =
+  'Credentials, private contact handles, and private workspace content are not available through moderation cases.';
+
 /**
- * Case + sanitized target detail panel (US-026 / #241).
- * Does not surface credentials or private contacts from the API payload.
+ * Case + sanitized target detail panel (US-026 / #241 / #245).
+ * Does not surface credentials, private contacts, or private workspace data.
  */
 export function ModerationCaseView({
   detail,
@@ -249,6 +252,14 @@ export function ModerationCaseView({
         </h4>
         <TargetBody target={detail.target} />
       </section>
+
+      <p
+        role="note"
+        className="text-xs text-ink-muted border-t border-cream-200 pt-3"
+        data-testid="moderation-privacy-notice"
+      >
+        {detail.privacy?.notice ?? DEFAULT_PRIVACY_NOTICE}
+      </p>
     </article>
   );
 }

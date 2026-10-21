@@ -72,9 +72,19 @@ export type SanitizedModerationTarget =
   | SanitizedProfileTarget
   | SanitizedUrlTarget;
 
+/** Privacy boundary returned with case detail (US-026 / #245 / AC 4). */
+export interface ModerationPrivacyFlags {
+  credentialsIncluded: false;
+  privateContactsIncluded: false;
+  privateWorkspaceAccessGranted: false;
+  notice: string;
+}
+
 export interface ModerationCaseDetail {
   case: ModerationCaseView;
   target: SanitizedModerationTarget;
+  /** Present on current API responses; optional for older fixtures. */
+  privacy?: ModerationPrivacyFlags;
 }
 
 export interface CreateModerationCaseInput {

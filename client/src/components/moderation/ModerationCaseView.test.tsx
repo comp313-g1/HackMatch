@@ -85,4 +85,30 @@ describe('ModerationCaseView (US-026 / #241)', () => {
     expect(screen.getByText('https://evil.example/phish')).toBeInTheDocument();
     expect(screen.queryByText(/@|firebase|secret/i)).not.toBeInTheDocument();
   });
+
+  it('shows privacy notice that credentials and private workspace are not granted (#245)', () => {
+    render(
+      <ModerationCaseView
+        detail={{
+          ...detail,
+          privacy: {
+            credentialsIncluded: false,
+            privateContactsIncluded: false,
+            privateWorkspaceAccessGranted: false,
+            notice:
+              'Credentials, private contact handles, and private workspace content are not available through moderation cases.',
+          },
+        }}
+        detailState="success"
+        detailError={null}
+        onRetry={vi.fn()}
+      />
+    );
+    expect(screen.getByTestId('moderation-privacy-notice')).toHaveTextContent(
+      /private workspace content are not available/i
+    );
+    expect(screen.getByTestId('moderation-privacy-notice')).toHaveTextContent(
+      /credentials|private contact/i
+    );
+  });
 });

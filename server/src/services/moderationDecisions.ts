@@ -13,6 +13,7 @@ import {
   toModerationCaseView,
   type ModerationCaseView,
 } from './moderationCases.js';
+import { moderationPrivacyFlags, scrubPrivateModerationFields } from './moderationPrivacy.js';
 
 export const REDACTED_PITCH = '[Content removed by moderation]';
 export const REDACTED_HANDLE = 'redacted';
@@ -357,18 +358,18 @@ export async function decideModerationCase(
   const resolvedAt = new Date().toISOString();
   const status = caseStatusForAction(input.action);
   const outcome = outcomeForAction(input.action);
+  const privacy = moderationPrivacyFlags();
 
-  const safeStateSummary: Record<string, unknown> = {
+  // US-026 / #245 — scrub nested effects before persistence and API response.
+  const safeStateSummary: Record<string, unknown> = scrubPrivateModerationFields({
     caseId: row.id,
     action: input.action,
     outcome,
     targetType: row.target_type as ModerationTargetType,
     targetId: row.target_id,
     effects,
-    // Explicitly omit credentials / private contacts from the audit summary.
-    credentialsIncluded: false,
-    privateContactsIncluded: false,
-  };
+    ...privacy,
+  });
 
   await moderationRepository.insertActionRecord({
     actor_id: input.actorParticipantId,

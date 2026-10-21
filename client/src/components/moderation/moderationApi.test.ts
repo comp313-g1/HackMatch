@@ -102,7 +102,7 @@ describe('moderationApi (US-026 / #241)', () => {
     expect(cases[0].reason).toBe('spam');
   });
 
-  it('fetchModerationCaseDetail returns case + target', async () => {
+  it('fetchModerationCaseDetail returns case + target + privacy flags', async () => {
     authFetchMock.mockResolvedValueOnce(
       jsonResponse(200, {
         case: {
@@ -131,11 +131,18 @@ describe('moderationApi (US-026 / #241)', () => {
             ownerDisplayName: 'Ada',
           },
         },
+        privacy: {
+          credentialsIncluded: false,
+          privateContactsIncluded: false,
+          privateWorkspaceAccessGranted: false,
+          notice: 'Credentials and private workspace are not available.',
+        },
       })
     );
     const detail = await fetchModerationCaseDetail('1');
     expect(detail.case.id).toBe('1');
     expect(detail.target.type).toBe('team');
+    expect(detail.privacy?.privateWorkspaceAccessGranted).toBe(false);
   });
 
   it('fetchModerationActionRecords returns records array', async () => {

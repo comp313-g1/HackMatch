@@ -235,6 +235,13 @@ describe('ADMIN moderation queue + target detail (US-026 / #239)', () => {
       expect(res.body.target.team.communicationLink).toBe('https://evil.example/phish');
       expect(res.body.target.team.ownerHandle).toBe('ada');
       expect(res.body.target.team.ownerDisplayName).toBe('Ada Lovelace');
+      expect(res.body.privacy).toEqual(
+        expect.objectContaining({
+          credentialsIncluded: false,
+          privateContactsIncluded: false,
+          privateWorkspaceAccessGranted: false,
+        })
+      );
       expect(JSON.stringify(res.body)).not.toMatch(
         /admin@example\.com|part@example\.com|fb-part-1|secret-discord|firebase_uid|shared_contact/i
       );

@@ -449,11 +449,14 @@ describe('Moderation actions and access integration (US-026 / #246)', () => {
       expect(res.status).toBe(200);
       expect(res.body.target.type).toBe('team');
       expect(res.body.target.team.name).toBe(sampleTeam.name);
+      expect(res.body.privacy.privateWorkspaceAccessGranted).toBe(false);
+      expect(res.body.privacy.credentialsIncluded).toBe(false);
+      expect(res.body.privacy.privateContactsIncluded).toBe(false);
       const payload = JSON.stringify(res.body);
       expect(payload).not.toMatch(/secret-discord/);
       expect(payload).not.toMatch(/part@example\.com/);
       expect(payload).not.toMatch(/firebase_uid|fb-part-1/);
-      expect(payload).not.toMatch(/otp|password|credential/i);
+      expect(payload).not.toMatch(/"password"|"otp"/i);
     });
   });
 

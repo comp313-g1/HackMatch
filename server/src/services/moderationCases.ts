@@ -7,6 +7,11 @@ import type {
   ModerationCaseStatus,
   ModerationTargetType,
 } from '../db/types.js';
+import {
+  moderationPrivacyFlags,
+  scrubPrivateModerationFields,
+  type ModerationPrivacyFlags,
+} from './moderationPrivacy.js';
 
 export type ModerationServiceErrorCode =
   | 'TARGET_NOT_FOUND'
@@ -108,6 +113,8 @@ export type SanitizedModerationTarget =
 export interface ModerationCaseDetailView {
   case: ModerationCaseView;
   target: SanitizedModerationTarget;
+  /** Explicit privacy boundary for ADMIN case inspection (US-026 / #245 / AC 4). */
+  privacy: ModerationPrivacyFlags;
 }
 
 export function toModerationCaseView(row: ModerationCase): ModerationCaseView {
@@ -221,54 +228,58 @@ async function loadSanitizedProfileTarget(
 /**
  * Builds the sanitized target payload for case detail.
  * Omits credentials, email, firebase_uid, and shared_contact_handle (FR-076 / FR-079).
- * Private workspace notes are not granted by ADMIN role.
+ * Private workspace notes are not granted by ADMIN role (US-026 / #245).
  */
 export async function loadSanitizedTarget(
   targetType: ModerationTargetType,
   targetId: string,
   flaggedUrl: string | null
 ): Promise<SanitizedModerationTarget> {
+  let target: SanitizedModerationTarget;
+
   if (targetType === 'team') {
-    return loadSanitizedTeamTarget(targetId);
-  }
-  if (targetType === 'profile') {
-    return loadSanitizedProfileTarget(targetId);
-  }
-
-  if (!flaggedUrl) {
-    throw new ModerationServiceError(
-      404,
-      'INVALID_TARGET',
-      'URL moderation cases require a flagged URL.',
-      { targetType, targetId }
-    );
-  }
-
-  let owner: SanitizedUrlTarget['url']['owner'] = null;
-  let owningTargetType: 'team' | 'profile' = 'team';
-
-  try {
-    const teamTarget = await loadSanitizedTeamTarget(targetId);
-    owner = teamTarget.team;
-    owningTargetType = 'team';
-  } catch (err: unknown) {
-    if (!(err instanceof ModerationServiceError) || err.code !== 'TARGET_NOT_FOUND') {
-      throw err;
+    target = await loadSanitizedTeamTarget(targetId);
+  } else if (targetType === 'profile') {
+    target = await loadSanitizedProfileTarget(targetId);
+  } else {
+    if (!flaggedUrl) {
+      throw new ModerationServiceError(
+        404,
+        'INVALID_TARGET',
+        'URL moderation cases require a flagged URL.',
+        { targetType, targetId }
+      );
     }
-    const profileTarget = await loadSanitizedProfileTarget(targetId);
-    owner = profileTarget.profile;
-    owningTargetType = 'profile';
+
+    let owner: SanitizedUrlTarget['url']['owner'] = null;
+    let owningTargetType: 'team' | 'profile' = 'team';
+
+    try {
+      const teamTarget = await loadSanitizedTeamTarget(targetId);
+      owner = teamTarget.team;
+      owningTargetType = 'team';
+    } catch (err: unknown) {
+      if (!(err instanceof ModerationServiceError) || err.code !== 'TARGET_NOT_FOUND') {
+        throw err;
+      }
+      const profileTarget = await loadSanitizedProfileTarget(targetId);
+      owner = profileTarget.profile;
+      owningTargetType = 'profile';
+    }
+
+    target = {
+      type: 'url',
+      url: {
+        flaggedUrl,
+        owningTargetType,
+        owningTargetId: targetId,
+        owner,
+      },
+    };
   }
 
-  return {
-    type: 'url',
-    url: {
-      flaggedUrl,
-      owningTargetType,
-      owningTargetId: targetId,
-      owner,
-    },
-  };
+  // Defense in depth: scrub any accidental private keys on nested owner blobs.
+  return scrubPrivateModerationFields(target);
 }
 
 export async function createModerationCase(
@@ -320,6 +331,7 @@ export async function getModerationCaseDetail(
   return {
     case: toModerationCaseView(row),
     target,
+    privacy: moderationPrivacyFlags(),
   };
 }
 
@@ -345,16 +357,8 @@ function toSafeActionRecordView(row: {
   target_id: string;
   safe_state_summary: Record<string, unknown>;
 }): ModerationActionRecordView {
-  const summary = { ...(row.safe_state_summary || {}) };
-  // Defense in depth: never surface accidental credential-like keys.
-  delete summary.email;
-  delete summary.password;
-  delete summary.firebaseUid;
-  delete summary.firebase_uid;
-  delete summary.sharedContactHandle;
-  delete summary.shared_contact_handle;
-  delete summary.otp;
-  delete summary.token;
+  const privacy = moderationPrivacyFlags();
+  const summary = scrubPrivateModerationFields({ ...(row.safe_state_summary || {}) });
 
   return {
     id: row.id,
@@ -366,8 +370,7 @@ function toSafeActionRecordView(row: {
     targetId: row.target_id,
     safeStateSummary: {
       ...summary,
-      credentialsIncluded: false,
-      privateContactsIncluded: false,
+      ...privacy,
     },
   };
 }
