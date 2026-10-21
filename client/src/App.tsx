@@ -20,8 +20,10 @@ import { MyApplicationsPanel } from './components/teams/MyApplicationsPanel';
 import { MyInvitationsPanel } from './components/teams/MyInvitationsPanel';
 import type { OpenTeamApplyTarget } from './components/teams/openTeamsApi';
 import type { OtpChallenge } from './components/auth/providerSignIn';
+import { SubmissionReviewPage } from './components/events/SubmissionReviewPage';
 
 type View =
+  | 'event-submission'
   | 'landing'
   | 'register'
   | 'login'
@@ -42,6 +44,9 @@ const getInitialView = (): View => {
   const params = new URLSearchParams(window.location.search);
   const mode = params.get('mode');
   const view = params.get('view');
+  if (view === 'event-submission') {
+    return 'event-submission';
+  }
   if (mode === 'verifyEmail' || view === 'verify' || view === 'resend-verification') {
     return 'verify';
   }
@@ -484,7 +489,18 @@ export function App(): React.JSX.Element {
           </div>
         )}
       </header>
-
+      <div className="mx-auto w-full max-w-7xl px-4 pt-3">
+        <button
+          type="button"
+          onClick={() => {
+            setStatusNotice(null);
+            setCurrentView('event-submission');
+          }}
+          className="text-sm text-forest underline"
+        >
+          Event submission review
+        </button>
+      </div>
       {/* Semantic Main Content Landmark */}
       <main
         id="main-content"
@@ -512,6 +528,11 @@ export function App(): React.JSX.Element {
             onNavigateToProfile={goToAccount}
             onSelectEvent={handleSelectEvent}
             currentUser={currentUser}
+          />
+        ) : currentView === 'event-submission' ? (
+          <SubmissionReviewPage
+            key={currentUser?.uid ?? 'visitor'}
+            onOpenEvent={handleSelectEvent}
           />
         ) : currentView === 'create-team' ? (
           <section aria-labelledby="create-team-heading">
