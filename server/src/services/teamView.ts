@@ -4,6 +4,7 @@ import type {
   TeamGoal,
   TeamRecruitmentStatus,
   TeamMembershipRole,
+  TeamModerationStatus,
   ParticipantPrimaryRole,
 } from '../db/types.js';
 
@@ -39,6 +40,10 @@ export interface TeamView {
   recruitmentStatus: TeamRecruitmentStatus;
   /** Server-recorded roster lock timestamp when Locked (US-022 / FR-066 / #206). */
   lockedAt: string | null;
+  /** Owner-visible moderation state (US-026 / #244 / AC 5). */
+  moderationStatus: TeamModerationStatus;
+  moderationHiddenAt: string | null;
+  linkRemovalNotice: string | null;
   createdAt: string;
   updatedAt: string;
   members: TeamMemberView[];
@@ -105,6 +110,9 @@ export function toTeamView(
     communicationLink: parts.team.communication_link,
     recruitmentStatus: parts.team.recruitment_status,
     lockedAt: parts.team.locked_at ?? null,
+    moderationStatus: parts.team.moderation_status ?? 'None',
+    moderationHiddenAt: parts.team.moderation_hidden_at ?? null,
+    linkRemovalNotice: parts.team.link_removal_notice ?? null,
     createdAt: parts.team.created_at,
     updatedAt: parts.team.updated_at,
     members,

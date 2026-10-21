@@ -59,6 +59,15 @@ export function filterOpenTeams(
   const minSlotsRequired = Math.max(1, q.minSlots);
 
   const matched = records.filter((r) => {
+    // 0. Hidden by moderation — excluded from ordinary discovery (US-026 / #244 / AC 5).
+    // Memberships are untouched; only public/PART discovery boards omit the listing.
+    if (
+      r.team.moderation_hidden_at != null ||
+      r.team.moderation_status === 'Hidden'
+    ) {
+      return false;
+    }
+
     // 1. Mutability check
     const lifecycle = deriveTeamLifecycle(r.team, r.event, now);
     if (!lifecycle.mutable) {

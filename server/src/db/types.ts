@@ -90,12 +90,15 @@ export interface CreateMfaAttemptDTO {
 
 export type ParticipantPrimaryRole = 'Frontend' | 'Backend' | 'Mobile' | 'AI/ML' | 'UI/UX' | 'Pitch';
 
+export type ProfileModerationStatus = 'None' | 'Warned' | 'Hidden';
+
 export interface ParticipantProfile {
   participant_id: string;
   handle: string | null;
   primary_role: ParticipantPrimaryRole | null;
   institution: string | null;
   shared_contact_handle: string | null;
+  moderation_status?: ProfileModerationStatus;
   created_at: string;
   updated_at: string;
 }
@@ -280,6 +283,8 @@ export type TeamRequestStatus =
   | 'Expired'
   | 'Canceled';
 
+export type TeamModerationStatus = 'None' | 'Warned' | 'Hidden';
+
 export interface Team {
   id: string;
   event_id: string;
@@ -293,6 +298,11 @@ export interface Team {
   /** Server lock time when recruitment_status is Locked (US-022 / FR-066). */
   locked_at: string | null;
   disbanded_at: string | null;
+  /** Set when ADMIN hides the listing from ordinary discovery (US-026 / FR-075). */
+  moderation_hidden_at?: string | null;
+  moderation_status?: TeamModerationStatus;
+  /** Shown after a malicious communication link is disabled (FR-076). */
+  link_removal_notice?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -360,5 +370,41 @@ export interface EventAvailability {
   goal?: TeamGoal | null;
   created_at: string;
   updated_at: string;
+}
+
+/** US-026 / FR-075 moderation queue target kinds. */
+export type ModerationTargetType = 'team' | 'profile' | 'url';
+
+export type ModerationCaseStatus = 'Open' | 'Dismissed' | 'Resolved';
+
+export type ModerationDecisionAction =
+  | 'dismiss'
+  | 'redact'
+  | 'warn'
+  | 'hide'
+  | 'disable_url';
+
+export interface ModerationCase {
+  id: string;
+  target_type: ModerationTargetType;
+  target_id: string;
+  reason: string;
+  status: ModerationCaseStatus;
+  created_by: string;
+  report_count: number;
+  flagged_url: string | null;
+  last_action_type?: ModerationDecisionAction | null;
+  resolved_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateModerationCaseDTO {
+  target_type: ModerationTargetType;
+  target_id: string;
+  reason: string;
+  created_by: string;
+  flagged_url?: string | null;
+  report_count?: number;
 }
 

@@ -1630,4 +1630,74 @@ describe('0030_handle_concurrent_invitation_acceptance.sql Migration DDL (US-019
   });
 });
 
+describe('0038_moderation_enforcement_fields.sql decide actions (US-026 / #242)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0038_moderation_enforcement_fields.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('adds team hide and URL-removal fields', () => {
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+moderation_hidden_at\s+TIMESTAMPTZ/i);
+    expect(sql).toMatch(/moderation_status/i);
+    expect(sql).toMatch(/link_removal_notice/i);
+    expect(sql).toMatch(/chk_teams_moderation_hidden_matches_status/i);
+  });
+
+  it('adds case resolution metadata for decide actions', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+moderation_cases/i);
+    expect(sql).toMatch(/resolved_at\s+TIMESTAMPTZ/i);
+    expect(sql).toMatch(/last_action_type/i);
+    expect(sql).toMatch(/dismiss.*redact.*warn.*hide.*disable_url/is);
+  });
+});
+
+describe('0037_create_moderation_cases.sql moderation queue schema (US-026 / #239 / FR-075)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0037_create_moderation_cases.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(100);
+  });
+
+  it('creates moderation_cases with target, reason, status, report_count, and timestamps', () => {
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+moderation_cases/i);
+    expect(sql).toMatch(/target_type\s+VARCHAR\(20\)\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/target_type\s+IN\s*\(\s*'team'\s*,\s*'profile'\s*,\s*'url'\s*\)/i);
+    expect(sql).toMatch(/reason\s+TEXT\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/status\s+IN\s*\(\s*'Open'\s*,\s*'Dismissed'\s*,\s*'Resolved'\s*\)/i);
+    expect(sql).toMatch(/report_count\s+INTEGER\s+NOT\s+NULL\s+DEFAULT\s+0/i);
+    expect(sql).toMatch(/created_at\s+TIMESTAMPTZ\s+NOT\s+NULL\s+DEFAULT\s+NOW\(\)/i);
+    expect(sql).toMatch(/flagged_url\s+VARCHAR\(2048\)/i);
+  });
+
+  it('enforces RLS and ADMIN-only creator role on insert', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+moderation_cases\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+check_moderation_case_creator_role/i);
+    expect(sql).toMatch(
+      /CREATE\s+TRIGGER\s+trigger_check_moderation_case_creator_role\s+BEFORE\s+INSERT\s+ON\s+moderation_cases/i
+    );
+    expect(sql).toMatch(/role\s*!=\s*'ADMIN'/i);
+  });
+
+  it('indexes newest-first queue ordering and target lookup', () => {
+    expect(sql).toMatch(
+      /CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_moderation_cases_created_at\s+ON\s+moderation_cases\s*\(\s*created_at\s+DESC\s*\)/i
+    );
+    expect(sql).toMatch(
+      /CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_moderation_cases_target\s+ON\s+moderation_cases\s*\(\s*target_type\s*,\s*target_id\s*\)/i
+    );
+  });
+
+  it('requires flagged_url only for url targets and enforces https', () => {
+    expect(sql).toMatch(/chk_moderation_cases_url_requires_flagged_url/i);
+    expect(sql).toMatch(/target_type\s*=\s*'url'/i);
+    expect(sql).toMatch(/flagged_url\s+LIKE\s+'https:\/\/%'/i);
+  });
+});
+
 

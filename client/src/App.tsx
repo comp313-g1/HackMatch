@@ -18,6 +18,7 @@ import { OpenTeamsBoard } from './components/teams/OpenTeamsBoard';
 import { ApplicationFormPanel } from './components/teams/ApplicationFormPanel';
 import { MyApplicationsPanel } from './components/teams/MyApplicationsPanel';
 import { MyInvitationsPanel } from './components/teams/MyInvitationsPanel';
+import { ModerationSafetyPage } from './components/moderation/ModerationSafetyPage';
 import type { OpenTeamApplyTarget } from './components/teams/openTeamsApi';
 import type { OtpChallenge } from './components/auth/providerSignIn';
 
@@ -35,7 +36,8 @@ type View =
   | 'looking'
   | 'browse-teams'
   | 'applications'
-  | 'invitations';
+  | 'invitations'
+  | 'moderation';
 
 const getInitialView = (): View => {
   if (typeof window === 'undefined') return 'landing';
@@ -78,6 +80,9 @@ const getInitialView = (): View => {
   }
   if (view === 'invitations' || view === 'my-invitations') {
     return 'invitations';
+  }
+  if (view === 'moderation' || view === 'safety-queue') {
+    return 'moderation';
   }
   return 'landing';
 };
@@ -191,6 +196,12 @@ export function App(): React.JSX.Element {
     setCurrentView('invitations');
   };
 
+  const goToModeration = () => {
+    setStatusNotice(null);
+    setIsMobileMenuOpen(false);
+    setCurrentView('moderation');
+  };
+
   const isAuthenticated =
     Boolean(currentUser) ||
     currentView === 'account' ||
@@ -199,6 +210,7 @@ export function App(): React.JSX.Element {
     currentView === 'looking' ||
     currentView === 'applications' ||
     currentView === 'invitations' ||
+    currentView === 'moderation' ||
     currentView === 'mfa';
   const participantIdentifier =
     currentUser?.displayName ||
@@ -306,6 +318,18 @@ export function App(): React.JSX.Element {
                   }`}
                 >
                   Invitations
+                </button>
+                <button
+                  type="button"
+                  onClick={goToModeration}
+                  aria-current={currentView === 'moderation' ? 'page' : undefined}
+                  className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
+                    currentView === 'moderation'
+                      ? 'text-forest-900 font-semibold'
+                      : 'text-ink-muted hover:text-forest-800'
+                  }`}
+                >
+                  Moderation
                 </button>
                 <button
                   type="button"
@@ -446,6 +470,13 @@ export function App(): React.JSX.Element {
                   className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
                 >
                   Invitations
+                </button>
+                <button
+                  type="button"
+                  onClick={goToModeration}
+                  className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
+                >
+                  Moderation
                 </button>
                 <button
                   type="button"
@@ -676,6 +707,29 @@ export function App(): React.JSX.Element {
                   onSignedOut={() => {
                     setStatusNotice('You have been signed out.');
                     setCurrentView('login');
+                  }}
+                />
+              )}
+            </MfaGate>
+          </section>
+        ) : currentView === 'moderation' ? (
+          <section aria-labelledby="moderation-heading">
+            <h2 id="moderation-heading" className="sr-only">
+              Content Moderation Safety Queue
+            </h2>
+            <MfaGate
+              initialChallenge={otpChallenge}
+              onNavigateToSignIn={() => {
+                setStatusNotice(null);
+                setOtpChallenge(null);
+                setCurrentView('login');
+              }}
+            >
+              {() => (
+                <ModerationSafetyPage
+                  onNavigateAway={() => {
+                    setStatusNotice(null);
+                    setCurrentView('landing');
                   }}
                 />
               )}

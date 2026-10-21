@@ -119,6 +119,34 @@ describe('openTeams service unit tests (US-013 / Task 4)', () => {
       const result = filterOpenTeams([noVacanciesRecord], emptyQuery, fixedNow);
       expect(result).toHaveLength(0);
     });
+
+    it('excludes teams hidden by moderation (US-026 / #244)', () => {
+      const hiddenAt = createSampleRecord({
+        team: {
+          ...createSampleRecord().team,
+          moderation_hidden_at: '2026-10-18T11:00:00.000Z',
+          moderation_status: 'Hidden',
+        },
+      });
+      const statusOnly = createSampleRecord({
+        team: {
+          ...createSampleRecord().team,
+          moderation_hidden_at: null,
+          moderation_status: 'Hidden',
+        },
+      });
+      const warned = createSampleRecord({
+        team: {
+          ...createSampleRecord().team,
+          moderation_hidden_at: null,
+          moderation_status: 'Warned',
+        },
+      });
+
+      expect(filterOpenTeams([hiddenAt], emptyQuery, fixedNow)).toHaveLength(0);
+      expect(filterOpenTeams([statusOnly], emptyQuery, fixedNow)).toHaveLength(0);
+      expect(filterOpenTeams([warned], emptyQuery, fixedNow)).toHaveLength(1);
+    });
   });
 
   describe('filterOpenTeams multi-filter criteria', () => {

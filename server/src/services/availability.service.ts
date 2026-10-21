@@ -106,6 +106,10 @@ export async function listAvailableCandidates(
     }
 
     const fullProfile = await deps.profileRepo.getFullProfile(participant.id);
+    // US-026 / #244 — hidden profiles are omitted from ordinary candidate discovery.
+    if (fullProfile.profile?.moderation_status === 'Hidden') {
+      continue;
+    }
     const projected = projectProfileForViewer(
       participant,
       fullProfile,

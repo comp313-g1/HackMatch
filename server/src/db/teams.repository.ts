@@ -1564,6 +1564,7 @@ export const teamsRepository: ITeamsRepository = {
       .from('teams')
       .select(selectQuery)
       .eq('recruitment_status', 'Open')
+      .is('moderation_hidden_at', null)
       .eq('team_vacancies.status', 'Open')
       .eq('team_memberships.status', 'Confirmed')
       .order('created_at', { ascending: false })

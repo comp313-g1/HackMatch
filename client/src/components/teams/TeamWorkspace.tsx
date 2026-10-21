@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import type { TeamView } from './teamTypes';
 import { fetchMyTeam, TeamApiError, AuthRequiredError } from './teamApi';
 import { TeamListingForm } from './TeamListingForm';
+import { ModerationStatusNotice } from './ModerationStatusNotice';
 import { VacancyPanel } from './VacancyPanel';
 import { OwnerInvitationsPanel } from './OwnerInvitationsPanel';
 import { TeamRosterPanel } from './TeamRosterPanel';
@@ -194,6 +195,12 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
           </div>
         )}
 
+        <ModerationStatusNotice
+          moderationStatus={team.moderationStatus}
+          moderationHiddenAt={team.moderationHiddenAt}
+          linkRemovalNotice={team.linkRemovalNotice}
+        />
+
         {isLocked && team.lifecycle?.reason === 'Locked' ? (
           <LockedRosterBadge lockedAt={team.lockedAt} variant="badge" />
         ) : null}
@@ -229,6 +236,12 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
           {statusNotice}
         </div>
       )}
+
+      <ModerationStatusNotice
+        moderationStatus={team.moderationStatus}
+        moderationHiddenAt={team.moderationHiddenAt}
+        linkRemovalNotice={team.linkRemovalNotice}
+      />
 
       {/* Lifecycle Read-Only Notice / locked badge (#211) */}
       {isLocked && team.lifecycle?.reason === 'Locked' ? (
