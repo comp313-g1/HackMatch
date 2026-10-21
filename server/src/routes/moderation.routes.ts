@@ -11,6 +11,7 @@ import {
   createModerationCaseHandler,
   decideModerationCaseHandler,
   getModerationCaseDetailHandler,
+  listModerationActionRecordsHandler,
   listModerationCasesHandler,
 } from '../controllers/moderation.controller.js';
 
@@ -35,6 +36,12 @@ moderationRouter.post(
   requireJsonObjectBody,
   validateCreateModerationCaseBody,
   createModerationCaseHandler
+);
+
+moderationRouter.get(
+  '/cases/:caseId/action-records',
+  validateModerationCaseIdParam,
+  listModerationActionRecordsHandler
 );
 
 moderationRouter.post(

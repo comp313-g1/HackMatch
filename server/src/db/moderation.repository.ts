@@ -25,6 +25,7 @@ export interface IModerationRepository {
   listNewestFirst(options?: ListModerationCasesOptions): Promise<ModerationCase[]>;
   resolveCase(id: string, input: ResolveModerationCaseInput): Promise<ModerationCase>;
   insertActionRecord(data: CreateEventActionRecordDTO): Promise<EventActionRecord>;
+  listActionRecordsForCase(caseId: string): Promise<EventActionRecord[]>;
 }
 
 const DEFAULT_QUEUE_LIMIT = 100;
@@ -120,5 +121,27 @@ export const moderationRepository: IModerationRepository = {
 
     if (error) throw error;
     return record as EventActionRecord;
+  },
+
+  async listActionRecordsForCase(caseId: string): Promise<EventActionRecord[]> {
+    const caseRow = await this.findById(caseId);
+    if (!caseRow) return [];
+
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('event_action_records')
+      .select('id, actor_id, target_type, target_id, action_type, reason, outcome, safe_state_summary, created_at')
+      .eq('target_id', caseRow.target_id)
+      .like('action_type', 'moderation_%')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) throw error;
+
+    const rows = (data || []) as EventActionRecord[];
+    return rows.filter((row) => {
+      const summary = row.safe_state_summary as Record<string, unknown> | null;
+      return summary?.caseId === caseId;
+    });
   },
 };

@@ -3,6 +3,7 @@ import type {
   CreateModerationCaseInput,
   DecideModerationCaseInput,
   DecideModerationCaseResult,
+  ModerationActionRecordView,
   ModerationCaseDetail,
   ModerationCaseView,
   ModerationFieldErrors,
@@ -175,6 +176,37 @@ export function sortCasesNewestFirst(cases: ModerationCaseView[]): ModerationCas
   return [...cases].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
+}
+
+/**
+ * GET /api/admin/moderation/cases/:caseId/action-records — safe decision records (#243).
+ */
+export async function fetchModerationActionRecords(
+  caseId: string
+): Promise<ModerationActionRecordView[]> {
+  let res: Response;
+  try {
+    res = await authFetch(`/api/admin/moderation/cases/${caseId}/action-records`, {
+      method: 'GET',
+    });
+  } catch (err: unknown) {
+    if (err instanceof AuthRequiredError) throw err;
+    throw new ModerationApiError(
+      0,
+      'NETWORK',
+      { _form: 'Network error while loading action records.' },
+      { caseId },
+      'Network error while loading action records.'
+    );
+  }
+
+  if (res.ok) {
+    const data = (await res.json()) as { records?: ModerationActionRecordView[] };
+    return Array.isArray(data.records) ? data.records : [];
+  }
+
+  const body = await parseErrorBody(res);
+  throwFromResponse(res, body, { caseId });
 }
 
 /**

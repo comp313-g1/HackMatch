@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   createModerationCase,
   decideModerationCase,
+  fetchModerationActionRecords,
   fetchModerationCaseDetail,
   fetchModerationCases,
   probeAdminModerationAccess,
@@ -135,6 +136,28 @@ describe('moderationApi (US-026 / #241)', () => {
     const detail = await fetchModerationCaseDetail('1');
     expect(detail.case.id).toBe('1');
     expect(detail.target.type).toBe('team');
+  });
+
+  it('fetchModerationActionRecords returns records array', async () => {
+    authFetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        records: [
+          {
+            id: 'rec-1',
+            actionType: 'moderation_hide',
+            reason: 'Phishing',
+            outcome: 'listing_hidden',
+            createdAt: '2026-10-18T12:00:00.000Z',
+            targetType: 'moderation_team',
+            targetId: 't',
+            safeStateSummary: { credentialsIncluded: false },
+          },
+        ],
+      })
+    );
+    const records = await fetchModerationActionRecords('1');
+    expect(records).toHaveLength(1);
+    expect(records[0].reason).toBe('Phishing');
   });
 
   it('decideModerationCase returns action outcome on success', async () => {

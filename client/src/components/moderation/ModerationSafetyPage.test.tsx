@@ -13,6 +13,7 @@ vi.mock('./moderationApi', async () => {
     fetchModerationCaseDetail: vi.fn(),
     createModerationCase: vi.fn(),
     decideModerationCase: vi.fn(),
+    fetchModerationActionRecords: vi.fn(),
   };
 });
 
@@ -21,6 +22,7 @@ const fetchCasesMock = vi.mocked(moderationApi.fetchModerationCases);
 const fetchDetailMock = vi.mocked(moderationApi.fetchModerationCaseDetail);
 const createMock = vi.mocked(moderationApi.createModerationCase);
 const decideMock = vi.mocked(moderationApi.decideModerationCase);
+const fetchRecordsMock = vi.mocked(moderationApi.fetchModerationActionRecords);
 
 const older = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -53,6 +55,8 @@ describe('ModerationSafetyPage (US-026 / #241)', () => {
     fetchDetailMock.mockReset();
     createMock.mockReset();
     decideMock.mockReset();
+    fetchRecordsMock.mockReset();
+    fetchRecordsMock.mockResolvedValue([]);
   });
 
   it('shows access denied for non-ADMIN callers', async () => {
@@ -209,11 +213,42 @@ describe('ModerationSafetyPage (US-026 / #241)', () => {
     fireEvent.click(screen.getByTestId('moderation-action-submit'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('moderation-action-success')).toHaveTextContent(/hide/i);
+      expect(screen.getByTestId('moderation-action-success')).toHaveTextContent(/safe action record/i);
     });
     expect(decideMock).toHaveBeenCalledWith(newer.id, {
       action: 'hide',
       reason: 'Phishing listing',
+    });
+    expect(fetchRecordsMock).toHaveBeenCalled();
+  });
+
+  it('shows empty action records after selecting a case with none (#243)', async () => {
+    probeMock.mockResolvedValue('granted');
+    fetchCasesMock.mockResolvedValue([newer]);
+    fetchDetailMock.mockResolvedValue({
+      case: newer,
+      target: {
+        type: 'profile',
+        profile: {
+          participantId: newer.targetId,
+          handle: 'ada',
+          primaryRole: null,
+          institution: null,
+          displayName: 'Ada',
+          skills: [],
+          portfolios: [],
+        },
+      },
+    });
+    fetchRecordsMock.mockResolvedValue([]);
+
+    render(<ModerationSafetyPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId(`moderation-case-row-${newer.id}`)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId(`moderation-case-row-${newer.id}`));
+    await waitFor(() => {
+      expect(screen.getByTestId('moderation-records-empty')).toBeInTheDocument();
     });
   });
 

@@ -4,6 +4,7 @@ import {
   ModerationApiError,
   createModerationCase,
   decideModerationCase,
+  fetchModerationActionRecords,
   fetchModerationCaseDetail,
   fetchModerationCases,
   probeAdminModerationAccess,
@@ -13,15 +14,18 @@ import { ModerationQueueView } from './ModerationQueueView';
 import { ModerationCaseView } from './ModerationCaseView';
 import { OpenModerationCaseForm } from './OpenModerationCaseForm';
 import { ModerationActionPanel } from './ModerationActionPanel';
+import { ModerationActionRecordPanel } from './ModerationActionRecordPanel';
 import type {
   CreateModerationCaseInput,
   DecideModerationCaseInput,
   ModerationAccessState,
+  ModerationActionRecordView,
   ModerationCaseDetail,
   ModerationCaseView as CaseRow,
   ModerationDetailState,
   ModerationFieldErrors,
   ModerationListState,
+  ModerationRecordsState,
 } from './moderationTypes';
 
 export interface ModerationSafetyPageProps {
@@ -29,9 +33,8 @@ export interface ModerationSafetyPageProps {
 }
 
 /**
- * ADMIN safety queue + case view (US-026 / #241).
- * States: access check, loading, empty, success, validation, and error.
- * Form values are preserved when create validation fails (NR-017).
+ * ADMIN safety queue + case view + reason-gated decisions with safe action records
+ * (US-026 / #241–#243). Form values are preserved when validation fails (NR-017).
  */
 export function ModerationSafetyPage({
   onNavigateAway,
@@ -57,6 +60,10 @@ export function ModerationSafetyPage({
   const [decideFieldErrors, setDecideFieldErrors] = useState<ModerationFieldErrors>({});
   const [decideFormError, setDecideFormError] = useState<string | null>(null);
   const [decideSuccess, setDecideSuccess] = useState<string | null>(null);
+
+  const [recordsState, setRecordsState] = useState<ModerationRecordsState>('idle');
+  const [records, setRecords] = useState<ModerationActionRecordView[]>([]);
+  const [recordsError, setRecordsError] = useState<string | null>(null);
 
   const checkAccess = useCallback(async () => {
     setAccessState('loading');
@@ -119,6 +126,25 @@ export function ModerationSafetyPage({
     }
   }, []);
 
+  const loadRecords = useCallback(async (caseId: string) => {
+    setRecordsState('loading');
+    setRecordsError(null);
+    try {
+      const rows = await fetchModerationActionRecords(caseId);
+      setRecords(rows);
+      setRecordsState('success');
+    } catch (err: unknown) {
+      if (err instanceof AuthRequiredError) {
+        setRecordsError('You need to sign in to view action records.');
+      } else if (err instanceof ModerationApiError) {
+        setRecordsError(err.message || 'Could not load action records.');
+      } else {
+        setRecordsError('Could not load action records.');
+      }
+      setRecordsState('error');
+    }
+  }, []);
+
   useEffect(() => {
     void checkAccess();
   }, [checkAccess]);
@@ -134,7 +160,9 @@ export function ModerationSafetyPage({
     setDecideFieldErrors({});
     setDecideFormError(null);
     setDecideSuccess(null);
+    setRecords([]);
     void loadDetail(caseId);
+    void loadRecords(caseId);
   };
 
   const handleDecide = async (input: DecideModerationCaseInput) => {
@@ -145,7 +173,9 @@ export function ModerationSafetyPage({
     setDecideSuccess(null);
     try {
       const result = await decideModerationCase(selectedCaseId, input);
-      setDecideSuccess(`Applied ${result.action}. Outcome: ${result.outcome}.`);
+      setDecideSuccess(
+        `Applied ${result.action}. A safe action record was created (outcome: ${result.outcome}).`
+      );
       setCases((prev) =>
         sortCasesNewestFirst(prev.map((c) => (c.id === result.case.id ? result.case : c)))
       );
@@ -153,6 +183,7 @@ export function ModerationSafetyPage({
         prev && prev.case.id === result.case.id ? { ...prev, case: result.case } : prev
       );
       void loadDetail(result.case.id);
+      void loadRecords(result.case.id);
       void loadQueue();
     } catch (err: unknown) {
       if (err instanceof AuthRequiredError) {
@@ -182,6 +213,7 @@ export function ModerationSafetyPage({
       setListState('success');
       setSelectedCaseId(created.id);
       void loadDetail(created.id);
+      void loadRecords(created.id);
     } catch (err: unknown) {
       if (err instanceof AuthRequiredError) {
         setFormError('You need to sign in as an administrator.');
@@ -300,6 +332,9 @@ export function ModerationSafetyPage({
               setDecideFieldErrors({});
               setDecideFormError(null);
               setDecideSuccess(null);
+              setRecords([]);
+              setRecordsState('idle');
+              setRecordsError(null);
             }}
           />
           <ModerationActionPanel
@@ -310,6 +345,14 @@ export function ModerationSafetyPage({
             formError={decideFormError}
             successNotice={decideSuccess}
             onSubmit={handleDecide}
+          />
+          <ModerationActionRecordPanel
+            records={records}
+            recordsState={recordsState}
+            recordsError={recordsError}
+            onRetry={() => {
+              if (selectedCaseId) void loadRecords(selectedCaseId);
+            }}
           />
         </section>
       </div>

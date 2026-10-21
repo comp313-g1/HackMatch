@@ -107,6 +107,19 @@ export interface DecideModerationCaseResult {
   safeStateSummary: Record<string, unknown>;
 }
 
+/** Safe FR-079 action record shown in the ADMIN UI (#243). */
+export interface ModerationActionRecordView {
+  id: string;
+  actionType: string;
+  reason: string;
+  outcome: string;
+  createdAt: string;
+  targetType: string;
+  targetId: string;
+  safeStateSummary: Record<string, unknown>;
+}
+
 export type ModerationListState = 'loading' | 'success' | 'error';
 export type ModerationDetailState = 'idle' | 'loading' | 'success' | 'error';
 export type ModerationAccessState = 'loading' | 'granted' | 'denied' | 'error';
+export type ModerationRecordsState = 'idle' | 'loading' | 'success' | 'error';

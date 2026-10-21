@@ -322,3 +322,69 @@ export async function getModerationCaseDetail(
     target,
   };
 }
+
+/** Safe action-record view for ADMIN UI (FR-079) — no credentials/private contacts. */
+export interface ModerationActionRecordView {
+  id: string;
+  actionType: string;
+  reason: string;
+  outcome: string;
+  createdAt: string;
+  targetType: string;
+  targetId: string;
+  safeStateSummary: Record<string, unknown>;
+}
+
+function toSafeActionRecordView(row: {
+  id: string;
+  action_type: string;
+  reason: string;
+  outcome: string;
+  created_at: string;
+  target_type: string;
+  target_id: string;
+  safe_state_summary: Record<string, unknown>;
+}): ModerationActionRecordView {
+  const summary = { ...(row.safe_state_summary || {}) };
+  // Defense in depth: never surface accidental credential-like keys.
+  delete summary.email;
+  delete summary.password;
+  delete summary.firebaseUid;
+  delete summary.firebase_uid;
+  delete summary.sharedContactHandle;
+  delete summary.shared_contact_handle;
+  delete summary.otp;
+  delete summary.token;
+
+  return {
+    id: row.id,
+    actionType: row.action_type,
+    reason: row.reason,
+    outcome: row.outcome,
+    createdAt: row.created_at,
+    targetType: row.target_type,
+    targetId: row.target_id,
+    safeStateSummary: {
+      ...summary,
+      credentialsIncluded: false,
+      privateContactsIncluded: false,
+    },
+  };
+}
+
+export async function listModerationActionRecords(
+  caseId: string
+): Promise<ModerationActionRecordView[]> {
+  const row = await moderationRepository.findById(caseId);
+  if (!row) {
+    throw new ModerationServiceError(
+      404,
+      'CASE_NOT_FOUND',
+      'Moderation case not found.',
+      { caseId }
+    );
+  }
+
+  const records = await moderationRepository.listActionRecordsForCase(caseId);
+  return records.map(toSafeActionRecordView);
+}

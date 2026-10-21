@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type {
   ModerationCaseStatus,
   ModerationDecisionAction,
@@ -28,8 +28,8 @@ export interface ModerationActionPanelProps {
 }
 
 /**
- * ADMIN enforcement actions for an open case (US-026 / #242 / FR-075–076).
- * Reason is mandatory; drafts are kept on validation errors (NR-017).
+ * ADMIN enforcement actions for an open case (US-026 / #242–#243 / FR-075–079).
+ * Reason is mandatory; drafts are kept on validation errors; cleared only after success (NR-017).
  */
 export function ModerationActionPanel({
   caseId,
@@ -47,6 +47,20 @@ export function ModerationActionPanel({
   const errors = { ...localErrors, ...fieldErrors };
   const closed = caseStatus != null && caseStatus !== 'Open';
   const disabled = !caseId || closed || submitting;
+
+  // Clear the reason only after a successful decision so failed submits keep the draft.
+  useEffect(() => {
+    if (successNotice) {
+      setReason('');
+      setLocalErrors({});
+    }
+  }, [successNotice]);
+
+  useEffect(() => {
+    setReason('');
+    setLocalErrors({});
+    setAction('dismiss');
+  }, [caseId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,8 +100,9 @@ export function ModerationActionPanel({
       noValidate
     >
       <h3 className="font-display text-base font-semibold text-forest-900">Enforcement actions</h3>
-      <p className="text-xs text-ink-muted">
-        Every decision needs a reason and creates a basic action record.
+      <p className="text-xs text-ink-muted" data-testid="moderation-reason-requirement">
+        A reason is required. Each decision creates a safe action record (no credentials or private
+        contacts).
       </p>
 
       {closed ? (
@@ -161,7 +176,7 @@ export function ModerationActionPanel({
 
         <div>
           <label htmlFor="moderation-decision-reason" className="block text-xs font-medium text-ink">
-            Decision reason
+            Decision reason <span className="text-red-700">*</span>
           </label>
           <textarea
             id="moderation-decision-reason"
@@ -171,14 +186,29 @@ export function ModerationActionPanel({
               if (errors.reason) setLocalErrors((prev) => ({ ...prev, reason: undefined }));
             }}
             rows={3}
+            required
+            aria-required="true"
             aria-invalid={Boolean(errors.reason)}
+            aria-describedby={
+              errors.reason
+                ? 'moderation-decision-reason-error'
+                : 'moderation-decision-reason-hint'
+            }
             className={`mt-1 block w-full rounded-md border px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-forest ${
               errors.reason ? 'border-red-400 bg-red-50/30' : 'border-cream-300'
             }`}
             data-testid="moderation-decision-reason"
           />
+          <p id="moderation-decision-reason-hint" className="mt-1 text-xs text-ink-muted">
+            Required. Explains why this action was taken and is stored on the action record.
+          </p>
           {errors.reason ? (
-            <p role="alert" className="mt-1 text-xs text-red-600" data-testid="moderation-decision-reason-error">
+            <p
+              id="moderation-decision-reason-error"
+              role="alert"
+              className="mt-1 text-xs text-red-600"
+              data-testid="moderation-decision-reason-error"
+            >
               {errors.reason}
             </p>
           ) : null}

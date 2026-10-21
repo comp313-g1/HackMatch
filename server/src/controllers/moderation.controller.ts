@@ -7,6 +7,7 @@ import type {
 import {
   createModerationCase,
   getModerationCaseDetail,
+  listModerationActionRecords,
   listModerationQueue,
   ModerationServiceError,
 } from '../services/moderationCases.js';
@@ -94,6 +95,23 @@ export async function createModerationCaseHandler(
 
     res.setHeader('Cache-Control', 'no-store');
     res.status(201).json({ case: created });
+  } catch (err: unknown) {
+    handleModerationError(err, res, next);
+  }
+}
+
+/**
+ * GET /api/admin/moderation/cases/:caseId/action-records — safe FR-079 records (#243).
+ */
+export async function listModerationActionRecordsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const records = await listModerationActionRecords(String(req.params.caseId));
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({ records });
   } catch (err: unknown) {
     handleModerationError(err, res, next);
   }
