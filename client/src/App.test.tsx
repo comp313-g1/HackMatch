@@ -281,8 +281,13 @@ describe('App Component (View Routing and Integration)', () => {
     expect(await screen.findByText(/you are not signed in/i)).toBeInTheDocument();
   });
 
-  function mockSignedInUser(options?: { mfaComplete?: boolean; displayName?: string }) {
+  function mockSignedInUser(options?: {
+    mfaComplete?: boolean;
+    displayName?: string;
+    role?: 'PART' | 'ADMIN' | null;
+  }) {
     const mfaComplete = options?.mfaComplete ?? true;
+    const role = options?.role === undefined ? 'PART' : options.role;
     const mockUser = {
       uid: 'user-nav-1',
       email: 'sahil@example.com',
@@ -298,10 +303,12 @@ describe('App Component (View Routing and Integration)', () => {
     vi.mocked(onIdTokenChanged).mockImplementation(emitUser as unknown as typeof onIdTokenChanged);
 
     const authTime = 1792000000;
+    const claims: Record<string, unknown> = mfaComplete
+      ? { auth_time: authTime, mfa_auth_time: authTime }
+      : { auth_time: authTime };
+    if (role) claims.role = role;
     vi.mocked(getIdTokenResult).mockResolvedValue({
-      claims: mfaComplete
-        ? { auth_time: authTime, mfa_auth_time: authTime }
-        : { auth_time: authTime },
+      claims,
     } as unknown as IdTokenResult);
 
     return mockUser;
@@ -309,7 +316,7 @@ describe('App Component (View Routing and Integration)', () => {
 
   it('renders authenticated navigation (Profile, Teams, Sign out) and hides guest auth buttons when MFA session is ready', async () => {
     window.history.pushState({}, '', '/?view=account');
-    mockSignedInUser({ mfaComplete: true });
+    mockSignedInUser({ mfaComplete: true, role: 'PART' });
 
     render(<App />);
 
@@ -322,6 +329,46 @@ describe('App Component (View Routing and Integration)', () => {
     expect(within(primaryNav()).queryByRole('button', { name: /^sign in$/i })).not.toBeInTheDocument();
     expect(within(primaryNav()).queryByRole('button', { name: /create account/i })).not.toBeInTheDocument();
     expect(screen.queryByTestId('header-verification-pending')).not.toBeInTheDocument();
+  });
+
+  it('PART navbar hides Moderation and Accounts (#359)', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    mockSignedInUser({ mfaComplete: true, role: 'PART' });
+
+    render(<App />);
+
+    expect(await within(primaryNav()).findByRole('button', { name: /^teams$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^chat$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^profile$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /^moderation$/i })).not.toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /^accounts$/i })).not.toBeInTheDocument();
+  });
+
+  it('ADMIN navbar shows Moderation and Accounts (#359)', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    mockSignedInUser({ mfaComplete: true, role: 'ADMIN', displayName: 'Alex Admin' });
+
+    render(<App />);
+
+    expect(await within(primaryNav()).findByRole('button', { name: /^moderation$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^accounts$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^teams$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^sign out/i })).toBeInTheDocument();
+  });
+
+  it('PART mobile menu also hides Moderation and Accounts (#359)', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    mockSignedInUser({ mfaComplete: true, role: 'PART' });
+
+    render(<App />);
+
+    expect(await within(primaryNav()).findByRole('button', { name: /^teams$/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /open menu/i }));
+
+    const mobile = screen.getByRole('region', { name: /mobile navigation/i });
+    expect(within(mobile).getByRole('button', { name: /^teams$/i })).toBeInTheDocument();
+    expect(within(mobile).queryByRole('button', { name: /^moderation$/i })).not.toBeInTheDocument();
+    expect(within(mobile).queryByRole('button', { name: /^accounts$/i })).not.toBeInTheDocument();
   });
 
   it('renders Teams button with active state in primary nav when viewing team with MFA session', async () => {
@@ -456,7 +503,7 @@ describe('App Component (View Routing and Integration)', () => {
     vi.mocked(onIdTokenChanged).mockImplementation(emitUser as unknown as typeof onIdTokenChanged);
 
     vi.mocked(getIdTokenResult).mockResolvedValue({
-      claims: { auth_time: 1792000000, mfa_auth_time: 1792000000 },
+      claims: { auth_time: 1792000000, mfa_auth_time: 1792000000, role: 'PART' },
     } as unknown as IdTokenResult);
 
     render(<App />);

@@ -3,6 +3,7 @@ import { getIdTokenResult, onIdTokenChanged, type User } from 'firebase/auth';
 import { auth } from './config/firebase';
 import { logout } from './components/auth/logout';
 import { hasCompletedMfa } from './components/auth/mfaClaim';
+import { readAppRole, type AppRole } from './components/auth/roleClaim';
 import { LandingPage } from './components/landing/LandingPage';
 import { RegistrationForm } from './components/auth/RegistrationForm';
 import { EmailVerificationView } from './components/auth/EmailVerificationView';
@@ -113,6 +114,8 @@ export function App(): React.JSX.Element {
   const [currentUser, setCurrentUser] = useState<User | null>(() => auth.currentUser);
   /** null = checking token claims; true = MFA done; false = signed out or MFA still required (#355). */
   const [mfaComplete, setMfaComplete] = useState<boolean | null>(null);
+  /** From Firebase `role` claim after MFA session is ready (#359). null while unknown / signed out. */
+  const [authRole, setAuthRole] = useState<AppRole | null>(null);
   const [signingOut, setSigningOut] = useState<boolean>(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [otpChallenge, setOtpChallenge] = useState<OtpChallenge | null>(null);
@@ -125,18 +128,23 @@ export function App(): React.JSX.Element {
       setCurrentUser(user);
       if (!user) {
         setMfaComplete(false);
+        setAuthRole(null);
         return;
       }
       setMfaComplete(null);
+      setAuthRole(null);
       void getIdTokenResult(user)
         .then((result) => {
           if (cancelled) return;
-          setMfaComplete(hasCompletedMfa(result.claims as Record<string, unknown>));
+          const claims = result.claims as Record<string, unknown>;
+          setMfaComplete(hasCompletedMfa(claims));
+          setAuthRole(readAppRole(claims));
         })
         .catch(() => {
           if (cancelled) return;
           // Fail closed: treat as verification still required (do not show full session nav).
           setMfaComplete(false);
+          setAuthRole(null);
         });
     });
     return () => {
@@ -251,6 +259,8 @@ export function App(): React.JSX.Element {
   // #355 — full app chrome only after Firebase user + MFA claim; primary auth alone is not a session.
   const sessionReady = Boolean(currentUser) && mfaComplete === true;
   const verificationPending = Boolean(currentUser) && mfaComplete === false;
+  // #359 — ADMIN-only nav links; missing/invalid claim never unlocks admin chrome.
+  const showAdminNav = sessionReady && authRole === 'ADMIN';
   const participantIdentifier =
     currentUser?.displayName ||
     (currentUser?.email ? currentUser.email.split('@')[0] : 'participant');
@@ -379,30 +389,34 @@ export function App(): React.JSX.Element {
                 >
                   Invitations
                 </button>
-                <button
-                  type="button"
-                  onClick={goToModeration}
-                  aria-current={currentView === 'moderation' ? 'page' : undefined}
-                  className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
-                    currentView === 'moderation'
-                      ? 'text-forest-900 font-semibold'
-                      : 'text-ink-muted hover:text-forest-800'
-                  }`}
-                >
-                  Moderation
-                </button>
-                <button
-                  type="button"
-                  onClick={goToAccounts}
-                  aria-current={currentView === 'accounts' ? 'page' : undefined}
-                  className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
-                    currentView === 'accounts'
-                      ? 'text-forest-900 font-semibold'
-                      : 'text-ink-muted hover:text-forest-800'
-                  }`}
-                >
-                  Accounts
-                </button>
+                {showAdminNav && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={goToModeration}
+                      aria-current={currentView === 'moderation' ? 'page' : undefined}
+                      className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
+                        currentView === 'moderation'
+                          ? 'text-forest-900 font-semibold'
+                          : 'text-ink-muted hover:text-forest-800'
+                      }`}
+                    >
+                      Moderation
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goToAccounts}
+                      aria-current={currentView === 'accounts' ? 'page' : undefined}
+                      className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
+                        currentView === 'accounts'
+                          ? 'text-forest-900 font-semibold'
+                          : 'text-ink-muted hover:text-forest-800'
+                      }`}
+                    >
+                      Accounts
+                    </button>
+                  </>
+                )}
                 <button
                   type="button"
                   onClick={goToAccount}
@@ -578,20 +592,24 @@ export function App(): React.JSX.Element {
                 >
                   Invitations
                 </button>
-                <button
-                  type="button"
-                  onClick={goToModeration}
-                  className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
-                >
-                  Moderation
-                </button>
-                <button
-                  type="button"
-                  onClick={goToAccounts}
-                  className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
-                >
-                  Accounts
-                </button>
+                {showAdminNav && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={goToModeration}
+                      className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
+                    >
+                      Moderation
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goToAccounts}
+                      className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
+                    >
+                      Accounts
+                    </button>
+                  </>
+                )}
                 <button
                   type="button"
                   onClick={goToAccount}
