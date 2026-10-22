@@ -20,6 +20,7 @@ import { MyApplicationsPanel } from './components/teams/MyApplicationsPanel';
 import { MyInvitationsPanel } from './components/teams/MyInvitationsPanel';
 import { ModerationSafetyPage } from './components/moderation/ModerationSafetyPage';
 import { AccountEnforcementPage } from './components/accounts/AccountEnforcementPage';
+import { ChatPage } from './components/chat/ChatPage';
 import type { OpenTeamApplyTarget } from './components/teams/openTeamsApi';
 import type { OtpChallenge } from './components/auth/providerSignIn';
 
@@ -39,7 +40,8 @@ type View =
   | 'applications'
   | 'invitations'
   | 'moderation'
-  | 'accounts';
+  | 'accounts'
+  | 'chat';
 
 const getInitialView = (): View => {
   if (typeof window === 'undefined') return 'landing';
@@ -88,6 +90,9 @@ const getInitialView = (): View => {
   }
   if (view === 'accounts' || view === 'account-enforcement') {
     return 'accounts';
+  }
+  if (view === 'chat' || view === 'forums' || view === 'messaging') {
+    return 'chat';
   }
   return 'landing';
 };
@@ -213,6 +218,12 @@ export function App(): React.JSX.Element {
     setCurrentView('accounts');
   };
 
+  const goToChat = () => {
+    setStatusNotice(null);
+    setIsMobileMenuOpen(false);
+    setCurrentView('chat');
+  };
+
   const isAuthenticated =
     Boolean(currentUser) ||
     currentView === 'account' ||
@@ -223,6 +234,7 @@ export function App(): React.JSX.Element {
     currentView === 'invitations' ||
     currentView === 'moderation' ||
     currentView === 'accounts' ||
+    currentView === 'chat' ||
     currentView === 'mfa';
   const participantIdentifier =
     currentUser?.displayName ||
@@ -306,6 +318,18 @@ export function App(): React.JSX.Element {
                   }`}
                 >
                   Looking for Team
+                </button>
+                <button
+                  type="button"
+                  onClick={goToChat}
+                  aria-current={currentView === 'chat' ? 'page' : undefined}
+                  className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
+                    currentView === 'chat'
+                      ? 'text-forest-900 font-semibold'
+                      : 'text-ink-muted hover:text-forest-800'
+                  }`}
+                >
+                  Chat
                 </button>
                 <button
                   type="button"
@@ -483,6 +507,13 @@ export function App(): React.JSX.Element {
                 </button>
                 <button
                   type="button"
+                  onClick={goToChat}
+                  className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
+                >
+                  Chat
+                </button>
+                <button
+                  type="button"
                   onClick={goToApplications}
                   className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
                 >
@@ -656,6 +687,30 @@ export function App(): React.JSX.Element {
               }}
               onBackToLanding={goToLanding}
             />
+          </section>
+        ) : currentView === 'chat' ? (
+          <section aria-labelledby="chat-heading">
+            <h2 id="chat-heading" className="sr-only">
+              Participant Chat Forums and Messaging
+            </h2>
+            <MfaGate
+              initialChallenge={otpChallenge}
+              onNavigateToSignIn={() => {
+                setStatusNotice(null);
+                setOtpChallenge(null);
+                setCurrentView('login');
+              }}
+            >
+              {() => (
+                <ChatPage
+                  onNavigateToSignIn={() => {
+                    setStatusNotice(null);
+                    setCurrentView('login');
+                  }}
+                  onNavigateAway={goToLanding}
+                />
+              )}
+            </MfaGate>
           </section>
         ) : currentView === 'browse-teams' ? (
           <>
