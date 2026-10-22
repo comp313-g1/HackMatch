@@ -259,12 +259,31 @@ describe('openTeamsApi client module (US-013 / Task 4)', () => {
       expect(res).toEqual(mockVisitorResult);
     });
 
-    it('retries once as plain visitor fetch when authFetch responds with 403', async () => {
+    it('does not fall back to visitor when authFetch responds with MFA_REQUIRED (#357)', async () => {
       vi.mocked(authFetch).mockResolvedValueOnce(
         new Response(JSON.stringify({ error: 'MFA required', code: 'MFA_REQUIRED' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' },
         })
+      );
+
+      await expect(fetchOpenTeams(EMPTY_FILTERS, mockPartUser)).rejects.toMatchObject({
+        name: 'OpenTeamsApiError',
+        code: 'MFA_REQUIRED',
+        status: 403,
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('retries once as plain visitor fetch when authFetch responds with 403 EMAIL_NOT_VERIFIED', async () => {
+      vi.mocked(authFetch).mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ error: 'Email not verified', code: 'EMAIL_NOT_VERIFIED' }),
+          {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' },
+          }
+        )
       );
 
       mockFetch.mockResolvedValueOnce(

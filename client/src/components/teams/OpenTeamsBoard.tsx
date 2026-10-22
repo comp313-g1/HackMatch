@@ -4,6 +4,7 @@ import {
   EMPTY_FILTERS,
   validateFilterDraft,
   fetchOpenTeams,
+  OpenTeamsApiError,
   type OpenTeamsFilterDraft,
   type OpenTeamsFilterErrors,
   type OpenTeamsResult,
@@ -15,18 +16,21 @@ import { OpenTeamCard } from './OpenTeamCard';
 export interface OpenTeamsBoardProps {
   currentUser: User | null;
   onNavigateToSignIn: () => void;
+  /** When MFA is still required, send the user to the OTP gate instead of visitor Apply CTAs (#357). */
+  onNavigateToMfa?: () => void;
   onApply: (target: OpenTeamApplyTarget) => void;
 }
 
 export function OpenTeamsBoard({
   currentUser,
   onNavigateToSignIn,
+  onNavigateToMfa,
   onApply,
 }: OpenTeamsBoardProps): React.JSX.Element {
   const [draft, setDraft] = useState<OpenTeamsFilterDraft>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<OpenTeamsFilterDraft>(EMPTY_FILTERS);
   const [errors, setErrors] = useState<OpenTeamsFilterErrors>({});
-  const [phase, setPhase] = useState<'loading' | 'loaded' | 'error'>('loading');
+  const [phase, setPhase] = useState<'loading' | 'loaded' | 'error' | 'mfa-required'>('loading');
   const [result, setResult] = useState<OpenTeamsResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -49,6 +53,11 @@ export function OpenTeamsBoard({
       })
       .catch((err: unknown) => {
         if (requestId === requestIdRef.current && !controller.signal.aborted) {
+          if (err instanceof OpenTeamsApiError && err.code === 'MFA_REQUIRED') {
+            setErrorMessage(err.message);
+            setPhase('mfa-required');
+            return;
+          }
           const msg = err instanceof Error ? err.message : 'Failed to load open teams.';
           setErrorMessage(msg);
           setPhase('error');
@@ -144,6 +153,29 @@ export function OpenTeamsBoard({
             aria-hidden="true"
           />
           <p className="text-sm text-ink-muted">Loading open teams...</p>
+        </div>
+      )}
+
+      {/* MFA required — signed in but OTP not done; do not show visitor "Sign in to apply" (#357) */}
+      {phase === 'mfa-required' && (
+        <div
+          role="status"
+          className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-950 text-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm"
+        >
+          <div>
+            <p className="font-medium">Verification required to apply</p>
+            <p className="text-xs text-amber-900/80 mt-0.5">
+              {errorMessage ||
+                'Enter the email verification code to see team details and apply to vacancies.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigateToMfa?.() ?? onNavigateToSignIn()}
+            className="shrink-0 px-4 py-1.5 font-semibold text-white bg-forest hover:bg-forest-800 rounded-md shadow-sm text-xs focus:outline-none focus:ring-2 focus:ring-forest"
+          >
+            Enter code
+          </button>
         </div>
       )}
 

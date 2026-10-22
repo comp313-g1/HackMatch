@@ -799,6 +799,11 @@ export function App(): React.JSX.Element {
             <OpenTeamsBoard
               currentUser={currentUser}
               onNavigateToSignIn={goToLogin}
+              onNavigateToMfa={() => {
+                setStatusNotice(null);
+                setIsMobileMenuOpen(false);
+                setCurrentView('mfa');
+              }}
               onApply={(target) => {
                 setStatusNotice(null);
                 setApplyTarget(target);
