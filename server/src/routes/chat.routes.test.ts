@@ -27,7 +27,7 @@ vi.mock('../config/firebase.js', () => {
 const AUTH_TIME = Math.floor(Date.now() / 1000) - 30;
 const CHANNEL_ID = '11111111-1111-4111-8111-111111111111';
 
-describe('Express Chat Endpoints (US-030 / #344 / FR-087–FR-088)', () => {
+describe('Express Chat Endpoints (US-030 / #344 / #347 / FR-087–FR-089)', () => {
   const verifiedParticipant: Participant = {
     id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     firebase_uid: 'fb-verified-1',
