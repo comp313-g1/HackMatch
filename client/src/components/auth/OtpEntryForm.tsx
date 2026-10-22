@@ -130,6 +130,14 @@ export function OtpEntryForm({
           applyDeliveryFailure(meta.message);
           return;
         }
+        // #356 — auto-bootstrap (not a user Resend click) hit the send limit.
+        if (meta.code === 'RATE_LIMITED') {
+          setFormError(
+            'A verification code was already sent recently. Check your email for the code, or wait a moment before requesting another.'
+          );
+          setStatus('error');
+          return;
+        }
         setFormError(meta.message);
         setStatus('error');
       }

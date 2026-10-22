@@ -287,6 +287,22 @@ describe('OtpEntryForm (US-004 S1-P1-10)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/failed to send verification code/i);
   });
 
+  it('bootstrap RATE_LIMITED: shows calm already-sent copy instead of raw throttle text (#356)', async () => {
+    mockRequestMfaChallenge.mockRejectedValueOnce(
+      Object.assign(new Error('Too many OTP requests. Please wait before requesting another code.'), {
+        code: 'RATE_LIMITED',
+        retryAfter: 15,
+      })
+    );
+
+    renderForm({ initialChallenge: null });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /verification code was already sent recently/i
+    );
+    expect(screen.queryByText(/too many otp requests/i)).not.toBeInTheDocument();
+  });
+
   it('delivery failure: clears challenge, shows retry help, and allows Try sending again (FR-084)', async () => {
     mockRequestMfaChallenge
       .mockRejectedValueOnce(
