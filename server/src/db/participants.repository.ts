@@ -1,5 +1,10 @@
 import { getSupabaseClient } from './client.js';
-import type { Participant, CreateParticipantDTO, UpdateParticipantDTO } from './types.js';
+import type {
+  Participant,
+  CreateParticipantDTO,
+  UpdateParticipantDTO,
+  PresenceStatus,
+} from './types.js';
 
 export interface IParticipantRepository {
   findById(id: string): Promise<Participant | null>;
@@ -8,6 +13,7 @@ export interface IParticipantRepository {
   createParticipant(data: CreateParticipantDTO): Promise<Participant>;
   updateParticipant(id: string, data: UpdateParticipantDTO): Promise<Participant>;
   updateVerificationStatus(id: string, isVerified: boolean): Promise<Participant>;
+  updatePresenceStatus(id: string, presenceStatus: PresenceStatus): Promise<Participant>;
   provisionAdminParticipant(data: { firebase_uid: string; email: string; full_name: string }): Promise<Participant>;
 }
 
@@ -87,6 +93,13 @@ export const participantsRepository: IParticipantRepository = {
     return this.updateParticipant(id, { is_verified: isVerified });
   },
 
+  async updatePresenceStatus(
+    id: string,
+    presenceStatus: PresenceStatus
+  ): Promise<Participant> {
+    return this.updateParticipant(id, { presence_status: presenceStatus });
+  },
+
   async provisionAdminParticipant(data: {
     firebase_uid: string;
     email: string;
@@ -135,5 +148,6 @@ export const findByEmail = participantsRepository.findByEmail.bind(participantsR
 export const createParticipant = participantsRepository.createParticipant.bind(participantsRepository);
 export const updateParticipant = participantsRepository.updateParticipant.bind(participantsRepository);
 export const updateVerificationStatus = participantsRepository.updateVerificationStatus.bind(participantsRepository);
+export const updatePresenceStatus = participantsRepository.updatePresenceStatus.bind(participantsRepository);
 export const provisionAdminParticipant = participantsRepository.provisionAdminParticipant.bind(participantsRepository);
 

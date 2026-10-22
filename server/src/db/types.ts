@@ -1,5 +1,8 @@
 export type ParticipantRole = 'PART' | 'ADMIN';
 
+/** US-030 / #343 / FR-086 chat presence statuses. */
+export type PresenceStatus = 'Online' | 'Idle' | 'Do Not Disturb' | 'Invisible';
+
 export interface Participant {
   id: string;
   firebase_uid: string;
@@ -17,6 +20,8 @@ export interface Participant {
   deactivated_at?: string | null;
   deactivated_by?: string | null;
   deactivation_reason?: string | null;
+  /** US-030 / #343 / FR-086 — default Invisible until the participant sets a status. */
+  presence_status?: PresenceStatus;
   created_at: string;
   updated_at: string;
 }
@@ -43,6 +48,7 @@ export interface UpdateParticipantDTO {
   deactivated_at?: string | null;
   deactivated_by?: string | null;
   deactivation_reason?: string | null;
+  presence_status?: PresenceStatus;
 }
 
 /** Ownership-verified deletion request lifecycle (US-027 / #249 / AC 3). */

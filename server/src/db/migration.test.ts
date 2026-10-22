@@ -1771,6 +1771,34 @@ describe('0040_membership_identity_pseudonymization.sql (US-027 / #253)', () => 
   });
 });
 
+describe('0042_add_participant_presence_status.sql (US-030 / #343 / FR-086)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0042_add_participant_presence_status.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(50);
+  });
+
+  it('adds presence_status with Invisible default and allowed FR-086 values', () => {
+    expect(sql).toMatch(
+      /ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+presence_status\s+VARCHAR\(32\)\s+NOT\s+NULL\s+DEFAULT\s+'Invisible'/i
+    );
+    expect(sql).toMatch(/chk_participants_presence_status/i);
+    expect(sql).toMatch(
+      /presence_status\s+IN\s*\(\s*'Online'\s*,\s*'Idle'\s*,\s*'Do Not Disturb'\s*,\s*'Invisible'\s*\)/i
+    );
+  });
+
+  it('indexes non-Invisible presence for peer lookups', () => {
+    expect(sql).toMatch(/idx_participants_presence_status/i);
+    expect(sql).toMatch(/presence_status\s*<>\s*'Invisible'/i);
+  });
+});
+
 describe('0041_create_chat_channel_message_models.sql (US-030 / #342)', () => {
   const migrationPath = path.resolve(
     __dirname,
