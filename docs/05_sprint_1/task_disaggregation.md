@@ -203,9 +203,11 @@ Table 15: US-029 (disaggregated tasks)
 - [ ] US-029-T5: User signs in before authenticator enrollment is approved → Email OTP remains the required login method
 - [ ] US-029-T6: User enters five incorrect authenticator codes → The account-wide 15-minute lock policy is applied
 
-#### [US-008](../02_user_stories/user_stories.md#us-008)
+#### [US-008](../02_user_stories/user_stories.md#us-008) — ~~OUT OF SCOPE (hackathon listing)~~
 
-**As a visitor or Participant, I want to browse and filter upcoming hackathons, so that I can identify events I want to attend and inspect available teams.**
+> **Deferred:** ~~US-008 / FR-018–FR-020~~ are out of scope for the current app. Active Must-Have replacement: **[US-030](#us-030)** chat (FR-086–FR-089). Tasks below are retained for history only — **do not schedule in the 3-day chat slice**.
+
+~~**As a visitor or Participant, I want to browse and filter upcoming hackathons, so that I can identify events I want to attend and inspect available teams.**~~
 
 | Task | Description | Who | Estimate (h) | Actual (h) |
 |---|---|---:|---:|---:|
@@ -229,9 +231,11 @@ Table 17: US-008 (disaggregated tasks)
 - [ ] US-008-T5: User opens an ADMIN-disabled official link → The link cannot be followed from the listing
 - [ ] US-008-T6: User opens a concluded event → The event and board are read-only
 
-#### [US-009](../02_user_stories/user_stories.md#us-009)
+#### [US-009](../02_user_stories/user_stories.md#us-009) — ~~OUT OF SCOPE (hackathon listing)~~
 
-**As a Participant, I want to submit an unlisted hackathon for verification, so that users can form teams around one trusted event record.**
+> **Deferred:** ~~US-009 / FR-021–FR-022~~ out of scope. See **US-030** for active Must-Have work.
+
+~~**As a Participant, I want to submit an unlisted hackathon for verification, so that users can form teams around one trusted event record.**~~
 
 | Task | Description | Who | Estimate (h) | Actual (h) |
 |---|---|---:|---:|---:|
@@ -255,9 +259,11 @@ Table 19: US-009 (disaggregated tasks)
 - [ ] US-009-T5: ADMIN rejects a submission with feedback and the submitter resubmits a correction → The status and feedback update and the corrected submission returns for review
 - [ ] US-009-T6: Unverified or unauthenticated visitor tries to submit an event → The submission is denied
 
-#### [US-010](../02_user_stories/user_stories.md#us-010)
+#### [US-010](../02_user_stories/user_stories.md#us-010) — ~~OUT OF SCOPE (hackathon listing)~~
 
-**As a Platform Administrator, I want to review, correct, and verify crowdsourced hackathon submissions and manage published listings, so that the platform maintains an accurate single source of truth.**
+> **Deferred:** ~~US-010 / FR-023–FR-028~~ out of scope. See **US-030** for active Must-Have work.
+
+~~**As a Platform Administrator, I want to review, correct, and verify crowdsourced hackathon submissions and manage published listings, so that the platform maintains an accurate single source of truth.**~~
 
 | Task | Description | Who | Estimate (h) | Actual (h) |
 |---|---|---:|---:|---:|
@@ -741,6 +747,141 @@ Table 57: US-028 (disaggregated tasks)
 - [ ] US-028-T5: PART or Visitor opens the audit page → Access is denied
 - [ ] US-028-T6: User tries to edit or delete an audit record through ordinary controls → No mutation is allowed
 
+<a id="us-030"></a>
+
+#### [US-030](../02_user_stories/user_stories.md#us-030) — Participant Chat Forums and Messaging
+
+**As a Participant (hacker), I want in-app forums and messaging with presence statuses, so that I can open topic channels with a title and description, collaborate with other hackers, and send messages in-app.**
+
+**Sprint note:** Schedule **US-030 only** in the **≈3-day** Must-Have window (FR-086–FR-089). **US-031–US-034** are Should-Have next sprint. **US-035** is May-Have future.
+
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create chat channel and message PostgreSQL models | Complete the task "Create chat channel and message PostgreSQL models" for US-030. Implement forums/channels (title, description, created_by, timestamps) and messages (channel_id, author_id, body, created_at) with indexes and constraints. | Joel | 3 |  |
+| Add participant presence-status field and update API | Complete the task "Add participant presence-status field and update API" for US-030. Support Online, Idle, Do Not Disturb, Invisible (FR-086); deny Visitors and suspended/unverified accounts. | sahil | 2 |  |
+| Create Express channel list/create and message list/send endpoints | Complete the task "Create Express channel list/create and message list/send endpoints" for US-030. Server-side validation for title/description/message; explicit 401/403/400; preserve submitted drafts on validation errors (FR-087, FR-088). | Po-kai | 3 |  |
+| Enforce chat privacy — no credentials, OTPs, or emails in payloads | Complete the task "Enforce chat privacy — no credentials, OTPs, or emails in payloads" for US-030. Scrub sensitive fields from chat responses (FR-089). | Joel | 1.5 |  |
+| Build React Chat page — status, forum list/create, message thread | Complete the task "Build React Chat page — status, forum list/create, message thread" for US-030. Loading, empty, validation, success, and error states; keep drafts on failure. | sahil | 4 |  |
+| Add Vitest and route tests for chat happy path, auth, and validation | Complete the task "Add Vitest and route tests for chat happy path, auth, and validation" for US-030. Cover unauthorized access, blank title/message, and privacy scrubbing with offline evidence. | Po-kai | 2.5 |  |
+
+Table 59: US-030 (disaggregated tasks)
+
+### Acceptance Tests
+
+- [ ] US-030-T1: Verified PART sets presence to Online → Status is stored and returned to permitted peers
+- [ ] US-030-T2: PART creates a forum with title and description → Channel appears in the list
+- [ ] US-030-T3: PART sends a text message in a channel → Message shows author handle, time, and content
+- [ ] US-030-T4: Visitor or unverified user opens Chat → Access is denied / gated
+- [ ] US-030-T5: Blank title or blank message submitted → Validation error; draft kept
+- [ ] US-030-T6: Chat API response inspected → No password, OTP, or email fields present
+
+#### [US-031](../02_user_stories/user_stories.md#us-031) — Team-Scoped Chat Channels *(Should-Have — next sprint)*
+
+**As a confirmed team member, I want a private team chat channel limited to my teammates, so that we can coordinate without exposing messages to the whole platform.**
+
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Extend chat channel model with team_id and membership scope | Complete the task "Extend chat channel model with team_id and membership scope" for US-031. Link channels to teams; enforce confirmed-member-only access (FR-090). | sahil | 2 |  |
+| Add Express authorize-membership middleware for team channels | Complete the task "Add Express authorize-membership middleware for team channels" for US-031. Non-members receive 403 with no message leakage. | Po-kai | 2 |  |
+| Create or auto-link a team channel from the team workspace | Complete the task "Create or auto-link a team channel from the team workspace" for US-031. Owner/member entry points respect US-012 / US-022 lifecycle. | Joel | 2 |  |
+| Build React team-channel view with empty and denied states | Complete the task "Build React team-channel view with empty and denied states" for US-031. Loading, success, validation, empty, and error states; drafts kept on failure. | Po-kai | 2 |  |
+| Add Vitest and integration tests for member vs non-member access | Complete the task "Add Vitest and integration tests for member vs non-member access" for US-031. Verify happy path, unauthorized access, and failure handling. | Joel | 1.5 |  |
+
+Table 60: US-031 (disaggregated tasks)
+
+### Acceptance Tests
+
+- [ ] US-031-T1: Confirmed member opens their team channel → Messages load
+- [ ] US-031-T2: Non-member requests the same channel → 403 and no content
+- [ ] US-031-T3: Visitor opens a team channel URL → Access denied
+- [ ] US-031-T4: Member sends a message → Appears for other confirmed members only
+- [ ] US-031-T5: Blank message submitted → Validation error; draft kept
+
+#### [US-032](../02_user_stories/user_stories.md#us-032) — Direct Messaging Between Participants *(Should-Have — next sprint)*
+
+**As a Participant, I want to exchange private direct messages with another Participant, so that we can connect one-to-one while recruiting or collaborating.**
+
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Create DM thread model and participant pair uniqueness | Complete the task "Create DM thread model and participant pair uniqueness" for US-032. One thread per unordered PART pair; indexes and constraints (FR-091). | Joel | 2 |  |
+| Create Express DM list/open/send endpoints | Complete the task "Create Express DM list/open/send endpoints" for US-032. Deny suspended/unverified/blocked peers; preserve drafts on validation errors. | sahil | 2.5 |  |
+| Enforce DM privacy scrubbing | Complete the task "Enforce DM privacy scrubbing" for US-032. No credentials, OTPs, or emails in DM payloads. | Po-kai | 1 |  |
+| Build React DM inbox and thread composer | Complete the task "Build React DM inbox and thread composer" for US-032. Loading, empty, validation, success, and error states. | Joel | 2.5 |  |
+| Add Vitest and route tests for DM auth and validation | Complete the task "Add Vitest and route tests for DM auth and validation" for US-032. Cover unauthorized access and failure handling. | sahil | 1.5 |  |
+
+Table 61: US-032 (disaggregated tasks)
+
+### Acceptance Tests
+
+- [ ] US-032-T1: Two verified PART users open a DM → Thread is created or reused
+- [ ] US-032-T2: Third party requests that DM → 403
+- [ ] US-032-T3: Suspended peer is messaged → Send is denied
+- [ ] US-032-T4: Blank DM body submitted → Validation error; draft kept
+- [ ] US-032-T5: DM payload inspected → No password, OTP, or email fields
+
+#### [US-033](../02_user_stories/user_stories.md#us-033) — Chat Moderation and Reporting Hooks *(Should-Have — next sprint)*
+
+**As a Platform Administrator, I want to open moderation cases against abusive chat channels or messages, so that collaboration stays safe without exposing private credentials.**
+
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Extend moderation target types for channel and message | Complete the task "Extend moderation target types for channel and message" for US-033. Allow US-026 cases against chat targets (FR-092). | Po-kai | 2 |  |
+| Add safe chat summary projection for case detail | Complete the task "Add safe chat summary projection for case detail" for US-033. Show handles/times/safe body rules; never credentials/OTPs/emails. | Joel | 2 |  |
+| Wire ADMIN open-case UI for chat targets | Complete the task "Wire ADMIN open-case UI for chat targets" for US-033. Mandatory reason; draft preserved on validation failure. | sahil | 2 |  |
+| Optional PART report-from-message when US-025 is available | Complete the task "Optional PART report-from-message when US-025 is available" for US-033. Create case intake without exposing other users’ reports. | Po-kai | 1.5 |  |
+| Add Vitest and integration tests for chat moderation access | Complete the task "Add Vitest and integration tests for chat moderation access" for US-033. PART/Visitor denied; ADMIN happy path and validation. | Joel | 1.5 |  |
+
+Table 62: US-033 (disaggregated tasks)
+
+### Acceptance Tests
+
+- [ ] US-033-T1: ADMIN opens a case on a message with a reason → Case appears in the safety queue
+- [ ] US-033-T2: Case detail shows safe chat summary → No credentials/OTPs/emails
+- [ ] US-033-T3: PART tries ADMIN chat moderation controls → Access denied
+- [ ] US-033-T4: Decide without reason → Validation error; draft kept
+- [ ] US-033-T5: Action record written → Actor, target, reason, outcome, UTC time present
+
+#### [US-034](../02_user_stories/user_stories.md#us-034) — Chat Unread and Mention Badges *(Should-Have — after US-030 and US-021)*
+
+**As a Participant, I want unread counts and mention badges for chat activity, so that I notice new messages without constantly polling every channel.**
+
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Persist last-read cursor per participant and channel/DM | Complete the task "Persist last-read cursor per participant and channel/DM" for US-034. Support unread calculation (FR-094). | sahil | 2 |  |
+| Compute unread and mention badge counts API | Complete the task "Compute unread and mention badge counts API" for US-034. No cross-account leakage. | Joel | 2 |  |
+| Surface badges in React nav / US-021 notification centre | Complete the task "Surface badges in React nav / US-021 notification centre" for US-034. Zero-count empty state is clear. | Po-kai | 2 |  |
+| Mark thread read clears badges | Complete the task "Mark thread read clears badges" for US-034. Counts stay accurate after refresh. | sahil | 1.5 |  |
+| Add Vitest tests for increment and clear behaviour | Complete the task "Add Vitest tests for increment and clear behaviour" for US-034. Verify unauthorized access denial. | Po-kai | 1 |  |
+
+Table 63: US-034 (disaggregated tasks)
+
+### Acceptance Tests
+
+- [ ] US-034-T1: New message arrives in a channel → Unread count increments for other members
+- [ ] US-034-T2: Member opens/marks the thread read → Unread count clears
+- [ ] US-034-T3: Mention convention matched → Mention badge updates
+- [ ] US-034-T4: Another account’s badges requested → Access denied / no leak
+- [ ] US-034-T5: Zero unread → Clear empty / zero state
+
+#### [US-035](../02_user_stories/user_stories.md#us-035) — Rich Chat Media and Realtime Extras *(May-Have — future)*
+
+**As a Participant, I want richer chat interactions such as reactions, typing indicators, file attachments, or voice/video, so that collaboration feels closer to a full realtime workspace.**
+
+| Task | Description | Who | Estimate (h) | Actual (h) |
+|---|---|---:|---:|---:|
+| Design approval gate for rich media / realtime extras | Complete the task "Design approval gate for rich media / realtime extras" for US-035. No implementation until FR-093 design approval. | Joel | — |  |
+| Spike reactions and typing indicators (optional) | Complete the task "Spike reactions and typing indicators" for US-035 only after approval; preserve US-030 privacy and auth boundaries. | sahil | — |  |
+| Spike attachments with MIME/size policy (optional) | Complete the task "Spike attachments with MIME/size policy" for US-035 only after approval. | Po-kai | — |  |
+| Spike voice/video feasibility (optional) | Complete the task "Spike voice/video feasibility" for US-035 only after security/capacity review. | Joel | — |  |
+
+Table 64: US-035 (disaggregated tasks)
+
+### Acceptance Tests
+
+- [ ] US-035-T1: Feature flagged off by default → US-030 MVP acceptance unaffected
+- [ ] US-035-T2: Any future rich-media API → Still omits credentials/OTPs/emails
+- [ ] US-035-T3: Unauthorized user → Cannot access rich-media endpoints
+
 ## Summary
 
 | Story ID | Number of tasks | Total estimated hours | Number of acceptance tests |
@@ -753,9 +894,9 @@ Table 57: US-028 (disaggregated tasks)
 | [US-006](../02_user_stories/user_stories.md#us-006) | 8 |  | 6 |
 | [US-007](../02_user_stories/user_stories.md#us-007) | 7 |  | 6 |
 | [US-029](../02_user_stories/user_stories.md#us-029) | 7 |  | 6 |
-| [US-008](../02_user_stories/user_stories.md#us-008) | 8 |  | 6 |
-| [US-009](../02_user_stories/user_stories.md#us-009) | 8 |  | 6 |
-| [US-010](../02_user_stories/user_stories.md#us-010) | 9 |  | 6 |
+| ~~[US-008](../02_user_stories/user_stories.md#us-008)~~ *(out of scope)* | 8 | — | 6 |
+| ~~[US-009](../02_user_stories/user_stories.md#us-009)~~ *(out of scope)* | 8 | — | 6 |
+| ~~[US-010](../02_user_stories/user_stories.md#us-010)~~ *(out of scope)* | 9 | — | 6 |
 | [US-011](../02_user_stories/user_stories.md#us-011) | 8 |  | 5 |
 | [US-012](../02_user_stories/user_stories.md#us-012) | 9 |  | 6 |
 | [US-013](../02_user_stories/user_stories.md#us-013) | 7 |  | 6 |
@@ -774,4 +915,10 @@ Table 57: US-028 (disaggregated tasks)
 | [US-026](../02_user_stories/user_stories.md#us-026) | 8 |  | 6 |
 | [US-027](../02_user_stories/user_stories.md#us-027) | 9 |  | 6 |
 | [US-028](../02_user_stories/user_stories.md#us-028) | 7 |  | 6 |
-| **Total** | **225** |  | **168** |
+| [US-030](../02_user_stories/user_stories.md#us-030) Must-Have (3-day) | 6 | 16 | 6 |
+| [US-031](../02_user_stories/user_stories.md#us-031) Should-Have | 5 | 9.5 | 5 |
+| [US-032](../02_user_stories/user_stories.md#us-032) Should-Have | 5 | 9.5 | 5 |
+| [US-033](../02_user_stories/user_stories.md#us-033) Should-Have | 5 | 9 | 5 |
+| [US-034](../02_user_stories/user_stories.md#us-034) Should-Have | 5 | 8.5 | 5 |
+| [US-035](../02_user_stories/user_stories.md#us-035) May-Have | 4 | — | 3 |
+| **Total (historical rows)** | **255** |  | **193** |

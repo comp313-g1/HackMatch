@@ -4,7 +4,7 @@
 
 This document defines HackMatch user stories using the roles established in [Roles and Personas](../01_roles_and_personas/roles_and_personas.md). The system architecture defines two global authenticated account types (**Participant** — `PART`, and **Platform Administrator** — `ADMIN`), one contextual permission set (**Team Lead** — `LEAD`, assumed by a `PART` who creates a team), and one unauthenticated public state (**Unauthenticated Visitor** — `VISITOR`).
 
-The canonical expanded backlog contains **29 stories: 20 Must-Have MVP stories, 7 Should-Have early post-MVP stories, and 2 May-Have future stories**. Current IDs are retained. Older Word/issue references require later reconciliation by meaning.
+The canonical expanded backlog contained **29 stories: 20 Must-Have MVP stories, 7 Should-Have early post-MVP stories, and 2 May-Have future stories**. Chat adds **US-030** (Must-Have, 3-day) plus **US-031–US-034** (Should-Have) and **US-035** (May-Have). ~~US-008 / US-009 / US-010~~ (hackathon listing) are **out of scope** for the current app and replaced in the active Must-Have set by **US-030**. Current IDs are retained.
 
 Categories follow [MVP Definition](../03_mvp/mvp_definition.md). Proposed numerical/lifecycle defaults and remaining confirmations are centralized in the [policy register](../04_requirements/functional_nonfunctional_requirements.md#policy-register); they are not professor mandates. All features are delivered through a responsive browser interface including tablet/iPad and phone portrait/landscape layouts.
 
@@ -27,7 +27,8 @@ Every story below follows the standardized format:
 | Feature Area | Must-Have MVP | Should-Have post-MVP | May-Have future |
 |---|---|---|---|
 | Authentication and Participant Profiles | US-001, US-002, US-003, US-004, US-005, US-006 | US-007 | US-029 |
-| Hackathon Directory and Event Management | US-008, US-009, US-010 | — | — |
+| Hackathon Directory and Event Management | ~~US-008, US-009, US-010~~ *(out of scope)* | — | — |
+| Participant Chat Forums and Messaging | **US-030** (presence, forums, text messages) | **US-031**, **US-032**, **US-033**, **US-034** | **US-035** |
 | Team Recruitment and Looking-for-Team Boards | US-011, US-012, US-013 | US-014 | — |
 | Rule-Based Matching | US-015 | — | US-016 |
 | Invitations, Applications, and Rosters | US-017, US-018, US-019, US-020, US-022 | US-021, US-023, US-024 | — |
@@ -831,3 +832,166 @@ These stories govern user abuse reporting, administrative moderation, account en
 **Complexity/Effort Estimate:** Medium
 
 **Related Stories:** US-010, US-026, US-027
+
+---
+
+<a id="us-030"></a>
+
+#### US-030: Participant Chat Forums and Messaging
+
+**Delivery Category:** Must-Have — MVP (≈3-day slice)
+
+**User/Role:** PART (verified, active)
+
+**Story Statement:** As a Participant (hacker), I want in-app forums and messaging with presence statuses, so that I can open topic channels with a title and description, collaborate with other hackers, and send messages in-app.
+
+**Description:** Replaces deferred hackathon-listing Must-Haves (~~US-008–US-010~~ / ~~FR-018–FR-028~~) in the *active* product scope with collaboration chat. Closest prior items (US-023 links/notes, US-021 alerts) do **not** implement chat; FR-069 previously forbade chat/video — US-030 / FR-086–FR-089 supersede that for text forums only. Team channels, DMs, moderation hooks, unread badges, and rich media are separate stories **US-031–US-035**.
+
+**Acceptance Criteria:**
+1. Verified active PART can set presence: Online, Idle, Do Not Disturb, Invisible (FR-086). Visitors never see presence.
+2. PART can create and list forums/channels with required title and description (FR-087).
+3. Channel members can send and read text messages with author handle, timestamp, and content; loading/empty/validation/error states; drafts kept on failure (FR-088 / NR-017).
+4. Visitors, unverified, and suspended accounts cannot use chat.
+5. Chat APIs never expose credentials, OTPs, or account emails (FR-089).
+6. Vitest / route tests cover happy path, invalid input, unauthorized access, and failure handling.
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-006, US-031, US-032, US-033, US-034, US-035
+
+---
+
+<a id="us-031"></a>
+
+#### US-031: Team-Scoped Chat Channels
+
+**Delivery Category:** Should-Have — early post-MVP (next sprint after US-030)
+
+**User/Role:** PART (confirmed member of a team, including the owner)
+
+**Story Statement:** As a confirmed team member, I want a private team chat channel limited to my teammates, so that we can coordinate without exposing messages to the whole platform.
+
+**Description:** Extends US-030 with membership-gated channels. Depends on US-012 / US-022 membership state. Maps to FR-090.
+
+**Acceptance Criteria:**
+1. Only active confirmed members of a team can join or read that team’s channel (FR-090).
+2. Non-members, Visitors, and ADMIN without membership receive 403; no message content leaks.
+3. Team channel creation/linking is tied to an existing team; disbanded/locked rules follow team lifecycle without deleting historical membership integrity.
+4. Loading, empty, validation, and error states; drafts kept on failure.
+5. Vitest / route tests cover authorized member access and unauthorized denial.
+
+**Priority:** Medium
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-012, US-022, US-030
+
+---
+
+<a id="us-032"></a>
+
+#### US-032: Direct Messaging Between Participants
+
+**Delivery Category:** Should-Have — early post-MVP (next sprint after US-030)
+
+**User/Role:** PART (verified, active)
+
+**Story Statement:** As a Participant, I want to exchange private direct messages with another Participant, so that we can connect one-to-one while recruiting or collaborating.
+
+**Description:** One-to-one threads built on US-030 messaging primitives. Maps to FR-091. Blocked or suspended peers cannot message.
+
+**Acceptance Criteria:**
+1. Two verified active PART users can open or continue a DM thread (FR-091).
+2. Only the two participants can read or send in that thread; others receive 403.
+3. Suspended, unverified, or blocked peers cannot send; clear denial messages.
+4. Composer validation, empty inbox/thread states, and draft preservation on failure.
+5. Payloads never include credentials, OTPs, or emails (same privacy bar as FR-089).
+6. Vitest / route tests cover happy path, unauthorized access, and validation failures.
+
+**Priority:** Medium
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-006, US-030, US-027
+
+---
+
+<a id="us-033"></a>
+
+#### US-033: Chat Moderation and Reporting Hooks
+
+**Delivery Category:** Should-Have — early post-MVP (next sprint after US-030)
+
+**User/Role:** ADMIN · PART (optional report when US-025 ships)
+
+**Story Statement:** As a Platform Administrator, I want to open moderation cases against abusive chat channels or messages, so that collaboration stays safe without exposing private credentials.
+
+**Description:** Extends US-026 case targets to chat entities (FR-092). Optional PART report-from-message when US-025 is available. Does not replace US-030 core chat.
+
+**Acceptance Criteria:**
+1. ADMIN can open a US-026 moderation case targeting a channel or message id with mandatory reason (FR-092).
+2. Case detail shows safe chat summary (handles, times, redacted body rules) — never credentials/OTPs/emails.
+3. PART and Visitors cannot invoke ADMIN chat moderation controls.
+4. When US-025 ships, PART may report a message into the same case pipeline without reading others’ reports.
+5. Action records follow FR-079; Vitest / integration tests cover access and validation.
+
+**Priority:** Medium
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-025, US-026, US-030
+
+---
+
+<a id="us-034"></a>
+
+#### US-034: Chat Unread and Mention Badges
+
+**Delivery Category:** Should-Have — early post-MVP (after US-030 and US-021)
+
+**User/Role:** PART (verified, active)
+
+**Story Statement:** As a Participant, I want unread counts and mention badges for chat activity, so that I notice new messages without constantly polling every channel.
+
+**Description:** Surfaces chat activity through the US-021 notification centre patterns. Depends on US-030 message persistence and US-021 unread infrastructure. Maps to FR-094.
+
+**Acceptance Criteria:**
+1. PART sees an unread count for channels/DMs with new messages since last read (FR-094).
+2. Mentions (when implemented in message body conventions) increment a distinct badge or category under US-021 rules.
+3. Marking a thread read clears the corresponding unread state; counts stay accurate across refresh.
+4. Visitors and unauthorized users never see another account’s badges.
+5. Empty zero-count state is clear; Vitest covers increment/clear behaviour.
+
+**Priority:** Medium
+
+**Complexity/Effort Estimate:** Small–Medium
+
+**Related Stories:** US-021, US-030, US-032
+
+---
+
+<a id="us-035"></a>
+
+#### US-035: Rich Chat Media and Realtime Extras
+
+**Delivery Category:** May-Have — future
+
+**User/Role:** PART (verified, active)
+
+**Story Statement:** As a Participant, I want richer chat interactions such as reactions, typing indicators, file attachments, or voice/video, so that collaboration feels closer to a full realtime workspace.
+
+**Description:** Optional future enhancements over US-030 text chat. Maps to FR-093. Not committed for Must-Have or the immediate Should-Have sprint. Any voice/video requires separate security and capacity review.
+
+**Acceptance Criteria:**
+1. Future design approval is required before shipping reactions, typing indicators, attachments, or voice/video (FR-093).
+2. Features must preserve chat privacy (no credentials/OTPs/emails) and existing authorization boundaries from US-030–US-033.
+3. Attachments, if ever allowed, must enforce HTTPS/safe MIME limits and virus/size policy TBD.
+4. No May-Have item is required for MVP acceptance of US-030.
+
+**Priority:** Low
+
+**Complexity/Effort Estimate:** Large (when approved)
+
+**Related Stories:** US-030, US-031, US-032
