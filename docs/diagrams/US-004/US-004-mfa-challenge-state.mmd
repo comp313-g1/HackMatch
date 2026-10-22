@@ -1,0 +1,43 @@
+---
+title: "HackMatch — US-004: Email-Based Login Two-Factor Authentication — MFA Challenge State Diagram"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f3e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":38,"rankSpacing":50,"padding":14}}}%%
+flowchart TB
+    NONE["No active challenge<br/>Primary authentication remains pre-MFA"]:::identity
+    PENDING["Pending challenge<br/>Participant-bound hash verifier<br/>Expires 10 minutes after creation"]:::transition
+    FAIL["Failed attempt recorded<br/>Account-wide consecutive count retained"]:::warning
+    CONSUMED["Consumed<br/>Exactly one valid concurrent request wins"]:::success
+    INVALIDATED["Invalidated<br/>Cannot authenticate"]:::denied
+    EXPIRED["Expired<br/>Rejected at or after expires_at"]:::denied
+    LOCKED["Account locked for 15 minutes<br/>Outstanding challenges invalidated<br/>New challenge/session renewal denied"]:::danger
+    LOCKEND["Lock expired<br/>Failure cycle may restart"]:::transition
+    CLAIM["Current sign-in MFA claim set<br/>mfa_auth_time equals auth_time"]:::success
+    GAP["Current browser-path gap<br/>Fresh primary auth after lock expiry is not<br/>checked by /mfa/challenge + {code}"]:::warning
+    STORE["Persistence detail<br/>mfa_challenges stores state;<br/>mfa_attempts derives failure cycle and lock"]:::internal
+
+    NONE -->|Eligible password/OAuth sign-in and successful delivery| PENDING
+    PENDING -->|Correct 6-digit code before expiry<br/>atomic compare-and-set| CONSUMED
+    CONSUMED --> CLAIM
+    PENDING -->|Incorrect code| FAIL
+    FAIL -->|Failures 1 through 4| PENDING
+    FAIL -->|Fifth consecutive failure| LOCKED
+    LOCKED --> INVALIDATED
+    LOCKED -->|15 minutes elapse| LOCKEND
+    LOCKEND -->|Required design: fresh primary auth + new OTP| NONE
+    PENDING -->|Resend creates replacement| INVALIDATED
+    INVALIDATED -->|Replacement delivered, failures unchanged| PENDING
+    PENDING -->|Email delivery fails| INVALIDATED
+    PENDING -->|Time reaches expiry| EXPIRED
+    EXPIRED -->|Fresh challenge requested| NONE
+    GAP -.-> LOCKEND
+    STORE -.-> PENDING
+    STORE -.-> FAIL
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef transition fill:#fff7d6,stroke:#d4a72c,color:#3f3300,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef danger fill:#ffe8ee,stroke:#b91c1c,color:#641c30,stroke-width:2px;
+    classDef warning fill:#fff7d6,stroke:#d4a72c,color:#3f3300,stroke-width:1.5px,stroke-dasharray:5 3;
+

@@ -1,0 +1,39 @@
+---
+title: "HackMatch — US-012: Create and Manage a Team Recruitment Listing — Team Lifecycle State Diagram"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":48,"rankSpacing":66,"padding":14}}}%%
+flowchart LR
+    START(["Verified PART creates team<br/>without selecting an event"]):::identity
+    SHADOW["Bind Internal Shadow Event<br/>Backend implementation detail"]:::internal
+    OPEN["Open / Mutable<br/>Creator is confirmed Owner<br/>Default capacity 4"]:::team
+    EDIT["Listing or vacancy changed<br/>Capacity invariant retained"]:::team
+    MEMBER["Non-owner removed or leaves<br/>Capacity reopens<br/>Team remains Open"]:::team
+    LOCKED["Locked<br/>Roster finalized<br/>Ordinary mutations rejected"]:::success
+    DISBANDED["Disbanded<br/>Memberships released<br/>Requests canceled"]:::danger
+    OWNER_DENIED["Owner leave rejected<br/>Owner must disband"]:::denied
+    EXPIRED["Open but not mutable<br/>Current code: shadow event expired<br/>or is not Published"]:::warning
+    REJECT["409 mutation rejection<br/>No roster change"]:::denied
+
+    START --> SHADOW
+    SHADOW --> OPEN
+    OPEN -->|"Edit listing / slots"| EDIT
+    EDIT --> OPEN
+    OPEN -->|"Remove / voluntary leave"| MEMBER
+    MEMBER --> OPEN
+    OPEN -->|"Owner attempts leave"| OWNER_DENIED
+    OWNER_DENIED --> OPEN
+    OPEN -->|"Lock valid 2–capacity roster"| LOCKED
+    OPEN -->|"Owner disbands"| DISBANDED
+    OPEN -->|"Current one-year scope ends"| EXPIRED
+    LOCKED --> REJECT
+    DISBANDED --> REJECT
+    EXPIRED --> REJECT
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef team fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef danger fill:#ffe8ee,stroke:#b91c1c,color:#641c30,stroke-width:2px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef warning fill:#fff7d6,stroke:#d4a72c,color:#3f3300,stroke-width:1.5px,stroke-dasharray:5 3;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+

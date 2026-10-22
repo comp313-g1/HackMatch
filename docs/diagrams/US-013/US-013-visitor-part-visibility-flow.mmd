@@ -1,0 +1,66 @@
+---
+title: "HackMatch — US-013: Browse and Filter Open Team Vacancies — Visitor and PART Visibility Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":42,"rankSpacing":58,"padding":14}}}%%
+flowchart TB
+    START(["Browse platform recruitment board<br/>No event selection"]):::identity
+    FILTER["Validate combinable filters<br/>skills, role, goal, minimum slots"]:::availability
+    VALID{"Filters valid?"}:::decision
+    BAD_FILTER["400 Invalid filters<br/>Preserve entered filters"]:::denied
+    AUTH{"Valid verified PART<br/>authentication?"}:::decision
+    STRICT_FAIL["401 or 403 from authenticated request<br/>No protected projection returned"]:::denied
+    RETRY["Client may retry without credentials<br/>and receive Visitor projection"]:::internal
+    VISITOR_QUERY["Repository query without member identities"]:::team
+    PART_QUERY["Repository query with confirmed member display identities"]:::team
+    ELIGIBLE["Keep Open, visible, mutable teams<br/>with at least one Open vacancy"]:::success
+    VISITOR_ALLOW["Server Visitor allow-list<br/>Recruiting team label<br/>goal and hours<br/>member and slot counts<br/>vacancy role and skills"]:::availability
+    VISITOR_DENY["Server omits<br/>team and vacancy identifiers<br/>name and pitch<br/>member identities<br/>communication and contact links"]:::denied
+    PART_ALLOW["Server PART allow-list<br/>team name and pitch<br/>confirmed member display names and roles<br/>vacancy identifiers, role, and skills"]:::team
+    PART_DENY["Server omits<br/>participant UUIDs<br/>emails and Firebase identity<br/>private contact handles<br/>communication link and eventId"]:::denied
+    VISITOR_UI["Anonymized cards<br/>Sign in to apply"]:::availability
+    MEMBER{"Viewer already<br/>on this team?"}:::decision
+    NO_APPLY["Show Your team<br/>No Apply control"]:::internal
+    APPLY["Apply control opens<br/>US-018 form"]:::success
+    EMPTY["No results<br/>Show empty state and Reset Filters"]:::internal
+
+    subgraph REQUEST["1 — Request and access classification"]
+        direction LR
+        START --> FILTER --> VALID
+        VALID -->|"No"| BAD_FILTER
+        VALID -->|"Yes"| AUTH
+        AUTH -->|"Invalid token"| STRICT_FAIL
+        STRICT_FAIL -.-> RETRY
+    end
+
+    subgraph QUERY["2 — Server-side query and eligibility"]
+        direction LR
+        VISITOR_QUERY --> ELIGIBLE
+        PART_QUERY --> ELIGIBLE
+        ELIGIBLE -->|"No matches"| EMPTY
+    end
+
+    subgraph PROJECTION["3 — Server projection and user-visible actions"]
+        direction LR
+        VISITOR_ALLOW --> VISITOR_DENY --> VISITOR_UI
+        PART_ALLOW --> PART_DENY --> MEMBER
+        MEMBER -->|"Yes"| NO_APPLY
+        MEMBER -->|"No"| APPLY
+    end
+
+    AUTH -->|"No token"| VISITOR_QUERY
+    RETRY --> VISITOR_QUERY
+    AUTH -->|"Verified PART"| PART_QUERY
+    ELIGIBLE -->|"Visitor results"| VISITOR_ALLOW
+    ELIGIBLE -->|"PART results"| PART_ALLOW
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef availability fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef team fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+    style REQUEST fill:#ffffff,stroke:#cbd5e1,stroke-width:1px
+    style QUERY fill:#ffffff,stroke:#cbd5e1,stroke-width:1px
+    style PROJECTION fill:#ffffff,stroke:#cbd5e1,stroke-width:1px
+

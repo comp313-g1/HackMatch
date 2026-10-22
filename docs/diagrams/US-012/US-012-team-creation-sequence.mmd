@@ -1,0 +1,46 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#fff7d6","noteBorderColor":"#d4a72c","noteTextColor":"#3f3300","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":40,"width":180,"height":65,"boxMargin":10,"messageMargin":28,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-012: Create and Manage a Team Recruitment Listing — Event-Free Team Creation Sequence
+    actor User as Participant
+    participant ReactUI
+    participant FirebaseAuth
+    participant ExpressAPI
+    participant TeamService
+    participant PostgreSQL
+
+    User->>ReactUI: Enter team, pitch, goal, hours, link, size, and vacancy drafts
+    ReactUI->>ReactUI: Validate fields with no event selector
+    alt Client validation fails
+        ReactUI-->>User: Field errors with entered values preserved
+    else Client validation succeeds
+        ReactUI->>ExpressAPI: POST /api/teams without eventId
+        ExpressAPI->>FirebaseAuth: Verify token, MFA, active account, PART role, and verified email
+        alt Authentication or validation fails
+            ExpressAPI-->>ReactUI: 400, 401, or 403 with explicit code
+            ReactUI-->>User: Preserve form and show failure
+        else Eligible verified PART
+            ExpressAPI->>TeamService: Create team for authenticated participant
+            TeamService->>PostgreSQL: Create Internal Shadow Event with default capacity 4
+            PostgreSQL-->>TeamService: Backend shadow event_id
+            TeamService->>PostgreSQL: RPC create_team_with_owner
+            PostgreSQL->>PostgreSQL: Lock participant and shadow event
+            PostgreSQL->>PostgreSQL: Insert Open team and Confirmed Owner membership
+            PostgreSQL->>PostgreSQL: Clear owner LFT and cancel same-shadow pending requests
+            PostgreSQL-->>TeamService: Team and owner membership
+            TeamService-->>ExpressAPI: Created team
+            ExpressAPI->>PostgreSQL: Read allow-listed TeamView
+            ExpressAPI-->>ReactUI: 201 created
+            loop Each initial vacancy draft
+                ReactUI->>ExpressAPI: POST /api/teams/:teamId/vacancies
+                ExpressAPI->>PostgreSQL: Owner-guarded capacity-checked RPC
+                PostgreSQL-->>ExpressAPI: Updated vacancy state or explicit failure
+                ExpressAPI-->>ReactUI: Updated TeamView or error
+            end
+            ReactUI-->>User: Open created team workspace
+        end
+    end
+
+    Note over TeamService,PostgreSQL: Shadow-event insertion and create_team_with_owner are separate calls. A failed RPC can leave an unused internal event row.
+    Note over ReactUI,ExpressAPI: Initial vacancies are added after team creation. The current UI logs an individual slot failure and still completes the team flow.
+

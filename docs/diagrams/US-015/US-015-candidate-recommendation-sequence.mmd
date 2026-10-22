@@ -1,0 +1,47 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#f3f4f6","noteBorderColor":"#6b7280","noteTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":36,"width":170,"height":65,"boxMargin":10,"messageMargin":28,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-015: Candidate Recommendations for Team Leads — Recommendation Sequence
+    actor TeamLead
+    participant ReactUI
+    participant ExpressAPI
+    participant RecommendationService as Recommendation<br/>Service
+    participant AvailabilityPool
+    participant PostgreSQL
+
+    TeamLead->>ReactUI: Find compatible candidates for an open slot
+    ReactUI->>ExpressAPI: GET /api/teams/:teamId/slots/:slotId/recommendations
+    ExpressAPI->>ExpressAPI: Verify Firebase token, MFA, active verified PART, and team ownership
+    alt Unauthorized, non-owner, or invalid identifiers
+        ExpressAPI-->>ReactUI: 400, 401, or 403 with explicit code
+        ReactUI-->>TeamLead: Keep vacancy context and offer Retry
+    else Authorized owner
+        ExpressAPI->>RecommendationService: Recommend for teamId and slotId without eventId
+        RecommendationService->>PostgreSQL: Load team, open vacancy, and Confirmed members by requesting team_id
+        PostgreSQL-->>RecommendationService: Team, slot, and requesting-team member set
+        RecommendationService->>AvailabilityPool: Read platform-wide active LFT candidates
+        AvailabilityPool->>PostgreSQL: Query fixed internal availability-pool row and permitted profiles
+        PostgreSQL-->>AvailabilityPool: Active candidate cards
+        AvailabilityPool-->>RecommendationService: Platform candidate pool
+        RecommendationService->>RecommendationService: Revalidate active verified PART, not suspended, LFT on, not owner, not on requesting team
+        alt No eligible candidates
+            RecommendationService-->>ExpressAPI: Empty result with exclusion summary
+        else Eligible candidates
+            RecommendationService->>RecommendationService: Score skills plus role, goal, and hours from 0 to 100
+            alt Scoring runtime fails
+                RecommendationService-->>ExpressAPI: Degraded unranked eligible list and notice
+            else Scoring succeeds
+                RecommendationService->>RecommendationService: Sort by score, display handle, then internal tie key
+                RecommendationService-->>ExpressAPI: Ranked cards and human-readable contributions
+            end
+        end
+        ExpressAPI-->>ReactUI: Sanitized recommendation response
+        ReactUI-->>TeamLead: Ranked, empty, degraded, or retryable state
+        TeamLead->>ReactUI: Invite selected candidate
+        ReactUI->>ExpressAPI: POST /api/teams/:teamId/invitations
+        ExpressAPI-->>ReactUI: US-017 success or eligibility/quota failure
+    end
+
+    Note over RecommendationService,PostgreSQL: The normal path excludes Confirmed members by requesting team_id and ignores shadow-event lifecycle. A legacy event-scoped fallback remains if that membership query fails.
+    Note over ReactUI,ExpressAPI: Current recommendation cards expose participantId for invitation wiring even though the current story calls for no internal identifiers in the client response.
+

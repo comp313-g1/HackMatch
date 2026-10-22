@@ -1,0 +1,41 @@
+---
+title: "HackMatch — US-011: Declare Platform Availability and Looking-for-Team Status — LFT Lifecycle State Diagram"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":46,"rankSpacing":62,"padding":14}}}%%
+flowchart LR
+    START(["Verified PART opens availability settings"]):::identity
+    OFF["LFT Off<br/>Preferences may remain stored<br/>Not listed in candidate pool"]:::transition
+    VALIDATE{"Valid platform preferences?<br/>Role + goal + 0–168 hours"}:::decision
+    ON["LFT On<br/>Platform-wide candidate card eligible<br/>No event selected"]:::available
+    INVALID["Validation error<br/>No database change<br/>Entered values preserved"]:::denied
+    CREATED["Team created<br/>Owner membership confirmed"]:::team
+    JOINED["Invitation accepted or<br/>application approved"]:::team
+    CLEAR["Atomic automatic clear<br/>is_looking = false"]:::success
+    VISITOR["Visitor or ineligible account<br/>401 / 403 and no cards"]:::denied
+    INTERNAL["Internal compatibility storage<br/>One canonical platform-pool event row"]:::internal
+
+    START --> OFF
+    START --> VISITOR
+    OFF -->|"Enable"| VALIDATE
+    VALIDATE -->|"No"| INVALID
+    INVALID -->|"Correct input"| VALIDATE
+    VALIDATE -->|"Yes"| ON
+    ON -->|"Manual disable"| OFF
+    ON --> CREATED
+    ON --> JOINED
+    CREATED --> CLEAR
+    JOINED --> CLEAR
+    CLEAR --> OFF
+    OFF -->|"Manual re-enable for another team"| VALIDATE
+    INTERNAL -.-> OFF
+    INTERNAL -.-> ON
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef transition fill:#fff7d6,stroke:#d4a72c,color:#3f3300,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef available fill:#fff1bf,stroke:#d4a72c,color:#3f3300,stroke-width:2px;
+    classDef team fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+

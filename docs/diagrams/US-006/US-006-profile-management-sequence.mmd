@@ -1,0 +1,40 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#fff7d6","noteBorderColor":"#d4a72c","noteTextColor":"#3f3300","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":42,"width":175,"height":65,"boxMargin":10,"messageMargin":27,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-006: Participant Profile Management — Profile Edit Sequence
+    actor ProfileOwner as Participant
+    participant UI as React Profile UI
+    participant Firebase as Firebase Authentication
+    participant API as Express Profile API
+    participant DB as Supabase PostgreSQL
+
+    ProfileOwner->>UI: Edit handle, role, institution, skills, portfolios, and contact
+    UI->>UI: Validate fields and HTTPS portfolio URLs
+    alt Client validation fails
+        UI-->>ProfileOwner: Field errors with every entered value preserved
+    else Client validation succeeds
+        UI->>API: PUT /api/profiles/me with supported fields
+        API->>Firebase: Verify token, MFA, active account, and PART role
+        API->>API: Enforce owner identity and reject role or participant tampering
+        API->>API: Validate canonical role, lengths, collections, and HTTPS URLs
+        alt Invalid, cross-account, or duplicate handle
+            API-->>UI: 400, 403, or 409 with field-safe details
+            UI-->>ProfileOwner: Keep entered values and show errors
+        else Valid owner update
+            API->>DB: Upsert participant_profiles
+            API->>DB: Delete and insert participant_skills
+            API->>DB: Delete and insert participant_portfolios
+            alt Persistence step fails
+                DB--xAPI: Database error after zero or more writes
+                API-->>UI: Server failure
+                UI-->>ProfileOwner: Retry guidance with entered values preserved
+            else All persistence steps succeed
+                DB-->>API: Updated profile collections
+                API-->>UI: 200 owner projection and success message
+                UI-->>ProfileOwner: Render updated self-declared profile
+            end
+        end
+    end
+
+    Note over API,DB: Current discrepancy: the profile, skills, and portfolio replacement steps are not wrapped in one database transaction.
+

@@ -1,0 +1,57 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#f3f4f6","noteBorderColor":"#6b7280","noteTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":36,"width":170,"height":65,"boxMargin":10,"messageMargin":28,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-019: Invitation Response — Transaction Sequence
+    actor Invitee
+    participant ReactUI
+    participant ExpressAPI
+    participant ResponseService as Response<br/>Service
+    participant PostgreSQL
+
+    Invitee->>ReactUI: Open My Invitations
+    ReactUI->>ExpressAPI: GET /api/invitations/mine
+    ExpressAPI->>ExpressAPI: Verify Firebase token, MFA, active verified PART
+    ExpressAPI->>ResponseService: List invitations for authenticated participant
+    ResponseService->>PostgreSQL: Query addressed invitations and permitted team/slot fields
+    PostgreSQL-->>ResponseService: Status, expiry, team name, and vacancy role
+    ResponseService-->>ReactUI: Invitation list and respondable state
+    ReactUI-->>Invitee: Show Pending, final, empty, or error state
+
+    Invitee->>ReactUI: Choose Accept or Decline
+    ReactUI->>ExpressAPI: POST /api/invitations/:id/respond with decision only
+    ExpressAPI->>ExpressAPI: Validate invitation id and decision without eventId
+    alt Unauthorized, wrong invitee, invalid, or expired
+        ExpressAPI-->>ReactUI: 400, 401, 403, or 409 with explicit code
+        ReactUI-->>Invitee: Preserve list, selection, and current outcome
+    else Accept
+        ExpressAPI->>ResponseService: acceptInvitation for authenticated invitee
+        ResponseService->>PostgreSQL: accept_team_invitation RPC
+        PostgreSQL->>PostgreSQL: Serialize participant/shadow-event and target team
+        PostgreSQL->>PostgreSQL: Lock and recheck Pending request, account, team, vacancy, and capacity
+        PostgreSQL->>PostgreSQL: Legacy shadow-event lifecycle and event-membership checks
+        PostgreSQL->>PostgreSQL: Confirm membership, fill vacancy, mark Accepted, and clear LFT rows
+        PostgreSQL->>PostgreSQL: Cancel filled-slot and full-team Pending requests and persist owner alert
+        alt Another transaction wins or a guard changed
+            PostgreSQL-->>ResponseService: Domain or concurrency conflict
+            ResponseService-->>ExpressAPI: Explicit 409 conflict
+            ExpressAPI-->>ReactUI: Winning status and refresh guidance
+            ReactUI-->>Invitee: Close stale actions and keep context
+        else Transaction commits
+            PostgreSQL-->>ResponseService: Membership, vacancy, counts, and cascade summary
+            ResponseService-->>ExpressAPI: Accepted placement result
+            ExpressAPI-->>ReactUI: 200 membership confirmed
+            ReactUI-->>Invitee: Show roster status and cleanup notice
+        end
+    else Decline
+        ExpressAPI->>ResponseService: declineTeamInvitation for authenticated invitee
+        ResponseService->>PostgreSQL: Lock invitation and recheck Pending plus expiry
+        PostgreSQL->>PostgreSQL: Mark Declined and persist invitee/owner alerts
+        PostgreSQL-->>ResponseService: Declined with unchanged membership, vacancy, and LFT
+        ResponseService-->>ExpressAPI: Changed or idempotent repeat result
+        ExpressAPI-->>ReactUI: 200 final outcome
+        ReactUI-->>Invitee: Show decline and owner-notified status
+    end
+
+    Note over PostgreSQL: The acceptance writes and cleanup commit in one transaction. Current SQL still derives locks, membership exclusion, maximum size, and part of cleanup from the Internal Shadow Event.
+    Note over ReactUI,ExpressAPI: No eventId is accepted from the user, but response DTOs still expose eventId and internal participant and membership identifiers.
+

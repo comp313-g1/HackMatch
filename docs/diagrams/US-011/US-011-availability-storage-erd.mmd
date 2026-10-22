@@ -1,0 +1,42 @@
+---
+title: "HackMatch — US-011: Declare Platform Availability and Looking-for-Team Status — Focused Availability Storage ERD"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"er":{"useMaxWidth":true,"diagramPadding":24,"layoutDirection":"LR","minEntityWidth":275,"minEntityHeight":75,"entityPadding":16,"stroke":"#4b5563","fill":"#ffffff","fontSize":14}}}%%
+erDiagram
+    direction LR
+
+    PARTICIPANT ||--o| AVAILABILITY : declares
+    INTERNAL_POOL ||--o{ AVAILABILITY : anchors
+
+    PARTICIPANT["participants table"] {
+        uuid id PK
+        string firebase_uid UK "Private authentication identifier"
+        string role "PART required"
+        boolean is_verified
+        boolean is_suspended
+    }
+
+    AVAILABILITY["event_availability table"] {
+        uuid participant_id PK, FK
+        uuid event_id PK, FK "Fixed platform-pool value"
+        boolean is_looking
+        string desired_role "Six canonical roles"
+        decimal commitment_hours "0 through 168"
+        string goal "Three canonical goals"
+        datetime updated_at
+    }
+
+    INTERNAL_POOL["events compatibility row — Backend Platform Pool"] {
+        uuid id PK "Fixed internal UUID"
+        string title "Platform Availability Pool"
+        string status "Published"
+        datetime end_date "Compatibility horizon"
+    }
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef availability fill:#fff7d6,stroke:#d4a72c,color:#3f3300
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937
+    class PARTICIPANT identity
+    class AVAILABILITY availability
+    class INTERNAL_POOL internal
+

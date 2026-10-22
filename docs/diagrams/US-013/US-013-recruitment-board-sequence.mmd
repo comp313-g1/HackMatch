@@ -1,0 +1,48 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#f3f4f6","noteBorderColor":"#6b7280","noteTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":38,"width":175,"height":65,"boxMargin":10,"messageMargin":28,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-013: Browse and Filter Open Team Vacancies — Recruitment Board Sequence
+    actor User
+    participant ReactUI
+    participant ExpressAPI
+    participant FirebaseAuth
+    participant DiscoveryService
+    participant PostgreSQL
+
+    User->>ReactUI: Open platform recruitment board and enter filters
+    ReactUI->>ReactUI: Validate skills, role, goal, and minimum slots
+    alt Client validation fails
+        ReactUI-->>User: Field errors with filter values preserved
+    else Valid filters
+        ReactUI->>ExpressAPI: GET /api/teams with filters and no eventId
+        ExpressAPI->>FirebaseAuth: Classify Visitor or verify token, MFA, active verified PART
+        alt Authenticated token is invalid or ineligible
+            FirebaseAuth-->>ExpressAPI: 401 or 403 explicit failure
+            ExpressAPI-->>ReactUI: No participant projection
+            ReactUI->>ExpressAPI: Optional retry without credentials
+        else Visitor or verified PART
+            FirebaseAuth-->>ExpressAPI: Viewer category
+        end
+        ExpressAPI->>DiscoveryService: Sanitized combinable filters and viewer category
+        DiscoveryService->>PostgreSQL: Read Open teams, Open vacancies, and Confirmed roster counts
+        PostgreSQL-->>DiscoveryService: Recruitment records and internal shadow lifecycle metadata
+        DiscoveryService->>DiscoveryService: Exclude hidden, locked, disbanded, expired, and slotless records
+        DiscoveryService->>DiscoveryService: Match goal, minimum slots, and same-vacancy role plus all skills
+        alt Verified PART
+            DiscoveryService->>DiscoveryService: Allow-list pitch, member display names and roles, and apply identifiers
+        else Visitor
+            DiscoveryService->>DiscoveryService: Build anonymized preview without names, pitch, members, links, or identifiers
+        end
+        DiscoveryService-->>ExpressAPI: At most 50 projected cards and total
+        ExpressAPI-->>ReactUI: 200 PART cards or VISITOR previews
+        alt No matching teams
+            ReactUI-->>User: Empty state and Reset Filters action
+        else Results available
+            ReactUI-->>User: Cards, sign-in prompts, or Apply controls
+            User->>ReactUI: Apply to an open slot
+            ReactUI-->>User: Open US-018 application form
+        end
+    end
+
+    Note over DiscoveryService,PostgreSQL: Current filtering still derives mutability from the backend shadow event status and end date. No user selects or submits that internal event.
+

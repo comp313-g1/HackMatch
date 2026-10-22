@@ -1,0 +1,44 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#fff7d6","noteBorderColor":"#d4a72c","noteTextColor":"#3f3300","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":55,"width":190,"height":65,"boxMargin":10,"messageMargin":32,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-001: Participant Registration and Email Verification — Email Verification Sequence
+    actor Visitor
+    participant UI as React Verification UI
+    participant API as Express Auth API
+    participant Firebase as Firebase Authentication
+    participant DB as Supabase PostgreSQL
+
+    Visitor->>UI: Open Firebase verification link
+    UI->>Firebase: checkActionCode, then applyActionCode
+    alt Link expired, invalid, consumed, or network fails
+        Firebase--xUI: Explicit Firebase error
+        UI-->>Visitor: Expired, invalid, or retry state
+        opt Request replacement link
+            Visitor->>UI: Submit registered email
+            UI->>API: POST /api/auth/resend-verification
+            alt Resend rate limited
+                API-->>UI: 429 with retry guidance
+            else Accepted, whether address is known or unknown
+                API->>Firebase: Dispatch only for existing unverified account
+                API-->>UI: Uniform 200 anti-enumeration response
+            end
+        end
+    else Firebase email becomes verified
+        UI->>API: POST /api/auth/verify-email with oobCode
+        API->>Firebase: Attempt to consume the same action code
+        alt Server obtains verified email
+            Firebase-->>API: Verified email
+            API->>DB: UPDATE participants SET is_verified=true
+            API-->>UI: 200 verified, no session
+        else Code was already consumed by the client
+            Firebase--xAPI: INVALID_ACTION_CODE
+            API-->>UI: 400 synchronization failure
+            Note over UI,DB: Current risk: the UI ignores this response and omits the recovered email,<br/>so participants.is_verified may remain false.
+        end
+        UI-->>Visitor: Show success and require sign-in plus MFA
+    end
+
+    Visitor->>API: Attempt protected team action while DB unverified
+    API->>DB: Read participant verification state
+    DB-->>API: is_verified=false
+    API-->>Visitor: 403 EMAIL_NOT_VERIFIED, no data change

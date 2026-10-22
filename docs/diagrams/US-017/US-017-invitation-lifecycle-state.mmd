@@ -1,0 +1,37 @@
+---
+title: "HackMatch — US-017: Issue a Team Invitation — Invitation Lifecycle State Diagram"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":48,"rankSpacing":66,"padding":14}}}%%
+flowchart LR
+    START(["Owner submits teamId, slotId, inviteeId<br/>No event selection"]):::identity
+    GUARDS{"Owner, team, slot, invitee,<br/>LFT, membership, and quotas valid?"}:::decision
+    LEGACY["Current RPC also checks<br/>Internal Shadow Event lifecycle<br/>and event-scoped membership"]:::warning
+    REJECT["Rejected<br/>No invitation or quota use<br/>Explicit 400 / 403 / 409"]:::denied
+    PENDING["Pending<br/>Invitation tied to one Open slot<br/>Expires exactly 48 hours after issue<br/>Consumes slot and invitee/team quotas"]:::team
+    EXPIRED["Expired<br/>Clock reached expires_at<br/>Acceptance rejected<br/>Quota released"]:::internal
+    OWNER_CANCEL["Canceled<br/>Owner canceled before response<br/>Both parties receive status<br/>Quota released"]:::danger
+    SYSTEM_CANCEL["Canceled<br/>Slot filled or removed, team locked,<br/>full, or disbanded<br/>Reason remains visible"]:::danger
+    DECLINED["Declined<br/>Invitee responds through US-019<br/>Quota released"]:::denied
+    ACCEPTED["Accepted<br/>US-019 revalidates and commits<br/>membership plus slot fill"]:::success
+    REPEAT["Repeated owner cancel<br/>Idempotent success<br/>No duplicate alerts"]:::internal
+
+    START --> GUARDS
+    LEGACY -.-> GUARDS
+    GUARDS -->|"No"| REJECT
+    GUARDS -->|"Yes"| PENDING
+    PENDING -->|"48-hour clock"| EXPIRED
+    PENDING -->|"Owner DELETE"| OWNER_CANCEL
+    PENDING -->|"Slot / team closes"| SYSTEM_CANCEL
+    PENDING -->|"Invitee declines"| DECLINED
+    PENDING -->|"Invitee accepts"| ACCEPTED
+    OWNER_CANCEL -->|"Repeat DELETE"| REPEAT
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef team fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef danger fill:#ffe8ee,stroke:#b91c1c,color:#641c30,stroke-width:2px;
+    classDef warning fill:#fff7d6,stroke:#d4a72c,color:#3f3300,stroke-width:1.5px,stroke-dasharray:5 3;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+

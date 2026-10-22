@@ -1,0 +1,52 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#f3f4f6","noteBorderColor":"#6b7280","noteTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":28,"diagramMarginY":20,"actorMargin":30,"width":150,"height":65,"boxMargin":10,"messageMargin":27,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-027: Administrative Account Enforcement — Suspension Sequence
+    actor Admin
+    participant ReactUI
+    participant ExpressAPI
+    participant AccountService
+    participant PostgreSQL
+    participant FirebaseAuth
+    participant ProtectedAPI
+
+    Admin->>ReactUI: Search and inspect account
+    ReactUI->>ExpressAPI: GET /api/admin/accounts and /:accountId
+    ExpressAPI->>ExpressAPI: Verify token, MFA, active account, and stored ADMIN role
+    alt Visitor, PART, suspended ADMIN, or forged role
+        ExpressAPI-->>ReactUI: 401 or 403 with no data mutation
+        ReactUI-->>Admin: Access denied or retry state
+    else Authorized ADMIN
+        ExpressAPI->>PostgreSQL: Read safe account, profile, and team listing projection
+        PostgreSQL-->>ReactUI: Identifier, role, state, and permitted listing metadata
+    end
+
+    Admin->>ReactUI: Submit suspension with mandatory reason
+    ReactUI->>ExpressAPI: POST /api/admin/accounts/:accountId/suspend
+    ExpressAPI->>AccountService: Reject self-suspend, invalid target, or invalid reason
+    AccountService->>PostgreSQL: Set is_suspended, timestamp, actor, and reason
+    AccountService->>FirebaseAuth: Revoke refresh tokens
+    FirebaseAuth-->>AccountService: Sessions revoked or failure
+    AccountService->>FirebaseAuth: Disable Firebase user
+    FirebaseAuth-->>AccountService: Sign-in disabled or failure
+    alt Firebase enforcement fails
+        AccountService-->>ReactUI: 502 retry guidance
+        ReactUI-->>Admin: Preserve reason and show partial-failure warning
+    else Firebase enforcement succeeds
+        AccountService->>PostgreSQL: Cancel target pending applications and invitations
+        AccountService->>PostgreSQL: Hide profile and clear platform LFT status
+        AccountService->>PostgreSQL: Hide owned unlocked Open teams and cancel outgoing invitations
+        AccountService->>PostgreSQL: Append safe account_suspend action record
+        PostgreSQL-->>AccountService: Cascade counts and audit record ID
+        AccountService-->>ReactUI: 200 Suspended with explicit effects
+        ReactUI-->>Admin: Show revoked access and preserved memberships
+    end
+
+    ProtectedAPI->>PostgreSQL: Recheck participant on protected request
+    PostgreSQL-->>ProtectedAPI: Suspended or deactivated flag
+    ProtectedAPI-->>ReactUI: 403 ACCOUNT_SUSPENDED
+
+    Note over AccountService,PostgreSQL: Suspension flags, Firebase calls, cascade updates, and audit insertion are sequential, not one atomic transaction. A later failure can leave partial enforcement state.
+    Note over FirebaseAuth,ProtectedAPI: Firebase disable blocks new sign-in, token revocation invalidates refresh/session renewal, and requireActiveAccount provides a database-side protected-route backstop.
+    Note over ReactUI,AccountService: No unsuspend/reactivate endpoint or Firebase re-enable path is implemented, although the current story description mentions reactivation.
+

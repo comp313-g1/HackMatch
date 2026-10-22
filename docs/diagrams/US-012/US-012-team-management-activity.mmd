@@ -1,0 +1,59 @@
+---
+title: "HackMatch — US-012: Create and Manage a Team Recruitment Listing — Owner Management Activity Diagram"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":40,"rankSpacing":58,"padding":14}}}%%
+flowchart TB
+    START(["Authenticated PART requests team mutation"]):::identity
+    AUTH{"Verified active PART<br/>with current MFA?"}:::decision
+    OWNER{"Owner of target team?"}:::decision
+    MUTABLE{"Team is Open and<br/>shadow scope is recruiting?"}:::decision
+    ACTION{"Owner action"}:::decision
+
+    EDIT["Edit listing<br/>Validate name, pitch, goal,<br/>hours, and HTTPS link"]:::team
+    SLOT["Add or update vacancy<br/>Validate role and skills<br/>Enforce configured capacity"]:::team
+    REMOVE_SLOT["Remove open vacancy"]:::team
+    CANCEL["Cancel pending slot requests<br/>Persist candidate alerts<br/>Keep confirmed members"]:::success
+    REMOVE_MEMBER["Remove confirmed non-owner<br/>Require reason and reopen capacity"]:::team
+    DISBAND["Disband unlocked team<br/>Release memberships and slots"]:::danger
+    CASCADE["Cancel pending team requests<br/>Persist affected-user alerts"]:::success
+    OWNER_LEAVE["Owner attempts to leave<br/>Must disband instead"]:::denied
+
+    DENY_AUTH["401 / 403<br/>No mutation"]:::denied
+    DENY_OWNER["403 Owner required<br/>No mutation"]:::denied
+    DENY_STATE["409 TEAM_NOT_MUTABLE<br/>Locked, disbanded, or expired scope"]:::denied
+    SUCCESS(["Return refreshed TeamView<br/>or mutation counts"]):::success
+    INTERNAL["Backend-only shadow event<br/>Supplies capacity and lifecycle fields"]:::internal
+
+    START --> AUTH
+    AUTH -->|"No"| DENY_AUTH
+    AUTH -->|"Yes"| OWNER
+    OWNER -->|"No"| DENY_OWNER
+    OWNER -->|"Yes"| MUTABLE
+    MUTABLE -->|"No"| DENY_STATE
+    MUTABLE -->|"Yes"| ACTION
+
+    ACTION -->|"Edit listing"| EDIT
+    ACTION -->|"Add or edit slot"| SLOT
+    ACTION -->|"Remove slot"| REMOVE_SLOT
+    ACTION -->|"Remove member"| REMOVE_MEMBER
+    ACTION -->|"Disband"| DISBAND
+    ACTION -->|"Leave as owner"| OWNER_LEAVE
+
+    EDIT --> SUCCESS
+    SLOT --> SUCCESS
+    REMOVE_SLOT --> CANCEL
+    CANCEL --> SUCCESS
+    REMOVE_MEMBER --> SUCCESS
+    DISBAND --> CASCADE
+    CASCADE --> SUCCESS
+    INTERNAL -.-> MUTABLE
+    INTERNAL -.-> SLOT
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef team fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef danger fill:#ffe8ee,stroke:#b91c1c,color:#641c30,stroke-width:2px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+

@@ -1,0 +1,67 @@
+---
+title: "HackMatch — US-030: Chat Access and Presence Selection — Activity Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":46,"rankSpacing":62,"padding":14}}}%%
+flowchart TB
+    subgraph ACCESS ["Participant chat access"]
+        direction LR
+        START(["User attempts to access Chat"]):::identity
+        AUTH{"Authenticated?"}:::decision
+        PART{"Stored role is PART?"}:::decision
+        VERIFIED{"Participant verified?"}:::decision
+        ACTIVE{"Active and not suspended?"}:::decision
+        ALLOW["Chat access allowed"]:::success
+        DENY_AUTH["Deny access<br/>Authentication required"]:::denied
+        DENY_ROLE["Deny participant chat access<br/>PART role required"]:::denied
+        DENY_VERIFY["Deny access<br/>Verification required"]:::denied
+        DENY_SUSPENDED["Deny access<br/>Account inactive or suspended"]:::denied
+
+        START --> AUTH
+        AUTH -->|"Yes"| PART
+        PART -->|"Yes"| VERIFIED
+        VERIFIED -->|"Yes"| ACTIVE
+        ACTIVE -->|"Yes"| ALLOW
+        AUTH -->|"No"| DENY_AUTH
+        PART -->|"No"| DENY_ROLE
+        VERIFIED -->|"No"| DENY_VERIFY
+        ACTIVE -->|"No"| DENY_SUSPENDED
+    end
+
+    subgraph PRESENCE_FLOW ["Explicit presence selection"]
+        direction TB
+        SELECT{"Participant explicitly<br/>selects presence"}:::decision
+        ONLINE["Online"]:::presence
+        IDLE["Idle"]:::presence
+        DND["Do Not Disturb"]:::presence
+        INVISIBLE["Invisible"]:::presence
+        STORE["Store selected status<br/>Planned participant field"]:::success
+        PEERS["Return to permitted peers<br/>Exact peer policy not yet defined"]:::internal
+
+        SELECT --> ONLINE
+        SELECT --> IDLE
+        SELECT --> DND
+        SELECT --> INVISIBLE
+        ONLINE --> STORE
+        IDLE --> STORE
+        DND --> STORE
+        INVISIBLE --> STORE
+        STORE --> PEERS
+    end
+
+    MANUAL["No automatic timeout<br/>or automatic transition specified"]:::internal
+    VISITOR(["VISITOR requests presence"]):::identity
+    HIDDEN["Do not return PART presence"]:::denied
+
+    ALLOW --> SELECT
+    MANUAL -.-> SELECT
+    VISITOR --> HIDDEN
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef presence fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+    style ACCESS fill:#f8fbff,stroke:#9ca3af,stroke-width:1px,color:#374151
+    style PRESENCE_FLOW fill:#fffdf5,stroke:#9ca3af,stroke-width:1px,color:#374151
+

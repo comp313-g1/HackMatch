@@ -1,0 +1,49 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#f3f4f6","noteBorderColor":"#6b7280","noteTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":36,"width":170,"height":65,"boxMargin":10,"messageMargin":28,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-017: Issue a Team Invitation — Issuance Sequence
+    actor TeamLead
+    participant ReactUI
+    participant ExpressAPI
+    participant InvitationService as Invitation<br/>Service
+    participant PostgreSQL
+
+    TeamLead->>ReactUI: Select an Open slot and candidate
+    ReactUI->>ReactUI: Validate slot and candidate identifiers
+    alt Client validation fails
+        ReactUI-->>TeamLead: Show field errors and keep invitation draft
+    else Valid draft
+        ReactUI->>ExpressAPI: POST /api/teams/:teamId/invitations without eventId
+        ExpressAPI->>ExpressAPI: Verify Firebase token, MFA, active verified PART, and ownership
+        alt Authentication, authorization, or body fails
+            ExpressAPI-->>ReactUI: 400, 401, or 403 with explicit code
+            ReactUI-->>TeamLead: Show failure and preserve draft
+        else Authorized owner
+            ExpressAPI->>InvitationService: Issue for teamId, slotId, and inviteeId
+            InvitationService->>PostgreSQL: Load team, Open slot, invitee, platform LFT, and team members
+            PostgreSQL-->>InvitationService: Eligibility context
+            InvitationService->>InvitationService: Require active PART, LFT on, and not on requesting team
+            InvitationService->>PostgreSQL: Check Pending invitee/team and slot quotas
+            PostgreSQL-->>InvitationService: Current quota conflicts
+            alt Preflight eligibility or quota fails
+                InvitationService-->>ExpressAPI: 403 or 409 with field-specific code
+                ExpressAPI-->>ReactUI: No invitation created
+                ReactUI-->>TeamLead: Keep slot and candidate draft
+            else Preflight passes
+                InvitationService->>PostgreSQL: issue_team_invitation RPC
+                PostgreSQL->>PostgreSQL: Lock team with owner-mutation guard
+                PostgreSQL->>PostgreSQL: Recheck slot, platform LFT, and membership
+                PostgreSQL->>PostgreSQL: Enforce unique quotas and insert Pending with now plus 48 hours
+                PostgreSQL->>PostgreSQL: Persist invitee status alert
+                PostgreSQL-->>InvitationService: Invitation, expiry, team, and slot role
+                InvitationService-->>ExpressAPI: Pending invitation view
+                ExpressAPI-->>ReactUI: 201 Created
+                ReactUI-->>TeamLead: Show success, expiry, and refreshed outbound status
+            end
+        end
+    end
+
+    Note over InvitationService,PostgreSQL: TypeScript normally checks requesting-team membership and platform LFT. A legacy event-membership fallback remains when the team-scoped lookup fails.
+    Note over PostgreSQL: The current RPC still gates on the Internal Shadow Event through lock_team_for_owner_mutation and checks membership by event_id.
+    Note over ReactUI,ExpressAPI: Requests require no eventId, but current response DTOs expose eventId and participant UUID fields. The direct form also asks the owner for a participant UUID.
+
