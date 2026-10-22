@@ -473,3 +473,34 @@ export interface CreateModerationCaseDTO {
   report_count?: number;
 }
 
+/** US-030 / #342 chat forum/channel (FR-087). */
+export interface ChatChannel {
+  id: string;
+  title: string;
+  description: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateChatChannelDTO {
+  title: string;
+  description: string;
+  created_by: string;
+}
+
+/** US-030 / #342 chat text message (FR-088). */
+export interface ChatMessage {
+  id: string;
+  channel_id: string;
+  author_id: string;
+  body: string;
+  created_at: string;
+}
+
+export interface CreateChatMessageDTO {
+  channel_id: string;
+  author_id: string;
+  body: string;
+}
+

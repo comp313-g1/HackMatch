@@ -1771,4 +1771,55 @@ describe('0040_membership_identity_pseudonymization.sql (US-027 / #253)', () => 
   });
 });
 
+describe('0041_create_chat_channel_message_models.sql (US-030 / #342)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0041_create_chat_channel_message_models.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(100);
+  });
+
+  it('creates chat_channels with title, description, created_by, and timestamps', () => {
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+chat_channels/i);
+    expect(sql).toMatch(/title\s+VARCHAR\(120\)\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/description\s+VARCHAR\(2000\)\s+NOT\s+NULL/i);
+    expect(sql).toMatch(
+      /created_by\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+participants\s*\(\s*id\s*\)/i
+    );
+    expect(sql).toMatch(/created_at\s+TIMESTAMPTZ\s+NOT\s+NULL\s+DEFAULT\s+NOW\(\)/i);
+    expect(sql).toMatch(/updated_at\s+TIMESTAMPTZ\s+NOT\s+NULL\s+DEFAULT\s+NOW\(\)/i);
+    expect(sql).toMatch(/chk_chat_channels_title_nonempty/i);
+    expect(sql).toMatch(/chk_chat_channels_description_nonempty/i);
+  });
+
+  it('creates chat_messages with channel_id, author_id, body, and created_at', () => {
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+chat_messages/i);
+    expect(sql).toMatch(
+      /channel_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+chat_channels\s*\(\s*id\s*\)/i
+    );
+    expect(sql).toMatch(
+      /author_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+participants\s*\(\s*id\s*\)/i
+    );
+    expect(sql).toMatch(/body\s+TEXT\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/created_at\s+TIMESTAMPTZ\s+NOT\s+NULL\s+DEFAULT\s+NOW\(\)/i);
+    expect(sql).toMatch(/chk_chat_messages_body_nonempty/i);
+    expect(sql).toMatch(/chk_chat_messages_body_length/i);
+  });
+
+  it('enables RLS and indexes channel list plus per-channel message order', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+chat_channels\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+chat_messages\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+    expect(sql).toMatch(
+      /CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_chat_channels_created_at\s+ON\s+chat_channels\s*\(\s*created_at\s+DESC\s*\)/i
+    );
+    expect(sql).toMatch(
+      /CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_chat_messages_channel_created_at\s+ON\s+chat_messages\s*\(\s*channel_id\s*,\s*created_at\s+ASC\s*\)/i
+    );
+  });
+});
+
 
