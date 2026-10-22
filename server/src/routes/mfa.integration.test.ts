@@ -570,10 +570,10 @@ describe('US-004 MFA Integration Suite (OTP Lifecycle & Account Lockout)', () =>
         await postVerify('part-token', { otp: '000000' });
       }
 
-      // Advance clock past 60s cooldown and request replacement OTP
+      // Advance clock past OTP send cooldown and request replacement OTP
       const baseTime = Date.now();
       vi.useFakeTimers({ toFake: ['Date'] });
-      vi.setSystemTime(baseTime + 65_000);
+      vi.setSystemTime(baseTime + 65_000); // > COOLDOWN_MS in both FR-081 and relaxed defaults
 
       try {
         const resendRes = await postSend('part-token');
@@ -593,7 +593,7 @@ describe('US-004 MFA Integration Suite (OTP Lifecycle & Account Lockout)', () =>
       }
     });
 
-    it('enforces FR-081 rate limits: 429 on resend within 60s and 6th send within 1 hour', async () => {
+    it('enforces FR-081 rate limits: 429 on resend within cooldown', async () => {
       // 1st send succeeds
       const first = await postSend('part-token');
       expect(first.status).toBe(200);

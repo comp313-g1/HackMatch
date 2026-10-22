@@ -1,7 +1,14 @@
 import React from 'react';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { applyActionCode, onAuthStateChanged, getIdTokenResult, type User, type IdTokenResult } from 'firebase/auth';
+import {
+  applyActionCode,
+  onAuthStateChanged,
+  onIdTokenChanged,
+  getIdTokenResult,
+  type User,
+  type IdTokenResult,
+} from 'firebase/auth';
 import App from './App';
 
 vi.mock('firebase/auth', async (importOriginal) => {
@@ -14,6 +21,10 @@ vi.mock('firebase/auth', async (importOriginal) => {
     getIdTokenResult: vi.fn(),
     getIdToken: vi.fn().mockResolvedValue('mock-token'),
     onAuthStateChanged: vi.fn((_auth: unknown, cb: (user: User | null) => void) => {
+      cb(null);
+      return () => {};
+    }),
+    onIdTokenChanged: vi.fn((_auth: unknown, cb: (user: User | null) => void) => {
       cb(null);
       return () => {};
     }),
@@ -38,6 +49,14 @@ describe('App Component (View Routing and Integration)', () => {
     vi.clearAllMocks();
     sessionStorage.clear();
     window.history.pushState({}, '', '/');
+    // Default: signed out (clearAllMocks alone does not restore mockImplementation).
+    const signedOut = ((_auth: unknown, cb: (user: User | null) => void) => {
+      cb(null);
+      return () => {};
+    }) as unknown as typeof onAuthStateChanged;
+    vi.mocked(onAuthStateChanged).mockImplementation(signedOut);
+    vi.mocked(onIdTokenChanged).mockImplementation(signedOut as unknown as typeof onIdTokenChanged);
+    vi.mocked(getIdTokenResult).mockReset();
   });
 
   it('renders the header with HackMatch branding', () => {
@@ -262,12 +281,39 @@ describe('App Component (View Routing and Integration)', () => {
     expect(await screen.findByText(/you are not signed in/i)).toBeInTheDocument();
   });
 
-  it('renders authenticated navigation (Profile, Teams, Sign out) and hides guest auth buttons when user is on account view', async () => {
+  function mockSignedInUser(options?: { mfaComplete?: boolean; displayName?: string }) {
+    const mfaComplete = options?.mfaComplete ?? true;
+    const mockUser = {
+      uid: 'user-nav-1',
+      email: 'sahil@example.com',
+      displayName: options?.displayName ?? 'Sahil Gupta',
+      getIdToken: vi.fn().mockResolvedValue('mock-token'),
+    } as unknown as User;
+
+    const emitUser = ((_auth: unknown, cb: (u: User | null) => void) => {
+      cb(mockUser);
+      return () => {};
+    }) as unknown as typeof onAuthStateChanged;
+    vi.mocked(onAuthStateChanged).mockImplementation(emitUser);
+    vi.mocked(onIdTokenChanged).mockImplementation(emitUser as unknown as typeof onIdTokenChanged);
+
+    const authTime = 1792000000;
+    vi.mocked(getIdTokenResult).mockResolvedValue({
+      claims: mfaComplete
+        ? { auth_time: authTime, mfa_auth_time: authTime }
+        : { auth_time: authTime },
+    } as unknown as IdTokenResult);
+
+    return mockUser;
+  }
+
+  it('renders authenticated navigation (Profile, Teams, Sign out) and hides guest auth buttons when MFA session is ready', async () => {
     window.history.pushState({}, '', '/?view=account');
+    mockSignedInUser({ mfaComplete: true });
 
     render(<App />);
 
-    expect(within(primaryNav()).getByRole('button', { name: /^profile$/i })).toHaveAttribute(
+    expect(await within(primaryNav()).findByRole('button', { name: /^profile$/i })).toHaveAttribute(
       'aria-current',
       'page'
     );
@@ -275,24 +321,99 @@ describe('App Component (View Routing and Integration)', () => {
     expect(within(primaryNav()).getByRole('button', { name: /^sign out/i })).toBeInTheDocument();
     expect(within(primaryNav()).queryByRole('button', { name: /^sign in$/i })).not.toBeInTheDocument();
     expect(within(primaryNav()).queryByRole('button', { name: /create account/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('header-verification-pending')).not.toBeInTheDocument();
   });
 
-  it('renders Teams button with active state in primary nav when viewing team', async () => {
+  it('renders Teams button with active state in primary nav when viewing team with MFA session', async () => {
     window.history.pushState(
       {},
       '',
       '/?view=team&eventId=123e4567-e89b-12d3-a456-426614174000'
     );
+    mockSignedInUser({ mfaComplete: true });
 
     render(<App />);
 
-    expect(within(primaryNav()).getByRole('button', { name: /^profile$/i })).toBeInTheDocument();
+    expect(await within(primaryNav()).findByRole('button', { name: /^profile$/i })).toBeInTheDocument();
     expect(within(primaryNav()).getByRole('button', { name: /^teams$/i })).toHaveAttribute(
       'aria-current',
       'page'
     );
     expect(within(primaryNav()).getByRole('button', { name: /^sign out/i })).toBeInTheDocument();
     expect(within(primaryNav()).queryByRole('button', { name: /^sign in$/i })).not.toBeInTheDocument();
+  });
+
+  it('shows verification-pending header (not full signed-in nav) when Firebase user lacks MFA claim (#355)', async () => {
+    window.history.pushState({}, '', '/?view=mfa');
+    mockSignedInUser({ mfaComplete: false, displayName: 'Sahil Gupta' });
+
+    render(<App />);
+
+    expect(await screen.findByTestId('header-verification-pending')).toHaveTextContent(
+      /verification pending/i
+    );
+    expect(within(primaryNav()).getByRole('button', { name: /enter code/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /sign out \(sahil gupta\)/i })).toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /^profile$/i })).not.toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /^teams$/i })).not.toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /^sign in$/i })).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 2, name: /enter verification code/i })
+    ).toBeInTheDocument();
+  });
+
+  it('redirects Sign In to MFA when Firebase user exists without MFA claim', async () => {
+    window.history.pushState({}, '', '/?view=login');
+    mockSignedInUser({ mfaComplete: false, displayName: 'Sahil Gupta' });
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: /enter verification code/i })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^sign in$/i })).not.toBeInTheDocument();
+    expect(await screen.findByTestId('header-verification-pending')).toBeInTheDocument();
+  });
+
+  it('clears verification-pending header when id token gains MFA claim after OTP (#355)', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    const mockUser = {
+      uid: 'user-nav-1',
+      email: 'sahil@example.com',
+      displayName: 'Sahil Gupta',
+      getIdToken: vi.fn().mockResolvedValue('mock-token'),
+    } as unknown as User;
+
+    let tokenListener: ((user: User | null) => void) | null = null;
+    vi.mocked(onIdTokenChanged).mockImplementation(((_auth: unknown, cb: (u: User | null) => void) => {
+      tokenListener = cb;
+      cb(mockUser);
+      return () => {};
+    }) as unknown as typeof onIdTokenChanged);
+    vi.mocked(onAuthStateChanged).mockImplementation(((_auth: unknown, cb: (u: User | null) => void) => {
+      cb(mockUser);
+      return () => {};
+    }) as unknown as typeof onAuthStateChanged);
+
+    const authTime = 1792000000;
+    vi.mocked(getIdTokenResult)
+      .mockResolvedValueOnce({
+        claims: { auth_time: authTime },
+      } as unknown as IdTokenResult)
+      .mockResolvedValueOnce({
+        claims: { auth_time: authTime, mfa_auth_time: authTime },
+      } as unknown as IdTokenResult);
+
+    render(<App />);
+
+    expect(await screen.findByTestId('header-verification-pending')).toBeInTheDocument();
+
+    await act(async () => {
+      tokenListener?.(mockUser);
+    });
+
+    expect(await within(primaryNav()).findByRole('button', { name: /^profile$/i })).toBeInTheDocument();
+    expect(screen.queryByTestId('header-verification-pending')).not.toBeInTheDocument();
   });
 
   it('toggles mobile menu when clicking menu button', () => {
@@ -327,14 +448,14 @@ describe('App Component (View Routing and Integration)', () => {
       getIdToken: vi.fn().mockResolvedValue('mock-token'),
     } as unknown as User;
 
-    const mockOnAuthStateChanged = vi.mocked(onAuthStateChanged);
-    mockOnAuthStateChanged.mockImplementation(((_auth: unknown, cb: (u: User | null) => void) => {
+    const emitUser = ((_auth: unknown, cb: (u: User | null) => void) => {
       cb(mockUser);
       return () => {};
-    }) as unknown as typeof onAuthStateChanged);
+    }) as unknown as typeof onAuthStateChanged;
+    vi.mocked(onAuthStateChanged).mockImplementation(emitUser);
+    vi.mocked(onIdTokenChanged).mockImplementation(emitUser as unknown as typeof onIdTokenChanged);
 
-    const mockGetIdTokenResult = vi.mocked(getIdTokenResult);
-    mockGetIdTokenResult.mockResolvedValue({
+    vi.mocked(getIdTokenResult).mockResolvedValue({
       claims: { auth_time: 1792000000, mfa_auth_time: 1792000000 },
     } as unknown as IdTokenResult);
 

@@ -225,7 +225,7 @@ describe('OtpEntryForm (US-004 S1-P1-10)', () => {
     fireEvent.click(screen.getByRole('button', { name: /resend code/i }));
 
     await waitFor(() => expect(mockRequestMfaChallenge).toHaveBeenCalledWith(user));
-    expect(await screen.findByRole('button', { name: /resend code \(60s\)/i })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: /resend code \(15s\)/i })).toBeDisabled();
     expect(screen.getByText(/code expires in/i)).toBeInTheDocument();
   });
 
@@ -261,7 +261,7 @@ describe('OtpEntryForm (US-004 S1-P1-10)', () => {
     fireEvent.click(screen.getByRole('button', { name: /resend code/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/too many requests/i);
-    expect(screen.getByRole('button', { name: /resend code \(60s\)/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /resend code \(15s\)/i })).toBeDisabled();
   });
 
   it('boundary: accepts exactly 6 digits and strips non-digits beyond maxLength', () => {
@@ -305,7 +305,9 @@ describe('OtpEntryForm (US-004 S1-P1-10)', () => {
     renderForm({ initialChallenge: null });
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't send your verification code/i);
-    expect(screen.getByText(/no session was created/i)).toBeInTheDocument();
+    expect(screen.getByTestId('otp-pending-help')).toHaveTextContent(
+      /email verification is still required/i
+    );
     const retry = screen.getByRole('button', { name: /try sending again/i });
     expect(retry).toBeEnabled();
 

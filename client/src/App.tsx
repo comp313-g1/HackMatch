@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { onAuthStateChanged, type User } from 'firebase/auth';
+import { getIdTokenResult, onIdTokenChanged, type User } from 'firebase/auth';
 import { auth } from './config/firebase';
 import { logout } from './components/auth/logout';
+import { hasCompletedMfa } from './components/auth/mfaClaim';
 import { LandingPage } from './components/landing/LandingPage';
 import { RegistrationForm } from './components/auth/RegistrationForm';
 import { EmailVerificationView } from './components/auth/EmailVerificationView';
@@ -110,15 +111,38 @@ export function App(): React.JSX.Element {
     return params.get('eventId') ?? '';
   });
   const [currentUser, setCurrentUser] = useState<User | null>(() => auth.currentUser);
+  /** null = checking token claims; true = MFA done; false = signed out or MFA still required (#355). */
+  const [mfaComplete, setMfaComplete] = useState<boolean | null>(null);
   const [signingOut, setSigningOut] = useState<boolean>(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [otpChallenge, setOtpChallenge] = useState<OtpChallenge | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    let cancelled = false;
+    // onIdTokenChanged covers sign-in/out AND post-MFA token refresh (claim updates).
+    // onAuthStateChanged alone left the header stuck on "Verification pending" after OTP (#355).
+    const unsubscribe = onIdTokenChanged(auth, (user) => {
       setCurrentUser(user);
+      if (!user) {
+        setMfaComplete(false);
+        return;
+      }
+      setMfaComplete(null);
+      void getIdTokenResult(user)
+        .then((result) => {
+          if (cancelled) return;
+          setMfaComplete(hasCompletedMfa(result.claims as Record<string, unknown>));
+        })
+        .catch(() => {
+          if (cancelled) return;
+          // Fail closed: treat as verification still required (do not show full session nav).
+          setMfaComplete(false);
+        });
     });
-    return () => unsubscribe();
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   const goToLanding = () => {
@@ -224,21 +248,21 @@ export function App(): React.JSX.Element {
     setCurrentView('chat');
   };
 
-  const isAuthenticated =
-    Boolean(currentUser) ||
-    currentView === 'account' ||
-    currentView === 'team' ||
-    currentView === 'create-team' ||
-    currentView === 'looking' ||
-    currentView === 'applications' ||
-    currentView === 'invitations' ||
-    currentView === 'moderation' ||
-    currentView === 'accounts' ||
-    currentView === 'chat' ||
-    currentView === 'mfa';
+  // #355 — full app chrome only after Firebase user + MFA claim; primary auth alone is not a session.
+  const sessionReady = Boolean(currentUser) && mfaComplete === true;
+  const verificationPending = Boolean(currentUser) && mfaComplete === false;
   const participantIdentifier =
     currentUser?.displayName ||
     (currentUser?.email ? currentUser.email.split('@')[0] : 'participant');
+
+  // Password auth can succeed while OTP is rate-limited; do not leave Sign In open
+  // under a "Verification pending" / Sign out (Name) header.
+  useEffect(() => {
+    if (!verificationPending) return;
+    if (currentView === 'login' || currentView === 'register') {
+      setCurrentView('mfa');
+    }
+  }, [verificationPending, currentView]);
 
   return (
     <div className="flex flex-col min-h-screen bg-cream text-ink font-sans">
@@ -293,7 +317,7 @@ export function App(): React.JSX.Element {
               Browse Teams
             </button>
 
-            {isAuthenticated ? (
+            {sessionReady ? (
               <>
                 <button
                   type="button"
@@ -400,6 +424,34 @@ export function App(): React.JSX.Element {
                   {signingOut ? 'Signing out...' : `Sign out (${participantIdentifier})`}
                 </button>
               </>
+            ) : verificationPending ? (
+              <>
+                <span
+                  className="text-xs font-semibold uppercase tracking-wide text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1"
+                  data-testid="header-verification-pending"
+                >
+                  Verification pending
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatusNotice(null);
+                    setIsMobileMenuOpen(false);
+                    setCurrentView('mfa');
+                  }}
+                  className="text-sm font-medium text-forest-800 hover:underline rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest"
+                >
+                  Enter code
+                </button>
+                <button
+                  type="button"
+                  onClick={handleHeaderSignOut}
+                  disabled={signingOut}
+                  className="text-sm font-semibold rounded-md px-3.5 py-2 border border-cream-300 text-ink hover:bg-cream-100 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream disabled:opacity-50"
+                >
+                  {signingOut ? 'Signing out...' : `Sign out (${participantIdentifier})`}
+                </button>
+              </>
             ) : (
               <>
                 <button
@@ -489,7 +541,7 @@ export function App(): React.JSX.Element {
             >
               Browse Teams
             </button>
-            {isAuthenticated ? (
+            {sessionReady ? (
               <>
                 <button
                   type="button"
@@ -546,6 +598,31 @@ export function App(): React.JSX.Element {
                   className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
                 >
                   Profile
+                </button>
+                <button
+                  type="button"
+                  onClick={handleHeaderSignOut}
+                  disabled={signingOut}
+                  className="block w-full text-left px-3 py-2 text-sm font-semibold text-forest-800 hover:bg-cream-100 rounded"
+                >
+                  {signingOut ? 'Signing out...' : `Sign out (${participantIdentifier})`}
+                </button>
+              </>
+            ) : verificationPending ? (
+              <>
+                <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-amber-800">
+                  Verification pending
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatusNotice(null);
+                    setIsMobileMenuOpen(false);
+                    setCurrentView('mfa');
+                  }}
+                  className="block w-full text-left px-3 py-2 text-sm font-medium text-forest-800 hover:bg-cream-100 rounded"
+                >
+                  Enter code
                 </button>
                 <button
                   type="button"
@@ -858,6 +935,7 @@ export function App(): React.JSX.Element {
               }}
               onAuthorized={() => {
                 setOtpChallenge(null);
+                setMfaComplete(true);
                 setCurrentView('landing');
               }}
             >
@@ -909,6 +987,11 @@ export function App(): React.JSX.Element {
               onPrimaryAuthSuccess={(result) => {
                 setOtpChallenge(result.challenge);
                 setStatusNotice(null);
+                setCurrentView('mfa');
+              }}
+              onPrimaryAuthNeedsMfa={({ message }) => {
+                setOtpChallenge(null);
+                setStatusNotice(message);
                 setCurrentView('mfa');
               }}
             />
