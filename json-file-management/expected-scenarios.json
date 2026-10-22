@@ -1,0 +1,9 @@
+{
+  "scenarios": [
+    { "name": "Owner reviews an application", "steps": ["Sign in as Avery", "Open Civic Signal applications", "Inspect Casey's AI/ML application"], "expected": "Casey's permitted profile fields and pending pitch are visible." },
+    { "name": "Invitee responds", "steps": ["Sign in as Blake", "Open pending invitations", "Inspect the Civic Signal Backend invitation"], "expected": "The invitation is Pending and has a valid 48-hour expiry." },
+    { "name": "Platform-wide candidate remains eligible", "steps": ["View Blake's membership on Campus Compass", "Inspect Blake's Looking-for-Team state"], "expected": "Blake remains a confirmed member of Campus Compass and is also LFT-enabled." },
+    { "name": "Minimum roster lock boundary", "steps": ["Open Campus Compass", "Inspect roster and recruitment state"], "expected": "Drew and Blake are confirmed and the two-member roster is Locked." },
+    { "name": "MFA remains required", "steps": ["Sign in with any demo account through the normal UI", "Complete the emailed OTP challenge"], "expected": "Pre-verification does not bypass the normal per-login HackMatch email OTP flow." }
+  ]
+}

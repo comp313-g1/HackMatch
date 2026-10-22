@@ -20,6 +20,10 @@
     "test:us019": "vitest run src/db/migration.test.ts src/db/teams.repository.test.ts src/db/invitations.db.integration.test.ts src/services/invitationAcceptance.test.ts src/services/invitationResponse.test.ts src/services/placementCascade.test.ts src/services/teamManagement.test.ts src/routes/invitationAcceptance.routes.test.ts src/routes/invitationRespond.routes.test.ts src/routes/invitations.response.integration.test.ts src/routes/team.lifecycle.test.ts",
     "test:coverage": "vitest run --coverage",
     "admin:provision": "tsx src/scripts/provisionAdmin.ts",
+    "demo:seed": "tsx ../db-seed/src/cli.ts seed",
+    "demo:reset": "tsx ../db-seed/src/cli.ts reset",
+    "demo:test": "tsx --test ../db-seed/src/seed.test.ts",
+    "demo:typecheck": "tsc -p ../db-seed/tsconfig.json",
     "db:start": "supabase start --workdir ..",
     "db:push": "supabase db push --local --workdir .."
   },

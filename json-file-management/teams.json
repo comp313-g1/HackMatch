@@ -1,0 +1,27 @@
+{
+  "teams": [
+    {
+      "name": "Civic Signal",
+      "owner": "Avery",
+      "pitch": "Make municipal service updates easier to understand and act on.",
+      "goal": "Project Completion",
+      "capacity": 4,
+      "state": "Open",
+      "vacancies": [
+        { "role": "Backend", "skills": ["Node.js", "Express", "PostgreSQL"], "state": "Open" },
+        { "role": "AI/ML", "skills": ["Python", "TensorFlow", "Data Visualization"], "state": "Open" },
+        { "role": "UI/UX", "skills": ["Figma", "User Research", "Design Systems"], "state": "Open" }
+      ]
+    },
+    {
+      "name": "Campus Compass",
+      "owner": "Drew",
+      "pitch": "Help students discover accessible campus services and spaces.",
+      "goal": "Learning",
+      "capacity": 4,
+      "state": "Locked",
+      "confirmedMembers": ["Drew", "Blake"],
+      "vacancies": []
+    }
+  ]
+}
