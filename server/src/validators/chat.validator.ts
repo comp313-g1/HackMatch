@@ -10,6 +10,7 @@ import {
   normalizeChatMessageBody,
   normalizeChatTitle,
 } from '../db/chatModel.js';
+import { sanitizeSubmittedChatDraft } from '../services/chatPrivacy.js';
 import { UUID_REGEX } from './team.validator.js';
 
 export interface ChatFieldErrors {
@@ -105,7 +106,8 @@ export const validateCreateChannelBody: RequestHandler = (
       code: 'VALIDATION_ERROR',
       errors: result.errors,
       fieldErrors: result.errors,
-      submitted: result.submitted,
+      // FR-089 / #345 — never echo credentials/OTPs/emails from a draft.
+      submitted: sanitizeSubmittedChatDraft(result.submitted),
     });
     return;
   }
@@ -174,7 +176,8 @@ export const validateSendMessageBody: RequestHandler = (
       code: 'VALIDATION_ERROR',
       errors: result.errors,
       fieldErrors: result.errors,
-      submitted: result.submitted,
+      // FR-089 / #345 — never echo credentials/OTPs/emails from a draft.
+      submitted: sanitizeSubmittedChatDraft(result.submitted),
     });
     return;
   }

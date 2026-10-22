@@ -17,12 +17,14 @@ import {
   listChannels,
   sendChannelMessage,
 } from '../services/chat.js';
+import { buildChatSuccessPayload } from '../services/chatPrivacy.js';
 
 export const chatRouter = Router();
 
 /**
- * US-030 / #344 / FR-087–FR-088 — verified active PART only.
+ * US-030 / #344–#345 / FR-087–FR-089 — verified active PART only.
  * Visitors → 401; unverified → 403; suspended → 403.
+ * Responses scrub credentials, OTPs, and emails (FR-089).
  */
 const chatAuthGuard = [
   requireFirebaseAuth,
@@ -55,7 +57,7 @@ chatRouter.get(
     res.setHeader('Cache-Control', 'no-store');
     try {
       const channels = await listChannels();
-      res.status(200).json({ status: 'ok', channels });
+      res.status(200).json(buildChatSuccessPayload({ status: 'ok', channels }));
     } catch (err) {
       next(err);
     }
@@ -79,7 +81,7 @@ chatRouter.post(
         description: req.body.description,
         createdBy: req.participant!.id,
       });
-      res.status(201).json({ status: 'ok', channel });
+      res.status(201).json(buildChatSuccessPayload({ status: 'ok', channel }));
     } catch (err) {
       next(err);
     }
@@ -98,7 +100,7 @@ chatRouter.get(
     res.setHeader('Cache-Control', 'no-store');
     try {
       const messages = await listChannelMessages(req.params.channelId);
-      res.status(200).json({ status: 'ok', messages });
+      res.status(200).json(buildChatSuccessPayload({ status: 'ok', messages }));
     } catch (err) {
       handleChatError(err, res, next);
     }
@@ -123,7 +125,7 @@ chatRouter.post(
         authorId: req.participant!.id,
         body: req.body.body,
       });
-      res.status(201).json({ status: 'ok', message });
+      res.status(201).json(buildChatSuccessPayload({ status: 'ok', message }));
     } catch (err) {
       handleChatError(err, res, next);
     }

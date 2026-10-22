@@ -138,7 +138,7 @@ describe('Express Chat Endpoints (US-030 / #344 / FR-087–FR-088)', () => {
       expect(res.body.channels).toEqual([]);
     });
 
-    it('creates a channel (happy path)', async () => {
+    it('creates a channel (happy path) with privacy flags and no email', async () => {
       vi.spyOn(chatRepository, 'createChannel').mockResolvedValue({
         id: CHANNEL_ID,
         title: 'General',
@@ -156,6 +156,15 @@ describe('Express Chat Endpoints (US-030 / #344 / FR-087–FR-088)', () => {
       expect(res.status).toBe(201);
       expect(res.body.channel.title).toBe('General');
       expect(res.body.channel).not.toHaveProperty('email');
+      expect(res.body.privacy).toMatchObject({
+        credentialsIncluded: false,
+        otpsIncluded: false,
+        emailsIncluded: false,
+      });
+      expect(res.body).not.toHaveProperty('email');
+      expect(res.body.channel).not.toHaveProperty('password');
+      expect(res.body.channel).not.toHaveProperty('otp');
+      expect(JSON.stringify(res.body)).not.toMatch(/part@example\.com/);
     });
 
     it('rejects blank title/description with 400 and echoes submitted draft', async () => {
@@ -170,6 +179,29 @@ describe('Express Chat Endpoints (US-030 / #344 / FR-087–FR-088)', () => {
       expect(res.body.errors.title).toBeTruthy();
       expect(res.body.errors.description).toBeTruthy();
       expect(res.body.submitted).toEqual(body);
+    });
+
+    it('redacts email/password/otp from validation draft echoes (FR-089)', async () => {
+      const body = {
+        title: '  ',
+        description: 'x',
+        email: 'part@example.com',
+        password: 'Password123!',
+        otp: '123456',
+      };
+      const res = await request(app)
+        .post('/api/chat/channels')
+        .set('Authorization', validTokenHeader)
+        .send(body);
+
+      expect(res.status).toBe(400);
+      expect(res.body.submitted).toMatchObject({
+        title: '  ',
+        description: 'x',
+        email: '[redacted]',
+        password: '[redacted]',
+        otp: '[redacted]',
+      });
     });
   });
 
@@ -204,7 +236,46 @@ describe('Express Chat Endpoints (US-030 / #344 / FR-087–FR-088)', () => {
       expect(res.status).toBe(200);
       expect(res.body.messages[0].body).toBe('Hello team');
       expect(res.body.messages[0].authorHandle).toBe('hacker1');
-      expect(JSON.stringify(res.body)).not.toMatch(/part@example\.com|password|otp/i);
+      expect(res.body.privacy.emailsIncluded).toBe(false);
+      expect(JSON.stringify(res.body)).not.toMatch(/part@example\.com|password|otp_hash|firebase_uid/i);
+    });
+
+    it('scrubs leaked sensitive keys from message list payloads (FR-089)', async () => {
+      vi.spyOn(chatRepository, 'findChannelById').mockResolvedValue({
+        id: CHANNEL_ID,
+        title: 'General',
+        description: 'Open forum',
+        created_by: verifiedParticipant.id,
+        created_at: '2026-10-21T12:00:00.000Z',
+        updated_at: '2026-10-21T12:00:00.000Z',
+      });
+      vi.spyOn(chatRepository, 'listMessagesByChannel').mockResolvedValue([
+        {
+          id: '22222222-2222-4222-8222-222222222222',
+          channel_id: CHANNEL_ID,
+          author_id: verifiedParticipant.id,
+          body: 'Hello team',
+          created_at: '2026-10-21T12:05:00.000Z',
+          // Simulate an accidental join leak — must be scrubbed before response.
+          email: 'part@example.com',
+          password: 'secret',
+          otp_hash: 'hash',
+        } as never,
+      ]);
+      vi.spyOn(profileRepository, 'findProfileByParticipantId').mockResolvedValue({
+        participant_id: verifiedParticipant.id,
+        handle: 'hacker1',
+      } as never);
+
+      const res = await request(app)
+        .get(`/api/chat/channels/${CHANNEL_ID}/messages`)
+        .set('Authorization', validTokenHeader);
+
+      expect(res.status).toBe(200);
+      expect(res.body.messages[0]).not.toHaveProperty('email');
+      expect(res.body.messages[0]).not.toHaveProperty('password');
+      expect(res.body.messages[0]).not.toHaveProperty('otp_hash');
+      expect(res.body.messages[0].authorHandle).toBe('hacker1');
     });
 
     it('sends a message (happy path)', async () => {

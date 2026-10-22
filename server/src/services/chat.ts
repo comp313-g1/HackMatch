@@ -1,9 +1,10 @@
 import { chatRepository } from '../db/chat.repository.js';
 import { profileRepository } from '../db/profile.repository.js';
 import type { ChatChannel, ChatMessage } from '../db/types.js';
+import { scrubPrivateChatFields } from './chatPrivacy.js';
 
 /**
- * Safe channel payload (US-030 / #344 / FR-087, FR-089).
+ * Safe channel payload (US-030 / #344–#345 / FR-087, FR-089).
  * Never includes email, credentials, OTPs, or firebase_uid.
  */
 export interface ChatChannelView {
@@ -16,7 +17,7 @@ export interface ChatChannelView {
 }
 
 /**
- * Safe message payload (US-030 / #344 / FR-088, FR-089).
+ * Safe message payload (US-030 / #344–#345 / FR-088, FR-089).
  * Author is exposed as handle only — never email.
  */
 export interface ChatMessageView {
@@ -41,28 +42,29 @@ export class ChatServiceError extends Error {
 }
 
 export function toChannelView(channel: ChatChannel): ChatChannelView {
-  return {
+  // FR-089 / #345 — scrub even if a repository join later adds sensitive keys.
+  return scrubPrivateChatFields({
     id: channel.id,
     title: channel.title,
     description: channel.description,
     createdBy: channel.created_by,
     createdAt: channel.created_at,
     updatedAt: channel.updated_at,
-  };
+  });
 }
 
 export function toMessageView(
   message: ChatMessage,
   authorHandle: string | null
 ): ChatMessageView {
-  return {
+  return scrubPrivateChatFields({
     id: message.id,
     channelId: message.channel_id,
     authorId: message.author_id,
     authorHandle,
     body: message.body,
     createdAt: message.created_at,
-  };
+  });
 }
 
 async function resolveAuthorHandles(
