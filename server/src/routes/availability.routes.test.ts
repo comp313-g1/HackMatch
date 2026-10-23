@@ -198,6 +198,35 @@ describe('Express Availability Endpoints (US-011 / #US-286 & #US-288)', () => {
         .spyOn(availabilityRepository, 'upsertByParticipantId')
         .mockResolvedValue(updatedRecord);
       vi.spyOn(availabilityRepository, 'findByParticipantId').mockResolvedValue(null);
+      vi.spyOn(profileRepository, 'getFullProfile').mockResolvedValue({
+        profile: {
+          participant_id: verifiedParticipant.id,
+          handle: 'verified_dev',
+          primary_role: 'Backend',
+          institution: 'Centennial College',
+          shared_contact_handle: null,
+          created_at: '2026-10-18T00:00:00.000Z',
+          updated_at: '2026-10-18T00:00:00.000Z',
+        },
+        skills: [
+          {
+            id: 's1',
+            participant_id: verifiedParticipant.id,
+            skill_name: 'TypeScript',
+            created_at: '',
+          },
+        ],
+        portfolios: [
+          {
+            id: 'p1',
+            participant_id: verifiedParticipant.id,
+            url: 'https://github.com/sample',
+            label: 'GitHub',
+            created_at: '',
+            updated_at: '',
+          },
+        ],
+      });
 
       const res = await request(app)
         .put('/api/availability/me')
@@ -221,6 +250,41 @@ describe('Express Availability Endpoints (US-011 / #US-286 & #US-288)', () => {
           goal: 'Competitive',
         })
       );
+    });
+
+    it('rejects enabling Looking for Team when profile discovery fields are incomplete (#360)', async () => {
+      const upsertSpy = vi.spyOn(availabilityRepository, 'upsertByParticipantId');
+      vi.spyOn(profileRepository, 'getFullProfile').mockResolvedValue({
+        profile: {
+          participant_id: verifiedParticipant.id,
+          handle: null,
+          primary_role: 'Backend',
+          institution: null,
+          shared_contact_handle: null,
+          created_at: '2026-10-18T00:00:00.000Z',
+          updated_at: '2026-10-18T00:00:00.000Z',
+        },
+        skills: [],
+        portfolios: [],
+      });
+
+      const res = await request(app)
+        .put('/api/availability/me')
+        .set('Authorization', validTokenHeader)
+        .send({
+          isLooking: true,
+          desiredRole: 'Backend',
+          commitmentHours: 13,
+          goal: 'Project Completion',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('VALIDATION_ERROR');
+      expect(res.body.fieldErrors.handle).toMatch(/handle/i);
+      expect(res.body.fieldErrors.institution).toMatch(/institution/i);
+      expect(res.body.fieldErrors.skills).toMatch(/skill/i);
+      expect(res.body.fieldErrors.portfolioLinks).toMatch(/portfolio/i);
+      expect(upsertSpy).not.toHaveBeenCalled();
     });
 
     it('preserves existing stored preferences when toggling off Looking-for-Team without supplying fields', async () => {

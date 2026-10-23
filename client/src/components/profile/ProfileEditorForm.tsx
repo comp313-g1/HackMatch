@@ -23,6 +23,11 @@ export interface ProfileEditorFormProps {
   onLoaded?: (loadedProfile: Record<string, unknown>) => void;
   onSaved?: (savedProfile: Record<string, unknown>) => void;
   onCancel?: () => void;
+  /** When true, handle / institution / skills / portfolio are required (#360 Looking for Team). */
+  requireDiscoveryFields?: boolean;
+  title?: string;
+  description?: string;
+  className?: string;
 }
 
 const inputClass =
@@ -53,6 +58,10 @@ export function ProfileEditorForm({
   onLoaded,
   onSaved,
   onCancel,
+  requireDiscoveryFields = false,
+  title = 'Technical Profile',
+  description = 'Maintain your self-declared role, skills, academic institution, and HTTPS portfolio links.',
+  className = 'max-w-lg w-full mx-auto',
 }: ProfileEditorFormProps): React.JSX.Element {
   const [handle, setHandle] = useState<string>(initialValues?.handle ?? '');
   const [primaryRole, setPrimaryRole] = useState<string>(initialValues?.primaryRole ?? '');
@@ -197,14 +206,17 @@ export function ProfileEditorForm({
     setFormError(null);
     setSuccessMessage(null);
 
-    const validation = validateProfileForm({
-      handle,
-      primaryRole,
-      institution,
-      skillsInput,
-      portfolioLinks,
-      sharedContactHandle,
-    });
+    const validation = validateProfileForm(
+      {
+        handle,
+        primaryRole,
+        institution,
+        skillsInput,
+        portfolioLinks,
+        sharedContactHandle,
+      },
+      { requireDiscoveryFields }
+    );
 
     if (Object.keys(validation.errors).length > 0 || !validation.payload) {
       // Preserve existing entered values in state while displaying field-specific errors (US-006 AC 5 / T2)
@@ -222,7 +234,7 @@ export function ProfileEditorForm({
         role="status"
         aria-live="polite"
         aria-busy="true"
-        className="max-w-lg w-full mx-auto p-6 bg-white rounded-xl border border-cream-200 shadow-sm"
+        className={`${className} p-6 bg-white rounded-xl border border-cream-200 shadow-sm`}
       >
         <p className="text-sm font-medium text-ink-muted">Loading your technical profile...</p>
       </div>
@@ -230,14 +242,10 @@ export function ProfileEditorForm({
   }
 
   return (
-    <div className="max-w-lg w-full mx-auto p-6 bg-white rounded-xl border border-cream-200 shadow-sm">
+    <div className={`${className} p-6 bg-white rounded-xl border border-cream-200 shadow-sm`}>
       <div className="mb-4">
-        <h3 className="font-display text-xl font-semibold text-forest-900">
-          Technical Profile
-        </h3>
-        <p className="text-xs text-ink-muted mt-1">
-          Maintain your self-declared role, skills, academic institution, and HTTPS portfolio links.
-        </p>
+        <h3 className="font-display text-xl font-semibold text-forest-900">{title}</h3>
+        <p className="text-xs text-ink-muted mt-1">{description}</p>
       </div>
 
       <div
@@ -298,7 +306,8 @@ export function ProfileEditorForm({
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <div>
           <label htmlFor="profile-handle" className="block text-sm font-medium text-ink mb-1">
-            Display Handle
+            Display Handle{' '}
+            {requireDiscoveryFields && <span className="text-red-500">*</span>}
           </label>
           <input
             id="profile-handle"
@@ -363,7 +372,12 @@ export function ProfileEditorForm({
 
         <div>
           <label htmlFor="profile-institution" className="block text-sm font-medium text-ink mb-1">
-            Academic Institution (Optional)
+            Academic Institution{' '}
+            {requireDiscoveryFields ? (
+              <span className="text-red-500">*</span>
+            ) : (
+              <span className="text-ink-muted font-normal">(Optional)</span>
+            )}
           </label>
           <input
             id="profile-institution"
@@ -394,7 +408,8 @@ export function ProfileEditorForm({
         <div>
           <div className="flex items-center justify-between mb-1">
             <label htmlFor="profile-skills" className="block text-sm font-medium text-ink">
-              Skill Tags (Comma-separated)
+              Skill Tags (Comma-separated){' '}
+              {requireDiscoveryFields && <span className="text-red-500">*</span>}
             </label>
             <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-cream-100 text-ink-muted">
               Self-declared
@@ -429,7 +444,8 @@ export function ProfileEditorForm({
         <div>
           <div className="flex items-center justify-between mb-1">
             <span className="block text-sm font-medium text-ink">
-              Portfolio Links (HTTPS Only)
+              Portfolio Links (HTTPS Only){' '}
+              {requireDiscoveryFields && <span className="text-red-500">*</span>}
             </span>
             <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-cream-100 text-ink-muted">
               Self-declared

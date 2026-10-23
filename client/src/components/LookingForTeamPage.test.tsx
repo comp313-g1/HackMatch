@@ -26,6 +26,31 @@ vi.mock('../config/firebase', () => ({
   },
 }));
 
+vi.mock('../config/authFetch', () => ({
+  authFetch: vi.fn(async (url: string, init?: { method?: string }) => {
+    if (String(url).includes('/api/profiles/me')) {
+      if (init?.method === 'PUT') {
+        return { ok: true, status: 200, json: async () => ({ profile: {} }) };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          profile: {
+            handle: 'devalpha',
+            primaryRole: 'Frontend',
+            institution: 'Centennial College',
+            skills: ['React', 'TypeScript'],
+            portfolioLinks: [{ url: 'https://github.com/devalpha', label: 'GitHub' }],
+            sharedContactHandle: null,
+          },
+        }),
+      };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  }),
+}));
+
 describe('LookingForTeamPage Component (US-011 / #US-288)', () => {
   const mockCandidateMe: availabilityApi.AvailableCandidateCard = {
     participantId: 'user-123',
@@ -129,9 +154,19 @@ describe('LookingForTeamPage Component (US-011 / #US-288)', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Platform-Wide Looking for Team Status')).toBeInTheDocument();
+      expect(screen.getByText('Looking for Team Card')).toBeInTheDocument();
       expect(screen.getByText('Available Candidates Pool')).toBeInTheDocument();
     });
+
+    // One combined form: profile + availability fields
+    expect(screen.getByLabelText(/Display Handle/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Academic Institution/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Skills \(comma-separated\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Portfolio Links \(HTTPS\)/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Looking for Team \(LFT\)/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Save Looking for Team Card/i })
+    ).toBeInTheDocument();
 
     // Verify candidate cards and "You" badge
     expect(screen.getByText('Dev Alpha')).toBeInTheDocument();
@@ -159,8 +194,7 @@ describe('LookingForTeamPage Component (US-011 / #US-288)', () => {
     const hoursInput = screen.getByLabelText(/Weekly Commitment Hours/i);
     fireEvent.change(hoursInput, { target: { value: '250' } });
 
-    // Submit form
-    const submitBtn = screen.getByRole('button', { name: /Save Availability Preferences/i });
+    const submitBtn = screen.getByRole('button', { name: /Save Looking for Team Card/i });
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
@@ -199,7 +233,7 @@ describe('LookingForTeamPage Component (US-011 / #US-288)', () => {
     const goalSelect = screen.getByLabelText(/Project Goal/i);
     fireEvent.change(goalSelect, { target: { value: 'Learning' } });
 
-    const submitBtn = screen.getByRole('button', { name: /Save Availability Preferences/i });
+    const submitBtn = screen.getByRole('button', { name: /Save Looking for Team Card/i });
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
@@ -213,7 +247,7 @@ describe('LookingForTeamPage Component (US-011 / #US-288)', () => {
         'valid-token'
       );
       expect(screen.getByRole('status')).toHaveTextContent(
-        'Platform availability and Looking for Team status saved!'
+        /Looking for Team card and availability were saved/i
       );
     });
   });
@@ -245,7 +279,7 @@ describe('LookingForTeamPage Component (US-011 / #US-288)', () => {
     const toggle = screen.getByLabelText(/Looking for Team \(LFT\)/i);
     fireEvent.click(toggle);
 
-    const submitBtn = screen.getByRole('button', { name: /Save Availability Preferences/i });
+    const submitBtn = screen.getByRole('button', { name: /Save Looking for Team Card/i });
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
@@ -256,7 +290,7 @@ describe('LookingForTeamPage Component (US-011 / #US-288)', () => {
         'valid-token'
       );
       expect(screen.getByRole('status')).toHaveTextContent(
-        'Looking for Team status turned off. Your preferences have been saved.'
+        /Looking for Team turned off/i
       );
     });
   });

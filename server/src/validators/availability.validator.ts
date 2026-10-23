@@ -18,6 +18,10 @@ export interface AvailabilityFieldErrors {
   desiredRole?: string;
   commitmentHours?: string;
   goal?: string;
+  handle?: string;
+  institution?: string;
+  skills?: string;
+  portfolioLinks?: string;
   eventId?: string;
   body?: string;
   _form?: string;

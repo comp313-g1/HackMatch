@@ -57,6 +57,10 @@ export interface AvailabilityFieldErrors {
   desiredRole?: string;
   commitmentHours?: string;
   goal?: string;
+  handle?: string;
+  institution?: string;
+  skills?: string;
+  portfolioLinks?: string;
   [key: string]: string | undefined;
 }
 
