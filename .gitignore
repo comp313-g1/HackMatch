@@ -163,3 +163,6 @@ brian_tasks/
 .workbuddy/*
 supabase/.branches/
 supabase/snippets/
+
+# Demo seed runtime index (IDs and resolved labels; never commit runtime output)
+db-seed/.runtime/

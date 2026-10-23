@@ -1,0 +1,59 @@
+{
+  "namespace": "hm-demo-v1",
+  "accounts": [
+    {
+      "key": "admin-ops",
+      "uid": "hm-demo-v1-admin-ops",
+      "participantId": "10000000-0000-4000-8000-000000000001",
+      "emailEnv": "HACKMATCH_DEMO_ADMIN_OPS_EMAIL",
+      "displayName": "Admin Ops",
+      "role": "ADMIN",
+      "purpose": "Account enforcement and authorization testing"
+    },
+    {
+      "key": "admin-safety",
+      "uid": "hm-demo-v1-admin-safety",
+      "participantId": "10000000-0000-4000-8000-000000000002",
+      "emailEnv": "HACKMATCH_DEMO_ADMIN_SAFETY_EMAIL",
+      "displayName": "Admin Safety",
+      "role": "ADMIN",
+      "purpose": "Moderation queue and second-administrator testing"
+    },
+    {
+      "key": "avery",
+      "uid": "hm-demo-v1-part-avery",
+      "participantId": "10000000-0000-4000-8000-000000000003",
+      "emailEnv": "HACKMATCH_DEMO_AVERY_EMAIL",
+      "displayName": "Avery",
+      "role": "PART",
+      "purpose": "Owner of Civic Signal"
+    },
+    {
+      "key": "blake",
+      "uid": "hm-demo-v1-part-blake",
+      "participantId": "10000000-0000-4000-8000-000000000004",
+      "emailEnv": "HACKMATCH_DEMO_BLAKE_EMAIL",
+      "displayName": "Blake",
+      "role": "PART",
+      "purpose": "Campus Compass member, re-enabled LFT candidate, and Civic Signal invitee"
+    },
+    {
+      "key": "casey",
+      "uid": "hm-demo-v1-part-casey",
+      "participantId": "10000000-0000-4000-8000-000000000005",
+      "emailEnv": "HACKMATCH_DEMO_CASEY_EMAIL",
+      "displayName": "Casey",
+      "role": "PART",
+      "purpose": "Platform-wide LFT candidate and Civic Signal applicant"
+    },
+    {
+      "key": "drew",
+      "uid": "hm-demo-v1-part-drew",
+      "participantId": "10000000-0000-4000-8000-000000000006",
+      "emailEnv": "HACKMATCH_DEMO_DREW_EMAIL",
+      "displayName": "Drew",
+      "role": "PART",
+      "purpose": "Owner of Campus Compass"
+    }
+  ]
+}

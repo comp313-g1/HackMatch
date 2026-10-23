@@ -1,0 +1,33 @@
+{
+  "platformEventId": "00000000-0000-4000-8000-000000000001",
+  "availability": [
+    {
+      "accountKey": "avery",
+      "isLooking": false,
+      "desiredRole": "Frontend",
+      "commitmentHours": 16,
+      "goal": "Project Completion"
+    },
+    {
+      "accountKey": "blake",
+      "isLooking": true,
+      "desiredRole": "Backend",
+      "commitmentHours": 14,
+      "goal": "Project Completion"
+    },
+    {
+      "accountKey": "casey",
+      "isLooking": true,
+      "desiredRole": "AI/ML",
+      "commitmentHours": 12,
+      "goal": "Learning"
+    },
+    {
+      "accountKey": "drew",
+      "isLooking": false,
+      "desiredRole": "UI/UX",
+      "commitmentHours": 10,
+      "goal": "Learning"
+    }
+  ]
+}

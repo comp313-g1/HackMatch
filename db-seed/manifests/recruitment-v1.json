@@ -1,0 +1,140 @@
+{
+  "scenario": "recruitment-v1",
+  "shadowEvents": [
+    {
+      "id": "20000000-0000-4000-8000-000000000001",
+      "title": "Internal Shadow Event — Civic Signal",
+      "officialUrl": "https://shadow.hackmatch.invalid/civic-signal",
+      "startDate": "2026-01-01T00:00:00.000Z",
+      "endDate": "2099-12-31T23:59:59.000Z",
+      "format": "Online",
+      "minTeamSize": 2,
+      "maxTeamSize": 4,
+      "status": "Published"
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000002",
+      "title": "Internal Shadow Event — Campus Compass",
+      "officialUrl": "https://shadow.hackmatch.invalid/campus-compass",
+      "startDate": "2026-01-01T00:00:00.000Z",
+      "endDate": "2099-12-31T23:59:59.000Z",
+      "format": "Online",
+      "minTeamSize": 2,
+      "maxTeamSize": 4,
+      "status": "Published"
+    }
+  ],
+  "teams": [
+    {
+      "key": "civic-signal",
+      "id": "30000000-0000-4000-8000-000000000001",
+      "eventId": "20000000-0000-4000-8000-000000000001",
+      "ownerAccountKey": "avery",
+      "name": "Civic Signal",
+      "pitch": "Make municipal service updates easier to understand and act on.",
+      "goal": "Project Completion",
+      "commitmentHours": 16,
+      "communicationLink": "https://example.com/hackmatch-demo/civic-signal",
+      "recruitmentStatus": "Open"
+    },
+    {
+      "key": "campus-compass",
+      "id": "30000000-0000-4000-8000-000000000002",
+      "eventId": "20000000-0000-4000-8000-000000000002",
+      "ownerAccountKey": "drew",
+      "name": "Campus Compass",
+      "pitch": "Help students discover accessible campus services and spaces.",
+      "goal": "Learning",
+      "commitmentHours": 10,
+      "communicationLink": "https://example.com/hackmatch-demo/campus-compass",
+      "recruitmentStatus": "Locked"
+    }
+  ],
+  "memberships": [
+    {
+      "id": "31000000-0000-4000-8000-000000000001",
+      "teamKey": "civic-signal",
+      "accountKey": "avery",
+      "role": "Owner",
+      "status": "Confirmed"
+    },
+    {
+      "id": "31000000-0000-4000-8000-000000000002",
+      "teamKey": "campus-compass",
+      "accountKey": "drew",
+      "role": "Owner",
+      "status": "Confirmed"
+    },
+    {
+      "id": "31000000-0000-4000-8000-000000000003",
+      "teamKey": "campus-compass",
+      "accountKey": "blake",
+      "role": "Member",
+      "status": "Confirmed"
+    }
+  ],
+  "vacancies": [
+    {
+      "key": "civic-backend",
+      "id": "32000000-0000-4000-8000-000000000001",
+      "teamKey": "civic-signal",
+      "role": "Backend",
+      "skills": ["Node.js", "Express", "PostgreSQL"],
+      "status": "Open"
+    },
+    {
+      "key": "civic-ai-ml",
+      "id": "32000000-0000-4000-8000-000000000002",
+      "teamKey": "civic-signal",
+      "role": "AI/ML",
+      "skills": ["Python", "TensorFlow", "Data Visualization"],
+      "status": "Open"
+    },
+    {
+      "key": "civic-ui-ux",
+      "id": "32000000-0000-4000-8000-000000000003",
+      "teamKey": "civic-signal",
+      "role": "UI/UX",
+      "skills": ["Figma", "User Research", "Design Systems"],
+      "status": "Open"
+    }
+  ],
+  "requests": [
+    {
+      "id": "33000000-0000-4000-8000-000000000001",
+      "teamKey": "civic-signal",
+      "vacancyKey": "civic-backend",
+      "accountKey": "blake",
+      "requestType": "Invitation",
+      "status": "Pending",
+      "expiresInHours": 48,
+      "message": null
+    },
+    {
+      "id": "33000000-0000-4000-8000-000000000002",
+      "teamKey": "civic-signal",
+      "vacancyKey": "civic-ai-ml",
+      "accountKey": "casey",
+      "requestType": "Application",
+      "status": "Pending",
+      "expiresInHours": null,
+      "message": "I would love to help turn civic datasets into clear, useful insights."
+    }
+  ],
+  "notifications": [
+    {
+      "id": "34000000-0000-4000-8000-000000000001",
+      "accountKey": "blake",
+      "teamKey": "civic-signal",
+      "type": "team_invitation",
+      "message": "Civic Signal invited you to its Backend vacancy."
+    },
+    {
+      "id": "34000000-0000-4000-8000-000000000002",
+      "accountKey": "avery",
+      "teamKey": "civic-signal",
+      "type": "team_application_submitted",
+      "message": "Casey applied to the AI/ML vacancy on Civic Signal."
+    }
+  ]
+}

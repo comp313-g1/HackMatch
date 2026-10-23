@@ -1,0 +1,10 @@
+{
+  "participants": [
+    { "accountKey": "admin-ops", "displayName": "Admin Ops", "role": "ADMIN", "purpose": "Account enforcement and authorization testing" },
+    { "accountKey": "admin-safety", "displayName": "Admin Safety", "role": "ADMIN", "purpose": "Moderation queue and second-administrator testing" },
+    { "accountKey": "avery", "displayName": "Avery", "role": "PART", "handle": "avery-demo", "primaryRole": "Frontend", "institution": "HackMatch Demo Institute", "skills": ["React", "TypeScript", "Accessibility"], "portfolio": "https://example.com/hackmatch-demo/avery", "goal": "Project Completion", "commitmentHours": 16, "expectedLookingForTeam": false },
+    { "accountKey": "blake", "displayName": "Blake", "role": "PART", "handle": "blake-demo", "primaryRole": "Backend", "institution": "HackMatch Demo Institute", "skills": ["Node.js", "Express", "PostgreSQL"], "portfolio": "https://example.com/hackmatch-demo/blake", "goal": "Project Completion", "commitmentHours": 14, "expectedLookingForTeam": true },
+    { "accountKey": "casey", "displayName": "Casey", "role": "PART", "handle": "casey-demo", "primaryRole": "AI/ML", "institution": "HackMatch Demo Institute", "skills": ["Python", "TensorFlow", "Data Visualization"], "portfolio": "https://example.com/hackmatch-demo/casey", "goal": "Learning", "commitmentHours": 12, "expectedLookingForTeam": true },
+    { "accountKey": "drew", "displayName": "Drew", "role": "PART", "handle": "drew-demo", "primaryRole": "UI/UX", "institution": "HackMatch Demo Institute", "skills": ["Figma", "User Research", "Design Systems"], "portfolio": "https://example.com/hackmatch-demo/drew", "goal": "Learning", "commitmentHours": 10, "expectedLookingForTeam": false }
+  ]
+}
