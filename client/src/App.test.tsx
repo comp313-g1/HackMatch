@@ -40,6 +40,22 @@ vi.mock('./components/teams/teamApi', async () => {
   };
 });
 
+vi.mock('./components/teams/openTeamsApi', async () => {
+  const actual = await vi.importActual<typeof import('./components/teams/openTeamsApi')>(
+    './components/teams/openTeamsApi'
+  );
+  return {
+    ...actual,
+    fetchOpenTeams: vi.fn().mockResolvedValue({ viewer: 'VISITOR', total: 0, teams: [] }),
+  };
+});
+
+vi.mock('./services/availabilityApi', () => ({
+  fetchAvailableCandidates: vi.fn().mockResolvedValue([]),
+  fetchMyAvailability: vi.fn().mockResolvedValue(null),
+  updateMyAvailability: vi.fn(),
+}));
+
 describe('App Component (View Routing and Integration)', () => {
   const mockApplyActionCode = vi.mocked(applyActionCode);
 
@@ -84,7 +100,7 @@ describe('App Component (View Routing and Integration)', () => {
 
   it('renders LandingPage by default when URL has no verification parameters', () => {
     render(<App />);
-    expect(screen.getByRole('heading', { level: 1, name: /find your hackathon team/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: /find your team/i })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { level: 2, name: /create an account/i })).not.toBeInTheDocument();
   });
 
@@ -214,7 +230,7 @@ describe('App Component (View Routing and Integration)', () => {
   it('switches between landing, create account, and sign in via header nav and brand logo', () => {
     render(<App />);
 
-    expect(screen.getByRole('heading', { level: 1, name: /find your hackathon team/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: /find your team/i })).toBeInTheDocument();
 
     fireEvent.click(within(primaryNav()).getByRole('button', { name: /create account/i }));
     expect(within(primaryNav()).getByRole('button', { name: /create account/i })).toHaveAttribute(
@@ -232,7 +248,7 @@ describe('App Component (View Routing and Integration)', () => {
     expect(screen.queryByRole('heading', { level: 2, name: /create an account/i })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /hackmatch home/i }));
-    expect(screen.getByRole('heading', { level: 1, name: /find your hackathon team/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: /find your team/i })).toBeInTheDocument();
   });
 
   it('does not show the account area to a signed-out visitor and links back to sign in', async () => {
@@ -514,15 +530,17 @@ describe('App Component (View Routing and Integration)', () => {
 
     render(<App />);
 
-    // Post-MFA landing page should display hero and participant buttons
+    // Post-MFA landing page: event-free hero + nav-aligned CTAs (#361)
     expect(
-      await screen.findByRole('heading', { level: 1, name: /find your hackathon team/i })
+      await screen.findByRole('heading', { level: 1, name: /find your team/i })
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^teams workspace$/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /your profile/i })).toBeInTheDocument();
-    // And search / events directory section is visible on the participant landing page
-    expect(screen.getByRole('searchbox', { name: /search hackathons/i })).toBeInTheDocument();
-    expect(screen.getByText(/no events match your criteria/i)).toBeInTheDocument();
+    const hero = screen.getByRole('region', { name: /hackmatch hero/i });
+    expect(within(hero).getByRole('button', { name: /^open teams$/i })).toBeInTheDocument();
+    expect(within(hero).getByRole('button', { name: /^my teams$/i })).toBeInTheDocument();
+    expect(within(hero).getByRole('button', { name: /^find teammates$/i })).toBeInTheDocument();
+    expect(within(hero).getByRole('button', { name: /^profile$/i })).toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: /search teams or people/i })).toBeInTheDocument();
+    expect(await screen.findByText(/no teams match your search/i)).toBeInTheDocument();
 
     // Account menu → Profile navigates to account view (SignedInPanel)
     fireEvent.click(within(primaryNav()).getByRole('button', { name: /brian/i }));

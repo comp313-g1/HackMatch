@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { fetchMyTeams, AuthRequiredError, TeamApiError } from './teamApi';
 import type { TeamView } from './teamTypes';
-import { VERIFIED_EVENTS } from '../landing/landingData';
 
 export interface MyTeamsPageProps {
   onCreateTeam: () => void;
@@ -12,7 +11,7 @@ export function MyTeamsPage({
   onCreateTeam,
   onSelectTeam,
 }: MyTeamsPageProps): React.JSX.Element {
-  const [teams, setTeams] = useState<Array<{ team: TeamView; eventName: string }>>([]);
+  const [teams, setTeams] = useState<TeamView[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -23,17 +22,7 @@ export function MyTeamsPage({
     setErrorMessage(null);
 
     try {
-      // Fetch all confirmed teams for the participant directly
-      const fetchedTeams = await fetchMyTeams();
-      const discoveredTeams: Array<{ team: TeamView; eventName: string }> = fetchedTeams.map((team) => {
-        const ev = VERIFIED_EVENTS.find((e) => e.id === team.eventId);
-        return {
-          team,
-          eventName: ev ? ev.name : 'HackMatch',
-        };
-      });
-
-      setTeams(discoveredTeams);
+      setTeams(await fetchMyTeams());
     } catch (err: unknown) {
       if (err instanceof AuthRequiredError) {
         setAuthError('You need to sign in to view your teams.');
@@ -115,9 +104,9 @@ export function MyTeamsPage({
         </div>
       ) : (
         <div className="space-y-4">
-          {teams.map(({ team, eventName }) => {
+          {teams.map((team) => {
             const memberCount = team.members.length;
-            const subtitle = `${eventName} · ${team.recruitmentStatus}`;
+            const subtitle = `${team.goal} · ${team.recruitmentStatus}`;
 
             return (
               <div

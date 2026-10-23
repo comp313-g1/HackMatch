@@ -686,7 +686,8 @@ export function App(): React.JSX.Element {
             onNavigateToLogin={goToLogin}
             onNavigateToTeams={goToTeam}
             onNavigateToProfile={goToAccount}
-            onSelectEvent={handleSelectEvent}
+            onNavigateToOpenTeams={goToBrowseTeams}
+            onNavigateToLooking={goToLooking}
             currentUser={currentUser}
           />
         ) : currentView === 'create-team' ? (

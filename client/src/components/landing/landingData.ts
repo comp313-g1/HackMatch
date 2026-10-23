@@ -1,16 +1,12 @@
-export type EventFormat = 'all' | 'Online' | 'In-Person' | 'Hybrid';
-export type EventTime = 'all' | 'Upcoming' | 'Ongoing' | 'Concluded';
+import {
+  ALLOWED_PRIMARY_ROLES,
+  TEAM_GOALS,
+  type ParticipantPrimaryRole,
+  type TeamGoal,
+} from '../teams/openTeamsApi';
 
-export interface VerifiedEvent {
-  id: string;
-  name: string;
-  format: 'Online' | 'In-Person' | 'Hybrid';
-  time: 'Upcoming' | 'Ongoing' | 'Concluded';
-  location: string;
-  country: string;
-  dates: string;
-  openTeams: number;
-  tags: string[];
-}
+export type LandingRoleFilter = 'all' | ParticipantPrimaryRole;
+export type LandingGoalFilter = 'all' | TeamGoal;
 
-export const VERIFIED_EVENTS: VerifiedEvent[] = [];
+export const LANDING_ROLES = ALLOWED_PRIMARY_ROLES;
+export const LANDING_GOALS = TEAM_GOALS;
