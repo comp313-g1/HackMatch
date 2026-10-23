@@ -314,79 +314,84 @@ describe('App Component (View Routing and Integration)', () => {
     return mockUser;
   }
 
-  it('renders authenticated navigation (Profile, Teams, Sign out) and hides guest auth buttons when MFA session is ready', async () => {
+  it('renders authenticated navigation with account menu and hides guest auth buttons when MFA session is ready (#358)', async () => {
     window.history.pushState({}, '', '/?view=account');
-    mockSignedInUser({ mfaComplete: true, role: 'PART' });
+    mockSignedInUser({ mfaComplete: true, role: 'PART', displayName: 'Sahil Gupta' });
 
     render(<App />);
 
-    expect(await within(primaryNav()).findByRole('button', { name: /^profile$/i })).toHaveAttribute(
-      'aria-current',
-      'page'
-    );
-    expect(within(primaryNav()).getByRole('button', { name: /^teams$/i })).toBeInTheDocument();
-    expect(within(primaryNav()).getByRole('button', { name: /^sign out/i })).toBeInTheDocument();
+    expect(await within(primaryNav()).findByRole('button', { name: /^my teams$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^open teams$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^find teammates$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^requests$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /browse events/i })).not.toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /^chat$/i })).not.toBeInTheDocument();
     expect(within(primaryNav()).queryByRole('button', { name: /^sign in$/i })).not.toBeInTheDocument();
     expect(within(primaryNav()).queryByRole('button', { name: /create account/i })).not.toBeInTheDocument();
+
+    fireEvent.click(within(primaryNav()).getByRole('button', { name: /sahil gupta/i }));
+    expect(await screen.findByRole('menuitem', { name: /^profile$/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /^sign out$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^open chat$/i })).toBeInTheDocument();
     expect(screen.queryByTestId('header-verification-pending')).not.toBeInTheDocument();
   });
 
-  it('PART navbar hides Moderation and Accounts (#359)', async () => {
+  it('PART navbar hides Moderation and Accounts (#359 / #358)', async () => {
     window.history.pushState({}, '', '/?view=landing');
-    mockSignedInUser({ mfaComplete: true, role: 'PART' });
+    mockSignedInUser({ mfaComplete: true, role: 'PART', displayName: 'Sahil Gupta' });
 
     render(<App />);
 
-    expect(await within(primaryNav()).findByRole('button', { name: /^teams$/i })).toBeInTheDocument();
-    expect(within(primaryNav()).getByRole('button', { name: /^chat$/i })).toBeInTheDocument();
-    expect(within(primaryNav()).getByRole('button', { name: /^profile$/i })).toBeInTheDocument();
+    expect(await within(primaryNav()).findByRole('button', { name: /^my teams$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /^admin/i })).not.toBeInTheDocument();
     expect(within(primaryNav()).queryByRole('button', { name: /^moderation$/i })).not.toBeInTheDocument();
     expect(within(primaryNav()).queryByRole('button', { name: /^accounts$/i })).not.toBeInTheDocument();
   });
 
-  it('ADMIN navbar shows Moderation and Accounts (#359)', async () => {
+  it('ADMIN navbar exposes Moderation and Accounts under Admin menu (#359 / #358)', async () => {
     window.history.pushState({}, '', '/?view=landing');
     mockSignedInUser({ mfaComplete: true, role: 'ADMIN', displayName: 'Alex Admin' });
 
     render(<App />);
 
-    expect(await within(primaryNav()).findByRole('button', { name: /^moderation$/i })).toBeInTheDocument();
-    expect(within(primaryNav()).getByRole('button', { name: /^accounts$/i })).toBeInTheDocument();
-    expect(within(primaryNav()).getByRole('button', { name: /^teams$/i })).toBeInTheDocument();
-    expect(within(primaryNav()).getByRole('button', { name: /^sign out/i })).toBeInTheDocument();
+    expect(await within(primaryNav()).findByRole('button', { name: /^admin/i })).toBeInTheDocument();
+    fireEvent.click(within(primaryNav()).getByRole('button', { name: /^admin/i }));
+    expect(await screen.findByRole('menuitem', { name: /^moderation$/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /^accounts$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^my teams$/i })).toBeInTheDocument();
   });
 
-  it('PART mobile menu also hides Moderation and Accounts (#359)', async () => {
+  it('PART mobile menu also hides Moderation and Accounts (#359 / #358)', async () => {
     window.history.pushState({}, '', '/?view=landing');
     mockSignedInUser({ mfaComplete: true, role: 'PART' });
 
     render(<App />);
 
-    expect(await within(primaryNav()).findByRole('button', { name: /^teams$/i })).toBeInTheDocument();
+    expect(await within(primaryNav()).findByRole('button', { name: /^my teams$/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /open menu/i }));
 
     const mobile = screen.getByRole('region', { name: /mobile navigation/i });
-    expect(within(mobile).getByRole('button', { name: /^teams$/i })).toBeInTheDocument();
+    expect(within(mobile).getByRole('button', { name: /^my teams$/i })).toBeInTheDocument();
+    expect(within(mobile).getByRole('button', { name: /^requests$/i })).toBeInTheDocument();
     expect(within(mobile).queryByRole('button', { name: /^moderation$/i })).not.toBeInTheDocument();
     expect(within(mobile).queryByRole('button', { name: /^accounts$/i })).not.toBeInTheDocument();
   });
 
-  it('renders Teams button with active state in primary nav when viewing team with MFA session', async () => {
+  it('renders My teams button with active state in primary nav when viewing team with MFA session', async () => {
     window.history.pushState(
       {},
       '',
       '/?view=team&eventId=123e4567-e89b-12d3-a456-426614174000'
     );
-    mockSignedInUser({ mfaComplete: true });
+    mockSignedInUser({ mfaComplete: true, displayName: 'Sahil Gupta' });
 
     render(<App />);
 
-    expect(await within(primaryNav()).findByRole('button', { name: /^profile$/i })).toBeInTheDocument();
-    expect(within(primaryNav()).getByRole('button', { name: /^teams$/i })).toHaveAttribute(
+    expect(await within(primaryNav()).findByRole('button', { name: /sahil gupta/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^my teams$/i })).toHaveAttribute(
       'aria-current',
       'page'
     );
-    expect(within(primaryNav()).getByRole('button', { name: /^sign out/i })).toBeInTheDocument();
     expect(within(primaryNav()).queryByRole('button', { name: /^sign in$/i })).not.toBeInTheDocument();
   });
 
@@ -459,7 +464,8 @@ describe('App Component (View Routing and Integration)', () => {
       tokenListener?.(mockUser);
     });
 
-    expect(await within(primaryNav()).findByRole('button', { name: /^profile$/i })).toBeInTheDocument();
+    expect(await within(primaryNav()).findByRole('button', { name: /sahil gupta/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^my teams$/i })).toBeInTheDocument();
     expect(screen.queryByTestId('header-verification-pending')).not.toBeInTheDocument();
   });
 
@@ -518,13 +524,14 @@ describe('App Component (View Routing and Integration)', () => {
     expect(screen.getByRole('searchbox', { name: /search hackathons/i })).toBeInTheDocument();
     expect(screen.getByText(/no events match your criteria/i)).toBeInTheDocument();
 
-    // Clicking Profile in header navigates to account view (SignedInPanel)
-    fireEvent.click(within(primaryNav()).getByRole('button', { name: /^profile$/i }));
+    // Account menu → Profile navigates to account view (SignedInPanel)
+    fireEvent.click(within(primaryNav()).getByRole('button', { name: /brian/i }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^profile$/i }));
     expect(await screen.findByRole('heading', { level: 3, name: /you are signed in/i })).toBeInTheDocument();
     expect(screen.getByText(/manage technical profile/i)).toBeInTheDocument();
 
-    // Clicking Teams in header navigates to MyTeamsPage view
-    fireEvent.click(within(primaryNav()).getByRole('button', { name: /^teams$/i }));
+    // Clicking My teams in header navigates to MyTeamsPage view
+    fireEvent.click(within(primaryNav()).getByRole('button', { name: /^my teams$/i }));
     expect(await screen.findByRole('heading', { level: 1, name: /my teams/i })).toBeInTheDocument();
     const createTeamBtns = screen.getAllByRole('button', { name: /create a team/i });
     expect(createTeamBtns.length).toBeGreaterThan(0);

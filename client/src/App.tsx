@@ -18,8 +18,7 @@ import { CreateTeamPage } from './components/teams/CreateTeamPage';
 import { LookingForTeamPage } from './components/LookingForTeamPage';
 import { OpenTeamsBoard } from './components/teams/OpenTeamsBoard';
 import { ApplicationFormPanel } from './components/teams/ApplicationFormPanel';
-import { MyApplicationsPanel } from './components/teams/MyApplicationsPanel';
-import { MyInvitationsPanel } from './components/teams/MyInvitationsPanel';
+import { RequestsPage, type RequestsTab } from './components/RequestsPage';
 import { ModerationSafetyPage } from './components/moderation/ModerationSafetyPage';
 import { AccountEnforcementPage } from './components/accounts/AccountEnforcementPage';
 import { ChatPage } from './components/chat/ChatPage';
@@ -39,11 +38,17 @@ type View =
   | 'create-team'
   | 'looking'
   | 'browse-teams'
-  | 'applications'
-  | 'invitations'
+  | 'requests'
   | 'moderation'
   | 'accounts'
   | 'chat';
+
+const getInitialRequestsTab = (): RequestsTab => {
+  if (typeof window === 'undefined') return 'applications';
+  const view = new URLSearchParams(window.location.search).get('view');
+  if (view === 'invitations' || view === 'my-invitations') return 'invitations';
+  return 'applications';
+};
 
 const getInitialView = (): View => {
   if (typeof window === 'undefined') return 'landing';
@@ -81,11 +86,14 @@ const getInitialView = (): View => {
   if (view === 'browse-teams' || view === 'open-teams') {
     return 'browse-teams';
   }
-  if (view === 'applications' || view === 'my-applications') {
-    return 'applications';
-  }
-  if (view === 'invitations' || view === 'my-invitations') {
-    return 'invitations';
+  if (
+    view === 'requests' ||
+    view === 'applications' ||
+    view === 'my-applications' ||
+    view === 'invitations' ||
+    view === 'my-invitations'
+  ) {
+    return 'requests';
   }
   if (view === 'moderation' || view === 'safety-queue') {
     return 'moderation';
@@ -98,6 +106,13 @@ const getInitialView = (): View => {
   }
   return 'landing';
 };
+
+const navLinkClass = (active: boolean) =>
+  `text-sm font-medium rounded px-2 py-1 whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
+    active
+      ? 'text-forest-900 font-semibold ring-1 ring-forest'
+      : 'text-ink-muted hover:text-forest-800'
+  }`;
 
 
 export function App(): React.JSX.Element {
@@ -119,6 +134,9 @@ export function App(): React.JSX.Element {
   const [signingOut, setSigningOut] = useState<boolean>(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [otpChallenge, setOtpChallenge] = useState<OtpChallenge | null>(null);
+  const [requestsTab, setRequestsTab] = useState<RequestsTab>(getInitialRequestsTab);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -153,48 +171,54 @@ export function App(): React.JSX.Element {
     };
   }, []);
 
+  const closeMenus = () => {
+    setIsMobileMenuOpen(false);
+    setAccountMenuOpen(false);
+    setAdminMenuOpen(false);
+  };
+
   const goToLanding = () => {
     setStatusNotice(null);
-    setIsMobileMenuOpen(false);
+    closeMenus();
     setCurrentView('landing');
   };
 
   const goToRegister = () => {
     setStatusNotice(null);
-    setIsMobileMenuOpen(false);
+    closeMenus();
     setCurrentView('register');
   };
 
   const goToLogin = () => {
     setStatusNotice(null);
-    setIsMobileMenuOpen(false);
+    closeMenus();
     setCurrentView('login');
   };
 
   const goToAccount = () => {
     setStatusNotice(null);
-    setIsMobileMenuOpen(false);
+    closeMenus();
     setCurrentView('account');
   };
 
   const goToTeam = () => {
     setStatusNotice(null);
     setTeamEventId('');
-    setIsMobileMenuOpen(false);
+    closeMenus();
     setCurrentView('team');
   };
 
   const handleSelectEvent = (eventId: string) => {
     setTeamEventId(eventId);
     setStatusNotice(null);
-    setIsMobileMenuOpen(false);
+    closeMenus();
     setCurrentView('team');
   };
 
   const handleHeaderSignOut = async () => {
     if (signingOut) return;
     setSigningOut(true);
-    setIsMobileMenuOpen(false);
+    closeMenus();
     try {
       await logout(auth.currentUser);
       setStatusNotice('You have been signed out.');
@@ -208,53 +232,62 @@ export function App(): React.JSX.Element {
 
   const goToCreateTeam = () => {
     setStatusNotice(null);
-    setIsMobileMenuOpen(false);
+    closeMenus();
     setCurrentView('create-team');
   };
 
   const goToLooking = () => {
     setStatusNotice(null);
-    setIsMobileMenuOpen(false);
+    closeMenus();
     setCurrentView('looking');
   };
 
   const goToBrowseTeams = () => {
     setStatusNotice(null);
-    setIsMobileMenuOpen(false);
+    closeMenus();
     setCurrentView('browse-teams');
   };
 
-  const goToApplications = () => {
+  const goToRequests = (tab: RequestsTab = 'applications') => {
     setStatusNotice(null);
     setApplyTarget(null);
+    setRequestsTab(tab);
+    setAccountMenuOpen(false);
+    setAdminMenuOpen(false);
     setIsMobileMenuOpen(false);
-    setCurrentView('applications');
-  };
-
-  const goToInvitations = () => {
-    setStatusNotice(null);
-    setApplyTarget(null);
-    setIsMobileMenuOpen(false);
-    setCurrentView('invitations');
+    setCurrentView('requests');
   };
 
   const goToModeration = () => {
     setStatusNotice(null);
-    setIsMobileMenuOpen(false);
+    closeMenus();
     setCurrentView('moderation');
   };
 
   const goToAccounts = () => {
     setStatusNotice(null);
-    setIsMobileMenuOpen(false);
+    closeMenus();
     setCurrentView('accounts');
   };
 
   const goToChat = () => {
     setStatusNotice(null);
-    setIsMobileMenuOpen(false);
+    closeMenus();
     setCurrentView('chat');
   };
+
+  useEffect(() => {
+    if (!accountMenuOpen && !adminMenuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      if (!target) return;
+      if (target.closest('[data-nav-menu-root="true"]')) return;
+      setAccountMenuOpen(false);
+      setAdminMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [accountMenuOpen, adminMenuOpen]);
 
   // #355 — full app chrome only after Firebase user + MFA claim; primary auth alone is not a session.
   const sessionReady = Boolean(currentUser) && mfaComplete === true;
@@ -298,33 +331,15 @@ export function App(): React.JSX.Element {
             </span>
           </button>
 
-          {/* Desktop Primary Nav */}
-          <nav className="hidden md:flex items-center gap-4 lg:gap-6" aria-label="Primary">
-            <button
-              type="button"
-              onClick={() => {
-                if (currentView !== 'landing') {
-                  setCurrentView('landing');
-                }
-                setTimeout(() => {
-                  document.getElementById('events-section')?.scrollIntoView({ behavior: 'smooth' });
-                }, 50);
-              }}
-              className="text-sm font-medium text-ink-muted hover:text-forest-800 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream"
-            >
-              Browse Events
-            </button>
+          {/* Desktop Primary Nav (#358) */}
+          <nav className="hidden md:flex items-center gap-2 lg:gap-3" aria-label="Primary">
             <button
               type="button"
               onClick={goToBrowseTeams}
               aria-current={currentView === 'browse-teams' ? 'page' : undefined}
-              className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
-                currentView === 'browse-teams'
-                  ? 'text-forest-900 font-semibold'
-                  : 'text-ink-muted hover:text-forest-800'
-              }`}
+              className={navLinkClass(currentView === 'browse-teams')}
             >
-              Browse Teams
+              Open teams
             </button>
 
             {sessionReady ? (
@@ -333,110 +348,107 @@ export function App(): React.JSX.Element {
                   type="button"
                   onClick={goToTeam}
                   aria-current={currentView === 'team' ? 'page' : undefined}
-                  className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
-                    currentView === 'team'
-                      ? 'text-forest-900 font-semibold'
-                      : 'text-ink-muted hover:text-forest-800'
-                  }`}
+                  className={navLinkClass(currentView === 'team')}
                 >
-                  Teams
+                  My teams
                 </button>
                 <button
                   type="button"
                   onClick={goToLooking}
                   aria-current={currentView === 'looking' ? 'page' : undefined}
-                  className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
-                    currentView === 'looking'
-                      ? 'text-forest-900 font-semibold'
-                      : 'text-ink-muted hover:text-forest-800'
-                  }`}
+                  className={navLinkClass(currentView === 'looking')}
                 >
-                  Looking for Team
+                  Find teammates
                 </button>
                 <button
                   type="button"
-                  onClick={goToChat}
-                  aria-current={currentView === 'chat' ? 'page' : undefined}
-                  className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
-                    currentView === 'chat'
-                      ? 'text-forest-900 font-semibold'
-                      : 'text-ink-muted hover:text-forest-800'
-                  }`}
+                  onClick={() => goToRequests('applications')}
+                  aria-current={currentView === 'requests' ? 'page' : undefined}
+                  className={navLinkClass(currentView === 'requests')}
                 >
-                  Chat
+                  Requests
                 </button>
-                <button
-                  type="button"
-                  onClick={goToApplications}
-                  aria-current={currentView === 'applications' ? 'page' : undefined}
-                  className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
-                    currentView === 'applications'
-                      ? 'text-forest-900 font-semibold'
-                      : 'text-ink-muted hover:text-forest-800'
-                  }`}
-                >
-                  Applications
-                </button>
-                <button
-                  type="button"
-                  onClick={goToInvitations}
-                  aria-current={currentView === 'invitations' ? 'page' : undefined}
-                  className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
-                    currentView === 'invitations'
-                      ? 'text-forest-900 font-semibold'
-                      : 'text-ink-muted hover:text-forest-800'
-                  }`}
-                >
-                  Invitations
-                </button>
+
                 {showAdminNav && (
-                  <>
+                  <div className="relative" data-nav-menu-root="true">
                     <button
                       type="button"
-                      onClick={goToModeration}
-                      aria-current={currentView === 'moderation' ? 'page' : undefined}
-                      className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
-                        currentView === 'moderation'
-                          ? 'text-forest-900 font-semibold'
-                          : 'text-ink-muted hover:text-forest-800'
-                      }`}
+                      onClick={() => {
+                        setAdminMenuOpen((open) => !open);
+                        setAccountMenuOpen(false);
+                      }}
+                      aria-expanded={adminMenuOpen}
+                      aria-haspopup="menu"
+                      className="text-sm font-semibold rounded-md px-3 py-2 border border-cream-300 text-ink hover:bg-cream-100 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream"
                     >
-                      Moderation
+                      Admin ▾
                     </button>
-                    <button
-                      type="button"
-                      onClick={goToAccounts}
-                      aria-current={currentView === 'accounts' ? 'page' : undefined}
-                      className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
-                        currentView === 'accounts'
-                          ? 'text-forest-900 font-semibold'
-                          : 'text-ink-muted hover:text-forest-800'
-                      }`}
-                    >
-                      Accounts
-                    </button>
-                  </>
+                    {adminMenuOpen && (
+                      <div
+                        role="menu"
+                        aria-label="Admin"
+                        className="absolute right-0 mt-2 w-44 rounded-lg border border-cream-200 bg-white shadow-sm p-1 z-50"
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={goToModeration}
+                          className="block w-full text-left px-3 py-2 text-sm rounded-md hover:bg-cream-50"
+                        >
+                          Moderation
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={goToAccounts}
+                          className="block w-full text-left px-3 py-2 text-sm rounded-md hover:bg-cream-50"
+                        >
+                          Accounts
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
-                <button
-                  type="button"
-                  onClick={goToAccount}
-                  aria-current={currentView === 'account' ? 'page' : undefined}
-                  className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
-                    currentView === 'account'
-                      ? 'text-forest-900 font-semibold'
-                      : 'text-ink-muted hover:text-forest-800'
-                  }`}
-                >
-                  Profile
-                </button>
-                <button
-                  type="button"
-                  onClick={handleHeaderSignOut}
-                  disabled={signingOut}
-                  className="text-sm font-semibold rounded-md px-3.5 py-2 border border-cream-300 text-ink hover:bg-cream-100 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream disabled:opacity-50"
-                >
-                  {signingOut ? 'Signing out...' : `Sign out (${participantIdentifier})`}
-                </button>
+
+                <div className="relative ml-1" data-nav-menu-root="true">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountMenuOpen((open) => !open);
+                      setAdminMenuOpen(false);
+                    }}
+                    aria-expanded={accountMenuOpen}
+                    aria-haspopup="menu"
+                    className="text-sm font-semibold rounded-md px-3.5 py-2 border border-cream-300 text-ink hover:bg-cream-100 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream"
+                  >
+                    {participantIdentifier} ▾
+                  </button>
+                  {accountMenuOpen && (
+                    <div
+                      role="menu"
+                      aria-label="Account"
+                      className="absolute right-0 mt-2 w-44 rounded-lg border border-cream-200 bg-white shadow-sm p-1 z-50"
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={goToAccount}
+                        className="block w-full text-left px-3 py-2 text-sm rounded-md hover:bg-cream-50"
+                      >
+                        Profile
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void handleHeaderSignOut()}
+                        disabled={signingOut}
+                        className="block w-full text-left px-3 py-2 text-sm rounded-md hover:bg-cream-50 disabled:opacity-50"
+                      >
+                        {signingOut ? 'Signing out...' : 'Sign out'}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </>
             ) : verificationPending ? (
               <>
@@ -450,7 +462,7 @@ export function App(): React.JSX.Element {
                   type="button"
                   onClick={() => {
                     setStatusNotice(null);
-                    setIsMobileMenuOpen(false);
+                    closeMenus();
                     setCurrentView('mfa');
                   }}
                   className="text-sm font-medium text-forest-800 hover:underline rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest"
@@ -459,7 +471,7 @@ export function App(): React.JSX.Element {
                 </button>
                 <button
                   type="button"
-                  onClick={handleHeaderSignOut}
+                  onClick={() => void handleHeaderSignOut()}
                   disabled={signingOut}
                   className="text-sm font-semibold rounded-md px-3.5 py-2 border border-cream-300 text-ink hover:bg-cream-100 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream disabled:opacity-50"
                 >
@@ -472,11 +484,7 @@ export function App(): React.JSX.Element {
                   type="button"
                   onClick={goToLogin}
                   aria-current={currentView === 'login' ? 'page' : undefined}
-                  className={`text-sm font-medium rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream ${
-                    currentView === 'login'
-                      ? 'text-forest-900 font-semibold'
-                      : 'text-ink-muted hover:text-forest-800'
-                  }`}
+                  className={navLinkClass(currentView === 'login')}
                 >
                   Sign in
                 </button>
@@ -538,22 +546,10 @@ export function App(): React.JSX.Element {
           >
             <button
               type="button"
-              onClick={() => {
-                goToLanding();
-                setTimeout(() => {
-                  document.getElementById('events-section')?.scrollIntoView({ behavior: 'smooth' });
-                }, 50);
-              }}
-              className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
-            >
-              Browse Events
-            </button>
-            <button
-              type="button"
               onClick={goToBrowseTeams}
               className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
             >
-              Browse Teams
+              Open teams
             </button>
             {sessionReady ? (
               <>
@@ -562,38 +558,27 @@ export function App(): React.JSX.Element {
                   onClick={goToTeam}
                   className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
                 >
-                  Teams
+                  My teams
                 </button>
                 <button
                   type="button"
                   onClick={goToLooking}
                   className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
                 >
-                  Looking for Team
+                  Find teammates
                 </button>
                 <button
                   type="button"
-                  onClick={goToChat}
+                  onClick={() => goToRequests('applications')}
                   className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
                 >
-                  Chat
-                </button>
-                <button
-                  type="button"
-                  onClick={goToApplications}
-                  className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
-                >
-                  Applications
-                </button>
-                <button
-                  type="button"
-                  onClick={goToInvitations}
-                  className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
-                >
-                  Invitations
+                  Requests
                 </button>
                 {showAdminNav && (
                   <>
+                    <p className="px-3 pt-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                      Admin
+                    </p>
                     <button
                       type="button"
                       onClick={goToModeration}
@@ -610,6 +595,9 @@ export function App(): React.JSX.Element {
                     </button>
                   </>
                 )}
+                <p className="px-3 pt-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  Account
+                </p>
                 <button
                   type="button"
                   onClick={goToAccount}
@@ -619,11 +607,11 @@ export function App(): React.JSX.Element {
                 </button>
                 <button
                   type="button"
-                  onClick={handleHeaderSignOut}
+                  onClick={() => void handleHeaderSignOut()}
                   disabled={signingOut}
                   className="block w-full text-left px-3 py-2 text-sm font-semibold text-forest-800 hover:bg-cream-100 rounded"
                 >
-                  {signingOut ? 'Signing out...' : `Sign out (${participantIdentifier})`}
+                  {signingOut ? 'Signing out...' : 'Sign out'}
                 </button>
               </>
             ) : verificationPending ? (
@@ -828,10 +816,10 @@ export function App(): React.JSX.Element {
               }}
             />
           </>
-        ) : currentView === 'applications' ? (
-          <section aria-labelledby="applications-heading">
-            <h2 id="applications-heading" className="sr-only">
-              My Applications
+        ) : currentView === 'requests' ? (
+          <section aria-labelledby="requests-view-heading">
+            <h2 id="requests-view-heading" className="sr-only">
+              Requests
             </h2>
             <MfaGate
               initialChallenge={otpChallenge}
@@ -842,31 +830,13 @@ export function App(): React.JSX.Element {
               }}
             >
               {() => (
-                <MyApplicationsPanel
-                  onStatusNotice={(notice) => setStatusNotice(notice)}
-                />
-              )}
-            </MfaGate>
-          </section>
-        ) : currentView === 'invitations' ? (
-          <section aria-labelledby="invitations-heading">
-            <h2 id="invitations-heading" className="sr-only">
-              My Invitations
-            </h2>
-            <MfaGate
-              initialChallenge={otpChallenge}
-              onNavigateToSignIn={() => {
-                setStatusNotice(null);
-                setOtpChallenge(null);
-                setCurrentView('login');
-              }}
-            >
-              {() => (
-                <MyInvitationsPanel
+                <RequestsPage
+                  activeTab={requestsTab}
+                  onTabChange={setRequestsTab}
                   onStatusNotice={(notice) => setStatusNotice(notice)}
                   onViewRoster={(eventId) => {
                     setStatusNotice(null);
-                    setIsMobileMenuOpen(false);
+                    closeMenus();
                     setTeamEventId(eventId);
                     setCurrentView('team');
                   }}
@@ -1083,6 +1053,35 @@ export function App(): React.JSX.Element {
           <p>HackMatch</p>
         </div>
       </footer>
+
+      {/* #358 — Chat as floating action (not in primary navbar) */}
+      {sessionReady && (
+        <button
+          type="button"
+          onClick={goToChat}
+          aria-label="Open chat"
+          aria-current={currentView === 'chat' ? 'page' : undefined}
+          className={`fixed bottom-5 left-5 z-50 inline-flex h-14 w-14 items-center justify-center rounded-full shadow-lg focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 ${
+            currentView === 'chat'
+              ? 'bg-forest-800 text-white'
+              : 'bg-forest text-white hover:bg-forest-800'
+          }`}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-6 w-6"
+            aria-hidden="true"
+          >
+            <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }
