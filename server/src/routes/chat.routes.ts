@@ -99,7 +99,8 @@ chatRouter.get(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     res.setHeader('Cache-Control', 'no-store');
     try {
-      const messages = await listChannelMessages(req.params.channelId);
+      const channelId = typeof req.params.channelId === 'string' ? req.params.channelId : req.params.channelId[0];
+      const messages = await listChannelMessages(channelId);
       res.status(200).json(buildChatSuccessPayload({ status: 'ok', messages }));
     } catch (err) {
       handleChatError(err, res, next);
@@ -120,8 +121,9 @@ chatRouter.post(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     res.setHeader('Cache-Control', 'no-store');
     try {
+      const channelId = typeof req.params.channelId === 'string' ? req.params.channelId : req.params.channelId[0];
       const message = await sendChannelMessage({
-        channelId: req.params.channelId,
+        channelId,
         authorId: req.participant!.id,
         body: req.body.body,
       });

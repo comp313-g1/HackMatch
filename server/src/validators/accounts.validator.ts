@@ -125,7 +125,7 @@ export const validateAccountIdParam: RequestHandler = (
   next: NextFunction
 ): void => {
   const accountId = req.params.accountId;
-  if (!accountId || !UUID_REGEX.test(accountId)) {
+  if (!accountId || typeof accountId !== 'string' || !UUID_REGEX.test(accountId)) {
     res.setHeader('Cache-Control', 'no-store');
     res.status(400).json({
       error: 'Validation failed.',

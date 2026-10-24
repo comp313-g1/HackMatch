@@ -191,7 +191,7 @@ export const validateChatChannelIdParam: RequestHandler = (
   next: NextFunction
 ): void => {
   const channelId = req.params.channelId;
-  if (!channelId || !UUID_REGEX.test(channelId)) {
+  if (!channelId || typeof channelId !== 'string' || !UUID_REGEX.test(channelId)) {
     res.setHeader('Cache-Control', 'no-store');
     res.status(400).json({
       error: 'Validation failed.',

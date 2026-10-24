@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type MockInstance } from 'vitest';
 import request from 'supertest';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { app } from '../app.js';
@@ -138,10 +138,10 @@ describe('requireModerationAdmin composition (#240 / US-026 AC 5)', () => {
 });
 
 describe('Protect moderation routes with ADMIN RBAC (US-026 / #240 / FR-082)', () => {
-  let listSpy: ReturnType<typeof vi.spyOn>;
-  let findCaseSpy: ReturnType<typeof vi.spyOn>;
-  let createSpy: ReturnType<typeof vi.spyOn>;
-  let findTeamSpy: ReturnType<typeof vi.spyOn>;
+  let listSpy: MockInstance<typeof moderationRepository.listNewestFirst>;
+  let findCaseSpy: MockInstance<typeof moderationRepository.findById>;
+  let createSpy: MockInstance<typeof moderationRepository.createCase>;
+  let findTeamSpy: MockInstance<typeof teamsRepository.findTeamById>;
 
   beforeEach(() => {
     vi.restoreAllMocks();
