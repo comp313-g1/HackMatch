@@ -6,9 +6,9 @@ This document mirrors the authoritative Sprint 1 task-tracking workbook. Task na
 
 | Metric | Value |
 |---|---:|
-| Task rows | 174 |
-| Estimated hours | 207.65 |
-| Actual hours recorded | 162.45 |
+| Task rows | 175 |
+| Estimated hours | 210.65 |
+| Actual hours recorded | 165.45 |
 | Reassigned tasks | 107 |
 | Tasks with variance explanations | 10 |
 | Unassigned tasks | 0 |
@@ -18,7 +18,7 @@ This document mirrors the authoritative Sprint 1 task-tracking workbook. Task na
 | Assignee | Task count | Estimated hours | Actual hours recorded |
 |---|---:|---:|---:|
 | Sahil | 94 | 68.35 | 28.88 |
-| Brian | 57 | 113.60 | 109.21 |
+| Brian | 58 | 116.60 | 112.21 |
 | Joel | 21 | 17.70 | 16.86 |
 | Edgar | 0 | 0.00 | 0.00 |
 | Mohmedjuber | 0 | 0.00 | 0.00 |
@@ -319,6 +319,7 @@ This document mirrors the authoritative Sprint 1 task-tracking workbook. Task na
 | Refactor landing page for event-free scope i.e. remove hackathon listings, dynamic stats, update search & How it works | Remove event/hackathon-listing UI from the landing page (copy, search-as-events, event empty state, event-oriented CTAs).<br>Make stats dynamic (open teams, available candidates / looking-for-team count, etc. — no fake “countries/events” unless we have real data).<br>Update How it works for the event-free flow (e.g. find open teams → join or create → find teammates / lock roster).<br>Change search to search team name and/or person (handle/display name) — not event name/location/edition. Keep sensible filters that still apply (e.g. role/goal if useful); drop Online/In-Person/Hybrid and Upcoming/Ongoing/Concluded if those are event-only.<br>Align hero CTAs with current nav labels (Open teams, My teams, Find teammates, Profile) — remove Browse Events. | Sahil | — | 0.50 | 0.22 | — |
 | Update Admin Technical Manual | — | Joel | — | 0.50 | 0.50 | — |
 | Update Task Disaggregation | — | Joel | — | 0.50 | 0.22 | — |
+| fix(deploy): resolve Render production build failure and configure Vercel cross-domain API proxy | Deploy the HackMatch backend Express service to Render and the React/Vite frontend to Vercel, fixing production build failures (status 2 / TS7016), establishing health check endpoints, and solving cross-origin SameSite=Strict session cookie delivery via Vercel reverse proxy rewrites. | Brian | — | 3.00 | 3.00 | — |
 
 ## User Story tracking summary
 
@@ -347,4 +348,4 @@ This document mirrors the authoritative Sprint 1 task-tracking workbook. Task na
 | [US-022](../02_user_stories/user_stories.md#us-022) | 9 | 7.50 | 2.83 | 0 |
 | [US-026](../02_user_stories/user_stories.md#us-026) | 8 | 7.00 | 6.51 | 0 |
 | [US-027](../02_user_stories/user_stories.md#us-027) | 10 | 9.00 | 1.00 | 0 |
-| [US-030](../02_user_stories/user_stories.md#us-030) | 21 | 20.00 | 16.32 | 0 |
+| [US-030](../02_user_stories/user_stories.md#us-030) | 22 | 23.00 | 19.32 | 0 |
