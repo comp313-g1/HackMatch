@@ -184,7 +184,7 @@ BEGIN
   SET is_looking = FALSE,
       updated_at = now()
   WHERE participant_id = v_req.participant_id
-    AND event_id = v_team.event_id
+    AND (event_id = v_team.event_id OR is_looking IS TRUE)
     AND is_looking IS TRUE;
   GET DIAGNOSTICS v_availability_count = ROW_COUNT;
 

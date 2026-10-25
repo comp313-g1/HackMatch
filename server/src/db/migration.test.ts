@@ -97,6 +97,13 @@ describe('0032_cancel_competing_requests_after_approval.sql cascade DDL (#191)',
     expect(sql).toMatch(/p_application\s*,[\s\S]*participant_id[\s\S]*event_id[\s\S]*team_id[\s\S]*vacancy_id[\s\S]*v_team_now_full/i);
     expect(sql).toMatch(/memberCount[\s\S]*>=\s*[\s\S]*maxTeamSize/i);
   });
+
+  it('idempotently defines cancel_competing_requests_on_placement so 0032 cannot fail with 42883 if 0026 was skipped', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+cancel_competing_requests_on_placement/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+cancel_competing_requests_on_placement\(UUID,\s*UUID,\s*UUID,\s*UUID,\s*UUID,\s*BOOLEAN\)\s+TO\s+service_role/i
+    );
+  });
 });
 
 describe('0033_decline_team_application.sql decline DDL (#192)', () => {
@@ -1526,6 +1533,13 @@ describe('0027_accept_team_invitation.sql Migration DDL (US-019 / #180)', () => 
     expect(expiryUpdate).toBeGreaterThan(-1);
     expect(expiryPayload).toBeGreaterThan(expiryUpdate);
     expect(sql).toMatch(/'expiresAt'\s*,\s*v_req\.expires_at/i);
+  });
+
+  it('idempotently defines cancel_competing_requests_on_placement so 0027 cannot fail with 42883 if 0026 was skipped', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+cancel_competing_requests_on_placement/i);
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+cancel_competing_requests_on_placement\(UUID,\s*UUID,\s*UUID,\s*UUID,\s*UUID,\s*BOOLEAN\)\s+TO\s+service_role/i
+    );
   });
 });
 
