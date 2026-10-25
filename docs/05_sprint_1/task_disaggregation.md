@@ -2,22 +2,24 @@
 
 This document mirrors the authoritative Sprint 1 task-tracking workbook. Task names, ownership, estimates, actual hours, reassignment history, descriptions, and variance explanations are reproduced from its `Task Tracking` sheet.
 
+**Note:** In the **Previous assignee** column, `—` means the task was **not reassigned** — the previous assignee and the current assignee are the same (ownership did not change during reassignment of tasks).
+
 ## Dashboard summary
 
 | Metric | Value |
 |---|---:|
-| Task rows | 175 |
-| Estimated hours | 210.65 |
-| Actual hours recorded | 165.45 |
+| Task rows | 177 |
+| Estimated hours | 211.65 |
+| Actual hours recorded | 166.08 |
 | Reassigned tasks | 107 |
-| Tasks with variance explanations | 10 |
+| Tasks with variance explanations | 11 |
 | Unassigned tasks | 0 |
 
 ### Current assignee summary
 
 | Assignee | Task count | Estimated hours | Actual hours recorded |
 |---|---:|---:|---:|
-| Sahil | 94 | 68.35 | 28.88 |
+| Sahil | 96 | 69.35 | 29.51 |
 | Brian | 58 | 116.60 | 112.21 |
 | Joel | 21 | 17.70 | 16.86 |
 | Edgar | 0 | 0.00 | 0.00 |
@@ -238,6 +240,7 @@ This document mirrors the authoritative Sprint 1 task-tracking workbook. Task na
 | Refactor US-019 invitation acceptance, auto-cancellation, and member leave transactions to platform-wide scope | Complete the task "Refactor US-019 invitation acceptance, auto-cancellation, and member leave transactions to platform-wide scope" for US-019. Update the transactional logic and services backing POST /api/invitations/:invitationId/respond and POST /api/teams/:teamId/leave so that they no longer gate on external event dates/statuses or scope availability and membership updates to team.event_id. Ensure that: (1) accepting a non-expired Pending invitation atomically verifies active account status, unlocked team state, open slot, team capacity (< 4), and no existing confirmed membership in the target team (team_id), returning HTTP 409 on concurrent conflicts, (2) acceptance fills the slot, creates the confirmed membership, sets the invitee's platform-wide Looking for Team status to false, cancels competing pending invitations/applications for that filled slot, and—if the team reaches 4 confirmed members—cancels all remaining pending invitations and applications for that team (team_id), (3) declining marks only that invitation Declined and alerts the Team Lead without changing LFT status, and (4) pre-lock non-owner leave reopens capacity and alerts the Team Lead without reviving canceled requests or requiring event_id availability rows. | Brian | — | 1.00 | 1.00 | — |
 | Remove eventId dependencies from US-019 invitation response, inbound list, and leave endpoints and React views | Complete the task "Remove eventId dependencies from US-019 invitation response, inbound list, and leave endpoints and React views" for US-019. Inspect and update the Express routes/controllers (GET /api/invitations/mine, POST /api/invitations/:invitationId/respond, POST /api/teams/:teamId/leave), client API helpers, and React inbound invitations view and non-owner Leave Team controls so they operate across all teams platform-wide without requiring eventId query parameters, payload fields, or props, while preserving team detail inspection, Accept/Decline actions, conflict error feedback, and pre-lock leave confirmation. | Brian | — | 1.00 | 1.00 | — |
 | Refactor US-019 invitation acceptance, auto-cancellation, and member leave transactions to platform-wide scope | Complete the task "Refactor US-019 invitation acceptance, auto-cancellation, and member leave transactions to platform-wide scope" for US-019. Update the transactional logic and services backing POST /api/invitations/:invitationId/respond and POST /api/teams/:teamId/leave so that they no longer gate on external event dates/statuses or scope availability and membership updates to team.event_id. Ensure that: (1) accepting a non-expired Pending invitation atomically verifies active account status, unlocked team state, open slot, team capacity (< 4), and no existing confirmed membership in the target team (team_id), returning HTTP 409 on concurrent conflicts, (2) acceptance fills the slot, creates the confirmed membership, sets the invitee's platform-wide Looking for Team status to false, cancels competing pending invitations/applications for that filled slot, and—if the team reaches 4 confirmed members—cancels all remaining pending invitations and applications for that team (team_id), (3) declining marks only that invitation Declined and alerts the Team Lead without changing LFT status, and (4) pre-lock non-owner leave reopens capacity and alerts the Team Lead without reviving canceled requests or requiring event_id availability rows. | Brian | — | 1.00 | 1.00 | — |
+| fix(database): resolve missing cancel_competing_requests_on_placement and align availability clearing during placement | Invitation accept (POST /api/invitations/:id/respond\|accept) and application approve (POST /api/applications/:id/approve) returned HTTP 500 / PostgreSQL 42883 because cancel_competing_requests_on_placement was missing on hosted Supabase. Applied skipped migrations (0021, 0024–0026, 0028, 0036, 0042), hardened 0027/0032 with idempotent function + service_role grants, updated 0031 approve path to clear platform-wide LFT (event_id = team.event_id OR is_looking IS TRUE), and added migration.test.ts regression coverage (US-019 / US-020; FR-056, FR-057, FR-061). | Sahil | — | 0.50 | 0.50 | — |
 
 ### [US-020](../02_user_stories/user_stories.md#us-020)
 
@@ -320,6 +323,7 @@ This document mirrors the authoritative Sprint 1 task-tracking workbook. Task na
 | Update Admin Technical Manual | — | Joel | — | 0.50 | 0.50 | — |
 | Update Task Disaggregation | — | Joel | — | 0.50 | 0.22 | — |
 | fix(deploy): resolve Render production build failure and configure Vercel cross-domain API proxy | Deploy the HackMatch backend Express service to Render and the React/Vite frontend to Vercel, fixing production build failures (status 2 / TS7016), establishing health check endpoints, and solving cross-origin SameSite=Strict session cookie delivery via Vercel reverse proxy rewrites. | Brian | — | 3.00 | 3.00 | — |
+| Fix the "Apply" button behaviour (#366) | The issue is after clicking on "Apply" the form opens at the top, giving a bad UI/UX experience. When Apply is clicked, the form should appear in place (viewport-centered dialog) so users stay in context. Convert ApplicationFormPanel into a dialog with backdrop, Escape/click-outside dismiss, focus restore, and Vitest coverage. | Sahil | — | 0.50 | 0.13 | Under estimate: reused existing ApplicationFormPanel/ApplicationForm; change was mainly modal shell + tests (#366). |
 
 ## User Story tracking summary
 
@@ -343,9 +347,9 @@ This document mirrors the authoritative Sprint 1 task-tracking workbook. Task na
 | [US-015](../02_user_stories/user_stories.md#us-015) | 11 | 11.50 | 7.89 | 0 |
 | [US-017](../02_user_stories/user_stories.md#us-017) | 11 | 15.00 | 7.65 | 0 |
 | [US-018](../02_user_stories/user_stories.md#us-018) | 13 | 8.20 | 5.29 | 0 |
-| [US-019](../02_user_stories/user_stories.md#us-019) | 11 | 8.50 | 4.88 | 0 |
+| [US-019](../02_user_stories/user_stories.md#us-019) | 12 | 9.00 | 5.38 | 0 |
 | [US-020](../02_user_stories/user_stories.md#us-020) | 8 | 2.50 | 1.79 | 0 |
 | [US-022](../02_user_stories/user_stories.md#us-022) | 9 | 7.50 | 2.83 | 0 |
 | [US-026](../02_user_stories/user_stories.md#us-026) | 8 | 7.00 | 6.51 | 0 |
 | [US-027](../02_user_stories/user_stories.md#us-027) | 10 | 9.00 | 1.00 | 0 |
-| [US-030](../02_user_stories/user_stories.md#us-030) | 22 | 23.00 | 19.32 | 0 |
+| [US-030](../02_user_stories/user_stories.md#us-030) | 23 | 23.50 | 19.45 | 0 |
