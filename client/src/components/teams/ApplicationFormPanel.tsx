@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { ApplicationForm } from './ApplicationForm';
 import {
   APPLICATION_MESSAGE_MAX_LENGTH,
@@ -21,17 +21,26 @@ export interface ApplicationFormPanelProps {
 /**
  * Stateful US-018 / #171 / #176 apply panel: optional 250-char message, loading/success/error,
  * draft retained on validation and API failures (NR-017).
+ *
+ * #366: rendered as a viewport-centered dialog so Apply stays in context (no jump to page top).
  */
 export function ApplicationFormPanel({
   target,
   onClose,
   onSuccess,
 }: ApplicationFormPanelProps): React.JSX.Element | null {
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const submittingRef = useRef(false);
   const [message, setMessage] = useState('');
   const [fieldErrors, setFieldErrors] = useState<{ message?: string; vacancyId?: string }>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    submittingRef.current = submitting;
+  }, [submitting]);
 
   useEffect(() => {
     setMessage('');
@@ -40,6 +49,32 @@ export function ApplicationFormPanel({
     setSuccessNotice(null);
     setSubmitting(false);
   }, [target?.teamId, target?.vacancyId, target?.slotId]);
+
+  useEffect(() => {
+    if (!target) return;
+
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const frame = window.requestAnimationFrame(() => {
+      dialogRef.current?.focus();
+    });
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !submittingRef.current) {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus?.();
+    };
+  }, [target, onClose]);
 
   if (!target) {
     return null;
@@ -110,18 +145,41 @@ export function ApplicationFormPanel({
   };
 
   return (
-    <div className="mb-6 max-w-lg mx-auto" data-testid="application-form-panel">
-      <ApplicationForm
-        target={target}
-        message={message}
-        fieldErrors={fieldErrors}
-        submitError={submitError}
-        successNotice={successNotice}
-        submitting={submitting}
-        onMessageChange={setMessage}
-        onSubmit={(e) => void handleSubmit(e)}
-        onCancel={onClose}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+      data-testid="application-form-panel"
+    >
+      <button
+        type="button"
+        aria-label="Dismiss apply form"
+        className="absolute inset-0 bg-ink/40 border-0 cursor-pointer"
+        onClick={() => {
+          if (!submitting) onClose();
+        }}
       />
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="relative z-10 w-full max-w-lg max-h-[min(90vh,40rem)] overflow-y-auto rounded-xl shadow-lg outline-none"
+      >
+        <span id={titleId} className="sr-only">
+          Apply to join {target.teamName}
+        </span>
+        <ApplicationForm
+          target={target}
+          message={message}
+          fieldErrors={fieldErrors}
+          submitError={submitError}
+          successNotice={successNotice}
+          submitting={submitting}
+          onMessageChange={setMessage}
+          onSubmit={(e) => void handleSubmit(e)}
+          onCancel={onClose}
+        />
+      </div>
     </div>
   );
 }
