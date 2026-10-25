@@ -132,7 +132,7 @@ describe('MyTeamsPage component (teams.html wireframe)', () => {
 
     // Team Card elements
     expect(screen.getByRole('heading', { level: 2, name: /deep root/i })).toBeInTheDocument();
-    expect(screen.getByText(/hackmatch · open/i)).toBeInTheDocument();
+    expect(screen.getByText(/project completion · open/i)).toBeInTheDocument();
     expect(screen.getByText(/1 member/i)).toBeInTheDocument();
     expect(
       screen.getByText(/building an accessible forest-trail planner with offline maps/i)

@@ -107,4 +107,24 @@ describe('Client Profile Validation (US-006 / #65)', () => {
     expect(res.errors.sharedContactHandle).toBeDefined();
     expect(res.payload).toBeUndefined();
   });
+
+  it('requires discovery fields when Looking for Team card mode is enabled (#360)', () => {
+    const res = validateProfileForm(
+      {
+        handle: '',
+        primaryRole: 'Backend',
+        institution: '',
+        skillsInput: '',
+        portfolioLinks: [{ url: '', label: '' }],
+        sharedContactHandle: '',
+      },
+      { requireDiscoveryFields: true }
+    );
+
+    expect(res.errors.handle).toBeDefined();
+    expect(res.errors.institution).toBeDefined();
+    expect(res.errors.skills).toBeDefined();
+    expect(res.errors.portfolioLinks).toBeDefined();
+    expect(res.payload).toBeUndefined();
+  });
 });

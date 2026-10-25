@@ -1,0 +1,63 @@
+---
+title: "HackMatch — US-006: Participant Profile Management — Profile Visibility and Contact Access Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":42,"rankSpacing":58,"padding":14}}}%%
+flowchart LR
+    subgraph AUDIENCES["Viewer category"]
+        direction TB
+        VISITOR["Unauthenticated Visitor"]:::warning
+        PART["Authenticated PART<br/>No shared confirmed team"]:::identity
+        TEAMMATE["Authenticated PART<br/>Current confirmed teammate"]:::team
+        OWNER["Profile owner"]:::identity
+        DENIED["Invalid auth, MFA, role,<br/>account, or target"]:::denied
+    end
+
+    PROJECTOR["Express profile authorization<br/>and server-side field projection"]:::decision
+    MEMBERSHIP[("team_memberships<br/>Shared team + Confirmed status")]:::team
+    ENDED["Leave, removal, or release<br/>changes status from Confirmed"]:::danger
+
+    subgraph PROJECTIONS["Implemented response projections"]
+        direction TB
+        VISITOROUT["Visitor preview<br/>Anonymous label, role, skill count<br/>Conflict: FR-014 denies participant cards"]:::danger
+        PARTOUT["PART view<br/>Name, handle, role, institution,<br/>skills and HTTPS portfolios"]:::identity
+        TEAMOUT["Teammate view<br/>PART fields plus shared contact<br/>and audience notice"]:::team
+        OWNEROUT["Owner view<br/>Permitted fields and shared contact<br/>Conflict: API returns participantId"]:::danger
+        DENIEDOUT["401, 403, or 404<br/>No profile projection"]:::denied
+    end
+
+    PRIVATE["Never projected<br/>Account email, Firebase UID,<br/>credentials, and auth metadata"]:::internal
+    REVOKED["Next request resolves as PART<br/>Shared contact access revoked"]:::success
+
+    VISITOR --> PROJECTOR
+    PART --> PROJECTOR
+    TEAMMATE --> PROJECTOR
+    OWNER --> PROJECTOR
+    DENIED --> PROJECTOR
+    MEMBERSHIP -->|"Classifies teammate"| PROJECTOR
+    ENDED --> MEMBERSHIP
+
+    PROJECTOR -->|"Visitor"| VISITOROUT
+    PROJECTOR -->|"Ordinary PART"| PARTOUT
+    PROJECTOR -->|"Confirmed teammate"| TEAMOUT
+    PROJECTOR -->|"Owner"| OWNEROUT
+    PROJECTOR -->|"Denied"| DENIEDOUT
+
+    ENDED --> REVOKED
+    REVOKED --> PARTOUT
+    VISITOROUT -.-> PRIVATE
+    PARTOUT -.-> PRIVATE
+    TEAMOUT -.-> PRIVATE
+    OWNEROUT -.-> PRIVATE
+
+    style AUDIENCES fill:#fafafa,stroke:#9ca3af,stroke-width:1px,color:#374151
+    style PROJECTIONS fill:#fafafa,stroke:#9ca3af,stroke-width:1px,color:#374151
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef team fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef warning fill:#fff7d6,stroke:#d4a72c,color:#3f3300,stroke-width:1.5px;
+    classDef danger fill:#ffe8ee,stroke:#b91c1c,color:#641c30,stroke-width:2px,stroke-dasharray:5 3;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px;
+

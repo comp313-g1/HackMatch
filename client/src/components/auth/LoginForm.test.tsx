@@ -224,7 +224,7 @@ describe('LoginForm', () => {
     expect(onNavigateToPasswordRecovery).toHaveBeenCalledWith('jane@example.com');
   });
 
-  it('keeps the email and shows retry feedback when OTP email delivery fails (FR-084)', async () => {
+  it('hands off to MFA when OTP email delivery fails after password auth (FR-084)', async () => {
     const user = { uid: 'u1', email: 'jane@example.com' };
     mockSignIn.mockResolvedValueOnce({ user } as UserCredential);
     mockRequestMfaChallenge.mockRejectedValueOnce(
@@ -233,14 +233,44 @@ describe('LoginForm', () => {
       })
     );
     const onPrimaryAuthSuccess = vi.fn();
-    render(<LoginForm onPrimaryAuthSuccess={onPrimaryAuthSuccess} />);
+    const onPrimaryAuthNeedsMfa = vi.fn();
+    render(
+      <LoginForm
+        onPrimaryAuthSuccess={onPrimaryAuthSuccess}
+        onPrimaryAuthNeedsMfa={onPrimaryAuthNeedsMfa}
+      />
+    );
 
     fillAndSubmit('jane@example.com', 'secret123');
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't send your verification code/i);
-    expect(screen.getByLabelText(/email address/i)).toHaveValue('jane@example.com');
+    await waitFor(() =>
+      expect(onPrimaryAuthNeedsMfa).toHaveBeenCalledWith({
+        user,
+        message: "We couldn't send your verification code. Please try again in a moment.",
+      })
+    );
     expect(onPrimaryAuthSuccess).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: /sign in/i })).toBeEnabled();
+  });
+
+  it('hands off to MFA when OTP is rate-limited after password auth (keeps header/body in sync)', async () => {
+    const user = { uid: 'u1', email: 'jane@example.com' };
+    mockSignIn.mockResolvedValueOnce({ user } as UserCredential);
+    mockRequestMfaChallenge.mockRejectedValueOnce(
+      Object.assign(new Error('Too many OTP requests. Please wait before requesting another code.'), {
+        code: 'RATE_LIMITED',
+      })
+    );
+    const onPrimaryAuthNeedsMfa = vi.fn();
+    render(<LoginForm onPrimaryAuthNeedsMfa={onPrimaryAuthNeedsMfa} />);
+
+    fillAndSubmit('jane@example.com', 'secret123');
+
+    await waitFor(() =>
+      expect(onPrimaryAuthNeedsMfa).toHaveBeenCalledWith({
+        user,
+        message: 'Too many OTP requests. Please wait before requesting another code.',
+      })
+    );
   });
 
   it('blocks a suspended account after Firebase accepts the password (US-003-T4)', async () => {

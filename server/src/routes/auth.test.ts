@@ -5,7 +5,12 @@ import { participantsRepository } from '../db/participants.repository.js';
 import { providerIdentitiesRepository } from '../db/provider_identities.repository.js';
 import { mfaRepository } from '../db/mfa.repository.js';
 import type { Participant, ProviderIdentity, MfaChallenge, MfaAttempt } from '../db/types.js';
-import { _resetRateLimiter } from '../utils/rateLimiter.js';
+import {
+  _resetRateLimiter,
+  rateLimiter,
+  COOLDOWN_MS,
+  MAX_REQUESTS_PER_WINDOW,
+} from '../utils/rateLimiter.js';
 import { _resetConsumedPasswordResetCodes } from '../utils/consumedResetCodes.js';
 import { _setMfaOtpEmailSender, _resetMfaOtpEmailSender } from '../controllers/auth.controller.js';
 import { hashOtp } from '../utils/otp.js';
@@ -2381,10 +2386,12 @@ describe('Auth Routes (POST /api/auth/oauth/sign-in)', () => {
       expect(mfaRepository.createChallenge).not.toHaveBeenCalled();
     });
 
-    it('enforces FR-081 rate limiting: second send within 60s returns HTTP 429 RATE_LIMITED with Retry-After', async () => {
+    it('enforces FR-081 rate limiting: second send within cooldown returns HTTP 429 RATE_LIMITED with Retry-After', async () => {
       mockVerifyIdToken.mockResolvedValue(mockGitHubDecodedToken);
       vi.spyOn(providerIdentitiesRepository, 'findByProviderUid').mockResolvedValue(mockProviderIdentity);
       vi.spyOn(participantsRepository, 'findById').mockResolvedValue(mockExistingLinkedParticipant);
+      // No reusable challenge → true throttle (distinct from #356 remount reuse).
+      vi.spyOn(mfaRepository, 'getLatestActiveChallenge').mockResolvedValue(null);
 
       // 1st request -> success
       const firstRes = await request(app)
@@ -2406,42 +2413,34 @@ describe('Auth Routes (POST /api/auth/oauth/sign-in)', () => {
       expect(secondRes.headers['retry-after']).toBeDefined();
     });
 
-    it('enforces FR-081 hourly rate limit: 6th send within rolling hour returns HTTP 429 RATE_LIMITED', async () => {
-      vi.useFakeTimers({ toFake: ['Date'] });
-      try {
-        mockVerifyIdToken.mockResolvedValue(mockGitHubDecodedToken);
-        vi.spyOn(providerIdentitiesRepository, 'findByProviderUid').mockResolvedValue(mockProviderIdentity);
-        vi.spyOn(participantsRepository, 'findById').mockResolvedValue(mockExistingLinkedParticipant);
+    it('enforces FR-081 hourly rate limit: overflow send within rolling hour returns HTTP 429 RATE_LIMITED', async () => {
+      mockVerifyIdToken.mockResolvedValue(mockGitHubDecodedToken);
+      vi.spyOn(providerIdentitiesRepository, 'findByProviderUid').mockResolvedValue(
+        mockProviderIdentity
+      );
+      vi.spyOn(participantsRepository, 'findById').mockResolvedValue(mockExistingLinkedParticipant);
+      vi.spyOn(mfaRepository, 'getLatestActiveChallenge').mockResolvedValue(null);
 
-        const baseTime = 1700000000000;
-        vi.setSystemTime(baseTime);
-
-        // Make 5 successful sends spaced 61 seconds apart (bypassing 60s cooldown, but counting toward 5/hr)
-        for (let i = 0; i < 5; i++) {
-          vi.setSystemTime(baseTime + i * 61000);
-          const res = await request(app)
-            .post('/api/auth/oauth/sign-in')
-            .send({ idToken: `token-${i}`, provider: 'github' });
-          expect(res.status).toBe(200);
-        }
-
-        // 6th attempt within the same rolling hour (5 minutes in)
-        vi.setSystemTime(baseTime + 5 * 61000);
-        const sixthRes = await request(app)
-          .post('/api/auth/oauth/sign-in')
-          .send({ idToken: 'token-6', provider: 'github' });
-
-        expect(sixthRes.status).toBe(429);
-        expect(sixthRes.body).toEqual({
-          error: 'Too many OTP requests. Please wait before requesting another code.',
-          code: 'RATE_LIMITED',
-          retryAfter: expect.any(Number),
-        });
-        expect(sixthRes.headers['retry-after']).toBeDefined();
-        expect(Number(sixthRes.headers['retry-after'])).toBeGreaterThan(0);
-      } finally {
-        vi.useRealTimers();
+      const email = mockExistingLinkedParticipant.email.toLowerCase();
+      const baseTime = Date.now();
+      const spacingMs = COOLDOWN_MS + 1000;
+      // Pre-fill the hourly quota (same limiter the OAuth OTP path uses).
+      for (let i = 0; i < MAX_REQUESTS_PER_WINDOW; i++) {
+        rateLimiter.recordSend('mfa_otp', email, baseTime + i * spacingMs);
       }
+
+      const overflowRes = await request(app)
+        .post('/api/auth/oauth/sign-in')
+        .send({ idToken: 'token-overflow', provider: 'github' });
+
+      expect(overflowRes.status).toBe(429);
+      expect(overflowRes.body).toEqual({
+        error: 'Too many OTP requests. Please wait before requesting another code.',
+        code: 'RATE_LIMITED',
+        retryAfter: expect.any(Number),
+      });
+      expect(overflowRes.headers['retry-after']).toBeDefined();
+      expect(Number(overflowRes.headers['retry-after'])).toBeGreaterThan(0);
     });
   });
 

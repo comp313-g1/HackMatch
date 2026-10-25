@@ -88,6 +88,18 @@ describe('ApplicationFormPanel (US-018 / #171)', () => {
     submitMock.mockReset();
   });
 
+  it('opens as a viewport dialog so Apply stays in context (#366)', () => {
+    const onClose = vi.fn();
+    render(<ApplicationFormPanel target={target} onClose={onClose} />);
+
+    const dialog = screen.getByRole('dialog', { name: /apply to join hackmatch innovators/i });
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByTestId('application-form-panel').className).toMatch(/fixed/);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects messages longer than 250 characters and keeps the draft (NR-017)', async () => {
     const long = 'a'.repeat(251);
     render(<ApplicationFormPanel target={target} onClose={() => {}} />);

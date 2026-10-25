@@ -128,6 +128,24 @@ export async function issueMfaOtpForParticipant(
     const normalizedEmail = participant.email.toLowerCase();
     const rateCheck = rateLimiter.checkLimit('mfa_otp', normalizedEmail);
     if (!rateCheck.allowed) {
+      // #356 — remounts / Strict Mode often re-hit /mfa/challenge without a user resend.
+      // If a code was already emailed and is still valid, hand that challenge back instead
+      // of a rate-limit error (no new email, no new send counted).
+      const existing = await mfaRepository.getLatestActiveChallenge(participant.id);
+      if (existing) {
+        const expiresInSeconds = Math.max(
+          1,
+          Math.ceil((new Date(existing.expires_at).getTime() - Date.now()) / 1000)
+        );
+        return {
+          ok: true,
+          challengeId: existing.id,
+          maskedEmail: maskEmail(normalizedEmail),
+          expiresInSeconds,
+          message:
+            'A verification code was already sent. Enter it below, or wait a moment before requesting a new one.',
+        };
+      }
       const retryAfterSeconds = rateCheck.retryAfterSeconds ?? 60;
       return {
         ok: false,

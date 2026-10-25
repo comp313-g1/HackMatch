@@ -1,0 +1,5 @@
+{
+  "invitations": [
+    { "sender": "Avery", "team": "Civic Signal", "recipient": "Blake", "targetRole": "Backend", "expectedStatus": "Pending", "expiresAfterHours": 48 }
+  ]
+}

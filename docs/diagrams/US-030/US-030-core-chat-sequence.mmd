@@ -1,0 +1,66 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#f3f4f6","noteBorderColor":"#6b7280","noteTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":28,"diagramMarginY":12,"actorMargin":32,"width":170,"height":58,"boxMargin":8,"messageMargin":18,"noteMargin":8}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-030: Core Chat MVP — Sequence Diagram (Planned)
+    actor PART
+    participant ReactChatUI
+    participant AuthGuards
+    participant ExpressAPI
+    participant PostgreSQL
+
+    PART->>ReactChatUI: Open Chat
+    ReactChatUI->>AuthGuards: Request protected chat access
+    AuthGuards->>AuthGuards: Verify token, PART role, verification, and active account
+    alt Visitor, non-PART, unverified, or suspended
+        AuthGuards-->>ReactChatUI: Deny access without chat data
+        ReactChatUI-->>PART: Show gated or error state
+    else Verified active PART
+        AuthGuards->>ExpressAPI: Request channel list
+        ExpressAPI->>PostgreSQL: Query channels in stable order
+        PostgreSQL-->>ExpressAPI: Channel rows or empty result
+        ExpressAPI-->>ReactChatUI: Safe channel projection
+        ReactChatUI-->>PART: Show loading, then channel list or empty state
+    end
+
+    PART->>ReactChatUI: Submit title and description
+    ReactChatUI->>ExpressAPI: Submit channel draft
+    ExpressAPI->>ExpressAPI: Validate nonblank title and description
+    alt Invalid channel input
+        ExpressAPI-->>ReactChatUI: Validation error and retained channel draft
+    else Valid channel input
+        ExpressAPI->>PostgreSQL: Persist channel and creator
+        alt Channel persistence fails
+            PostgreSQL-->>ExpressAPI: Storage failure
+            ExpressAPI-->>ReactChatUI: Error and retained channel draft
+        else Channel persists
+            PostgreSQL-->>ExpressAPI: Created channel
+            ExpressAPI-->>ReactChatUI: Safe created-channel result
+        end
+    end
+
+    PART->>ReactChatUI: Open authorized channel
+    ReactChatUI->>ExpressAPI: Request channel messages
+    ExpressAPI->>ExpressAPI: Enforce authorized PART / channel-member rule
+    ExpressAPI->>PostgreSQL: Query channel messages and handles
+    PostgreSQL-->>ExpressAPI: Message rows or empty result
+    ExpressAPI-->>ReactChatUI: Handle, UTC time, and content only
+    ReactChatUI-->>PART: Show loading, then messages or empty state
+
+    PART->>ReactChatUI: Submit message
+    ReactChatUI->>ExpressAPI: Submit composer draft
+    ExpressAPI->>ExpressAPI: Validate nonblank message body
+    alt Invalid message body
+        ExpressAPI-->>ReactChatUI: Validation error and retained composer draft
+    else Valid message body
+        ExpressAPI->>PostgreSQL: Persist channel, author, body, and UTC time
+        alt Message persistence fails
+            PostgreSQL-->>ExpressAPI: Storage failure
+            ExpressAPI-->>ReactChatUI: Send error and retained composer draft
+        else Message persists
+            PostgreSQL-->>ExpressAPI: Created message
+            ExpressAPI-->>ReactChatUI: Safe message, append and clear draft
+        end
+    end
+
+    Note over ExpressAPI,PostgreSQL: Planned safe projections exclude account email, password data, OTP codes, and OTP hashes. No chat endpoint paths or channel-membership persistence mechanism exist in the repository yet.
+

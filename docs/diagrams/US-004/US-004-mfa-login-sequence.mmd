@@ -1,0 +1,75 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#fff7d6","noteBorderColor":"#d4a72c","noteTextColor":"#3f3300","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":40,"width":170,"height":65,"boxMargin":10,"messageMargin":28,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-004: Email-Based Login Two-Factor Authentication — MFA Login Sequence
+    actor User
+    participant UI as React Login + OTP UI
+    participant Firebase as Firebase Authentication
+    participant API as Express Auth API
+    participant DB as Supabase PostgreSQL
+    participant Mail as Email Delivery
+
+    User->>UI: Complete password or Google/GitHub primary sign-in
+    UI->>Firebase: Authenticate primary credential
+    Firebase-->>UI: Verified pre-MFA identity and ID token
+    alt Password primary authentication
+        UI->>API: POST /api/auth/mfa/challenge with Bearer token
+    else OAuth primary authentication
+        UI->>API: POST /api/auth/oauth/sign-in with provider ID token
+    end
+    API->>Firebase: Verify token, email, provider, and revocation as applicable
+    API->>DB: Load active participant and recent account attempts
+    alt Suspended, unverified, locked, or unauthorized
+        API-->>UI: Explicit 401/403/423, no challenge/session
+    else Eligible for challenge
+        API->>API: Enforce one send per 60 seconds and five per hour
+        API->>API: Generate cryptographically random 6-digit OTP
+        API->>DB: Invalidate pending challenges
+        API->>DB: INSERT hash verifier with expires_at = now + 10 minutes
+        API->>Mail: Send raw OTP to verified email
+        alt Delivery fails
+            Mail--xAPI: Delivery error
+            API->>DB: Invalidate pending challenge
+            API-->>UI: 502 retryable failure, no session
+        else Delivery succeeds
+            Mail-->>User: Email containing one-time code
+            API-->>UI: Challenge ID, masked email, 600-second lifetime
+            UI-->>User: Show six-digit input and countdown, no protected access
+        end
+    end
+
+    opt User requests resend
+        UI->>API: POST /api/auth/mfa/challenge
+        API->>DB: Preserve failures, invalidate predecessor, create new challenge
+        API-->>UI: New challenge or 429 rate-limit guidance
+    end
+
+    User->>UI: Submit six-digit code
+    UI->>API: POST /api/auth/mfa/verify<br/>{challengeId, code}
+    API->>DB: Load participant-bound challenge and account attempts
+    alt Missing, invalidated, consumed, or time >= expires_at
+        API-->>UI: Explicit invalid/expired/consumed response
+    else Challenge is current
+        API->>DB: Atomic compare-and-set consume using challenge ID and OTP hash
+        alt Code is incorrect
+            DB-->>API: No row consumed
+            API->>DB: INSERT failed mfa_attempt
+            alt This is the fifth consecutive failure
+                API->>DB: Invalidate outstanding challenges
+                API-->>UI: 423 locked for 15 minutes
+            else Fewer than five failures
+                API-->>UI: Incorrect-code response, remain pre-MFA
+            end
+        else Code matches and one consume wins
+            API->>DB: INSERT successful mfa_attempt
+            API->>Firebase: Set mfa_auth_time = current auth_time
+            API-->>UI: 200 verified
+            UI->>Firebase: Force-refresh ID token
+            UI->>API: Protected request with current MFA claim
+            API-->>UI: Authorized only if token, active account, MFA, and role pass
+            UI-->>User: Render protected function
+        end
+    end
+
+    Note over UI,DB: Current discrepancy: the React challenge/code path does not compare the token auth_time<br/>with the prior lock end after lock expiry, although the alternate send/otp path does.
+

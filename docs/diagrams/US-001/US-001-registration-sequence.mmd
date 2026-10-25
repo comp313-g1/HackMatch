@@ -1,0 +1,46 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#fff7d6","noteBorderColor":"#d4a72c","noteTextColor":"#3f3300","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":55,"width":190,"height":65,"boxMargin":10,"messageMargin":32,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-001: Participant Registration and Email Verification — Registration Sequence
+    actor Visitor
+    participant UI as React Registration UI
+    participant API as Express Auth API
+    participant Firebase as Firebase Authentication
+    participant DB as Supabase PostgreSQL
+
+    Visitor->>UI: Submit full name, email, and password
+    UI->>UI: Validate required fields, email, and password policy
+    alt Client validation fails
+        UI-->>Visitor: Field errors, preserving entered values
+    else Client validation passes
+        UI->>API: POST /api/auth/register
+        API->>API: Validate and whitelist payload
+        alt Invalid input or privilege escalation
+            API-->>UI: 400 field errors or 403 forbidden
+            UI-->>Visitor: Show errors, preserving entered values
+        else Valid public PART registration
+            API->>Firebase: createUser(email, password, emailVerified=false)
+            alt Firebase rejects email or credentials
+                Firebase-->>API: Duplicate email or validation error
+                API-->>UI: 409 conflict or 400 validation response
+            else Firebase user created
+                API->>DB: INSERT participants(role=PART, is_verified=false)
+                alt Database insert fails
+                    API->>Firebase: deleteUser(uid) as compensating rollback
+                    API-->>UI: 409 conflict or safe 500 response
+                else Participant persisted
+                    API->>Firebase: Dispatch Firebase verification email
+                    alt Email dispatch fails
+                        Firebase--xAPI: Delivery or configuration failure
+                        API-->>UI: 201, verificationEmailSent=false, no session
+                        UI-->>Visitor: Account remains unverified, offer replacement link
+                    else Email dispatched
+                        API-->>UI: 201, verificationEmailSent=true, no session
+                        Firebase-->>Visitor: Verification email with action link
+                    end
+                end
+            end
+        end
+    end
+
+    Note over Visitor,DB: Registration never issues an authenticated session. Sign-in and US-004 MFA are still required.

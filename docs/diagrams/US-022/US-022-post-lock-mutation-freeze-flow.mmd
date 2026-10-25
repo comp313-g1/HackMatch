@@ -1,0 +1,50 @@
+---
+title: "HackMatch — US-022: Confirm and Lock a Team Roster — Post-Lock Mutation Freeze"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":48,"rankSpacing":66,"padding":14}}}%%
+flowchart TD
+    OPEN(["Active unlocked team<br/>Target rule: 2–4 confirmed members"]):::team
+    OWNER{"Authenticated owner<br/>requests lock?"}:::decision
+    DENY["Deny non-owner<br/>401 / 403 / 404<br/>No mutation"]:::denied
+    CHECK{"Atomic current-state<br/>revalidation passes?"}:::decision
+    LEGACY["Current implementation also checks<br/>Internal Shadow Event lifecycle and bounds<br/>plus one membership per event"]:::internal
+    CONFLICT["409 conflict<br/>Under / over size, stale state,<br/>already locked, or non-mutable<br/>No partial writes"]:::danger
+    COMMIT["Atomic lock commit<br/>recruitment_status = Locked<br/>server locked_at recorded"]:::success
+    CANCEL["Cancel every Pending request<br/>for the target team<br/>Alert affected participants and members"]:::team
+    LOCKED(["Locked roster<br/>Irreversible in current story<br/>Members see state and timestamp"]):::success
+    ATTEMPT{"Later action?"}:::decision
+    RECRUIT["Issue invitation or application<br/>Accept invitation or approve application"]:::team
+    LEAVE["Member leave"]:::identity
+    OWNER_MUTATION["Remove member<br/>Add / edit / remove vacancy<br/>Edit listing or disband team"]:::team
+    REPEAT["Lock again"]:::team
+    REJECT["Reject at database boundary<br/>TEAM_NOT_MUTABLE or ALREADY_LOCKED<br/>Roster and vacancies unchanged"]:::denied
+    UI["React also disables controls<br/>and displays Locked timestamp"]:::identity
+
+    OPEN --> OWNER
+    OWNER -->|"No"| DENY
+    OWNER -->|"Yes"| CHECK
+    LEGACY -.-> CHECK
+    CHECK -->|"No"| CONFLICT
+    CHECK -->|"Yes"| COMMIT
+    COMMIT --> CANCEL
+    CANCEL --> LOCKED
+    LOCKED --> UI
+    LOCKED --> ATTEMPT
+    ATTEMPT --> RECRUIT
+    ATTEMPT --> LEAVE
+    ATTEMPT --> OWNER_MUTATION
+    ATTEMPT --> REPEAT
+    RECRUIT --> REJECT
+    LEAVE --> REJECT
+    OWNER_MUTATION --> REJECT
+    REPEAT --> REJECT
+    REJECT --> LOCKED
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef team fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef danger fill:#ffe8ee,stroke:#b91c1c,color:#641c30,stroke-width:2px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+

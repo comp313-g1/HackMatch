@@ -1,6 +1,6 @@
 # Screenshot placeholders
 
-Image paths referenced from `docs/user_manual.md` use filenames like:
+Image paths referenced from `docs/manuals/user_manual.md` use filenames like:
 
 `PLACEHOLDER-us-026-figure-26-1-queue.png`
 

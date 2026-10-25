@@ -30,27 +30,28 @@ describe('rateLimiter utility (FR-081)', () => {
     });
   });
 
-  describe('60-second cooldown enforcement (FR-081)', () => {
+  describe('cooldown enforcement (FR-081)', () => {
+    const cooldownSeconds = COOLDOWN_MS / 1000;
+
     it('blocks immediate subsequent requests with exact retryAfterSeconds', () => {
       recordRateLimitSend(purpose, email, baseTime);
 
-      // Check immediately at t = 0
       const immediateResult = checkRateLimit(purpose, email, baseTime);
       expect(immediateResult.allowed).toBe(false);
-      expect(immediateResult.retryAfterSeconds).toBe(60);
+      expect(immediateResult.retryAfterSeconds).toBe(cooldownSeconds);
 
-      // Check at t + 30.5 seconds
-      const midResult = checkRateLimit(purpose, email, baseTime + 30_500);
+      const midOffsetMs = Math.floor(COOLDOWN_MS / 2) + 500;
+      const midResult = checkRateLimit(purpose, email, baseTime + midOffsetMs);
       expect(midResult.allowed).toBe(false);
-      expect(midResult.retryAfterSeconds).toBe(30);
+      expect(midResult.retryAfterSeconds).toBe(Math.ceil((COOLDOWN_MS - midOffsetMs) / 1000));
 
-      // Check at t + 59.1 seconds (should ceil to 1 second)
-      const nearEndResult = checkRateLimit(purpose, email, baseTime + 59_100);
+      const nearEndOffsetMs = COOLDOWN_MS - 900;
+      const nearEndResult = checkRateLimit(purpose, email, baseTime + nearEndOffsetMs);
       expect(nearEndResult.allowed).toBe(false);
       expect(nearEndResult.retryAfterSeconds).toBe(1);
     });
 
-    it('allows subsequent request exactly when 60-second cooldown has passed', () => {
+    it('allows subsequent request exactly when cooldown has passed', () => {
       recordRateLimitSend(purpose, email, baseTime);
 
       const result = checkRateLimit(purpose, email, baseTime + COOLDOWN_MS);
@@ -58,36 +59,31 @@ describe('rateLimiter utility (FR-081)', () => {
     });
   });
 
-  describe('5 requests per rolling hour cap (FR-081)', () => {
-    it('allows up to 5 requests spaced out by more than 60 seconds', () => {
-      // 5 requests spaced 70 seconds apart:
-      // t0: 0s, t1: 70s, t2: 140s, t3: 210s, t4: 280s
+  describe('hourly cap (FR-081)', () => {
+    const spacingMs = COOLDOWN_MS + 10_000;
+
+    it('allows up to the configured max when spaced beyond the cooldown', () => {
       for (let i = 0; i < MAX_REQUESTS_PER_WINDOW; i++) {
-        const time = baseTime + i * 70_000;
+        const time = baseTime + i * spacingMs;
         const check = checkRateLimit(purpose, email, time);
         expect(check.allowed).toBe(true);
         recordRateLimitSend(purpose, email, time);
       }
 
-      // Check at t = 350s (70s after 5th request, cooldown passed)
-      const sixthCheckTime = baseTime + 5 * 70_000;
-      const sixthCheck = checkRateLimit(purpose, email, sixthCheckTime);
+      const overflowCheckTime = baseTime + MAX_REQUESTS_PER_WINDOW * spacingMs;
+      const overflowCheck = checkRateLimit(purpose, email, overflowCheckTime);
 
-      expect(sixthCheck.allowed).toBe(false);
-      // Oldest request was at baseTime (t = 0). Window is 3600s.
-      // Expected retryAfterSeconds = ceil((3600s - 350s)) = 3250s
-      expect(sixthCheck.retryAfterSeconds).toBe(3250);
+      expect(overflowCheck.allowed).toBe(false);
+      const elapsedSeconds = (overflowCheckTime - baseTime) / 1000;
+      expect(overflowCheck.retryAfterSeconds).toBe(Math.ceil(WINDOW_MS / 1000 - elapsedSeconds));
     });
 
-    it('unblocks the 6th request once the oldest request expires outside the rolling window', () => {
-      // Record 5 requests at t0..t4
+    it('unblocks once the oldest request expires outside the rolling window', () => {
       for (let i = 0; i < MAX_REQUESTS_PER_WINDOW; i++) {
-        const time = baseTime + i * 70_000;
+        const time = baseTime + i * spacingMs;
         recordRateLimitSend(purpose, email, time);
       }
 
-      // Time right after t0 expires: baseTime + WINDOW_MS + 1ms
-      // At this point, t0 is evicted, leaving 4 requests in the window
       const postExpiryTime = baseTime + WINDOW_MS + 1;
       const result = checkRateLimit(purpose, email, postExpiryTime);
 
@@ -101,7 +97,7 @@ describe('rateLimiter utility (FR-081)', () => {
 
       const check = checkRateLimit(purpose, 'user@example.com', baseTime + 10_000);
       expect(check.allowed).toBe(false);
-      expect(check.retryAfterSeconds).toBe(50);
+      expect(check.retryAfterSeconds).toBe(Math.ceil((COOLDOWN_MS - 10_000) / 1000));
     });
 
     it('normalizes purpose string with whitespace and case variations', () => {
@@ -146,7 +142,7 @@ describe('rateLimiter utility (FR-081)', () => {
       recordRateLimitSend(purpose, email, afterWindowTime);
       const immediateCheck = checkRateLimit(purpose, email, afterWindowTime);
       expect(immediateCheck.allowed).toBe(false);
-      expect(immediateCheck.retryAfterSeconds).toBe(60);
+      expect(immediateCheck.retryAfterSeconds).toBe(COOLDOWN_MS / 1000);
     });
   });
 
@@ -166,7 +162,7 @@ describe('rateLimiter utility (FR-081)', () => {
       rateLimiter.recordSend(purpose, email, baseTime);
       const result = rateLimiter.checkLimit(purpose, email, baseTime + 10_000);
       expect(result.allowed).toBe(false);
-      expect(result.retryAfterSeconds).toBe(50);
+      expect(result.retryAfterSeconds).toBe(Math.ceil((COOLDOWN_MS - 10_000) / 1000));
     });
   });
 });

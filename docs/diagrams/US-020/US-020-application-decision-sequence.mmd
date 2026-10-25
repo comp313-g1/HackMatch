@@ -1,0 +1,66 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#f3f4f6","noteBorderColor":"#6b7280","noteTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":36,"width":170,"height":65,"boxMargin":10,"messageMargin":28,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-020: Team Lead Application Decisions — Sequence Diagram
+    actor TeamLead
+    participant ReactUI
+    participant ExpressAPI
+    participant DecisionService as Decision<br/>Service
+    participant PostgreSQL
+
+    TeamLead->>ReactUI: Open Incoming Applications
+    ReactUI->>ExpressAPI: GET /api/teams/:teamId/applications
+    ExpressAPI->>ExpressAPI: Verify Firebase token, MFA, active verified PART, and ownership
+    alt Unauthorized or invalid team
+        ExpressAPI-->>ReactUI: 400, 401, 403, or 404
+        ReactUI-->>TeamLead: Show protected error and keep prior queue
+    else Authorized owner
+        ExpressAPI->>DecisionService: List Pending applications for owned team
+        DecisionService->>PostgreSQL: Query Pending requests and permitted profile projection
+        PostgreSQL-->>DecisionService: Name, handle, role, institution, skills, HTTPS portfolios, and message
+        DecisionService-->>ExpressAPI: Newest-first review queue
+        ExpressAPI-->>ReactUI: Pending Review items
+        ReactUI-->>TeamLead: Render loading, empty, review, or retry state
+    end
+
+    TeamLead->>ReactUI: Choose Approve or Decline
+    ReactUI->>ExpressAPI: POST /api/applications/:id/approve or /decline
+    ExpressAPI->>ExpressAPI: Recheck authentication, role, active/verified account, and id
+    ExpressAPI->>DecisionService: Load application and verify target-team ownership
+    alt Non-owner, missing, or invalid
+        DecisionService-->>ExpressAPI: 400, 403, or 404 with explicit code
+        ExpressAPI-->>ReactUI: No mutation
+        ReactUI-->>TeamLead: Keep application and review details
+    else Approve
+        DecisionService->>PostgreSQL: approve_team_application RPC
+        PostgreSQL->>PostgreSQL: Return prior Accepted outcome on same-decision repeat
+        PostgreSQL->>PostgreSQL: Otherwise serialize participant/shadow-event and team
+        PostgreSQL->>PostgreSQL: Lock and recheck Pending application, account, team, vacancy, and capacity
+        PostgreSQL->>PostgreSQL: Legacy shadow-event lifecycle and event-membership checks
+        PostgreSQL->>PostgreSQL: Confirm membership, fill vacancy, mark Accepted, and clear target-event LFT row
+        PostgreSQL->>PostgreSQL: Run shared slot/full-team cascade and persist applicant alert
+        alt Stale opposite decision or competing placement
+            PostgreSQL-->>DecisionService: Explicit decision or approval conflict
+            DecisionService-->>ExpressAPI: 409 with existing/winning outcome
+            ExpressAPI-->>ReactUI: Conflict details
+            ReactUI-->>TeamLead: Preserve review and request refresh
+        else Approval commits or same approval repeats
+            PostgreSQL-->>DecisionService: Placement, cascade, and idempotency summary
+            DecisionService-->>ExpressAPI: Accepted application result
+            ExpressAPI-->>ReactUI: 200 success
+            ReactUI-->>TeamLead: Remove resolved/competing rows and show notice
+        end
+    else Decline
+        DecisionService->>PostgreSQL: decline_team_application RPC
+        PostgreSQL->>PostgreSQL: Lock Pending application and recheck owner
+        PostgreSQL->>PostgreSQL: Mark Declined and persist applicant/owner alerts
+        PostgreSQL->>PostgreSQL: Return prior Declined outcome without duplicate writes on repeat
+        PostgreSQL-->>DecisionService: Declined or stale-opposite conflict
+        DecisionService-->>ExpressAPI: 200 idempotent outcome or 409 conflict
+        ExpressAPI-->>ReactUI: Final decision result
+        ReactUI-->>TeamLead: Remove on success or preserve on conflict
+    end
+
+    Note over PostgreSQL: Approval and its cascade share one transaction, but current SQL still uses Internal Shadow Event lifecycle, participant/event membership, event-derived capacity, and event-scoped availability cleanup.
+    Note over ReactUI,ExpressAPI: The review query avoids email, Firebase UID, and contact handles. Response DTOs still expose eventId and internal applicant, membership, and request identifiers.
+

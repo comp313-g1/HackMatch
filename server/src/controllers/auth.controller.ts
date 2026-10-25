@@ -13,7 +13,7 @@ import { participantsRepository } from '../db/participants.repository.js';
 import { providerIdentitiesRepository } from '../db/provider_identities.repository.js';
 import { mfaRepository } from '../db/mfa.repository.js';
 import type { Participant, OAuthProvider } from '../db/types.js';
-import { generateOtp, createMfaChallenge, evaluateAccountLockout, verifyOtpHash } from '../utils/otp.js';
+import { evaluateAccountLockout, verifyOtpHash } from '../utils/otp.js';
 import { rateLimiter } from '../utils/rateLimiter.js';
 import {
   markPasswordResetCodeConsumed,
@@ -38,106 +38,47 @@ import { verifyMfaOtpForParticipant } from '../services/verifyMfaOtp.js';
 
 export type MfaOtpEmailSender = (email: string, otp: string) => Promise<void>;
 
-let mfaOtpEmailSender: MfaOtpEmailSender = async (email: string, _otp: string) => {
-  if (config.nodeEnv === 'development') {
-    console.info(`[AUTH] MFA OTP email dispatched to ${email}`);
-  }
-};
-
+/** Test hook — forwards to the shared MFA issuer mailer. */
 export function _setMfaOtpEmailSender(sender: MfaOtpEmailSender): void {
-  mfaOtpEmailSender = sender;
   _setIssueMfaOtpEmailSender(sender);
 }
 
 export function _resetMfaOtpEmailSender(): void {
-  mfaOtpEmailSender = async (email: string, _otp: string) => {
-    if (config.nodeEnv === 'development') {
-      console.info(`[AUTH] MFA OTP email dispatched to ${email}`);
-    }
-  };
   _resetIssueMfaOtpEmailSender();
 }
 
 /**
- * Shared internal helper to evaluate lockout, enforce rate limiting, generate & persist OTP challenge,
- * dispatch the email, and return the masked non-session response.
- * (Enforces FR-009, FR-010, FR-081, FR-084, US-004 AC 1, and US-004-T6).
+ * Shared internal helper for MFA OTP dispatch (POST /mfa/send and related paths).
+ * Delegates to issueMfaOtpForParticipant so remounts reuse an active challenge (#356)
+ * instead of returning a bare RATE_LIMITED error (FR-009 / FR-010 / FR-081 / FR-084).
  */
 export async function dispatchMfaChallenge(
   participant: Participant,
   res: Response,
   decodedAuthTime?: number
 ): Promise<void> {
-  // 1. Check 15-minute account lockout (FR-010 / NR-008 / US-004 AC 3)
-  const lockout = await evaluateAccountLockout(participant.id);
-  if (lockout.locked) {
-    res.status(423).json({
-      error: 'Account temporarily locked due to too many failed OTP attempts. Please wait 15 minutes before trying again.',
-      code: 'ACCOUNT_LOCKED',
-      retryAfter: lockout.retryAfterSeconds,
-    });
-    return;
-  }
-
-  // 2. Post-lockout expiry requires fresh primary authentication (US-004-T6)
-  if (
-    lockout.lastLockoutEndsAt &&
-    typeof decodedAuthTime === 'number' &&
-    decodedAuthTime * 1000 < lockout.lastLockoutEndsAt
-  ) {
-    res.status(401).json({
-      error: 'Your account was previously locked. Please sign in again with your password or credentials before requesting a new code.',
-      code: 'FRESH_AUTH_REQUIRED',
-    });
-    return;
-  }
-
-  // 3. Enforce FR-081 rate limiting (1 send / 60s, 5 / hour)
-  const rateCheck = rateLimiter.checkLimit('mfa_otp', participant.email.toLowerCase());
-  if (!rateCheck.allowed) {
-    const retryAfterSeconds = rateCheck.retryAfterSeconds ?? 60;
-    res.setHeader('Retry-After', String(retryAfterSeconds));
-    res.status(429).json({
-      error: 'Too many OTP requests. Please wait before requesting another code.',
-      code: 'RATE_LIMITED',
-      retryAfter: retryAfterSeconds,
-    });
-    return;
-  }
-
-  // 4. Issue OTP challenge & dispatch email (FR-009 / FR-084 / US-004 AC 1)
-  const otpCode = generateOtp();
-  const challenge = await createMfaChallenge(participant.id, otpCode);
-
-  try {
-    await mfaOtpEmailSender(participant.email, otpCode);
-    rateLimiter.recordSend('mfa_otp', participant.email.toLowerCase());
-  } catch (dispatchErr: unknown) {
-    // FR-084: Email delivery failure never verifies or creates session
-    await mfaRepository.invalidatePendingChallenges(participant.id);
-    const errMsg = dispatchErr instanceof Error ? dispatchErr.message : 'Unknown dispatch error';
-    console.warn(`[AUTH] Failed to send MFA OTP email for ${participant.email}: ${errMsg}`);
-    res.status(502).json({
-      error: 'Failed to dispatch verification code email. Please try again.',
-      code: 'EMAIL_DELIVERY_FAILED',
-    });
-    return;
-  }
-
-  // 5. Mask email & return HTTP 200 non-session response (US-002 AC 5 / FR-007)
-  const [userPart = '', domainPart = ''] = participant.email.split('@');
-  const maskedUser = userPart.length > 1
-    ? `${userPart[0]}***${userPart.slice(-1)}`
-    : `${userPart}***`;
-  const maskedEmail = `${maskedUser}@${domainPart}`;
-
   res.setHeader('Cache-Control', 'no-store');
+
+  const issued = await issueMfaOtpForParticipant(participant, decodedAuthTime);
+  if (!issued.ok) {
+    if (issued.retryAfter != null) {
+      res.setHeader('Retry-After', String(issued.retryAfter));
+    }
+    res.status(issued.status).json({
+      error: issued.error,
+      code: issued.code,
+      ...(issued.retryAfter != null ? { retryAfter: issued.retryAfter } : {}),
+      ...(issued.retryable != null ? { retryable: issued.retryable } : {}),
+    });
+    return;
+  }
+
   res.status(200).json({
     requiresOtp: true,
-    challengeId: challenge.id,
-    email: maskedEmail,
-    expiresInSeconds: 600,
-    message: 'A 6-digit verification code has been sent to your email.',
+    challengeId: issued.challengeId,
+    email: issued.maskedEmail,
+    expiresInSeconds: issued.expiresInSeconds,
+    message: issued.message,
   });
 }
 

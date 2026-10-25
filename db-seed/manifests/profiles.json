@@ -1,0 +1,80 @@
+{
+  "profiles": [
+    {
+      "accountKey": "avery",
+      "handle": "avery-demo",
+      "primaryRole": "Frontend",
+      "institution": "HackMatch Demo Institute",
+      "sharedContactHandle": null,
+      "skills": [
+        { "id": "11000000-0000-4000-8000-000000000001", "name": "React" },
+        { "id": "11000000-0000-4000-8000-000000000002", "name": "TypeScript" },
+        { "id": "11000000-0000-4000-8000-000000000003", "name": "Accessibility" }
+      ],
+      "portfolios": [
+        {
+          "id": "12000000-0000-4000-8000-000000000001",
+          "url": "https://example.com/hackmatch-demo/avery",
+          "label": "Self-declared frontend portfolio"
+        }
+      ]
+    },
+    {
+      "accountKey": "blake",
+      "handle": "blake-demo",
+      "primaryRole": "Backend",
+      "institution": "HackMatch Demo Institute",
+      "sharedContactHandle": null,
+      "skills": [
+        { "id": "11000000-0000-4000-8000-000000000004", "name": "Node.js" },
+        { "id": "11000000-0000-4000-8000-000000000005", "name": "Express" },
+        { "id": "11000000-0000-4000-8000-000000000006", "name": "PostgreSQL" }
+      ],
+      "portfolios": [
+        {
+          "id": "12000000-0000-4000-8000-000000000002",
+          "url": "https://example.com/hackmatch-demo/blake",
+          "label": "Self-declared backend portfolio"
+        }
+      ]
+    },
+    {
+      "accountKey": "casey",
+      "handle": "casey-demo",
+      "primaryRole": "AI/ML",
+      "institution": "HackMatch Demo Institute",
+      "sharedContactHandle": null,
+      "skills": [
+        { "id": "11000000-0000-4000-8000-000000000007", "name": "Python" },
+        { "id": "11000000-0000-4000-8000-000000000008", "name": "TensorFlow" },
+        { "id": "11000000-0000-4000-8000-000000000009", "name": "Data Visualization" }
+      ],
+      "portfolios": [
+        {
+          "id": "12000000-0000-4000-8000-000000000003",
+          "url": "https://example.com/hackmatch-demo/casey",
+          "label": "Self-declared machine-learning portfolio"
+        }
+      ]
+    },
+    {
+      "accountKey": "drew",
+      "handle": "drew-demo",
+      "primaryRole": "UI/UX",
+      "institution": "HackMatch Demo Institute",
+      "sharedContactHandle": null,
+      "skills": [
+        { "id": "11000000-0000-4000-8000-000000000010", "name": "Figma" },
+        { "id": "11000000-0000-4000-8000-000000000011", "name": "User Research" },
+        { "id": "11000000-0000-4000-8000-000000000012", "name": "Design Systems" }
+      ],
+      "portfolios": [
+        {
+          "id": "12000000-0000-4000-8000-000000000004",
+          "url": "https://example.com/hackmatch-demo/drew",
+          "label": "Self-declared product-design portfolio"
+        }
+      ]
+    }
+  ]
+}

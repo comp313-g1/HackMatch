@@ -570,10 +570,10 @@ describe('US-004 MFA Integration Suite (OTP Lifecycle & Account Lockout)', () =>
         await postVerify('part-token', { otp: '000000' });
       }
 
-      // Advance clock past 60s cooldown and request replacement OTP
+      // Advance clock past OTP send cooldown and request replacement OTP
       const baseTime = Date.now();
       vi.useFakeTimers({ toFake: ['Date'] });
-      vi.setSystemTime(baseTime + 65_000);
+      vi.setSystemTime(baseTime + 65_000); // > COOLDOWN_MS in both FR-081 and relaxed defaults
 
       try {
         const resendRes = await postSend('part-token');
@@ -593,16 +593,16 @@ describe('US-004 MFA Integration Suite (OTP Lifecycle & Account Lockout)', () =>
       }
     });
 
-    it('enforces FR-081 rate limits: 429 on resend within 60s and 6th send within 1 hour', async () => {
-      // 1st send succeeds
+    it('reuses the active challenge on resend within cooldown instead of scary 429 (#356)', async () => {
       const first = await postSend('part-token');
       expect(first.status).toBe(200);
+      const firstChallengeId = first.body.challengeId as string;
 
-      // Immediate resend triggers 429 RATE_LIMITED
+      // Immediate remount/resend: hand back the live challenge (no new email).
       const immediateResend = await postSend('part-token');
-      expect(immediateResend.status).toBe(429);
-      expect(immediateResend.body.code).toBe('RATE_LIMITED');
-      expect(immediateResend.headers['retry-after']).toBeDefined();
+      expect(immediateResend.status).toBe(200);
+      expect(immediateResend.body.challengeId).toBe(firstChallengeId);
+      expect(immediateResend.body.message).toMatch(/already sent/i);
     });
 
     it('handles email dispatch failure gracefully (FR-084 / 502 EMAIL_DELIVERY_FAILED) without creating active challenge', async () => {

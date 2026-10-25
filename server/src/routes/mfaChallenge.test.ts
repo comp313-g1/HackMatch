@@ -210,9 +210,28 @@ describe('POST /api/auth/mfa/challenge (US-004 S1-P1-09)', () => {
     expect(retried.body.requiresOtp).toBe(true);
   });
 
-  it('returns 429 RATE_LIMITED on rapid reissue (FR-081 boundary)', async () => {
+  it('reuses the active challenge on rapid reissue instead of 429 when a code is still valid (#356)', async () => {
     _setMfaOtpEmailSender(async () => undefined);
     mockVerifyIdToken.mockResolvedValue(decoded());
+    vi.spyOn(mfaRepository, 'getLatestActiveChallenge').mockResolvedValue(mockChallenge);
+
+    const first = await request(app)
+      .post('/api/auth/mfa/challenge')
+      .set('Authorization', 'Bearer valid.id.token');
+    expect(first.status).toBe(200);
+
+    const second = await request(app)
+      .post('/api/auth/mfa/challenge')
+      .set('Authorization', 'Bearer valid.id.token');
+    expect(second.status).toBe(200);
+    expect(second.body.challengeId).toBe(mockChallenge.id);
+    expect(second.body.message).toMatch(/already sent/i);
+  });
+
+  it('returns 429 RATE_LIMITED on rapid reissue when no active challenge can be reused (FR-081)', async () => {
+    _setMfaOtpEmailSender(async () => undefined);
+    mockVerifyIdToken.mockResolvedValue(decoded());
+    vi.spyOn(mfaRepository, 'getLatestActiveChallenge').mockResolvedValue(null);
 
     const first = await request(app)
       .post('/api/auth/mfa/challenge')

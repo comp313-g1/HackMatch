@@ -1,0 +1,57 @@
+---
+title: "HackMatch — US-026: Administrative Content Moderation — Case Lifecycle"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":46,"rankSpacing":64,"padding":14}}}%%
+flowchart TD
+    ACCESS{"Authenticated, MFA-complete,<br/>active stored ADMIN?"}:::decision
+    DENIED["401 / 403 denied<br/>No moderation data or mutation"]:::denied
+    TARGET{"Supported target resolves?<br/>team, profile, or flagged URL"}:::decision
+    INVALID["400 / 404 safe failure<br/>Preserve submitted form values"]:::denied
+    OPEN(["Open case<br/>Reason, actor, target type/ID,<br/>report count, created timestamp"]):::team
+    DECIDE{"Reasoned ADMIN decision"}:::decision
+    DISMISS["Dismiss<br/>No content mutation"]:::internal
+    REDACT["Redact<br/>Team pitch or profile handle"]:::team
+    WARN["Warn<br/>Set Warned and notify owner"]:::decision
+    HIDE["Hide<br/>Set Hidden and notify owner"]:::danger
+    URL["Disable URL<br/>Remove team link and add notice"]:::danger
+    AUDIT["Append safe action record<br/>Actor, target, action, reason,<br/>outcome, summary, UTC time"]:::success
+    DISMISSED(["Dismissed<br/>Terminal case state"]):::internal
+    RESOLVED(["Resolved<br/>Terminal case state"]):::success
+    DISCOVERY["Discovery filters exclude<br/>hidden teams and profiles"]:::team
+    REPEAT["Repeated decision"]:::decision
+    CLOSED["409 CASE_CLOSED<br/>No second decision"]:::denied
+    POLY["Polymorphic target_id<br/>Resolved by application logic<br/>No direct target FK"]:::internal
+    NONATOMIC["Implementation caveat<br/>Effect, alert, audit, and case close<br/>are not one transaction"]:::danger
+
+    ACCESS -->|"No"| DENIED
+    ACCESS -->|"Yes"| TARGET
+    TARGET -->|"No"| INVALID
+    TARGET -->|"Yes"| OPEN
+    POLY -.-> TARGET
+    OPEN --> DECIDE
+    DECIDE --> DISMISS
+    DECIDE --> REDACT
+    DECIDE --> WARN
+    DECIDE --> HIDE
+    DECIDE --> URL
+    DISMISS --> AUDIT
+    REDACT --> AUDIT
+    WARN --> AUDIT
+    HIDE --> AUDIT
+    URL --> AUDIT
+    AUDIT -->|"dismiss"| DISMISSED
+    AUDIT -->|"all enforcement actions"| RESOLVED
+    HIDE --> DISCOVERY
+    RESOLVED --> REPEAT
+    DISMISSED --> REPEAT
+    REPEAT --> CLOSED
+    NONATOMIC -.-> AUDIT
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef team fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef danger fill:#ffe8ee,stroke:#b91c1c,color:#641c30,stroke-width:2px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+

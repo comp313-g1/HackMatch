@@ -410,12 +410,12 @@ describe('Account suspension and deletion rules integration (US-027 / #256)', ()
       stubSuspendedDetail('Owns abusive Open team');
       vi.spyOn(accountsRepository, 'listRelevantListings').mockResolvedValue([
         {
-          teamId: TEAM_ID,
-          teamName: 'Rocket',
-          recruitmentStatus: 'Paused',
-          lockedAt: null,
-          membershipRole: 'Owner',
-          isOwner: true,
+          team_id: TEAM_ID,
+          team_name: 'Rocket',
+          recruitment_status: 'Open',
+          locked_at: null,
+          membership_role: 'Owner',
+          is_owner: true,
         },
       ]);
 

@@ -1,0 +1,61 @@
+---
+title: "HackMatch — US-030: Participant Chat Forums and Messaging — Use-Case Diagram"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":42,"rankSpacing":58,"padding":14}}}%%
+flowchart TB
+    PART(["Verified Active PART"]):::identity
+    VISITOR(["VISITOR"]):::identity
+    UNVERIFIED(["Unverified PART"]):::identity
+    SUSPENDED(["Suspended PART"]):::identity
+
+    subgraph CHAT ["Current MVP chat use cases"]
+        direction LR
+        PRESENCE(["Set presence status"]):::presence
+        LIST(["List forums / channels"]):::chat
+        CREATE(["Create forum / channel"]):::chat
+        OPEN(["Open forum / channel<br/>as authorized PART / channel member"]):::chat
+        READ(["Read text messages"]):::chat
+        SEND(["Send text message"]):::chat
+        OPEN --> READ
+        OPEN --> SEND
+    end
+
+    subgraph RULES ["Validation and privacy boundaries"]
+        direction LR
+        CHANNEL_FIELDS{"Title and description<br/>both nonblank?"}:::decision
+        MESSAGE_BODY{"Message body<br/>nonblank?"}:::decision
+        KEEP_CHANNEL["Validation error<br/>Keep channel draft"]:::denied
+        KEEP_MESSAGE["Validation or send error<br/>Keep composer draft"]:::denied
+        SAFE["Safe chat projection<br/>Handle, UTC time, content<br/>No email, password, OTP, or OTP hash"]:::success
+        CHANNEL_FIELDS -->|"No"| KEEP_CHANNEL
+        CHANNEL_FIELDS -->|"Yes"| SAFE
+        MESSAGE_BODY -->|"No"| KEEP_MESSAGE
+        MESSAGE_BODY -->|"Yes"| SAFE
+    end
+
+    DENY_CHAT["Deny participant chat access<br/>No chat content returned"]:::denied
+    HIDE_PRESENCE["Presence hidden from Visitors"]:::denied
+
+    PART --> PRESENCE
+    PART --> LIST
+    PART --> CREATE
+    PART --> OPEN
+    CREATE --> CHANNEL_FIELDS
+    SEND --> MESSAGE_BODY
+    LIST --> SAFE
+    READ --> SAFE
+
+    VISITOR --> DENY_CHAT
+    VISITOR --> HIDE_PRESENCE
+    UNVERIFIED --> DENY_CHAT
+    SUSPENDED --> DENY_CHAT
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef chat fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef presence fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    style CHAT fill:#fbf8ff,stroke:#9ca3af,stroke-width:1px,color:#374151
+    style RULES fill:#fafafa,stroke:#9ca3af,stroke-width:1px,color:#374151
+

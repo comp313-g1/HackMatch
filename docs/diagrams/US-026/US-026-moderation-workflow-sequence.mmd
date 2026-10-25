@@ -1,0 +1,59 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#f3f4f6","noteBorderColor":"#6b7280","noteTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":34,"width":160,"height":65,"boxMargin":10,"messageMargin":27,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-026: Administrative Content Moderation — Workflow Sequence
+    actor Admin
+    participant ReactUI
+    participant ExpressAPI
+    participant ModerationService
+    participant PostgreSQL
+    participant Discovery
+    participant Owner
+
+    Admin->>ReactUI: Open Safety queue
+    ReactUI->>ExpressAPI: GET /api/admin/moderation/cases
+    ExpressAPI->>ExpressAPI: Verify Firebase token, MFA, active account, and stored ADMIN role
+    alt Visitor, PART, suspended ADMIN, or role mismatch
+        ExpressAPI-->>ReactUI: 401 or 403 with no-store response
+        ReactUI-->>Admin: Denied or retry state
+    else Authorized ADMIN
+        ExpressAPI->>ModerationService: List cases newest first
+        ModerationService->>PostgreSQL: Read moderation_cases
+        PostgreSQL-->>ModerationService: Open, Dismissed, and Resolved cases
+        ModerationService-->>ReactUI: Sanitized queue or empty state
+    end
+
+    Admin->>ReactUI: Open team, profile, or URL case
+    ReactUI->>ExpressAPI: POST /api/admin/moderation/cases
+    ExpressAPI->>ModerationService: Validate target, HTTPS URL, and non-empty reason
+    ModerationService->>PostgreSQL: Resolve target by target_type plus target_id
+    PostgreSQL-->>ModerationService: Target exists or stale target
+    alt Invalid input or missing target
+        ModerationService-->>ReactUI: 400 or 404 and submitted draft
+        ReactUI-->>Admin: Preserve entered values and show field errors
+    else Valid target
+        ModerationService->>PostgreSQL: Insert Open moderation case
+        PostgreSQL-->>ReactUI: 201 case with created timestamp
+    end
+
+    Admin->>ReactUI: Choose dismiss, redact, warn, hide, or disable URL
+    ReactUI->>ExpressAPI: POST /cases/:caseId/decide with reason
+    ExpressAPI->>ModerationService: Recheck ADMIN and Open case
+    alt Missing, closed, or stale case
+        ModerationService-->>ReactUI: 404 or 409 conflict
+        ReactUI-->>Admin: Keep reason and reload current case
+    else Open case
+        ModerationService->>PostgreSQL: Apply selected content effect
+        PostgreSQL-->>Discovery: Hidden team or profile excluded by discovery filters
+        PostgreSQL-->>Owner: Persist warning, hidden, or URL-removal notification
+        ModerationService->>PostgreSQL: Insert append-only safe action record
+        ModerationService->>PostgreSQL: Mark case Dismissed or Resolved
+        PostgreSQL-->>ModerationService: Updated case and UTC timestamps
+        ModerationService-->>ReactUI: 200 outcome and scrubbed safe summary
+        ReactUI-->>Admin: Success notice, refreshed case, and action history
+    end
+
+    Note over ModerationService,PostgreSQL: target_id is polymorphic. Application logic uses target_type to resolve a team or participant profile, and no physical target foreign key exists.
+    Note over ModerationService,PostgreSQL: Content effect, notification, audit insert, and case closure are separate writes. Current code does not provide the atomic administrative mutation required by FR-079.
+    Note over ReactUI,ModerationService: Credentials, OTPs, private contacts, and private workspace notes are scrubbed. Current DTOs still expose internal target IDs and a backend eventId on team detail.
+

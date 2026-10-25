@@ -1,0 +1,43 @@
+---
+title: "HackMatch — US-019: Respond to a Team Invitation — Placement and Pre-Lock Leave Lifecycle"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":48,"rankSpacing":66,"padding":14}}}%%
+flowchart TD
+    PENDING(["Pending invitation<br/>Addressed PART only<br/>Inside 48-hour window"]):::team
+    DECISION{"Invitee decision?"}:::decision
+    DECLINE["Declined<br/>No membership<br/>Vacancy remains Open<br/>LFT unchanged<br/>Owner alerted"]:::denied
+    GUARDS{"Current account, team, vacancy,<br/>capacity, and target-team membership valid?"}:::decision
+    CONFLICT["Rejected or conflict<br/>No partial placement<br/>Refresh current state"]:::danger
+    LEGACY["Current SQL also checks<br/>Internal Shadow Event lifecycle<br/>and participant/event membership"]:::warning
+    COMMIT["Atomic acceptance<br/>Invitation Accepted<br/>Membership Confirmed<br/>Vacancy Filled<br/>LFT cleared"]:::success
+    CLEANUP["Placement cleanup<br/>Filled-slot requests canceled<br/>Full-team requests canceled<br/>Owner status persisted"]:::team
+    MEMBER["Confirmed non-owner member<br/>Team still unlocked"]:::identity
+    LEAVE{"Leave requested?"}:::decision
+    OWNER["Owner cannot use Leave<br/>Disband flow required"]:::denied
+    LOCKED["Locked or non-Open team<br/>Leave rejected"]:::danger
+    LEFT["Membership Removed<br/>Capacity available again<br/>Owner alerted<br/>Canceled requests stay canceled"]:::success
+    RESTORE["Legacy compatibility behavior<br/>Restores only matching shadow-event availability<br/>and requires its event to be recruiting"]:::warning
+
+    PENDING --> DECISION
+    DECISION -->|"Decline"| DECLINE
+    DECISION -->|"Accept"| GUARDS
+    LEGACY -.-> GUARDS
+    GUARDS -->|"No"| CONFLICT
+    GUARDS -->|"Yes"| COMMIT
+    COMMIT --> CLEANUP
+    CLEANUP --> MEMBER
+    MEMBER --> LEAVE
+    LEAVE -->|"No"| MEMBER
+    LEAVE -->|"Actor owns team"| OWNER
+    LEAVE -->|"Team locked"| LOCKED
+    LEAVE -->|"Eligible non-owner"| LEFT
+    RESTORE -.-> LEFT
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef team fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef danger fill:#ffe8ee,stroke:#b91c1c,color:#641c30,stroke-width:2px;
+    classDef warning fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+

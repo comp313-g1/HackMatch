@@ -27,6 +27,8 @@ const inputClass =
 
 /** Default lock window (FR-010) when the API omits retryAfter. */
 const DEFAULT_LOCK_SECONDS = 15 * 60;
+/** Client resend button cooldown — aligned with relaxed server OTP send limit. */
+const RESEND_COOLDOWN_SECONDS = 15;
 
 function formatRemaining(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
@@ -128,6 +130,14 @@ export function OtpEntryForm({
           applyDeliveryFailure(meta.message);
           return;
         }
+        // #356 — auto-bootstrap (not a user Resend click) hit the send limit.
+        if (meta.code === 'RATE_LIMITED') {
+          setFormError(
+            'A verification code was already sent recently. Check your email for the code, or wait a moment before requesting another.'
+          );
+          setStatus('error');
+          return;
+        }
         setFormError(meta.message);
         setStatus('error');
       }
@@ -215,7 +225,7 @@ export function OtpEntryForm({
         message: next.message,
       });
       setSecondsLeft(next.expiresInSeconds);
-      setResendCooldown(60);
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
       setCode('');
       setStatus('ready');
     } catch (err: unknown) {
@@ -231,7 +241,11 @@ export function OtpEntryForm({
       }
       setFormError(meta.message);
       if (meta.code === 'RATE_LIMITED') {
-        setResendCooldown(meta.retryAfter && meta.retryAfter > 0 ? Math.ceil(meta.retryAfter) : 60);
+        setResendCooldown(
+          meta.retryAfter && meta.retryAfter > 0
+            ? Math.ceil(meta.retryAfter)
+            : RESEND_COOLDOWN_SECONDS
+        );
       }
       setStatus('error');
     }
@@ -297,8 +311,19 @@ export function OtpEntryForm({
           </div>
         )}
         {!locked && (
-          <p className="mb-4 text-xs text-ink-muted">
-            No session was created. You can try sending a new verification code.
+          <p className="mb-4 text-xs text-ink-muted" data-testid="otp-pending-help">
+            {user.email ? (
+              <>
+                You started signing in as{' '}
+                <span className="font-semibold text-ink">{user.email}</span>, but email
+                verification is still required. Request a new code below to finish.
+              </>
+            ) : (
+              <>
+                You started signing in, but email verification is still required. Request a
+                new code below to finish.
+              </>
+            )}
           </p>
         )}
         <div className="space-y-3">

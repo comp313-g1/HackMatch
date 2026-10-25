@@ -1,0 +1,65 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#fff7d6","noteBorderColor":"#d4a72c","noteTextColor":"#3f3300","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":42,"width":175,"height":65,"boxMargin":10,"messageMargin":29,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-003: User Login and Session Management — Login and Authorization Sequence
+    actor User
+    participant UI as React Login + MFA Gate
+    participant Firebase as Firebase Authentication
+    participant API as Express API
+    participant DB as Supabase PostgreSQL
+    participant OTP as US-004 OTP Service
+
+    User->>UI: Submit email and password
+    UI->>UI: Validate required fields and email format
+    alt Invalid input
+        UI-->>User: Field errors, preserve entered values
+    else Valid form
+        UI->>Firebase: signInWithEmailAndPassword
+        alt Invalid credentials or Firebase throttles
+            Firebase--xUI: Generic credential or too-many-requests error
+            UI-->>User: Non-enumerating error or retry guidance
+        else Primary authentication succeeds
+            Firebase-->>UI: Firebase user + pre-MFA ID token
+            UI->>API: GET /api/auth/account-status with Bearer token
+            API->>Firebase: Verify ID token with revocation checking
+            API->>DB: Read participant suspension state
+            alt Disabled or suspended account
+                API-->>UI: 403 ACCOUNT_DISABLED / ACCOUNT_SUSPENDED
+                UI->>Firebase: Sign out locally
+                UI-->>User: Account-blocked guidance, no MFA/session
+            else Active account
+                API-->>UI: 200 active
+                UI->>API: POST /api/auth/mfa/challenge with Bearer token
+                API->>OTP: Create and email current challenge
+                OTP-->>UI: Challenge identifier and masked email
+                UI-->>User: Request 6-digit OTP
+                User->>UI: Submit OTP
+                UI->>API: POST /api/auth/mfa/verify
+                API->>OTP: Atomically validate/consume challenge
+                alt OTP invalid, expired, locked, or unavailable
+                    API-->>UI: Explicit error, protected content remains closed
+                else OTP accepted
+                    API->>Firebase: Set mfa_auth_time custom claim
+                    API-->>UI: Verification success
+                    UI->>Firebase: Force-refresh ID token
+                    UI->>UI: MfaGate requires claim for current auth_time
+                    alt Claim missing or stale
+                        UI-->>User: Keep OTP gate, no protected content
+                    else Current MFA claim present
+                        UI->>API: Protected request via authFetch<br/>Authorization: Bearer current ID token
+                        API->>Firebase: Verify token and revocation
+                        API->>DB: Require active account, current MFA, and allowed role
+                        alt Expired, revoked, suspended, wrong role, or missing MFA
+                            API-->>UI: Explicit 401/403 denial
+                        else Authorized
+                            API-->>UI: Protected response
+                            UI-->>User: Render authorized function
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    Note over UI,API: Current browser path uses Firebase bearer tokens.<br/>It does not call POST /api/auth/session to create the optional hardened cookie.
+

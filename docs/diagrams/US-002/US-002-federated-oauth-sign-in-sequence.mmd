@@ -1,0 +1,55 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#fff7d6","noteBorderColor":"#d4a72c","noteTextColor":"#3f3300","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":45,"width":180,"height":65,"boxMargin":10,"messageMargin":30,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-002: Federated OAuth Registration and Authentication — Sign-In Sequence
+    actor Visitor
+    participant UI as React OAuth Controls
+    participant Provider as Firebase + Google/GitHub
+    participant API as Express Auth API
+    participant DB as Supabase PostgreSQL
+    participant OTP as US-004 OTP Boundary
+
+    Visitor->>UI: Choose Google or GitHub and optional profile consent
+    UI->>Provider: signInWithPopup
+    alt Popup cancelled, blocked, offline, or provider fails
+        Provider--xUI: Firebase provider error
+        UI-->>Visitor: Actionable error, preserve consent, no session
+    else Provider returns credential
+        UI->>UI: Early email and emailVerified usability check
+        alt Email missing or visibly unverified
+            UI-->>Visitor: Divert to email registration/verification
+        else Client check passes
+            UI->>Provider: Get Firebase ID token
+            UI->>API: POST /api/auth/oauth/sign-in<br/>{idToken, provider, consentHandleAvatar}
+            API->>Provider: Verify ID token and declared provider match
+            alt Invalid token, mismatch, unverified email, or ADMIN claim
+                API-->>UI: Explicit 400/401/403, zero session and zero write
+            else Valid public OAuth identity
+                API->>DB: Find provider identity, otherwise find participant by email
+                alt Existing provider identity belongs to PART
+                    DB-->>API: Linked participant
+                    API->>DB: Confirm participant is active and not ADMIN
+                else Email already belongs to an unlinked account
+                    DB-->>API: Existing participant by email
+                    API-->>UI: 409 LINKING_REAUTHENTICATION_REQUIRED
+                    UI-->>Visitor: Sign in with existing account to link, no auto-link
+                else New provider identity
+                    API->>DB: INSERT participants(role=PART, is_verified=true)
+                    API->>DB: INSERT provider_identities<br/>(handle/avatar only with consent)
+                    Note over API,DB: Current operations are separate, not one transaction.<br/>Identity-insert failure can leave the participant row.
+                end
+                API->>OTP: Create and send email OTP challenge
+                alt Account locked, rate limited, or delivery fails
+                    OTP--xAPI: Explicit failure
+                    API-->>UI: 423/429/502, no authorized session
+                else OTP challenge issued
+                    OTP-->>API: Challenge identifier and masked email
+                    API-->>UI: 200 requiresOtp=true, no cookie or access token
+                    UI-->>Visitor: Continue to mandatory email OTP
+                end
+            end
+        end
+    end
+
+    Note over Visitor,OTP: A verified provider is only primary authentication. Team actions remain blocked until US-004 succeeds.
+

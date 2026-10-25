@@ -1,0 +1,49 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#fff7d6","noteBorderColor":"#d4a72c","noteTextColor":"#3f3300","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":55,"width":190,"height":65,"boxMargin":10,"messageMargin":32,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-002: Federated OAuth Registration and Authentication — Provider Linking Sequence
+    actor User as Participant
+    participant UI as React Application
+    participant API as Express /api/auth/oauth/link
+    participant Firebase as Firebase Authentication
+    participant DB as Supabase PostgreSQL
+
+    Note over User,UI: Current gap: no React workflow calls this implemented endpoint.
+    User->>API: Submit caller Bearer token + provider ID token<br/>(conceptual/API-level flow)
+    API->>Firebase: Verify caller token via requireVerifiedParticipant
+    Firebase-->>API: Caller identity and auth_time
+    API->>DB: Load participant and require is_verified=true
+    alt Missing/invalid caller or unverified participant
+        API-->>User: 401/403/404, no link
+    else Verified PART caller
+        API->>API: Reject ADMIN and require auth_time within 15 minutes
+        alt Reauthentication stale or role forbidden
+            API-->>User: 401 REAUTHENTICATION_REQUIRED or 403
+        else Recent primary reauthentication
+            Note over API: Current gap: no requireMfa or requireActiveAccount middleware.<br/>A current OTP claim is not checked as AC4 requires.
+            API->>Firebase: Verify provider token
+            API->>API: Check provider match, verified email, non-ADMIN claim
+            API->>API: Require normalized provider email = participant email
+            alt Invalid provider, email mismatch, or unverified email
+                API-->>User: Explicit 400/401/403/409, no link
+            else Valid provider ownership
+                API->>DB: Check provider UID and per-participant provider uniqueness
+                alt Already linked to this participant
+                    API-->>User: 200 idempotent success
+                else Linked elsewhere or provider already present
+                    API-->>User: 409 conflict
+                else No conflict
+                    API->>DB: INSERT provider_identities
+                    alt Unique race or persistence failure
+                        DB--xAPI: Constraint or database error
+                        API-->>User: 409 conflict or safe 500
+                    else Link persisted
+                        API-->>User: 200 provider linked
+                    end
+                end
+            end
+        end
+    end
+
+    Note over API,DB: The database rejects ADMIN links and enforces identity uniqueness,<br/>but it cannot supply the missing current-MFA and active-account request checks.
+

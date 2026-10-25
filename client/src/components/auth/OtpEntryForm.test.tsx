@@ -225,7 +225,7 @@ describe('OtpEntryForm (US-004 S1-P1-10)', () => {
     fireEvent.click(screen.getByRole('button', { name: /resend code/i }));
 
     await waitFor(() => expect(mockRequestMfaChallenge).toHaveBeenCalledWith(user));
-    expect(await screen.findByRole('button', { name: /resend code \(60s\)/i })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: /resend code \(15s\)/i })).toBeDisabled();
     expect(screen.getByText(/code expires in/i)).toBeInTheDocument();
   });
 
@@ -261,7 +261,7 @@ describe('OtpEntryForm (US-004 S1-P1-10)', () => {
     fireEvent.click(screen.getByRole('button', { name: /resend code/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/too many requests/i);
-    expect(screen.getByRole('button', { name: /resend code \(60s\)/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /resend code \(15s\)/i })).toBeDisabled();
   });
 
   it('boundary: accepts exactly 6 digits and strips non-digits beyond maxLength', () => {
@@ -287,6 +287,22 @@ describe('OtpEntryForm (US-004 S1-P1-10)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/failed to send verification code/i);
   });
 
+  it('bootstrap RATE_LIMITED: shows calm already-sent copy instead of raw throttle text (#356)', async () => {
+    mockRequestMfaChallenge.mockRejectedValueOnce(
+      Object.assign(new Error('Too many OTP requests. Please wait before requesting another code.'), {
+        code: 'RATE_LIMITED',
+        retryAfter: 15,
+      })
+    );
+
+    renderForm({ initialChallenge: null });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /verification code was already sent recently/i
+    );
+    expect(screen.queryByText(/too many otp requests/i)).not.toBeInTheDocument();
+  });
+
   it('delivery failure: clears challenge, shows retry help, and allows Try sending again (FR-084)', async () => {
     mockRequestMfaChallenge
       .mockRejectedValueOnce(
@@ -305,7 +321,9 @@ describe('OtpEntryForm (US-004 S1-P1-10)', () => {
     renderForm({ initialChallenge: null });
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't send your verification code/i);
-    expect(screen.getByText(/no session was created/i)).toBeInTheDocument();
+    expect(screen.getByTestId('otp-pending-help')).toHaveTextContent(
+      /email verification is still required/i
+    );
     const retry = screen.getByRole('button', { name: /try sending again/i });
     expect(retry).toBeEnabled();
 

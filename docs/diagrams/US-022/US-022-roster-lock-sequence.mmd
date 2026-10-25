@@ -1,0 +1,55 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#f3f4f6","noteBorderColor":"#6b7280","noteTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":36,"width":170,"height":65,"boxMargin":10,"messageMargin":28,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-022: Confirm and Lock a Team Roster — Transaction Sequence
+    actor TeamLead
+    participant ReactUI
+    participant ExpressAPI
+    participant LockService as Lock Validation<br/>and Service
+    participant PostgreSQL
+
+    TeamLead->>ReactUI: Open owned team workspace
+    ReactUI->>ExpressAPI: GET /api/teams/:teamId/lock/validate
+    ExpressAPI->>ExpressAPI: Verify Firebase token, MFA, active verified PART, and ownership
+    alt Unauthorized or invalid team
+        ExpressAPI-->>ReactUI: 400, 401, 403, or 404
+        ReactUI-->>TeamLead: Keep prior roster and show protected error
+    else Authorized owner
+        ExpressAPI->>LockService: Validate current roster without mutation
+        LockService->>PostgreSQL: Read team, confirmed members, vacancies, and compatibility data
+        PostgreSQL-->>LockService: Status, lock time, member count, and open slots
+        LockService-->>ExpressAPI: canLock, reasons, bounds, and permitted member display
+        ExpressAPI-->>ReactUI: Loading, eligible, blocked, empty, or retry state
+        ReactUI-->>TeamLead: Review roster and Confirm & Lock action
+    end
+
+    TeamLead->>ReactUI: Confirm irreversible lock
+    ReactUI->>ExpressAPI: POST /api/teams/:teamId/lock
+    ExpressAPI->>ExpressAPI: Recheck authentication, active account, role, and ownership
+    ExpressAPI->>LockService: lockTeam for authenticated owner
+    LockService->>PostgreSQL: lock_team RPC
+    PostgreSQL->>PostgreSQL: Acquire target-team advisory lock shared with join and leave
+    PostgreSQL->>PostgreSQL: Lock team row and recheck owner plus Open status
+    PostgreSQL->>PostgreSQL: Count confirmed members and validate roster bounds
+    PostgreSQL->>PostgreSQL: Legacy shadow-event lifecycle, bounds, and event-membership checks
+    alt Invalid, underfilled, overfilled, already locked, or concurrent winner
+        PostgreSQL-->>LockService: Domain conflict with no transaction writes
+        LockService-->>ExpressAPI: Explicit 409 code and current details
+        ExpressAPI-->>ReactUI: Lock rejected
+        ReactUI-->>TeamLead: Preserve roster, close stale confirmation, and revalidate
+    else Eligible roster commits
+        PostgreSQL->>PostgreSQL: Set recruitment_status Locked and server locked_at
+        PostgreSQL->>PostgreSQL: Cancel team Pending invitations and applications
+        PostgreSQL->>PostgreSQL: Persist cancellation alerts and locked-roster member alerts
+        PostgreSQL-->>LockService: Lock timestamp, member bounds, and canceled count
+        LockService->>PostgreSQL: Reload canonical team view
+        PostgreSQL-->>LockService: Locked roster and lifecycle
+        LockService-->>ExpressAPI: Successful lock result
+        ExpressAPI-->>ReactUI: 200 Locked team, timestamp, and cancellation summary
+        ReactUI-->>TeamLead: Show Locked badge and disable recruitment and mutation controls
+    end
+
+    Note over PostgreSQL: Join, approval, acceptance, and leave serialize through the target-team advisory lock or team row lock. A loser observes the committed roster state and no partial Locked plus underfilled result should commit.
+    Note over LockService,PostgreSQL: Current code still reads Internal Shadow Event status, end date, min/max size, and per-event membership. The Event-Free target is an active unlocked team with 2–4 confirmed members and per-team uniqueness.
+    Note over ReactUI,ExpressAPI: No event is selected for locking. Team response models still expose eventId and internal participant identifiers that the lock UI does not require.
+

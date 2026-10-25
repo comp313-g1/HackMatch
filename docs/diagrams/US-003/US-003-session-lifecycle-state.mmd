@@ -1,0 +1,44 @@
+---
+title: "HackMatch — US-003: User Login and Session Management — Session Lifecycle State Diagram"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f3e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":38,"rankSpacing":48,"padding":14}}}%%
+flowchart TB
+
+    OUT["Signed out<br/>No usable credential"]:::identity
+    PRIMARY["Primary authenticated<br/>Firebase user + pre-MFA ID token"]:::transition
+    BLOCKED["Blocked<br/>Disabled or suspended account"]:::denied
+    MFA["MFA authorized<br/>Current mfa_auth_time claim"]:::success
+    BEARER["Active client path<br/>Firebase ID token (~1 hour)<br/>automatic refresh"]:::identity
+    COOKIE["Optional server capability<br/>7-day fixed session cookie<br/>HttpOnly · Secure in production · SameSite=Strict"]:::internal
+    API["Protected API<br/>Revocation + active account + MFA + role checks"]:::success
+    DENIED["Expired / revoked / stale MFA<br/>401 or 403; protected action denied"]:::denied
+    LOGOUT["Logout<br/>Clear local state/cookies<br/>revoke all Firebase refresh tokens"]:::danger
+    GAP["Current integration gap<br/>React does not POST /api/auth/session;<br/>authFetch sends script-readable bearer tokens"]:::warning
+    REQ["Requirement differences<br/>FR-007 says 15-minute access credential;<br/>FR-008 describes current-session logout"]:::warning
+
+    OUT -->|Password or OAuth primary auth| PRIMARY
+    PRIMARY -->|Account disabled/suspended| BLOCKED
+    PRIMARY -->|US-004 OTP succeeds| MFA
+    PRIMARY -->|Protected request before OTP| DENIED
+    MFA -->|Actual React flow| BEARER
+    MFA -.->|Implemented endpoint; no current UI caller| COOKIE
+    BEARER -->|Authorization: Bearer ID token| API
+    COOKIE -->|Cookie + CSRF on state change| API
+    API -->|Token expires, is revoked, role changes,<br/>MFA stale, or account suspended| DENIED
+    DENIED -->|Sign in and complete a fresh OTP| PRIMARY
+    BEARER --> LOGOUT
+    COOKIE --> LOGOUT
+    LOGOUT --> OUT
+    GAP -.-> BEARER
+    GAP -.-> COOKIE
+    REQ -.-> BEARER
+    REQ -.-> LOGOUT
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef transition fill:#fff7d6,stroke:#d4a72c,color:#3f3300,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef danger fill:#ffe8ee,stroke:#b91c1c,color:#641c30,stroke-width:1.5px;
+    classDef warning fill:#fff7d6,stroke:#d4a72c,color:#3f3300,stroke-width:1.5px,stroke-dasharray:5 3;
+

@@ -1,0 +1,52 @@
+---
+title: "HackMatch — US-001: Participant Registration and Email Verification — Use-Case Diagram"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"curve":"basis","htmlLabels":true}}}%%
+flowchart TB
+    VISITOR(["Unauthenticated Visitor"]):::identity
+
+    subgraph REGISTRATION["Registration"]
+        direction LR
+        REGISTER(["Submit full name,<br/>email, and password"]):::usecase
+        VALIDATE(["Validate fields and<br/>preserve valid input"]):::decision
+        PROVISION(["Provision Unverified PART<br/>with no session"]):::usecase
+        ADMIN(["Reject public ADMIN or<br/>privilege escalation fields"]):::denied
+        REGISTER --> VALIDATE
+        VALIDATE -->|valid public payload| PROVISION
+        VALIDATE -->|role / privilege field| ADMIN
+    end
+
+    subgraph IDENTITY["Identity and persistence"]
+        direction LR
+        FIREBASE["Firebase Authentication<br/>identity, uniqueness, verification link"]:::auth
+        DATABASE[("Supabase PostgreSQL<br/>participants record")]:::success
+    end
+
+    subgraph VERIFICATION["Verification and access boundary"]
+        direction LR
+        VERIFY(["Verify email using<br/>Firebase-managed link"]):::usecase
+        REPLACE(["Request a replacement<br/>verification link"]):::usecase
+        GUARD["403<br/>EMAIL_NOT_VERIFIED<br/>Block protected actions<br/>No data change"]:::denied
+        TEAM["Interactive team-formation features<br/>after sign-in + MFA"]:::team
+    end
+
+    VISITOR --> REGISTER
+    PROVISION --> FIREBASE
+    PROVISION --> DATABASE
+    FIREBASE -->|visitor opens verification email| VERIFY
+    VERIFY -->|expired / invalid / consumed| REPLACE
+    REPLACE --> FIREBASE
+    VERIFY -->|server sync succeeds| DATABASE
+    DATABASE -->|is_verified = false| GUARD
+    DATABASE -->|is_verified = true| TEAM
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef auth fill:#dbeafe,stroke:#2563eb,color:#172554,stroke-width:1.5px;
+    classDef usecase fill:#eef4ff,stroke:#5b8def,color:#1f2937,stroke-width:1.25px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.25px;
+    classDef success fill:#e8f7e8,stroke:#4f9d69,color:#17351f,stroke-width:1.25px;
+    classDef team fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.25px;
+    classDef denied fill:#fde8ee,stroke:#e25578,color:#65152b,stroke-width:1.25px;
+    style REGISTRATION fill:#fafafa,stroke:#9ca3af,stroke-width:1px,color:#374151
+    style IDENTITY fill:#f8fbff,stroke:#9ca3af,stroke-width:1px,color:#374151
+    style VERIFICATION fill:#fafafa,stroke:#9ca3af,stroke-width:1px,color:#374151

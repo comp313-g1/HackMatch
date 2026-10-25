@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
@@ -20,33 +20,37 @@
     "test:us019": "vitest run src/db/migration.test.ts src/db/teams.repository.test.ts src/db/invitations.db.integration.test.ts src/services/invitationAcceptance.test.ts src/services/invitationResponse.test.ts src/services/placementCascade.test.ts src/services/teamManagement.test.ts src/routes/invitationAcceptance.routes.test.ts src/routes/invitationRespond.routes.test.ts src/routes/invitations.response.integration.test.ts src/routes/team.lifecycle.test.ts",
     "test:coverage": "vitest run --coverage",
     "admin:provision": "tsx src/scripts/provisionAdmin.ts",
+    "demo:seed": "tsx ../db-seed/src/cli.ts seed",
+    "demo:reset": "tsx ../db-seed/src/cli.ts reset",
+    "demo:test": "tsx --test ../db-seed/src/seed.test.ts",
+    "demo:typecheck": "tsc -p ../db-seed/tsconfig.json",
     "db:start": "supabase start --workdir ..",
     "db:push": "supabase db push --local --workdir .."
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
+    "@types/cookie-parser": "^1.4.8",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.4",
+    "@types/nodemailer": "^8.0.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "firebase-admin": "^14.5.0",
     "helmet": "^8.0.0",
-    "nodemailer": "^10.1.1"
+    "nodemailer": "^10.1.1",
+    "typescript": "^5.7.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
-    "@types/cookie-parser": "^1.4.8",
-    "@types/cors": "^2.8.17",
-    "@types/express": "^5.0.0",
-    "@types/node": "^22.13.4",
-    "@types/nodemailer": "^8.0.2",
     "@types/supertest": "^6.0.2",
     "@vitest/coverage-v8": "^3.0.5",
     "eslint": "^9.39.5",
     "supabase": "^2.120.0",
     "supertest": "^7.0.0",
     "tsx": "^4.19.3",
-    "typescript": "^5.7.3",
     "typescript-eslint": "^8.71.1",
     "vitest": "^3.0.5"
   }

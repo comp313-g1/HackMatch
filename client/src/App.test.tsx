@@ -1,7 +1,14 @@
 import React from 'react';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { applyActionCode, onAuthStateChanged, getIdTokenResult, type User, type IdTokenResult } from 'firebase/auth';
+import {
+  applyActionCode,
+  onAuthStateChanged,
+  onIdTokenChanged,
+  getIdTokenResult,
+  type User,
+  type IdTokenResult,
+} from 'firebase/auth';
 import App from './App';
 
 vi.mock('firebase/auth', async (importOriginal) => {
@@ -17,6 +24,10 @@ vi.mock('firebase/auth', async (importOriginal) => {
       cb(null);
       return () => {};
     }),
+    onIdTokenChanged: vi.fn((_auth: unknown, cb: (user: User | null) => void) => {
+      cb(null);
+      return () => {};
+    }),
   };
 });
 
@@ -29,6 +40,22 @@ vi.mock('./components/teams/teamApi', async () => {
   };
 });
 
+vi.mock('./components/teams/openTeamsApi', async () => {
+  const actual = await vi.importActual<typeof import('./components/teams/openTeamsApi')>(
+    './components/teams/openTeamsApi'
+  );
+  return {
+    ...actual,
+    fetchOpenTeams: vi.fn().mockResolvedValue({ viewer: 'VISITOR', total: 0, teams: [] }),
+  };
+});
+
+vi.mock('./services/availabilityApi', () => ({
+  fetchAvailableCandidates: vi.fn().mockResolvedValue([]),
+  fetchMyAvailability: vi.fn().mockResolvedValue(null),
+  updateMyAvailability: vi.fn(),
+}));
+
 describe('App Component (View Routing and Integration)', () => {
   const mockApplyActionCode = vi.mocked(applyActionCode);
 
@@ -38,6 +65,14 @@ describe('App Component (View Routing and Integration)', () => {
     vi.clearAllMocks();
     sessionStorage.clear();
     window.history.pushState({}, '', '/');
+    // Default: signed out (clearAllMocks alone does not restore mockImplementation).
+    const signedOut = ((_auth: unknown, cb: (user: User | null) => void) => {
+      cb(null);
+      return () => {};
+    }) as unknown as typeof onAuthStateChanged;
+    vi.mocked(onAuthStateChanged).mockImplementation(signedOut);
+    vi.mocked(onIdTokenChanged).mockImplementation(signedOut as unknown as typeof onIdTokenChanged);
+    vi.mocked(getIdTokenResult).mockReset();
   });
 
   it('renders the header with HackMatch branding', () => {
@@ -65,7 +100,7 @@ describe('App Component (View Routing and Integration)', () => {
 
   it('renders LandingPage by default when URL has no verification parameters', () => {
     render(<App />);
-    expect(screen.getByRole('heading', { level: 1, name: /find your hackathon team/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: /find your team/i })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { level: 2, name: /create an account/i })).not.toBeInTheDocument();
   });
 
@@ -195,7 +230,7 @@ describe('App Component (View Routing and Integration)', () => {
   it('switches between landing, create account, and sign in via header nav and brand logo', () => {
     render(<App />);
 
-    expect(screen.getByRole('heading', { level: 1, name: /find your hackathon team/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: /find your team/i })).toBeInTheDocument();
 
     fireEvent.click(within(primaryNav()).getByRole('button', { name: /create account/i }));
     expect(within(primaryNav()).getByRole('button', { name: /create account/i })).toHaveAttribute(
@@ -213,7 +248,7 @@ describe('App Component (View Routing and Integration)', () => {
     expect(screen.queryByRole('heading', { level: 2, name: /create an account/i })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /hackmatch home/i }));
-    expect(screen.getByRole('heading', { level: 1, name: /find your hackathon team/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: /find your team/i })).toBeInTheDocument();
   });
 
   it('does not show the account area to a signed-out visitor and links back to sign in', async () => {
@@ -262,37 +297,192 @@ describe('App Component (View Routing and Integration)', () => {
     expect(await screen.findByText(/you are not signed in/i)).toBeInTheDocument();
   });
 
-  it('renders authenticated navigation (Profile, Teams, Sign out) and hides guest auth buttons when user is on account view', async () => {
+  function mockSignedInUser(options?: {
+    mfaComplete?: boolean;
+    displayName?: string;
+    role?: 'PART' | 'ADMIN' | null;
+  }) {
+    const mfaComplete = options?.mfaComplete ?? true;
+    const role = options?.role === undefined ? 'PART' : options.role;
+    const mockUser = {
+      uid: 'user-nav-1',
+      email: 'sahil@example.com',
+      displayName: options?.displayName ?? 'Sahil Gupta',
+      getIdToken: vi.fn().mockResolvedValue('mock-token'),
+    } as unknown as User;
+
+    const emitUser = ((_auth: unknown, cb: (u: User | null) => void) => {
+      cb(mockUser);
+      return () => {};
+    }) as unknown as typeof onAuthStateChanged;
+    vi.mocked(onAuthStateChanged).mockImplementation(emitUser);
+    vi.mocked(onIdTokenChanged).mockImplementation(emitUser as unknown as typeof onIdTokenChanged);
+
+    const authTime = 1792000000;
+    const claims: Record<string, unknown> = mfaComplete
+      ? { auth_time: authTime, mfa_auth_time: authTime }
+      : { auth_time: authTime };
+    if (role) claims.role = role;
+    vi.mocked(getIdTokenResult).mockResolvedValue({
+      claims,
+    } as unknown as IdTokenResult);
+
+    return mockUser;
+  }
+
+  it('renders authenticated navigation with account menu and hides guest auth buttons when MFA session is ready (#358)', async () => {
     window.history.pushState({}, '', '/?view=account');
+    mockSignedInUser({ mfaComplete: true, role: 'PART', displayName: 'Sahil Gupta' });
 
     render(<App />);
 
-    expect(within(primaryNav()).getByRole('button', { name: /^profile$/i })).toHaveAttribute(
-      'aria-current',
-      'page'
-    );
-    expect(within(primaryNav()).getByRole('button', { name: /^teams$/i })).toBeInTheDocument();
-    expect(within(primaryNav()).getByRole('button', { name: /^sign out/i })).toBeInTheDocument();
+    expect(await within(primaryNav()).findByRole('button', { name: /^my teams$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^open teams$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^find teammates$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^requests$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /browse events/i })).not.toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /^chat$/i })).not.toBeInTheDocument();
     expect(within(primaryNav()).queryByRole('button', { name: /^sign in$/i })).not.toBeInTheDocument();
     expect(within(primaryNav()).queryByRole('button', { name: /create account/i })).not.toBeInTheDocument();
+
+    fireEvent.click(within(primaryNav()).getByRole('button', { name: /sahil gupta/i }));
+    expect(await screen.findByRole('menuitem', { name: /^profile$/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /^sign out$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^open chat$/i })).toBeInTheDocument();
+    expect(screen.queryByTestId('header-verification-pending')).not.toBeInTheDocument();
   });
 
-  it('renders Teams button with active state in primary nav when viewing team', async () => {
+  it('PART navbar hides Moderation and Accounts (#359 / #358)', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    mockSignedInUser({ mfaComplete: true, role: 'PART', displayName: 'Sahil Gupta' });
+
+    render(<App />);
+
+    expect(await within(primaryNav()).findByRole('button', { name: /^my teams$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /^admin/i })).not.toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /^moderation$/i })).not.toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /^accounts$/i })).not.toBeInTheDocument();
+  });
+
+  it('ADMIN navbar exposes Moderation and Accounts under Admin menu (#359 / #358)', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    mockSignedInUser({ mfaComplete: true, role: 'ADMIN', displayName: 'Alex Admin' });
+
+    render(<App />);
+
+    expect(await within(primaryNav()).findByRole('button', { name: /^admin/i })).toBeInTheDocument();
+    fireEvent.click(within(primaryNav()).getByRole('button', { name: /^admin/i }));
+    expect(await screen.findByRole('menuitem', { name: /^moderation$/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /^accounts$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^my teams$/i })).toBeInTheDocument();
+  });
+
+  it('PART mobile menu also hides Moderation and Accounts (#359 / #358)', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    mockSignedInUser({ mfaComplete: true, role: 'PART' });
+
+    render(<App />);
+
+    expect(await within(primaryNav()).findByRole('button', { name: /^my teams$/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /open menu/i }));
+
+    const mobile = screen.getByRole('region', { name: /mobile navigation/i });
+    expect(within(mobile).getByRole('button', { name: /^my teams$/i })).toBeInTheDocument();
+    expect(within(mobile).getByRole('button', { name: /^requests$/i })).toBeInTheDocument();
+    expect(within(mobile).queryByRole('button', { name: /^moderation$/i })).not.toBeInTheDocument();
+    expect(within(mobile).queryByRole('button', { name: /^accounts$/i })).not.toBeInTheDocument();
+  });
+
+  it('renders My teams button with active state in primary nav when viewing team with MFA session', async () => {
     window.history.pushState(
       {},
       '',
       '/?view=team&eventId=123e4567-e89b-12d3-a456-426614174000'
     );
+    mockSignedInUser({ mfaComplete: true, displayName: 'Sahil Gupta' });
 
     render(<App />);
 
-    expect(within(primaryNav()).getByRole('button', { name: /^profile$/i })).toBeInTheDocument();
-    expect(within(primaryNav()).getByRole('button', { name: /^teams$/i })).toHaveAttribute(
+    expect(await within(primaryNav()).findByRole('button', { name: /sahil gupta/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^my teams$/i })).toHaveAttribute(
       'aria-current',
       'page'
     );
-    expect(within(primaryNav()).getByRole('button', { name: /^sign out/i })).toBeInTheDocument();
     expect(within(primaryNav()).queryByRole('button', { name: /^sign in$/i })).not.toBeInTheDocument();
+  });
+
+  it('shows verification-pending header (not full signed-in nav) when Firebase user lacks MFA claim (#355)', async () => {
+    window.history.pushState({}, '', '/?view=mfa');
+    mockSignedInUser({ mfaComplete: false, displayName: 'Sahil Gupta' });
+
+    render(<App />);
+
+    expect(await screen.findByTestId('header-verification-pending')).toHaveTextContent(
+      /verification pending/i
+    );
+    expect(within(primaryNav()).getByRole('button', { name: /enter code/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /sign out \(sahil gupta\)/i })).toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /^profile$/i })).not.toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /^teams$/i })).not.toBeInTheDocument();
+    expect(within(primaryNav()).queryByRole('button', { name: /^sign in$/i })).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 2, name: /enter verification code/i })
+    ).toBeInTheDocument();
+  });
+
+  it('redirects Sign In to MFA when Firebase user exists without MFA claim', async () => {
+    window.history.pushState({}, '', '/?view=login');
+    mockSignedInUser({ mfaComplete: false, displayName: 'Sahil Gupta' });
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: /enter verification code/i })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^sign in$/i })).not.toBeInTheDocument();
+    expect(await screen.findByTestId('header-verification-pending')).toBeInTheDocument();
+  });
+
+  it('clears verification-pending header when id token gains MFA claim after OTP (#355)', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    const mockUser = {
+      uid: 'user-nav-1',
+      email: 'sahil@example.com',
+      displayName: 'Sahil Gupta',
+      getIdToken: vi.fn().mockResolvedValue('mock-token'),
+    } as unknown as User;
+
+    let tokenListener: ((user: User | null) => void) | null = null;
+    vi.mocked(onIdTokenChanged).mockImplementation(((_auth: unknown, cb: (u: User | null) => void) => {
+      tokenListener = cb;
+      cb(mockUser);
+      return () => {};
+    }) as unknown as typeof onIdTokenChanged);
+    vi.mocked(onAuthStateChanged).mockImplementation(((_auth: unknown, cb: (u: User | null) => void) => {
+      cb(mockUser);
+      return () => {};
+    }) as unknown as typeof onAuthStateChanged);
+
+    const authTime = 1792000000;
+    vi.mocked(getIdTokenResult)
+      .mockResolvedValueOnce({
+        claims: { auth_time: authTime },
+      } as unknown as IdTokenResult)
+      .mockResolvedValueOnce({
+        claims: { auth_time: authTime, mfa_auth_time: authTime },
+      } as unknown as IdTokenResult);
+
+    render(<App />);
+
+    expect(await screen.findByTestId('header-verification-pending')).toBeInTheDocument();
+
+    await act(async () => {
+      tokenListener?.(mockUser);
+    });
+
+    expect(await within(primaryNav()).findByRole('button', { name: /sahil gupta/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^my teams$/i })).toBeInTheDocument();
+    expect(screen.queryByTestId('header-verification-pending')).not.toBeInTheDocument();
   });
 
   it('toggles mobile menu when clicking menu button', () => {
@@ -327,36 +517,39 @@ describe('App Component (View Routing and Integration)', () => {
       getIdToken: vi.fn().mockResolvedValue('mock-token'),
     } as unknown as User;
 
-    const mockOnAuthStateChanged = vi.mocked(onAuthStateChanged);
-    mockOnAuthStateChanged.mockImplementation(((_auth: unknown, cb: (u: User | null) => void) => {
+    const emitUser = ((_auth: unknown, cb: (u: User | null) => void) => {
       cb(mockUser);
       return () => {};
-    }) as unknown as typeof onAuthStateChanged);
+    }) as unknown as typeof onAuthStateChanged;
+    vi.mocked(onAuthStateChanged).mockImplementation(emitUser);
+    vi.mocked(onIdTokenChanged).mockImplementation(emitUser as unknown as typeof onIdTokenChanged);
 
-    const mockGetIdTokenResult = vi.mocked(getIdTokenResult);
-    mockGetIdTokenResult.mockResolvedValue({
-      claims: { auth_time: 1792000000, mfa_auth_time: 1792000000 },
+    vi.mocked(getIdTokenResult).mockResolvedValue({
+      claims: { auth_time: 1792000000, mfa_auth_time: 1792000000, role: 'PART' },
     } as unknown as IdTokenResult);
 
     render(<App />);
 
-    // Post-MFA landing page should display hero and participant buttons
+    // Post-MFA landing page: event-free hero + nav-aligned CTAs (#361)
     expect(
-      await screen.findByRole('heading', { level: 1, name: /find your hackathon team/i })
+      await screen.findByRole('heading', { level: 1, name: /find your team/i })
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^teams workspace$/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /your profile/i })).toBeInTheDocument();
-    // And search / events directory section is visible on the participant landing page
-    expect(screen.getByRole('searchbox', { name: /search hackathons/i })).toBeInTheDocument();
-    expect(screen.getByText(/no events match your criteria/i)).toBeInTheDocument();
+    const hero = screen.getByRole('region', { name: /hackmatch hero/i });
+    expect(within(hero).getByRole('button', { name: /^open teams$/i })).toBeInTheDocument();
+    expect(within(hero).getByRole('button', { name: /^my teams$/i })).toBeInTheDocument();
+    expect(within(hero).getByRole('button', { name: /^find teammates$/i })).toBeInTheDocument();
+    expect(within(hero).getByRole('button', { name: /^profile$/i })).toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: /search teams or people/i })).toBeInTheDocument();
+    expect(await screen.findByText(/no teams match your search/i)).toBeInTheDocument();
 
-    // Clicking Profile in header navigates to account view (SignedInPanel)
-    fireEvent.click(within(primaryNav()).getByRole('button', { name: /^profile$/i }));
+    // Account menu → Profile navigates to account view (SignedInPanel)
+    fireEvent.click(within(primaryNav()).getByRole('button', { name: /brian/i }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^profile$/i }));
     expect(await screen.findByRole('heading', { level: 3, name: /you are signed in/i })).toBeInTheDocument();
     expect(screen.getByText(/manage technical profile/i)).toBeInTheDocument();
 
-    // Clicking Teams in header navigates to MyTeamsPage view
-    fireEvent.click(within(primaryNav()).getByRole('button', { name: /^teams$/i }));
+    // Clicking My teams in header navigates to MyTeamsPage view
+    fireEvent.click(within(primaryNav()).getByRole('button', { name: /^my teams$/i }));
     expect(await screen.findByRole('heading', { level: 1, name: /my teams/i })).toBeInTheDocument();
     const createTeamBtns = screen.getAllByRole('button', { name: /create a team/i });
     expect(createTeamBtns.length).toBeGreaterThan(0);

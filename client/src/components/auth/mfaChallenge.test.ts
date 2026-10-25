@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { User } from 'firebase/auth';
-import { requestMfaChallenge } from './mfaChallenge';
+import { requestMfaChallenge, _resetMfaChallengeInflight } from './mfaChallenge';
 import { authFetch } from '../../config/authFetch';
 
 vi.mock('../../config/authFetch', () => ({
@@ -14,6 +14,7 @@ describe('requestMfaChallenge (US-004 AC 1)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetMfaChallengeInflight();
   });
 
   it('returns the challenge descriptor on success', async () => {
@@ -65,5 +66,34 @@ describe('requestMfaChallenge (US-004 AC 1)', () => {
       code: 'ACCOUNT_LOCKED',
       retryAfter: 900,
     });
+  });
+
+  it('coalesces concurrent requests for the same uid into one network call (#356)', async () => {
+    let resolveFetch!: (value: Response) => void;
+    mockAuthFetch.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        })
+    );
+
+    const first = requestMfaChallenge(user);
+    const second = requestMfaChallenge(user);
+
+    resolveFetch({
+      ok: true,
+      json: async () => ({
+        requiresOtp: true,
+        challengeId: 'c-shared',
+        email: 'j***e@example.com',
+        expiresInSeconds: 600,
+        message: 'sent',
+      }),
+    } as Response);
+
+    const [a, b] = await Promise.all([first, second]);
+    expect(a.challengeId).toBe('c-shared');
+    expect(b.challengeId).toBe('c-shared');
+    expect(mockAuthFetch).toHaveBeenCalledTimes(1);
   });
 });

@@ -168,7 +168,7 @@ export const validateModerationCaseIdParam: RequestHandler = (
   next: NextFunction
 ): void => {
   const caseId = req.params.caseId;
-  if (!caseId || !UUID_REGEX.test(caseId)) {
+  if (!caseId || typeof caseId !== 'string' || !UUID_REGEX.test(caseId)) {
     res.setHeader('Cache-Control', 'no-store');
     res.status(400).json({
       error: 'Validation failed.',

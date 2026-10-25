@@ -191,6 +191,33 @@ describe('OpenTeamsBoard component (US-013 / Task 4)', () => {
     });
   });
 
+  it('shows Enter code (not Sign in to apply) when MFA is still required (#357)', async () => {
+    const onNavigateToMfa = vi.fn();
+    vi.mocked(openTeamsApi.fetchOpenTeams).mockRejectedValueOnce(
+      new openTeamsApi.OpenTeamsApiError(
+        403,
+        'MFA_REQUIRED',
+        undefined,
+        'Enter your email verification code before browsing teams as a participant.'
+      )
+    );
+
+    render(
+      <OpenTeamsBoard
+        currentUser={mockPartUser}
+        onNavigateToSignIn={mockOnNavigateToSignIn}
+        onNavigateToMfa={onNavigateToMfa}
+        onApply={mockOnApply}
+      />
+    );
+
+    expect(await screen.findByText(/verification required to apply/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /sign in to apply/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /enter code/i }));
+    expect(onNavigateToMfa).toHaveBeenCalledTimes(1);
+  });
+
   it('displays "Your team" badge and suppresses Apply button when isViewerMember is true', async () => {
     vi.mocked(openTeamsApi.fetchOpenTeams).mockResolvedValueOnce(samplePartResult);
 

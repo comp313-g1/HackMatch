@@ -1,5 +1,8 @@
 export type ParticipantRole = 'PART' | 'ADMIN';
 
+/** US-030 / #343 / FR-086 chat presence statuses. */
+export type PresenceStatus = 'Online' | 'Idle' | 'Do Not Disturb' | 'Invisible';
+
 export interface Participant {
   id: string;
   firebase_uid: string;
@@ -17,6 +20,8 @@ export interface Participant {
   deactivated_at?: string | null;
   deactivated_by?: string | null;
   deactivation_reason?: string | null;
+  /** US-030 / #343 / FR-086 — default Invisible until the participant sets a status. */
+  presence_status?: PresenceStatus;
   created_at: string;
   updated_at: string;
 }
@@ -43,6 +48,7 @@ export interface UpdateParticipantDTO {
   deactivated_at?: string | null;
   deactivated_by?: string | null;
   deactivation_reason?: string | null;
+  presence_status?: PresenceStatus;
 }
 
 /** Ownership-verified deletion request lifecycle (US-027 / #249 / AC 3). */
@@ -471,5 +477,36 @@ export interface CreateModerationCaseDTO {
   created_by: string;
   flagged_url?: string | null;
   report_count?: number;
+}
+
+/** US-030 / #342 chat forum/channel (FR-087). */
+export interface ChatChannel {
+  id: string;
+  title: string;
+  description: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateChatChannelDTO {
+  title: string;
+  description: string;
+  created_by: string;
+}
+
+/** US-030 / #342 chat text message (FR-088). */
+export interface ChatMessage {
+  id: string;
+  channel_id: string;
+  author_id: string;
+  body: string;
+  created_at: string;
+}
+
+export interface CreateChatMessageDTO {
+  channel_id: string;
+  author_id: string;
+  body: string;
 }
 

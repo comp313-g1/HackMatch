@@ -1,0 +1,47 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#f3f4f6","noteBorderColor":"#6b7280","noteTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":28,"diagramMarginY":20,"actorMargin":30,"width":150,"height":65,"boxMargin":10,"messageMargin":27,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-027: Administrative Account Enforcement — Verified Deletion Sequence
+    actor Admin
+    participant ReactUI
+    participant ExpressAPI
+    participant DeletionService
+    participant PostgreSQL
+    participant FirebaseAuth
+
+    Admin->>ReactUI: Confirm ownership and enter reason
+    ReactUI->>ExpressAPI: POST /api/admin/accounts/:accountId/delete
+    ExpressAPI->>ExpressAPI: Verify token, MFA, active stored ADMIN, and input
+    ExpressAPI->>DeletionService: Reject self-delete, ADMIN target, or unverified ownership
+    DeletionService->>PostgreSQL: Load target and existing deletion request
+    DeletionService->>PostgreSQL: Find owned unlocked non-disbanded teams
+    alt Unlocked owned team exists
+        DeletionService->>PostgreSQL: Create or update BlockedNeedsDisband request
+        DeletionService->>PostgreSQL: Append blocked account_delete action record
+        DeletionService-->>ReactUI: 409 with safe block reason and request state
+        ReactUI-->>Admin: Preserve draft and require team disband first
+    else Eligible for processing
+        DeletionService->>PostgreSQL: Create or resume request and mark Processing
+        DeletionService->>FirebaseAuth: Revoke refresh tokens
+        FirebaseAuth-->>DeletionService: Revoked or 502 partial failure
+        DeletionService->>PostgreSQL: Apply suspension cascade
+        DeletionService->>PostgreSQL: Pseudonymize membership identity snapshots
+        DeletionService->>PostgreSQL: Tombstone participant and clear profile, skills, portfolios, providers, and MFA challenges
+        DeletionService->>FirebaseAuth: Delete Firebase user
+        FirebaseAuth-->>DeletionService: Deleted or 502 partial failure
+        alt Firebase deletion or later persistence fails
+            DeletionService-->>ReactUI: Explicit retryable partial-failure response
+            ReactUI-->>Admin: Keep account context and show current progress
+        else Processing completes
+            DeletionService->>PostgreSQL: Mark request Completed with safe summary
+            DeletionService->>PostgreSQL: Append account_delete action record
+            PostgreSQL-->>DeletionService: Completion time and preserved membership IDs
+            DeletionService-->>ReactUI: 200 deactivated account and deletion outcome
+            ReactUI-->>Admin: Show live PII erased and historical roster integrity preserved
+        end
+    end
+
+    Note over DeletionService,PostgreSQL: The 30-day value is a proposed processing target. Current code performs live processing immediately and does not claim automatic legal compliance.
+    Note over DeletionService,PostgreSQL: Membership rows and structural roster fields remain. Identity snapshot fields are replaced with a stable non-identifying label.
+    Note over DeletionService,FirebaseAuth: Database request states, cascade, pseudonymization, PII erasure, Firebase operations, completion, and audit are sequential without a distributed transaction or compensation workflow.
+

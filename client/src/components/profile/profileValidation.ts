@@ -122,15 +122,24 @@ export function parseSkillsInput(skillsInput: string): {
   return { skills };
 }
 
+export interface ValidateProfileFormOptions {
+  /** US-011 / #360 — require handle, institution, skills, and portfolio for Looking for Team cards. */
+  requireDiscoveryFields?: boolean;
+}
+
 /**
  * Validates the participant profile form state on the client (US-006 AC 1, AC 2, AC 5).
  * Returns field-specific errors without mutating or clearing the caller's form state.
  */
-export function validateProfileForm(state: ProfileFormState): {
+export function validateProfileForm(
+  state: ProfileFormState,
+  options: ValidateProfileFormOptions = {}
+): {
   errors: ProfileFieldErrors;
   payload?: ValidatedProfilePayload;
 } {
   const errors: ProfileFieldErrors = {};
+  const requireDiscoveryFields = options.requireDiscoveryFields === true;
 
   // 1. Handle
   let handle: string | null = null;
@@ -142,6 +151,8 @@ export function validateProfileForm(state: ProfileFormState): {
     } else {
       handle = trimmedHandle;
     }
+  } else if (requireDiscoveryFields) {
+    errors.handle = 'Handle is required so Team Leads can find you on the candidate card.';
   }
 
   // 2. Primary role
@@ -162,12 +173,16 @@ export function validateProfileForm(state: ProfileFormState): {
     errors.institution = 'Academic institution must not exceed 150 characters.';
   } else if (trimmedInstitution.length > 0) {
     institution = trimmedInstitution;
+  } else if (requireDiscoveryFields) {
+    errors.institution = 'Academic institution is required for Looking for Team cards.';
   }
 
   // 4. Skills
   const { skills, error: skillsError } = parseSkillsInput(state.skillsInput);
   if (skillsError) {
     errors.skills = skillsError;
+  } else if (requireDiscoveryFields && skills.length < 1) {
+    errors.skills = 'Add at least one skill so it appears on your Looking for Team card.';
   }
 
   // 5. Portfolio links
@@ -201,6 +216,11 @@ export function validateProfileForm(state: ProfileFormState): {
         });
       }
     }
+  }
+
+  if (requireDiscoveryFields && portfolioLinks.length < 1 && !errors.portfolioLinks) {
+    errors.portfolioLinks =
+      'Add at least one HTTPS portfolio link so it appears on your Looking for Team card.';
   }
 
   // 6. Shared contact handle

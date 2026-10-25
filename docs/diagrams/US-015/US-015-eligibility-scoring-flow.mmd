@@ -1,0 +1,77 @@
+---
+title: "HackMatch — US-015: Candidate Recommendations for Team Leads — Eligibility and Scoring Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":42,"rankSpacing":58,"padding":14}}}%%
+flowchart TB
+    START(["Owner requests recommendations<br/>with teamId and slotId only"]):::identity
+    OWNER{"Authenticated owner of<br/>active unlocked team?"}:::decision
+    DENY_OWNER["401 or 403<br/>No candidate data"]:::denied
+    SLOT{"Slot belongs to team<br/>and is Open?"}:::decision
+    DENY_SLOT["404 or 409<br/>No recommendations"]:::denied
+    POOL["Load platform-wide Looking-for-Team pool<br/>from fixed compatibility row"]:::availability
+    CANDIDATE{"Candidate passes<br/>all eligibility gates?"}:::decision
+    EXCLUDE["Exclude and count reason<br/>inactive, unavailable, owner,<br/>or confirmed on requesting team"]:::denied
+    OTHER_TEAM["Confirmed on another team<br/>remains eligible after LFT re-enable"]:::success
+    ELIGIBLE["Eligible candidate<br/>Use permitted self-declared fields"]:::success
+    ANY{"Any eligible<br/>candidates?"}:::decision
+    EMPTY["Return explicit empty state<br/>with exclusion summary"]:::internal
+    SCORE_SKILL["Skill component S<br/>required-tag coverage<br/>role match times 1.2, capped at 1<br/>empty requirements give 1"]:::team
+    SCORE_GOAL["Goal component G<br/>same 1, adjacent 0.5,<br/>opposite or missing 0"]:::team
+    SCORE_HOURS["Hours component H<br/>min candidate over requested, 1<br/>requested zero gives 1, missing gives 0"]:::team
+    COMBINE["Score = 100 times average of S, G, H<br/>Bound to 0 through 100"]:::team
+    FAILURE{"Scoring runtime<br/>succeeds?"}:::decision
+    FALLBACK["Return eligible candidates unranked<br/>with temporary-unavailability notice"]:::availability
+    RANK["Sort deterministically<br/>unrounded score descending<br/>display handle then internal tie key"]:::team
+    EXPLAIN["Return one-decimal score<br/>skill, goal, and hours contributions<br/>self-declared-data notice"]:::success
+    INVITE["Invite action opens US-017<br/>and revalidates eligibility and quotas"]:::success
+    INTERNAL["Backend compatibility only<br/>event_availability retains internal event_id"]:::internal
+
+    subgraph ACCESS["1 — Authorization and vacancy validation"]
+        direction LR
+        START --> OWNER
+        OWNER -->|"No"| DENY_OWNER
+        OWNER -->|"Yes"| SLOT
+        SLOT -->|"No"| DENY_SLOT
+    end
+
+    subgraph ELIGIBILITY["2 — Platform-wide eligibility"]
+        direction LR
+        POOL --> CANDIDATE
+        CANDIDATE -->|"No"| EXCLUDE
+        CANDIDATE -->|"Other-team member with LFT"| OTHER_TEAM
+        OTHER_TEAM --> ELIGIBLE
+        CANDIDATE -->|"Yes"| ELIGIBLE
+        EXCLUDE --> ANY
+        ELIGIBLE --> ANY
+        ANY -->|"No"| EMPTY
+    end
+
+    subgraph SCORING["3 — Deterministic scoring"]
+        direction LR
+        SCORE_SKILL --> SCORE_GOAL --> SCORE_HOURS --> COMBINE --> FAILURE
+    end
+
+    subgraph RESPONSE["4 — Response and next action"]
+        direction LR
+        FALLBACK
+        RANK --> EXPLAIN --> INVITE
+    end
+
+    SLOT -->|"Yes"| POOL
+    INTERNAL -.-> POOL
+    ANY -->|"Yes"| SCORE_SKILL
+    FAILURE -->|"No"| FALLBACK
+    FAILURE -->|"Yes"| RANK
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef availability fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef team fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+    style ACCESS fill:#ffffff,stroke:#cbd5e1,stroke-width:1px
+    style ELIGIBILITY fill:#ffffff,stroke:#cbd5e1,stroke-width:1px
+    style SCORING fill:#ffffff,stroke:#cbd5e1,stroke-width:1px
+    style RESPONSE fill:#ffffff,stroke:#cbd5e1,stroke-width:1px
+

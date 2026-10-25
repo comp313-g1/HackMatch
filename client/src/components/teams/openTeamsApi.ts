@@ -164,10 +164,22 @@ export function buildOpenTeamsQuery(d: OpenTeamsFilterDraft): string {
   return qs ? `?${qs}` : '';
 }
 
+async function readApiError(
+  res: Response
+): Promise<{ error?: string; code?: string; errors?: Record<string, string> }> {
+  try {
+    return (await res.json()) as { error?: string; code?: string; errors?: Record<string, string> };
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Fetches open teams from Express API.
- * - Authenticated: uses authFetch with Bearer token. If auth fails with 401/403, retries once as visitor without token.
- * - Visitor: uses plain fetch without Authorization header.
+ * - Authenticated: authFetch with Bearer token → PART cards with Apply (#357).
+ * - MFA_REQUIRED must NOT fall back to visitor (that caused "Sign in to apply" while signed in).
+ * - Other 401/403 (expired/invalid token): retry once as visitor so browse still works.
+ * - Visitor: plain fetch without Authorization header.
  */
 export async function fetchOpenTeams(
   draft: OpenTeamsFilterDraft,
@@ -187,6 +199,17 @@ export async function fetchOpenTeams(
     }
 
     if (res.status === 401 || res.status === 403) {
+      const errBody = await readApiError(res);
+      // #357 — signed-in Firebase user still needs OTP; do not pretend they are a guest.
+      if (errBody.code === 'MFA_REQUIRED') {
+        throw new OpenTeamsApiError(
+          res.status,
+          'MFA_REQUIRED',
+          errBody.errors,
+          errBody.error ||
+            'Enter your email verification code before browsing teams as a participant.'
+        );
+      }
       res = await fetch(url, { method: 'GET', signal });
     }
   } else {
@@ -194,12 +217,7 @@ export async function fetchOpenTeams(
   }
 
   if (!res.ok) {
-    let errBody: { error?: string; code?: string; errors?: Record<string, string> } = {};
-    try {
-      errBody = (await res.json()) as typeof errBody;
-    } catch {
-      // Non-JSON response safe
-    }
+    const errBody = await readApiError(res);
     throw new OpenTeamsApiError(
       res.status,
       errBody.code || 'UNKNOWN_ERROR',

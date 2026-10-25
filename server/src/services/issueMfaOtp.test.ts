@@ -112,8 +112,29 @@ describe('issueMfaOtpForParticipant (US-004 AC 1 / FR-009 / FR-081 / FR-084)', (
     expect(await mfaRepository.getRecentAttempts(participant.id)).toEqual(priorFailures);
   });
 
-  it('returns RATE_LIMITED after a successful send within the 60s cooldown (FR-081)', async () => {
+  it('reuses the active challenge instead of rate-limiting when a code was just sent (#356)', async () => {
+    let sendCount = 0;
+    _setMfaOtpEmailSender(async () => {
+      sendCount += 1;
+    });
+    vi.spyOn(mfaRepository, 'getLatestActiveChallenge').mockResolvedValue(mockChallenge);
+
+    const first = await issueMfaOtpForParticipant(participant);
+    expect(first.ok).toBe(true);
+
+    const second = await issueMfaOtpForParticipant(participant);
+    expect(second).toMatchObject({
+      ok: true,
+      challengeId: mockChallenge.id,
+    });
+    expect(second.ok === true && second.message).toMatch(/already sent/i);
+    expect(sendCount).toBe(1);
+    expect(mfaRepository.createChallenge).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns RATE_LIMITED when cooldown is active and no reusable challenge exists (FR-081)', async () => {
     _setMfaOtpEmailSender(async () => undefined);
+    vi.spyOn(mfaRepository, 'getLatestActiveChallenge').mockResolvedValue(null);
 
     const first = await issueMfaOtpForParticipant(participant);
     expect(first.ok).toBe(true);

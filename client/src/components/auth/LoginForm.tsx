@@ -21,6 +21,12 @@ export interface PrimaryAuthResult {
 export interface LoginFormProps {
   /** Called after Firebase accepts the password; the email OTP step (US-004) must follow. */
   onPrimaryAuthSuccess?: (result: PrimaryAuthResult) => void;
+  /**
+   * Firebase password auth succeeded but the OTP challenge could not be issued yet
+   * (rate limit, delivery failure, lock). Parent should open the MFA gate — do not
+   * leave the user on Sign In while the header already shows their name.
+   */
+  onPrimaryAuthNeedsMfa?: (payload: { user: User; message: string }) => void;
   onNavigateToRegister?: () => void;
   /** Opens the password-recovery request page (US-005). */
   onNavigateToPasswordRecovery?: (email?: string) => void;
@@ -35,6 +41,7 @@ const secondaryBtnClass =
 
 export function LoginForm({
   onPrimaryAuthSuccess,
+  onPrimaryAuthNeedsMfa,
   onNavigateToRegister,
   onNavigateToPasswordRecovery,
 }: LoginFormProps): React.JSX.Element {
@@ -59,9 +66,11 @@ export function LoginForm({
     setFieldErrors({});
     setLoading(true);
     const normalizedEmail = email.trim().toLowerCase();
+    let firebaseUser: User | null = null;
 
     try {
       const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+      firebaseUser = credential.user;
       // Block suspended / Firebase-disabled accounts before any MFA or session step (US-003-T4).
       await assertAccountActive(credential.user);
       // US-004 AC 1 / FR-009: generate + email a cryptographically random 6-digit OTP.
@@ -80,6 +89,18 @@ export function LoginForm({
       });
     } catch (err: unknown) {
       const loginError = describeLoginError(err);
+      // Password already accepted: Firebase user exists. Hand off to MFA instead of
+      // leaving Sign In + "Verification pending" header out of sync.
+      const needsMfaHandoff =
+        Boolean(firebaseUser) &&
+        (loginError.kind === 'throttled' ||
+          loginError.kind === 'otp_delivery' ||
+          loginError.kind === 'locked');
+      if (needsMfaHandoff && firebaseUser && onPrimaryAuthNeedsMfa) {
+        setPassword('');
+        onPrimaryAuthNeedsMfa({ user: firebaseUser, message: loginError.message });
+        return;
+      }
       setFormError(loginError);
       if (
         loginError.kind === 'credentials' ||

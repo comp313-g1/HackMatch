@@ -1,0 +1,67 @@
+---
+title: "HackMatch — US-006: Participant Profile Management — Focused Profile Data ERD"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","tertiaryColor":"#f1e8ff","fontFamily":"Arial, sans-serif"},"er":{"useMaxWidth":true,"diagramPadding":24,"layoutDirection":"LR","minEntityWidth":260,"minEntityHeight":75,"entityPadding":16,"stroke":"#4b5563","fill":"#ffffff","fontSize":14}}}%%
+erDiagram
+    direction LR
+
+    PARTICIPANT ||--o| PROFILE : owns
+    PARTICIPANT ||--o{ SKILL : declares
+    PARTICIPANT ||--o{ PORTFOLIO : publishes
+    PARTICIPANT ||--o{ MEMBERSHIP : holds
+    TEAM ||--o{ MEMBERSHIP : contains
+
+    PARTICIPANT["participants table"] {
+        uuid id PK
+        string firebase_uid UK "Private authentication identifier"
+        string email UK "Private account email"
+        string full_name
+        string role "Account role"
+        boolean is_verified
+        boolean is_suspended
+    }
+
+    PROFILE["participant_profiles table"] {
+        uuid participant_id PK, FK
+        string handle UK "Case-insensitive unique"
+        string primary_role "Six canonical roles"
+        string institution
+        string shared_contact_handle "Confirmed teammates only"
+        datetime updated_at
+    }
+
+    SKILL["participant_skills table"] {
+        uuid id PK
+        uuid participant_id FK
+        string skill_name "Self-declared"
+        datetime created_at
+    }
+
+    PORTFOLIO["participant_portfolios table"] {
+        uuid id PK
+        uuid participant_id FK
+        string url "HTTPS and self-declared"
+        string label
+        datetime updated_at
+    }
+
+    TEAM["teams table"] {
+        uuid id PK
+        uuid owner_participant_id FK
+        string recruitment_status
+    }
+
+    MEMBERSHIP["team_memberships table"] {
+        uuid id PK
+        uuid team_id FK
+        uuid participant_id FK
+        string role "Owner/Member"
+        string status "Confirmed gates contact"
+        datetime ended_at
+    }
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef team fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64
+    class PARTICIPANT,PROFILE,SKILL,PORTFOLIO identity
+    class TEAM,MEMBERSHIP team
+

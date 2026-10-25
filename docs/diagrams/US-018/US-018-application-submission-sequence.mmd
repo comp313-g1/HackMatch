@@ -1,0 +1,47 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#f3f4f6","noteBorderColor":"#6b7280","noteTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":36,"width":170,"height":65,"boxMargin":10,"messageMargin":28,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-018: Apply to Join a Team Vacancy — Submission Sequence
+    actor Applicant
+    participant ReactUI
+    participant ExpressAPI
+    participant ApplicationService as Application<br/>Service
+    participant PostgreSQL
+
+    Applicant->>ReactUI: Apply to an Open vacancy on the platform board
+    ReactUI->>ReactUI: Validate optional message at 250 characters
+    alt Client validation fails
+        ReactUI-->>Applicant: Show field error and preserve message
+    else Valid application draft
+        ReactUI->>ExpressAPI: POST /api/teams/:teamId/applications without eventId
+        ExpressAPI->>ExpressAPI: Verify Firebase token, MFA, active verified PART, and request body
+        alt Authentication or validation fails
+            ExpressAPI-->>ReactUI: 400, 401, or 403 with explicit code
+            ReactUI-->>Applicant: Keep application draft
+        else Authorized applicant
+            ExpressAPI->>ApplicationService: Submit for teamId, slotId, and message
+            ApplicationService->>PostgreSQL: Load applicant, team, Open slot, and requesting-team members
+            PostgreSQL-->>ApplicationService: Eligibility context
+            ApplicationService->>PostgreSQL: Check duplicate on team and count all platform Pending applications
+            PostgreSQL-->>ApplicationService: Duplicate row and global pending count
+            alt Express preflight fails
+                ApplicationService-->>ExpressAPI: 409 eligibility, duplicate, or quota code
+                ExpressAPI-->>ReactUI: No application created
+                ReactUI-->>Applicant: Explain failure and preserve message
+            else Express preflight passes
+                ApplicationService->>PostgreSQL: submit_team_application RPC
+                PostgreSQL->>PostgreSQL: Lock applicant and target team
+                PostgreSQL->>PostgreSQL: Recheck 250-char message and Open slot
+                PostgreSQL->>PostgreSQL: Legacy shadow-event lifecycle, membership, and per-event count checks
+                PostgreSQL->>PostgreSQL: Insert Pending Application and owner alert
+                PostgreSQL-->>ApplicationService: Application and pendingCountForEvent
+                ApplicationService-->>ExpressAPI: Pending Review application view
+                ExpressAPI-->>ReactUI: 201 Created
+                ReactUI-->>Applicant: Show success and clear message
+            end
+        end
+    end
+
+    Note over ApplicationService,PostgreSQL: Express preflight is platform-wide and team-scoped, but it is not the atomic authority. The current RPC still counts by shadow event_id and gates on shadow-event status and date.
+    Note over ReactUI,ExpressAPI: Request payloads reject eventId, but current response DTOs expose eventId and applicantParticipantId. The quota conflict currently maps to HTTP 409 rather than patched HTTP 422.
+

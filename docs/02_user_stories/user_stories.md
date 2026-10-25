@@ -4,7 +4,7 @@
 
 This document defines HackMatch user stories using the roles established in [Roles and Personas](../01_roles_and_personas/roles_and_personas.md). The system architecture defines two global authenticated account types (**Participant** — `PART`, and **Platform Administrator** — `ADMIN`), one contextual permission set (**Team Lead** — `LEAD`, assumed by a `PART` who creates a team), and one unauthenticated public state (**Unauthenticated Visitor** — `VISITOR`).
 
-The canonical expanded backlog contains **29 stories: 20 Must-Have MVP stories, 7 Should-Have early post-MVP stories, and 2 May-Have future stories**. Current IDs are retained. Older Word/issue references require later reconciliation by meaning.
+The canonical expanded backlog contained **29 stories: 20 Must-Have MVP stories, 7 Should-Have early post-MVP stories, and 2 May-Have future stories**. Chat adds **US-030** (Must-Have, 3-day) plus **US-031–US-034** (Should-Have) and **US-035** (May-Have). ~~US-008 / US-009 / US-010~~ (hackathon listing) are **out of scope** for the current app and replaced in the active Must-Have set by **US-030**. Current IDs are retained.
 
 Categories follow [MVP Definition](../03_mvp/mvp_definition.md). Proposed numerical/lifecycle defaults and remaining confirmations are centralized in the [policy register](../04_requirements/functional_nonfunctional_requirements.md#policy-register); they are not professor mandates. All features are delivered through a responsive browser interface including tablet/iPad and phone portrait/landscape layouts.
 
@@ -19,6 +19,7 @@ Every story below follows the standardized format:
 - **Priority:** High, Medium, or Low.
 - **Complexity/Effort Estimate:** Small, Medium, or Large.
 - **Related Stories:** References to current canonical IDs; related stories are not automatically blockers.
+- **Sprint 1 tasks:** Numbered list mirrored from [task disaggregation](../05_sprint_1/task_disaggregation.md) when the story has Sprint 1 work. Eliminated stories (~~US-008–US-010~~) remain listed with strikethrough.
 
 ---
 
@@ -27,7 +28,8 @@ Every story below follows the standardized format:
 | Feature Area | Must-Have MVP | Should-Have post-MVP | May-Have future |
 |---|---|---|---|
 | Authentication and Participant Profiles | US-001, US-002, US-003, US-004, US-005, US-006 | US-007 | US-029 |
-| Hackathon Directory and Event Management | US-008, US-009, US-010 | — | — |
+| Hackathon Directory and Event Management | ~~US-008, US-009, US-010~~ *(out of scope)* | — | — |
+| Participant Chat Forums and Messaging | **US-030** (presence, forums, text messages) | **US-031**, **US-032**, **US-033**, **US-034** | **US-035** |
 | Team Recruitment and Looking-for-Team Boards | US-011, US-012, US-013 | US-014 | — |
 | Rule-Based Matching | US-015 | — | US-016 |
 | Invitations, Applications, and Rosters | US-017, US-018, US-019, US-020, US-022 | US-021, US-023, US-024 | — |
@@ -65,6 +67,19 @@ These stories govern account creation, federated single sign-on, multi-factor cr
 
 **Related Stories:** US-002, US-003, US-004, US-005
 
+**Sprint 1 tasks:** (9 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create Firebase Auth registration form for full name, email, and password
+2. Connect Firebase Auth email/password registration and password-policy validation
+3. Create PostgreSQL participant profile record with PART role and Unverified state
+4. Send and process Firebase email verification links
+5. Block unverified team, availability, application, and invitation actions
+6. Protect ADMIN provisioning from public registration
+7. Add React verification, replacement-link, and invalid-link states
+8. Add Vitest unit tests and integration tests for registration and verification
+9. Initialize React (Vite) + Tailwind CSS client and Node.js/Express server; configure CI/CD pipeline
+
+
 ---
 
 <a id="us-002"></a>
@@ -91,6 +106,18 @@ These stories govern account creation, federated single sign-on, multi-factor cr
 **Complexity/Effort Estimate:** Medium
 
 **Related Stories:** US-001, US-003, US-004, US-006
+
+**Sprint 1 tasks:** (8 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Configure Firebase Google and GitHub OAuth providers
+2. Create provider identity link records for PART accounts
+3. Add React provider sign-in buttons and callback handling
+4. Add reauthentication before linking a provider to an existing account
+5. Route every provider sign-in into the email OTP flow
+6. Add provider cancellation, failure, and unverified-email states
+7. Require verified provider email before provisioning a PART profile
+8. Add Vitest and integration tests for OAuth registration and linking
+
 
 ---
 
@@ -120,6 +147,20 @@ These stories govern account creation, federated single sign-on, multi-factor cr
 
 **Related Stories:** US-001, US-002, US-004, US-005
 
+**Sprint 1 tasks:** (10 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Build Firebase email/password login form
+2. Add Firebase ID-token verification middleware in Express
+3. Enforce PART and ADMIN custom-claim authorization
+4. Require the US-004 MFA claim before protected access
+5. Add token refresh, expiry, HTTPS, and cookie security configuration
+6. Add logout with Firebase refresh-token revocation
+7. Add suspended-account checks and generic login errors
+8. Add Vitest middleware tests and login integration tests
+9. Update the user manual for US001-US003
+10. Aling current codebase with wireframe design
+
+
 ---
 
 <a id="us-004"></a>
@@ -148,6 +189,20 @@ These stories govern account creation, federated single sign-on, multi-factor cr
 
 **Related Stories:** US-001, US-002, US-003, US-005, US-029
 
+**Sprint 1 tasks:** (10 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create PostgreSQL MFA challenge and attempt records
+2. Generate and email cryptographically random six-digit OTPs
+3. Add React OTP entry, resend, expiry, and error states
+4. Validate and atomically consume the current OTP
+5. Implement five-attempt counter and 15-minute account lock
+6. Invalidate predecessor challenges on resend and lock
+7. Add email delivery failure and retry handling
+8. Add Vitest and integration tests for OTP lifecycle and locking
+9. Update the user manual based on US-004
+10. Resolve merge conflicts
+
+
 ---
 
 <a id="us-005"></a>
@@ -173,6 +228,17 @@ These stories govern account creation, federated single sign-on, multi-factor cr
 **Complexity/Effort Estimate:** Small
 
 **Related Stories:** US-001, US-003, US-004
+
+**Sprint 1 tasks:** (7 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Add password-recovery request page with generic confirmation
+2. Connect Firebase password-reset email service
+3. Add reset-link validation and password-policy form
+4. Revoke Firebase refresh tokens after a successful reset
+5. Route the next login through MFA without auto-login
+6. Add expired, invalid, used-link, and OAuth recovery states
+7. Add Vitest and integration tests for password recovery
+
 
 ---
 
@@ -201,6 +267,18 @@ These stories govern account creation, federated single sign-on, multi-factor cr
 
 **Related Stories:** US-001, US-002, US-007, US-011, US-015
 
+**Sprint 1 tasks:** (8 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create Supabase PostgreSQL participant profile, skill, and portfolio tables
+2. Create Express profile read and update endpoints
+3. Add validation for roles, skills, institution, and HTTPS portfolio URLs
+4. Build React profile edit and candidate-card components
+5. Apply profile privacy rules for visitors, PART users, and confirmed teammates
+6. Show self-declared portfolio labels and field-specific errors
+7. Revoke shared contact visibility after team removal
+8. Add Vitest and integration tests for profile permissions and validation
+
+
 ---
 
 <a id="us-007"></a>
@@ -226,6 +304,9 @@ These stories govern account creation, federated single sign-on, multi-factor cr
 **Complexity/Effort Estimate:** Medium
 
 **Related Stories:** US-006, US-014, US-015
+
+**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+
 
 ---
 
@@ -254,17 +335,20 @@ These stories govern account creation, federated single sign-on, multi-factor cr
 
 **Related Stories:** US-003, US-004
 
+**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+
+
 ---
 
-### Feature Area 2: Hackathon Directory and Event Management
+### Feature Area 2: ~~Hackathon Directory and Event Management~~ *(out of scope)*
 
-These stories define crowdsourced event discovery, unlisted event submissions by authenticated Participants, and administrative verification workflows that maintain a single source of truth without requiring a separate Organizer account role.
+These stories defined crowdsourced event discovery, unlisted event submissions, and administrative verification. **~~US-008 / US-009 / US-010~~ are eliminated** from the active product (replaced in scope by platform-wide teams + **US-030** chat). Historical Sprint 1 tasks are retained below with strikethrough.
 
 <a id="us-008"></a>
 
-#### US-008: Public Hackathon Discovery and Multi-Filter Search
+#### ~~US-008: Public Hackathon Discovery and Multi-Filter Search~~
 
-**Delivery Category:** Must-Have — MVP
+**Delivery Category:** ~~Must-Have — MVP~~ — **Out of scope (eliminated)**
 
 **User/Role:** VISITOR / PART
 
@@ -284,13 +368,18 @@ These stories define crowdsourced event discovery, unlisted event submissions by
 
 **Related Stories:** US-009, US-010, US-011, US-013
 
+**Sprint 1 tasks:** (1 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. ~~Create PostgreSQL verified hackathon event model and indexes~~
+
+
 ---
 
 <a id="us-009"></a>
 
-#### US-009: Participant Hackathon Event Submission
+#### ~~US-009: Participant Hackathon Event Submission~~
 
-**Delivery Category:** Must-Have — MVP
+**Delivery Category:** ~~Must-Have — MVP~~ — **Out of scope (eliminated)**
 
 **User/Role:** PART
 
@@ -311,13 +400,18 @@ These stories define crowdsourced event discovery, unlisted event submissions by
 
 **Related Stories:** US-008, US-010, US-012
 
+**Sprint 1 tasks:** (1 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. ~~Create PostgreSQL pending event-submission model and status fields~~
+
+
 ---
 
 <a id="us-010"></a>
 
-#### US-010: Administrative Event Verification, Correction, and Lifecycle Management
+#### ~~US-010: Administrative Event Verification, Correction, and Lifecycle Management~~
 
-**Delivery Category:** Must-Have — MVP
+**Delivery Category:** ~~Must-Have — MVP~~ — **Out of scope (eliminated)**
 
 **User/Role:** ADMIN
 
@@ -339,6 +433,11 @@ These stories define crowdsourced event discovery, unlisted event submissions by
 **Complexity/Effort Estimate:** Large
 
 **Related Stories:** US-008, US-009, US-012, US-026, US-028
+
+**Sprint 1 tasks:** (1 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. ~~Create append-only event action records with actor, reason, outcome, and time~~
+
 
 ---
 
@@ -370,6 +469,14 @@ These stories govern event-specific participant availability declarations, struc
 
 **Related Stories:** US-006, US-012, US-014, US-015, US-019, US-020, US-022
 
+**Sprint 1 tasks:** (4 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create Express platform-wide availability read and update endpoints
+2. Automatically clear Looking-for-Team status upon team creation or confirmed join
+3. Build React Looking-for-Team toggle and availability preferences form
+4. Add Vitest and integration tests for platform availability and privacy rules
+
+
 ---
 
 <a id="us-012"></a>
@@ -399,6 +506,19 @@ These stories govern event-specific participant availability declarations, struc
 
 **Related Stories:** US-009, US-010, US-011, US-013, US-015, US-017, US-019, US-020, US-022
 
+**Sprint 1 tasks:** (9 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create PostgreSQL team, membership, vacancy, and recruitment-status models
+2. Build atomic team-creation service that confirms the owner
+3. Create Express team listing and vacancy CRUD endpoints
+4. Add validation for pitch length, goals, hours, links, slots, and event limits
+5. Protect team operations with LEAD ownership checks
+6. Cancel pending requests when slots are removed or teams disband
+7. Implement member removal, availability restore, and lifecycle lock checks
+8. Build React team listing editor, roster, vacancy, and error states
+9. Add Vitest and integration tests for team lifecycle and concurrency rules
+
+
 ---
 
 <a id="us-013"></a>
@@ -425,6 +545,14 @@ These stories govern event-specific participant availability declarations, struc
 
 **Related Stories:** US-008, US-012, US-016, US-018
 
+**Sprint 1 tasks:** (4 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create Express open team vacancies browse and multi-filter endpoint
+2. Enforce visitor anonymization and authenticated PART field projection on team listings
+3. Build React platform team discovery board, filter bar, and empty state components
+4. Add Vitest and integration tests for team vacancy filtering and visitor privacy
+
+
 ---
 
 <a id="us-014"></a>
@@ -450,6 +578,9 @@ These stories govern event-specific participant availability declarations, struc
 **Complexity/Effort Estimate:** Medium
 
 **Related Stories:** US-006, US-007, US-011, US-012, US-015, US-017
+
+**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+
 
 ---
 
@@ -482,6 +613,21 @@ These stories compute deterministic compatibility scores between solo participan
 
 **Related Stories:** US-006, US-011, US-012, US-014, US-016, US-017, US-022
 
+**Sprint 1 tasks:** (11 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Define deterministic FR-043–045 scoring rules and missing-input handling
+2. Create recommendation service for an owner and open slot
+3. Exclude inactive, unavailable, and confirmed event participants
+4. Implement bounded 0–100 scores and tie-breaking
+5. Return explainable score contributions without internal identifiers
+6. Build React recommendation list, empty state, and fallback state
+7. Connect eligible candidates to US-017 invitation flow
+8. Add Vitest and integration tests for scoring, permissions, and exclusions
+9. Refactor US-015 candidate recommendation query and exclusions to platform-wide scope
+10. Remove eventId requirements from US-015 recommendation API contracts and React panel
+11. Update US-015 Vitest unit and integration tests for platform-wide candidate matching
+
+
 ---
 
 <a id="us-016"></a>
@@ -506,6 +652,9 @@ These stories compute deterministic compatibility scores between solo participan
 **Complexity/Effort Estimate:** Medium
 
 **Related Stories:** US-006, US-011, US-013, US-018
+
+**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+
 
 ---
 
@@ -537,6 +686,21 @@ These stories manage formal team recruitment state transitions, in-app alerts, c
 
 **Related Stories:** US-012, US-015, US-019, US-020, US-021, US-022
 
+**Sprint 1 tasks:** (11 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create PostgreSQL invitation model with pending, expiry, and status fields
+2. Build owner-only Express invitation endpoint
+3. Validate candidate availability, team state, event, and open slot
+4. Enforce one pending invitation per slot and invitee/team
+5. Implement 48-hour expiry and acceptance-time revalidation
+6. Add invitation cancel endpoint and basic status alerts
+7. Build React invite form and invitation view
+8. Add Vitest and integration tests for invitations and permissions
+9. Refactor US-017 invitation eligibility validation to platform-wide availability and team-scoped membership
+10. Remove eventId dependencies from US-017 invitation endpoints and React invitation controls
+11. Update US-017 Vitest unit and integration tests for event-free invitation issuance and quotas
+
+
 ---
 
 <a id="us-018"></a>
@@ -562,6 +726,23 @@ These stories manage formal team recruitment state transitions, in-app alerts, c
 **Complexity/Effort Estimate:** Medium
 
 **Related Stories:** US-012, US-013, US-020, US-021
+
+**Sprint 1 tasks:** (13 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create PostgreSQL application model with status and slot relation
+2. Build React application form with optional 250-character message
+3. Create Express application endpoint with atomic count validation
+4. Enforce verified PART, active unlocked team, open slot, and one-team rules
+5. Enforce three pending applications per PART per event
+6. Add applicant status, withdrawal, and owner alert handling
+7. Add duplicate pending-application and rate-limit errors
+8. Add Vitest and integration tests for application limits and permissions
+9. Remove internal US-001 reference from email verification security notice
+10. Clean up development-only footer controls and project label
+11. Refactor US-018 application validation and 3-pending-application cap to platform-wide scope and team-scoped membership
+12. Remove eventId dependencies from US-018 application endpoints and React components
+13. Update US-018 Vitest unit and integration tests for event-free application workflows
+
 
 ---
 
@@ -591,6 +772,21 @@ These stories manage formal team recruitment state transitions, in-app alerts, c
 
 **Related Stories:** US-011, US-017, US-020, US-021, US-022
 
+**Sprint 1 tasks:** (11 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Build invitation detail and response endpoints for the addressed PART
+2. Implement atomic acceptance revalidation and membership creation
+3. Cancel competing invitations, applications, and filled-slot requests
+4. Implement decline and owner alert behavior
+5. Implement pre-lock member leave and availability restoration
+6. Handle concurrent acceptance with clear conflict responses
+7. Build React invitation response and roster status views
+8. Add Vitest and integration tests for response transactions
+9. Refactor US-019 invitation acceptance, auto-cancellation, and member leave transactions to platform-wide scope
+10. Remove eventId dependencies from US-019 invitation response, inbound list, and leave endpoints and React views
+11. fix(database): resolve missing cancel_competing_requests_on_placement and align availability clearing during placement
+
+
 ---
 
 <a id="us-020"></a>
@@ -618,6 +814,18 @@ These stories manage formal team recruitment state transitions, in-app alerts, c
 
 **Related Stories:** US-012, US-018, US-019, US-021, US-022
 
+**Sprint 1 tasks:** (8 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Build owner-only application review endpoint
+2. Display permitted profile fields and application notes
+3. Implement atomic approval with capacity and membership checks
+4. Cancel competing requests after approval
+5. Implement decline outcome and basic alerts
+6. Handle stale and repeated decisions idempotently
+7. Build React application review list and decision controls
+8. Add Vitest and integration tests for approval conflicts and permissions
+
+
 ---
 
 <a id="us-021"></a>
@@ -643,6 +851,9 @@ These stories manage formal team recruitment state transitions, in-app alerts, c
 **Complexity/Effort Estimate:** Medium
 
 **Related Stories:** US-009, US-010, US-017, US-018, US-019, US-020
+
+**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+
 
 ---
 
@@ -670,6 +881,19 @@ These stories manage formal team recruitment state transitions, in-app alerts, c
 
 **Related Stories:** US-011, US-012, US-015, US-017, US-019, US-020, US-023, US-024
 
+**Sprint 1 tasks:** (9 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Add team roster lock fields and server lock timestamp
+2. Build owner-only roster validation endpoint
+3. Implement atomic lock transaction with join and leave operations
+4. Cancel pending invitations and applications on lock
+5. Reject post-lock exits, removals, slot edits, and disbanding
+6. Build React roster review, lock confirmation, and status views
+7. Add Vitest and integration tests for minimum, maximum, and concurrency rules
+8. Update the user-manual for "must have" user story
+9. Resolve merge conflicts for old and new version
+
+
 ---
 
 <a id="us-023"></a>
@@ -696,6 +920,9 @@ These stories manage formal team recruitment state transitions, in-app alerts, c
 
 **Related Stories:** US-012, US-019, US-022, US-024
 
+**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+
+
 ---
 
 <a id="us-024"></a>
@@ -721,6 +948,9 @@ These stories manage formal team recruitment state transitions, in-app alerts, c
 **Complexity/Effort Estimate:** Small
 
 **Related Stories:** US-010, US-022, US-023
+
+**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+
 
 ---
 
@@ -752,6 +982,9 @@ These stories govern user abuse reporting, administrative moderation, account en
 
 **Related Stories:** US-006, US-012, US-026
 
+**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+
+
 ---
 
 <a id="us-026"></a>
@@ -778,6 +1011,18 @@ These stories govern user abuse reporting, administrative moderation, account en
 **Complexity/Effort Estimate:** Medium
 
 **Related Stories:** US-010, US-012, US-025, US-027, US-028
+
+**Sprint 1 tasks:** (8 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create moderation-case queue and target-detail Express endpoints
+2. Protect moderation routes with ADMIN RBAC middleware
+3. Build newest-first React safety queue and case view
+4. Add dismiss, redact, warn, hide, and URL-disable actions
+5. Require a reason and create safe action records for each decision
+6. Remove hidden content from discovery and preserve historical memberships
+7. Hide credentials, private contacts, and private workspace data from cases
+8. Add Vitest and integration tests for moderation actions and access
+
 
 ---
 
@@ -806,6 +1051,20 @@ These stories govern user abuse reporting, administrative moderation, account en
 
 **Related Stories:** US-003, US-004, US-010, US-026, US-028
 
+**Sprint 1 tasks:** (10 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create ADMIN account-management list and detail endpoints
+2. Add suspension, deactivation, and deletion-request data models
+3. Implement session revocation and sign-in blocking on suspension
+4. Cancel pending requests, hide profiles, and pause owned recruitment
+5. Implement ownership-verified deletion and 30-day target workflow
+6. Pseudonymize historical membership fields while preserving locked rosters
+7. Protect credentials, OTPs, notes, and public ADMIN self-promotion
+8. Build React account enforcement views and reason forms
+9. Add Vitest and integration tests for suspension and deletion rules
+10. Update the user manual
+
+
 ---
 
 <a id="us-028"></a>
@@ -831,3 +1090,211 @@ These stories govern user abuse reporting, administrative moderation, account en
 **Complexity/Effort Estimate:** Medium
 
 **Related Stories:** US-010, US-026, US-027
+
+**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+
+
+---
+
+<a id="us-030"></a>
+
+#### US-030: Participant Chat Forums and Messaging
+
+**Delivery Category:** Must-Have — MVP (≈3-day slice)
+
+**User/Role:** PART (verified, active)
+
+**Story Statement:** As a Participant (hacker), I want in-app forums and messaging with presence statuses, so that I can open topic channels with a title and description, collaborate with other hackers, and send messages in-app.
+
+**Description:** Replaces deferred hackathon-listing Must-Haves (~~US-008–US-010~~ / ~~FR-018–FR-028~~) in the *active* product scope with collaboration chat. Closest prior items (US-023 links/notes, US-021 alerts) do **not** implement chat; FR-069 previously forbade chat/video — US-030 / FR-086–FR-089 supersede that for text forums only. Team channels, DMs, moderation hooks, unread badges, and rich media are separate stories **US-031–US-035**.
+
+**Acceptance Criteria:**
+1. Verified active PART can set presence: Online, Idle, Do Not Disturb, Invisible (FR-086). Visitors never see presence.
+2. PART can create and list forums/channels with required title and description (FR-087).
+3. Channel members can send and read text messages with author handle, timestamp, and content; loading/empty/validation/error states; drafts kept on failure (FR-088 / NR-017).
+4. Visitors, unverified, and suspended accounts cannot use chat.
+5. Chat APIs never expose credentials, OTPs, or account emails (FR-089).
+6. Vitest / route tests cover happy path, invalid input, unauthorized access, and failure handling.
+
+**Priority:** High
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-006, US-031, US-032, US-033, US-034, US-035
+
+**Sprint 1 tasks:** (23 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create chat channel and message PostgreSQL models
+2. Add participant presence-status field and update API
+3. Create Express channel list/create and message list/send endpoints
+4. Enforce chat privacy — no credentials, OTPs, or emails in payloads
+5. Build React Chat page — status, forum list/create, message thread
+6. Add Vitest and route tests for chat happy path, auth, and validation
+7. Create and organize engineering diagrams for active MVP user stories
+8. Update wireframes
+9. Update the .mds for user_stories, task_disaggregation, FRs etc.
+10. Create database seed
+11. Migrate from ethereal to Google App password SMT
+12. Update User Manual
+13. bug(auth): signed-in header shown while MFA gate says "No session was created"
+14. bug(auth): "Too many OTP requests" shown without user requesting more codes
+15. bug(teams): open vacancies show "Sign in to apply" for authenticated users
+16. improv(ui): declutter authenticated primary navbar
+17. improv(ui): role-based navbar — show only features allowed for PART vs ADMIN
+18. Require skills, handle, institution, and portfolio before Looking for Team cards show
+19. Refactor landing page for event-free scope i.e. remove hackathon listings, dynamic stats, update search & How it works
+20. Update Admin Technical Manual
+21. Update Task Disaggregation
+22. fix(deploy): resolve Render production build failure and configure Vercel cross-domain API proxy
+23. Fix the "Apply" button behaviour (#366)
+
+
+---
+
+<a id="us-031"></a>
+
+#### US-031: Team-Scoped Chat Channels
+
+**Delivery Category:** Should-Have — early post-MVP (next sprint after US-030)
+
+**User/Role:** PART (confirmed member of a team, including the owner)
+
+**Story Statement:** As a confirmed team member, I want a private team chat channel limited to my teammates, so that we can coordinate without exposing messages to the whole platform.
+
+**Description:** Extends US-030 with membership-gated channels. Depends on US-012 / US-022 membership state. Maps to FR-090.
+
+**Acceptance Criteria:**
+1. Only active confirmed members of a team can join or read that team’s channel (FR-090).
+2. Non-members, Visitors, and ADMIN without membership receive 403; no message content leaks.
+3. Team channel creation/linking is tied to an existing team; disbanded/locked rules follow team lifecycle without deleting historical membership integrity.
+4. Loading, empty, validation, and error states; drafts kept on failure.
+5. Vitest / route tests cover authorized member access and unauthorized denial.
+
+**Priority:** Medium
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-012, US-022, US-030
+
+**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+
+
+---
+
+<a id="us-032"></a>
+
+#### US-032: Direct Messaging Between Participants
+
+**Delivery Category:** Should-Have — early post-MVP (next sprint after US-030)
+
+**User/Role:** PART (verified, active)
+
+**Story Statement:** As a Participant, I want to exchange private direct messages with another Participant, so that we can connect one-to-one while recruiting or collaborating.
+
+**Description:** One-to-one threads built on US-030 messaging primitives. Maps to FR-091. Blocked or suspended peers cannot message.
+
+**Acceptance Criteria:**
+1. Two verified active PART users can open or continue a DM thread (FR-091).
+2. Only the two participants can read or send in that thread; others receive 403.
+3. Suspended, unverified, or blocked peers cannot send; clear denial messages.
+4. Composer validation, empty inbox/thread states, and draft preservation on failure.
+5. Payloads never include credentials, OTPs, or emails (same privacy bar as FR-089).
+6. Vitest / route tests cover happy path, unauthorized access, and validation failures.
+
+**Priority:** Medium
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-006, US-030, US-027
+
+**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+
+
+---
+
+<a id="us-033"></a>
+
+#### US-033: Chat Moderation and Reporting Hooks
+
+**Delivery Category:** Should-Have — early post-MVP (next sprint after US-030)
+
+**User/Role:** ADMIN · PART (optional report when US-025 ships)
+
+**Story Statement:** As a Platform Administrator, I want to open moderation cases against abusive chat channels or messages, so that collaboration stays safe without exposing private credentials.
+
+**Description:** Extends US-026 case targets to chat entities (FR-092). Optional PART report-from-message when US-025 is available. Does not replace US-030 core chat.
+
+**Acceptance Criteria:**
+1. ADMIN can open a US-026 moderation case targeting a channel or message id with mandatory reason (FR-092).
+2. Case detail shows safe chat summary (handles, times, redacted body rules) — never credentials/OTPs/emails.
+3. PART and Visitors cannot invoke ADMIN chat moderation controls.
+4. When US-025 ships, PART may report a message into the same case pipeline without reading others’ reports.
+5. Action records follow FR-079; Vitest / integration tests cover access and validation.
+
+**Priority:** Medium
+
+**Complexity/Effort Estimate:** Medium
+
+**Related Stories:** US-025, US-026, US-030
+
+**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+
+
+---
+
+<a id="us-034"></a>
+
+#### US-034: Chat Unread and Mention Badges
+
+**Delivery Category:** Should-Have — early post-MVP (after US-030 and US-021)
+
+**User/Role:** PART (verified, active)
+
+**Story Statement:** As a Participant, I want unread counts and mention badges for chat activity, so that I notice new messages without constantly polling every channel.
+
+**Description:** Surfaces chat activity through the US-021 notification centre patterns. Depends on US-030 message persistence and US-021 unread infrastructure. Maps to FR-094.
+
+**Acceptance Criteria:**
+1. PART sees an unread count for channels/DMs with new messages since last read (FR-094).
+2. Mentions (when implemented in message body conventions) increment a distinct badge or category under US-021 rules.
+3. Marking a thread read clears the corresponding unread state; counts stay accurate across refresh.
+4. Visitors and unauthorized users never see another account’s badges.
+5. Empty zero-count state is clear; Vitest covers increment/clear behaviour.
+
+**Priority:** Medium
+
+**Complexity/Effort Estimate:** Small–Medium
+
+**Related Stories:** US-021, US-030, US-032
+
+**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+
+
+---
+
+<a id="us-035"></a>
+
+#### US-035: Rich Chat Media and Realtime Extras
+
+**Delivery Category:** May-Have — future
+
+**User/Role:** PART (verified, active)
+
+**Story Statement:** As a Participant, I want richer chat interactions such as reactions, typing indicators, file attachments, or voice/video, so that collaboration feels closer to a full realtime workspace.
+
+**Description:** Optional future enhancements over US-030 text chat. Maps to FR-093. Not committed for Must-Have or the immediate Should-Have sprint. Any voice/video requires separate security and capacity review.
+
+**Acceptance Criteria:**
+1. Future design approval is required before shipping reactions, typing indicators, attachments, or voice/video (FR-093).
+2. Features must preserve chat privacy (no credentials/OTPs/emails) and existing authorization boundaries from US-030–US-033.
+3. Attachments, if ever allowed, must enforce HTTPS/safe MIME limits and virus/size policy TBD.
+4. No May-Have item is required for MVP acceptance of US-030.
+
+**Priority:** Low
+
+**Complexity/Effort Estimate:** Large (when approved)
+
+**Related Stories:** US-030, US-031, US-032
+
+**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+

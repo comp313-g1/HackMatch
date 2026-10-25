@@ -1,292 +1,226 @@
 import React from 'react';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { LandingPage } from './LandingPage';
+import * as openTeamsApi from '../teams/openTeamsApi';
+import * as availabilityApi from '../../services/availabilityApi';
 
-const { MOCK_EVENTS } = vi.hoisted(() => ({
-  MOCK_EVENTS: [
-    {
-      id: 'a0000000-0000-4000-8000-000000000001',
-      name: 'Global AI Hackathon 2026',
-      format: 'Online' as const,
-      time: 'Upcoming' as const,
-      location: 'Virtual / Worldwide',
-      country: 'Worldwide',
-      dates: 'Nov 14 – 16, 2026',
-      openTeams: 2,
-      tags: ['AI/ML', 'Python', 'Cloud'],
-    },
-    {
-      id: 'a0000000-0000-4000-8000-000000000002',
-      name: 'Toronto FinTech Challenge',
-      format: 'In-Person' as const,
-      time: 'Upcoming' as const,
-      location: 'Toronto, ON',
-      country: 'Canada',
-      dates: 'Nov 21 – 23, 2026',
-      openTeams: 1,
-      tags: ['FinTech', 'TypeScript', 'React'],
-    },
-    {
-      id: 'a0000000-0000-4000-8000-000000000003',
-      name: 'Healthcare Innovation Sprint',
-      format: 'Hybrid' as const,
-      time: 'Ongoing' as const,
-      location: 'Montreal, QC & Online',
-      country: 'Canada',
-      dates: 'Oct 17 – 19, 2026',
-      openTeams: 0,
-      tags: ['HealthTech', 'Security', 'FHIR'],
-    },
-    {
-      id: 'a0000000-0000-4000-8000-000000000004',
-      name: 'Nordic CleanTech Hack',
-      format: 'Online' as const,
-      time: 'Upcoming' as const,
-      location: 'Stockholm & Remote',
-      country: 'Sweden',
-      dates: 'Dec 05 – 07, 2026',
-      openTeams: 0,
-      tags: ['CleanTech', 'IoT', 'Data'],
-    },
-    {
-      id: 'a0000000-0000-4000-8000-000000000005',
-      name: 'Calgary Web3 Summit',
-      format: 'In-Person' as const,
-      time: 'Concluded' as const,
-      location: 'Calgary, AB',
-      country: 'Canada',
-      dates: 'Sep 12 – 14, 2026',
-      openTeams: 0,
-      tags: ['Web3', 'Rust', 'Solidity'],
-    },
-    {
-      id: 'a0000000-0000-4000-8000-000000000006',
-      name: 'Berlin Civic Tech Days',
-      format: 'Hybrid' as const,
-      time: 'Concluded' as const,
-      location: 'Berlin & Online',
-      country: 'Germany',
-      dates: 'Aug 20 – 22, 2026',
-      openTeams: 0,
-      tags: ['CivicTech', 'OpenSource', 'UX'],
-    },
-  ],
+vi.mock('../teams/openTeamsApi', async () => {
+  const actual = await vi.importActual<typeof import('../teams/openTeamsApi')>(
+    '../teams/openTeamsApi'
+  );
+  return {
+    ...actual,
+    fetchOpenTeams: vi.fn(),
+  };
+});
+
+vi.mock('../../services/availabilityApi', () => ({
+  fetchAvailableCandidates: vi.fn(),
 }));
 
-vi.mock('./landingData', () => ({
-  VERIFIED_EVENTS: MOCK_EVENTS,
-}));
-
-describe('LandingPage component (Wireframe reference: landing-visitor.html)', () => {
+describe('LandingPage (#361 event-free)', () => {
   const mockNavigateToRegister = vi.fn();
   const mockNavigateToLogin = vi.fn();
+  const mockNavigateToOpenTeams = vi.fn();
+  const mockNavigateToLooking = vi.fn();
+  const mockNavigateToTeams = vi.fn();
+  const mockNavigateToProfile = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(openTeamsApi.fetchOpenTeams).mockResolvedValue({
+      viewer: 'PART',
+      total: 2,
+      teams: [
+        {
+          id: 't1',
+          name: 'Neural Nights',
+          pitch: 'Building an AI study buddy',
+          goal: 'Learning',
+          commitmentHours: 12,
+          confirmedMembers: 1,
+          openSlots: 2,
+          isViewerMember: false,
+          members: [{ displayName: 'Casey', role: 'Owner' }],
+          vacancies: [{ id: 'v1', role: 'Backend', skills: ['Python', 'TensorFlow'] }],
+          createdAt: '2026-10-22T00:00:00.000Z',
+        },
+        {
+          id: 't2',
+          name: 'Fintech Fox',
+          pitch: 'Payments hack',
+          goal: 'Competitive',
+          commitmentHours: 20,
+          confirmedMembers: 2,
+          openSlots: 1,
+          isViewerMember: false,
+          members: [{ displayName: 'Blake', role: 'Owner' }],
+          vacancies: [{ id: 'v2', role: 'Frontend', skills: ['React'] }],
+          createdAt: '2026-10-22T00:00:00.000Z',
+        },
+      ],
+    });
+    vi.mocked(availabilityApi.fetchAvailableCandidates).mockResolvedValue([
+      {
+        participantId: 'p1',
+        displayName: 'Casey',
+        handle: 'casey-demo',
+        institution: 'Demo U',
+        primaryRole: 'AI/ML',
+        desiredRole: 'AI/ML',
+        commitmentHours: 12,
+        goal: 'Learning',
+        skills: ['Python'],
+        portfolioLinks: [],
+        updatedAt: null,
+      },
+    ]);
   });
 
-  const renderComponent = () =>
+  const renderVisitor = () =>
     render(
       <LandingPage
         onNavigateToRegister={mockNavigateToRegister}
         onNavigateToLogin={mockNavigateToLogin}
+        onNavigateToOpenTeams={mockNavigateToOpenTeams}
       />
     );
 
-  it('renders hero title, kicker, and subtitle correctly per wireframe', () => {
-    renderComponent();
+  it('renders event-free hero copy and CTAs (no Browse Events)', async () => {
+    renderVisitor();
 
-    expect(screen.getByText(/pre-hackathon team formation/i)).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { level: 1, name: /find your hackathon team/i })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/browse verified hackathons, join a team or build your own, then lock your roster/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/platform-wide team formation/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: /find your team/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /browse events/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/verified hackathons/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^open teams$/i })).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText('Neural Nights')).toBeInTheDocument();
+    });
   });
 
-  it('navigates to registration when clicking Create account in hero', () => {
-    renderComponent();
+  it('searches by team name and person name', async () => {
+    renderVisitor();
+    await waitFor(() => expect(screen.getByText('Neural Nights')).toBeInTheDocument());
 
-    const heroCreateBtn = screen.getAllByRole('button', { name: /^create account$/i })[0];
-    fireEvent.click(heroCreateBtn);
+    const searchInput = screen.getByPlaceholderText(/search by team name, person, role, or skill/i);
+    fireEvent.change(searchInput, { target: { value: 'Casey' } });
 
-    expect(mockNavigateToRegister).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Neural Nights')).toBeInTheDocument();
+    expect(screen.queryByText('Fintech Fox')).not.toBeInTheDocument();
+
+    fireEvent.change(searchInput, { target: { value: 'Fintech' } });
+    expect(screen.getByText('Fintech Fox')).toBeInTheDocument();
+    expect(screen.queryByText('Neural Nights')).not.toBeInTheDocument();
   });
 
-  it('renders search input with accessible label and allows typing', () => {
-    renderComponent();
+  it('filters by role and goal chips', async () => {
+    renderVisitor();
+    await waitFor(() => expect(openTeamsApi.fetchOpenTeams).toHaveBeenCalled());
 
-    const searchInput = screen.getByPlaceholderText(/search by name, location, or edition/i);
-    expect(searchInput).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^backend$/i }));
+    await waitFor(() => {
+      expect(openTeamsApi.fetchOpenTeams).toHaveBeenCalledWith(
+        expect.objectContaining({ role: 'Backend' }),
+        null
+      );
+    });
 
-    fireEvent.change(searchInput, { target: { value: 'FinTech' } });
-    expect(searchInput).toHaveValue('FinTech');
-
-    // Only Toronto FinTech Challenge should be visible
-    expect(screen.getByText(/toronto fintech challenge/i)).toBeInTheDocument();
-    expect(screen.queryByText(/global ai hackathon/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^learning$/i }));
+    await waitFor(() => {
+      expect(openTeamsApi.fetchOpenTeams).toHaveBeenCalledWith(
+        expect.objectContaining({ role: 'Backend', goal: 'Learning' }),
+        null
+      );
+    });
   });
 
-  it('toggles format filter chips and updates aria-pressed', () => {
-    renderComponent();
+  it('shows empty state when search matches nothing', async () => {
+    renderVisitor();
+    await waitFor(() => expect(screen.getByText('Neural Nights')).toBeInTheDocument());
 
-    const onlineChip = screen.getByRole('button', { name: /^online$/i });
-    expect(onlineChip).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.change(screen.getByPlaceholderText(/search by team name, person, role, or skill/i), {
+      target: { value: 'zzzz-no-match' },
+    });
+    expect(screen.getByText(/no teams match your search/i)).toBeInTheDocument();
 
-    fireEvent.click(onlineChip);
-    expect(onlineChip).toHaveAttribute('aria-pressed', 'true');
-
-    // Online events like Global AI Hackathon & Nordic CleanTech should be visible
-    expect(screen.getByText(/global ai hackathon/i)).toBeInTheDocument();
-    expect(screen.getByText(/nordic cleantech hack/i)).toBeInTheDocument();
-    expect(screen.queryByText(/toronto fintech challenge/i)).not.toBeInTheDocument();
-
-    // Clicking again resets format filter
-    fireEvent.click(onlineChip);
-    expect(onlineChip).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByText(/toronto fintech challenge/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /clear all filters/i }));
+    expect(screen.getByText('Neural Nights')).toBeInTheDocument();
   });
 
-  it('toggles time filter chips and updates aria-pressed', () => {
-    renderComponent();
-
-    const upcomingChip = screen.getByRole('button', { name: /^upcoming$/i });
-    expect(upcomingChip).toHaveAttribute('aria-pressed', 'false');
-
-    fireEvent.click(upcomingChip);
-    expect(upcomingChip).toHaveAttribute('aria-pressed', 'true');
-
-    // Calgary Web3 Summit is concluded, should not be visible
-    expect(screen.queryByText(/calgary web3 summit/i)).not.toBeInTheDocument();
-  });
-
-  it('shows empty state when no events match query and resets when clicking clear', () => {
-    renderComponent();
-
-    const searchInput = screen.getByPlaceholderText(/search by name, location, or edition/i);
-    fireEvent.change(searchInput, { target: { value: 'nonexistent-hackathon-123xyz' } });
-
-    expect(screen.getByText(/no events match your criteria/i)).toBeInTheDocument();
-
-    const clearBtn = screen.getByRole('button', { name: /clear all filters/i });
-    fireEvent.click(clearBtn);
-
-    expect(screen.queryByText(/no events match your criteria/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/global ai hackathon/i)).toBeInTheDocument();
-  });
-
-  it('renders all metrics per the wireframe stats', () => {
-    renderComponent();
+  it('renders dynamic stats without hardcoded events/countries', async () => {
+    renderVisitor();
 
     const metricsSection = screen.getByRole('region', { name: /platform statistics/i });
-    expect(within(metricsSection).getByText(/verified events/i)).toBeInTheDocument();
+    expect(within(metricsSection).queryByText(/verified events/i)).not.toBeInTheDocument();
+    expect(within(metricsSection).queryByText(/countries/i)).not.toBeInTheDocument();
     expect(within(metricsSection).getByText(/open teams/i)).toBeInTheDocument();
-    expect(within(metricsSection).getByText(/countries/i)).toBeInTheDocument();
-    expect(within(metricsSection).getAllByText('6').length).toBe(2);
-    expect(within(metricsSection).getByText('3')).toBeInTheDocument();
+    expect(within(metricsSection).getByText(/open slots/i)).toBeInTheDocument();
+    expect(within(metricsSection).getByText(/looking for teammates/i)).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(within(metricsSection).getByText('2')).toBeInTheDocument();
+      expect(within(metricsSection).getByText('3')).toBeInTheDocument();
+    });
   });
 
-  it('renders "How it works" section with 3 numbered steps', () => {
-    renderComponent();
+  it('updates How it works for event-free flow', () => {
+    renderVisitor();
 
-    expect(screen.getByRole('heading', { level: 2, name: /how it works/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 3, name: /find an event/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: /find open teams/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 3, name: /join or build a team/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 3, name: /lock your roster/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 3, name: /find teammates & lock/i })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 3, name: /find an event/i })).not.toBeInTheDocument();
   });
 
-  it('navigates to register or login from bottom CTA banner', () => {
-    renderComponent();
+  it('navigates from bottom CTA for visitors', () => {
+    renderVisitor();
 
-    const createBtn = screen.getByRole('button', { name: /create free account/i });
-    fireEvent.click(createBtn);
+    fireEvent.click(screen.getByRole('button', { name: /create free account/i }));
     expect(mockNavigateToRegister).toHaveBeenCalledTimes(1);
 
-    const signInBtn = screen.getByRole('button', { name: /sign in to your account/i });
-    fireEvent.click(signInBtn);
+    fireEvent.click(screen.getByRole('button', { name: /sign in to your account/i }));
     expect(mockNavigateToLogin).toHaveBeenCalledTimes(1);
   });
 
-  it('navigates to register when clicking Join / Build Team on an event card', () => {
-    renderComponent();
+  describe('signed-in participant', () => {
+    const mockUser = {
+      uid: 'u1',
+      email: 'casey@example.com',
+      displayName: 'Casey',
+    } as unknown as import('firebase/auth').User;
 
-    const joinBtns = screen.getAllByRole('button', { name: /join \/ build team/i });
-    expect(joinBtns.length).toBe(MOCK_EVENTS.length);
-
-    fireEvent.click(joinBtns[0]);
-    expect(mockNavigateToRegister).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not render the development-only role preview badge', () => {
-    renderComponent();
-
-    expect(screen.queryByLabelText(/role preview status/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/preview as/i)).not.toBeInTheDocument();
-  });
-
-  describe('Participant Mode (landing-participant.html)', () => {
-    const mockNavigateToTeams = vi.fn();
-    const mockNavigateToProfile = vi.fn();
-    const mockSelectEvent = vi.fn();
-    const mockUser = { email: 'maplefox@example.com', displayName: 'maplefox' };
-
-    const renderParticipantComponent = () =>
+    it('shows My teams / Find teammates / Profile CTAs and looking count', async () => {
       render(
         <LandingPage
           onNavigateToRegister={mockNavigateToRegister}
           onNavigateToLogin={mockNavigateToLogin}
           onNavigateToTeams={mockNavigateToTeams}
           onNavigateToProfile={mockNavigateToProfile}
-          onSelectEvent={mockSelectEvent}
+          onNavigateToOpenTeams={mockNavigateToOpenTeams}
+          onNavigateToLooking={mockNavigateToLooking}
           currentUser={mockUser}
         />
       );
 
-    it('renders participant hero CTAs without the development-only preview badge', () => {
-      renderParticipantComponent();
+      const hero = screen.getByRole('region', { name: /hackmatch hero/i });
+      expect(within(hero).getByRole('button', { name: /^my teams$/i })).toBeInTheDocument();
+      expect(within(hero).getByRole('button', { name: /^find teammates$/i })).toBeInTheDocument();
+      expect(within(hero).getByRole('button', { name: /^profile$/i })).toBeInTheDocument();
+      expect(within(hero).queryByRole('button', { name: /^create account$/i })).not.toBeInTheDocument();
 
-      expect(screen.queryByLabelText(/role preview status/i)).not.toBeInTheDocument();
-      expect(screen.queryByText(/preview as/i)).not.toBeInTheDocument();
+      await waitFor(() => {
+        expect(availabilityApi.fetchAvailableCandidates).toHaveBeenCalled();
+        const metrics = screen.getByRole('region', { name: /platform statistics/i });
+        expect(within(metrics).getByText('1')).toBeInTheDocument();
+      });
 
-      // Should show participant actions in hero, not Create account
-      expect(screen.getByRole('button', { name: /^teams workspace$/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /^your profile$/i })).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /^create account$/i })).not.toBeInTheDocument();
-
-      fireEvent.click(screen.getByRole('button', { name: /^teams workspace$/i }));
-      expect(mockNavigateToTeams).toHaveBeenCalledTimes(1);
-
-      fireEvent.click(screen.getByRole('button', { name: /^your profile$/i }));
-      expect(mockNavigateToProfile).toHaveBeenCalledTimes(1);
-    });
-
-    it('triggers onSelectEvent when clicking View / Build Team on an event card', () => {
-      renderParticipantComponent();
-
-      const teamBtns = screen.getAllByRole('button', { name: /view \/ build team/i });
-      expect(teamBtns.length).toBe(MOCK_EVENTS.length);
-
-      fireEvent.click(teamBtns[0]);
-      expect(mockSelectEvent).toHaveBeenCalledWith(MOCK_EVENTS[0].id);
-    });
-
-    it('renders participant bottom CTA banner with team workspace and profile actions', () => {
-      renderParticipantComponent();
-
-      expect(
-        screen.getByRole('heading', { level: 2, name: /ready to assemble your winning hackathon team\?/i })
-      ).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /create free account/i })).not.toBeInTheDocument();
-
-      const teamsCtaBtn = screen.getByRole('button', { name: /go to teams workspace/i });
-      fireEvent.click(teamsCtaBtn);
+      fireEvent.click(within(hero).getByRole('button', { name: /^my teams$/i }));
       expect(mockNavigateToTeams).toHaveBeenCalled();
-
-      const profileCtaBtn = screen.getByRole('button', { name: /edit technical profile/i });
-      fireEvent.click(profileCtaBtn);
-      expect(mockNavigateToProfile).toHaveBeenCalled();
     });
   });
 });

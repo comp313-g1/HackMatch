@@ -1,0 +1,48 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#fff7d6","noteBorderColor":"#d4a72c","noteTextColor":"#3f3300","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":42,"width":175,"height":65,"boxMargin":10,"messageMargin":28,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-011: Platform-wide Looking-for-Team — Sequence Diagram
+    actor User as Participant
+    participant ReactUI
+    participant FirebaseAuth
+    participant ExpressAPI
+    participant AvailabilityRepo
+    participant PostgreSQL
+
+    User->>ReactUI: Open Looking for Team page
+    ReactUI->>ExpressAPI: GET /api/availability/me and GET /api/availability
+    ExpressAPI->>FirebaseAuth: Verify token, MFA, active account, PART role, and verified email
+    alt Visitor or ineligible account
+        ExpressAPI-->>ReactUI: 401 or 403 with no candidate cards
+        ReactUI-->>User: Sign-in or verification guidance
+    else Verified PART
+        ExpressAPI->>AvailabilityRepo: Read platform availability and active candidates
+        AvailabilityRepo->>PostgreSQL: Query canonical platform-pool rows
+        PostgreSQL-->>AvailabilityRepo: Preferences and active LFT records
+        AvailabilityRepo-->>ExpressAPI: Platform records without client event input
+        ExpressAPI-->>ReactUI: Preferences plus permitted candidate projections
+        ReactUI-->>User: Render toggle, form, and candidate cards
+    end
+
+    User->>ReactUI: Edit toggle, role, hours, and goal
+    ReactUI->>ReactUI: Validate role, goal, and 0–168 hours
+    alt Client validation fails
+        ReactUI-->>User: Field errors with entered values preserved
+    else Client validation succeeds
+        ReactUI->>ExpressAPI: PUT /api/availability/me without eventId
+        ExpressAPI->>ExpressAPI: Reject eventId or unknown fields and validate payload
+        alt Server validation fails
+            ExpressAPI-->>ReactUI: 400 VALIDATION_ERROR with field errors
+            ReactUI-->>User: Preserve values and show errors
+        else Valid update
+            ExpressAPI->>AvailabilityRepo: Upsert by authenticated participant
+            AvailabilityRepo->>PostgreSQL: Write canonical platform-pool row
+            PostgreSQL-->>AvailabilityRepo: Updated availability
+            AvailabilityRepo-->>ExpressAPI: Platform availability record
+            ExpressAPI-->>ReactUI: 200 success
+            ReactUI-->>User: Confirmation and refreshed candidate pool
+        end
+    end
+
+    Note over AvailabilityRepo,PostgreSQL: event_availability.event_id stores a fixed internal Platform Availability Pool row for compatibility. The client never selects or submits it.
+

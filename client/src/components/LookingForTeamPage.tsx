@@ -164,7 +164,6 @@ export function LookingForTeamPage({
         idToken={idToken}
         onAvailabilityUpdated={(updated) => {
           setAvailability(updated);
-          // Refresh candidates list to reflect current status
           fetchAvailableCandidates(idToken)
             .then(setCandidates)
             .catch(() => {});

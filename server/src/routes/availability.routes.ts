@@ -7,6 +7,7 @@ import { requireVerifiedParticipant } from '../middleware/requireVerifiedPartici
 import { requireJsonObjectBody } from '../validators/team.validator.js';
 import { validateAvailabilityUpdateBody } from '../validators/availability.validator.js';
 import {
+  AvailabilityServiceError,
   getMyPlatformAvailability,
   updateMyPlatformAvailability,
   listAvailableCandidates,
@@ -55,6 +56,15 @@ availabilityRouter.put(
       const availability = await updateMyPlatformAvailability(req.participant!.id, req.body);
       res.status(200).json({ status: 'ok', availability });
     } catch (err) {
+      if (err instanceof AvailabilityServiceError) {
+        res.status(err.status).json({
+          error: err.message,
+          code: err.code,
+          fieldErrors: err.fieldErrors,
+          errors: err.fieldErrors,
+        });
+        return;
+      }
       next(err);
     }
   }
