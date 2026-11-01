@@ -26,6 +26,10 @@ import {
   resolveProfileViewerCategory,
   projectProfileForViewer,
 } from '../services/profilePrivacy.js';
+import {
+  computeExperienceBadge,
+  SELF_REPORTED_HISTORY_NOTICE,
+} from '../services/experienceBadge.js';
 
 export {
   ALLOWED_PRIMARY_ROLES,
@@ -366,8 +370,10 @@ export async function getMyHackathonHistory(
     res.status(200).json({
       participantId: participant.id,
       viewerCategory: 'OWNER',
+      experienceBadge: computeExperienceBadge(records.length),
       hackathonCount: records.length,
       isSelfReported: true,
+      selfReportedNotice: SELF_REPORTED_HISTORY_NOTICE,
       history: records.map(formatHistoryRecord),
     });
   } catch (err: unknown) {
@@ -429,8 +435,10 @@ export async function getParticipantHackathonHistory(
     res.status(200).json({
       participantId: targetParticipant.id,
       viewerCategory,
+      experienceBadge: computeExperienceBadge(records.length),
       hackathonCount: records.length,
       isSelfReported: true,
+      selfReportedNotice: SELF_REPORTED_HISTORY_NOTICE,
       history: records.map(formatHistoryRecord),
     });
   } catch (err: unknown) {
@@ -536,8 +544,10 @@ export async function createHackathonHistoryEntry(
     res.status(201).json({
       message: 'Hackathon history record created successfully.',
       entry: formatHistoryRecord(created),
+      experienceBadge: computeExperienceBadge(updated.length),
       hackathonCount: updated.length,
       isSelfReported: true,
+      selfReportedNotice: SELF_REPORTED_HISTORY_NOTICE,
       history: updated.map(formatHistoryRecord),
     });
   } catch (err: unknown) {
@@ -669,8 +679,10 @@ export async function updateHackathonHistoryEntry(
     res.status(200).json({
       message: 'Hackathon history record updated successfully.',
       entry: updated ? formatHistoryRecord(updated) : null,
+      experienceBadge: computeExperienceBadge(allRecords.length),
       hackathonCount: allRecords.length,
       isSelfReported: true,
+      selfReportedNotice: SELF_REPORTED_HISTORY_NOTICE,
       history: allRecords.map(formatHistoryRecord),
     });
   } catch (err: unknown) {
@@ -748,8 +760,10 @@ export async function deleteHackathonHistoryEntry(
     res.status(200).json({
       message: 'Hackathon history record removed.',
       deletedId: historyId,
+      experienceBadge: computeExperienceBadge(remaining.length),
       hackathonCount: remaining.length,
       isSelfReported: true,
+      selfReportedNotice: SELF_REPORTED_HISTORY_NOTICE,
       history: remaining.map(formatHistoryRecord),
     });
   } catch (err: unknown) {

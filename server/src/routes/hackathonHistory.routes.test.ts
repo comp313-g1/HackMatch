@@ -118,8 +118,10 @@ describe('Express Hackathon History Endpoints (US-007 / #US-007-T2)', () => {
       expect(res.body).toMatchObject({
         participantId: 'part-owner-1',
         viewerCategory: 'OWNER',
+        experienceBadge: 'Competitor',
         hackathonCount: 1,
         isSelfReported: true,
+        selfReportedNotice: expect.stringContaining('not independently verified'),
         history: [
           {
             id: 'hist-1',

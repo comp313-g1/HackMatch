@@ -1,5 +1,11 @@
-import type { Participant, ParticipantPrimaryRole } from '../db/types.js';
+import type { Participant, ParticipantPrimaryRole, ExperienceBadge } from '../db/types.js';
 import type { FullParticipantProfileRecord } from '../db/profile.repository.js';
+import {
+  buildExperienceSummary,
+  SELF_REPORTED_HISTORY_NOTICE,
+} from './experienceBadge.js';
+
+export { SELF_REPORTED_HISTORY_NOTICE };
 
 export type ProfileViewerCategory = 'VISITOR' | 'PART' | 'CONFIRMED_TEAMMATE' | 'OWNER';
 
@@ -11,6 +17,15 @@ export const SELF_DECLARED_NOTICE =
 
 export const VISITOR_ANONYMIZED_NOTICE =
   'Sign in with a verified Participant account to view candidate handles, skills, and self-declared portfolio links.';
+
+export interface ProjectedHackathonHistoryEntry {
+  id: string;
+  eventName: string;
+  eventDate: string;
+  teamRole: ParticipantPrimaryRole;
+  projectTitle: string;
+  projectUrl: string;
+}
 
 export interface VisitorAnonymizedPreview {
   viewerCategory: 'VISITOR';
@@ -35,6 +50,10 @@ export interface PermittedCandidateProfileView {
     isSelfDeclared: true;
   }>;
   selfDeclaredNotice: string;
+  hackathonCount: number;
+  experienceBadge: ExperienceBadge;
+  experienceBadgeSelfReported: true;
+  hackathonHistory: ProjectedHackathonHistoryEntry[];
   participantId?: string;
   sharedContactHandle?: string | null;
   sharedContactAudienceNotice?: string;
@@ -86,6 +105,9 @@ export function projectProfileForViewer(
     };
   }
 
+  const history = record.history ?? [];
+  const summary = buildExperienceSummary(history);
+
   const view: PermittedCandidateProfileView = {
     viewerCategory,
     displayName: participant.full_name,
@@ -100,6 +122,17 @@ export function projectProfileForViewer(
       isSelfDeclared: true,
     })),
     selfDeclaredNotice: SELF_DECLARED_NOTICE,
+    hackathonCount: summary.hackathonCount,
+    experienceBadge: summary.experienceBadge,
+    experienceBadgeSelfReported: true,
+    hackathonHistory: history.map((entry) => ({
+      id: entry.id,
+      eventName: entry.event_name,
+      eventDate: entry.event_date,
+      teamRole: entry.team_role,
+      projectTitle: entry.project_title,
+      projectUrl: entry.project_url,
+    })),
   };
 
   if (viewerCategory === 'OWNER') {
