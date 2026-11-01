@@ -7,7 +7,6 @@ import {
 import type {
   Participant,
   ParticipantHackathonHistory,
-  ParticipantPrimaryRole,
 } from '../db/types.js';
 import {
   ALLOWED_PRIMARY_ROLES,
@@ -16,6 +15,10 @@ import {
   type ProfileFieldErrors,
   type SanitizedProfilePayload,
 } from '../validators/profile.validator.js';
+import {
+  validateHackathonHistoryInput,
+  HISTORY_MAX_ENTRIES,
+} from '../validators/hackathonHistory.validator.js';
 import {
   SHARED_CONTACT_AUDIENCE_NOTICE,
   SELF_DECLARED_NOTICE,
@@ -490,26 +493,34 @@ export async function createHackathonHistoryEntry(
       return;
     }
 
-    const eventName = String(body.eventName ?? body.event_name ?? '').trim();
-    const eventDate = String(body.eventDate ?? body.event_date ?? '').trim();
-    const teamRole = String(body.teamRole ?? body.team_role ?? '').trim() as ParticipantPrimaryRole;
-    const projectTitle = String(body.projectTitle ?? body.project_title ?? '').trim();
-    const projectUrl = String(body.projectUrl ?? body.project_url ?? '').trim();
-
-    if (!eventName || !eventDate || !teamRole || !projectTitle || !projectUrl) {
+    const validation = validateHackathonHistoryInput(req.body);
+    if (!validation.valid || !validation.value) {
       res.status(400).json({
-        error: 'Missing required hackathon history fields.',
+        error: 'VALIDATION_ERROR',
         code: 'VALIDATION_ERROR',
+        message: 'Hackathon history validation failed. Existing records were not modified.',
+        errors: validation.errors,
       });
       return;
     }
 
     const existingRecords = await profileRepository.findHistoryByParticipantId(participant.id);
+    if (existingRecords.length >= HISTORY_MAX_ENTRIES) {
+      res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        code: 'HISTORY_LIMIT_EXCEEDED',
+        message: `Cannot exceed maximum of ${HISTORY_MAX_ENTRIES} hackathon history records.`,
+      });
+      return;
+    }
+
+    const { event_name, event_date, project_title } = validation.value;
+
     const isDuplicate = existingRecords.some(
       (item) =>
-        item.event_name.trim().toLowerCase() === eventName.toLowerCase() &&
-        item.event_date.slice(0, 10) === eventDate.slice(0, 10) &&
-        item.project_title.trim().toLowerCase() === projectTitle.toLowerCase()
+        item.event_name.trim().toLowerCase() === event_name.toLowerCase() &&
+        item.event_date.slice(0, 10) === event_date.slice(0, 10) &&
+        item.project_title.trim().toLowerCase() === project_title.toLowerCase()
     );
     if (isDuplicate) {
       res.status(409).json({
@@ -519,13 +530,7 @@ export async function createHackathonHistoryEntry(
       return;
     }
 
-    const created = await profileRepository.createHistoryEntry(participant.id, {
-      event_name: eventName,
-      event_date: eventDate,
-      team_role: teamRole,
-      project_title: projectTitle,
-      project_url: projectUrl,
-    });
+    const created = await profileRepository.createHistoryEntry(participant.id, validation.value);
 
     const updated = await profileRepository.findHistoryByParticipantId(participant.id);
     res.status(201).json({
@@ -621,25 +626,34 @@ export async function updateHackathonHistoryEntry(
       return;
     }
 
-    const eventName = String(body.eventName ?? body.event_name ?? existingEntry.event_name).trim();
-    const eventDate = String(body.eventDate ?? body.event_date ?? existingEntry.event_date).trim();
-    const teamRole = String(
-      body.teamRole ?? body.team_role ?? existingEntry.team_role
-    ).trim() as ParticipantPrimaryRole;
-    const projectTitle = String(
-      body.projectTitle ?? body.project_title ?? existingEntry.project_title
-    ).trim();
-    const projectUrl = String(
-      body.projectUrl ?? body.project_url ?? existingEntry.project_url
-    ).trim();
+    const candidatePayload = {
+      eventName: body.eventName ?? body.event_name ?? existingEntry.event_name,
+      eventDate: body.eventDate ?? body.event_date ?? existingEntry.event_date,
+      teamRole: body.teamRole ?? body.team_role ?? existingEntry.team_role,
+      projectTitle: body.projectTitle ?? body.project_title ?? existingEntry.project_title,
+      projectUrl: body.projectUrl ?? body.project_url ?? existingEntry.project_url,
+    };
+
+    const validation = validateHackathonHistoryInput({ ...body, ...candidatePayload });
+    if (!validation.valid || !validation.value) {
+      res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        code: 'VALIDATION_ERROR',
+        message: 'Hackathon history validation failed. Existing records were not modified.',
+        errors: validation.errors,
+      });
+      return;
+    }
+
+    const { event_name, event_date, project_title } = validation.value;
 
     const existingRecords = await profileRepository.findHistoryByParticipantId(participant.id);
     const isDuplicate = existingRecords.some(
       (item) =>
         item.id !== historyId &&
-        item.event_name.trim().toLowerCase() === eventName.toLowerCase() &&
-        item.event_date.slice(0, 10) === eventDate.slice(0, 10) &&
-        item.project_title.trim().toLowerCase() === projectTitle.toLowerCase()
+        item.event_name.trim().toLowerCase() === event_name.toLowerCase() &&
+        item.event_date.slice(0, 10) === event_date.slice(0, 10) &&
+        item.project_title.trim().toLowerCase() === project_title.toLowerCase()
     );
     if (isDuplicate) {
       res.status(409).json({
@@ -649,13 +663,7 @@ export async function updateHackathonHistoryEntry(
       return;
     }
 
-    const updated = await profileRepository.updateHistoryEntry(participant.id, historyId, {
-      event_name: eventName,
-      event_date: eventDate,
-      team_role: teamRole,
-      project_title: projectTitle,
-      project_url: projectUrl,
-    });
+    const updated = await profileRepository.updateHistoryEntry(participant.id, historyId, validation.value);
 
     const allRecords = await profileRepository.findHistoryByParticipantId(participant.id);
     res.status(200).json({

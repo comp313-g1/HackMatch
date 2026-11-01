@@ -201,6 +201,69 @@ describe('Express Hackathon History Endpoints (US-007 / #US-007-T2)', () => {
       expect(res.status).toBe(409);
       expect(res.body.code).toBe('DUPLICATE_HISTORY_RECORD');
     });
+
+    it('rejects invalid HTTPS URL with 400 VALIDATION_ERROR and does not modify database', async () => {
+      mockVerifyIdToken.mockResolvedValue(validOwnerToken);
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(ownerParticipant);
+      const createSpy = vi.spyOn(profileRepository, 'createHistoryEntry');
+
+      const res = await request(app)
+        .post('/api/profiles/me/history')
+        .set('Authorization', 'Bearer valid-token')
+        .send({
+          eventName: 'Valid Event',
+          eventDate: '2024-05-01',
+          teamRole: 'Frontend',
+          projectTitle: 'Valid Project',
+          projectUrl: 'http://insecure.com',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('VALIDATION_ERROR');
+      expect(createSpy).not.toHaveBeenCalled();
+    });
+
+    it('rejects future event date with 400 VALIDATION_ERROR', async () => {
+      mockVerifyIdToken.mockResolvedValue(validOwnerToken);
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(ownerParticipant);
+      const futureYear = new Date().getUTCFullYear() + 2;
+
+      const res = await request(app)
+        .post('/api/profiles/me/history')
+        .set('Authorization', 'Bearer valid-token')
+        .send({
+          eventName: 'Future Hack',
+          eventDate: `${futureYear}-01-01`,
+          teamRole: 'Backend',
+          projectTitle: 'Future Project',
+          projectUrl: 'https://example.com',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('VALIDATION_ERROR');
+    });
+
+    it('rejects when maximum limit of 20 history records is reached', async () => {
+      mockVerifyIdToken.mockResolvedValue(validOwnerToken);
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(ownerParticipant);
+      vi.spyOn(profileRepository, 'findHistoryByParticipantId').mockResolvedValue(
+        Array(20).fill(sampleEntry)
+      );
+
+      const res = await request(app)
+        .post('/api/profiles/me/history')
+        .set('Authorization', 'Bearer valid-token')
+        .send({
+          eventName: 'Event 21',
+          eventDate: '2024-01-01',
+          teamRole: 'UI/UX',
+          projectTitle: 'Project 21',
+          projectUrl: 'https://example.com/p21',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('HISTORY_LIMIT_EXCEEDED');
+    });
   });
 
   describe('PUT /api/profiles/me/history/:historyId', () => {
