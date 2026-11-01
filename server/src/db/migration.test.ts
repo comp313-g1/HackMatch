@@ -1864,4 +1864,57 @@ describe('0041_create_chat_channel_message_models.sql (US-030 / #342)', () => {
   });
 });
 
+describe('0043_create_participant_hackathon_history.sql DDL (US-007 / #US-007-T1)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0043_create_participant_hackathon_history.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(100);
+  });
+
+  it('creates participant_hackathon_history with required fields and constraints', () => {
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+participant_hackathon_history/i);
+    expect(sql).toMatch(
+      /participant_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+participants\s*\(\s*id\s*\)\s+ON\s+DELETE\s+CASCADE/i
+    );
+    expect(sql).toMatch(/LENGTH\(TRIM\(event_name\)\)\s*>=\s*2/i);
+    expect(sql).toMatch(/LENGTH\(TRIM\(event_name\)\)\s*<=\s*120/i);
+    expect(sql).toMatch(/event_date\s*>=/i);
+    expect(sql).toMatch(/event_date\s*<=\s*CURRENT_DATE/i);
+    expect(sql).toMatch(
+      /team_role\s+TEXT\s+NOT\s+NULL\s+CHECK\s*\(\s*team_role\s+IN\s*\(\s*'Frontend'\s*,\s*'Backend'\s*,\s*'Mobile'\s*,\s*'AI\/ML'\s*,\s*'UI\/UX'\s*,\s*'Pitch'\s*\)\s*\)/i
+    );
+    expect(sql).toMatch(/LENGTH\(TRIM\(project_title\)\)\s*>=\s*2/i);
+    expect(sql).toMatch(/LENGTH\(TRIM\(project_title\)\)\s*<=\s*120/i);
+    expect(sql).toMatch(/project_url\s+LIKE\s+'https:\/\/%'/i);
+  });
+
+  it('attaches updated_at and participant role check triggers', () => {
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trg_participant_hackathon_history_updated_at/i);
+    expect(sql).toMatch(/EXECUTE\s+FUNCTION\s+set_updated_at\(\)/i);
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trg_participant_hackathon_history_role_check/i);
+    expect(sql).toMatch(/EXECUTE\s+FUNCTION\s+check_participant_profile_role\(\)/i);
+  });
+
+  it('creates indexing for recency ordering and duplicate prevention', () => {
+    expect(sql).toMatch(
+      /CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_participant_hackathon_history_participant_date\s+ON\s+participant_hackathon_history\s*\(\s*participant_id\s*,\s*event_date\s+DESC\s*,\s*created_at\s+DESC\s*\)/i
+    );
+    expect(sql).toMatch(
+      /CREATE\s+UNIQUE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_participant_hackathon_history_unique_entry\s+ON\s+participant_hackathon_history/i
+    );
+  });
+
+  it('enables row level security', () => {
+    expect(sql).toMatch(
+      /ALTER\s+TABLE\s+participant_hackathon_history\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i
+    );
+  });
+});
+
+
 
