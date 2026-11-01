@@ -62,6 +62,12 @@ export function HackathonHistorySection({
       try {
         setLoading(true);
         const token = await getIdToken!();
+        if (!token) {
+          if (mounted) {
+            setLoading(false);
+          }
+          return;
+        }
         const endpoint =
           viewerCategory === 'OWNER'
             ? '/api/profiles/me/history'
@@ -278,7 +284,7 @@ export function HackathonHistorySection({
           role="note"
           className="p-3 bg-cream-50 border border-cream-200 rounded-md text-xs text-ink-muted"
         >
-          Sign in with a verified Participant account to view self-reported hackathon history and project links.
+          Sign in as a registered participant to view self-reported hackathon history and project links.
         </div>
       </section>
     );
