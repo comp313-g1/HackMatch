@@ -195,4 +195,54 @@ describe('CandidateDirectoryPanel (US-014-T4 / #139)', () => {
     expect(screen.getByTestId('directory-skills-input')).toHaveValue('');
     expect(screen.getByTestId('directory-min-hours')).toHaveValue(null);
   });
+
+  it('renders self-reported experience summary, portfolio links, and toggles profile inspection (US-014 AC 4 / US-006 / US-007)', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse);
+
+    render(<CandidateDirectoryPanel teamId="t-1" />);
+
+    fireEvent.click(screen.getByTestId('directory-search-submit'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('directory-results-container')).toBeInTheDocument();
+    });
+
+    // Experience summary
+    expect(screen.getByTestId('candidate-experience-summary')).toHaveTextContent(
+      'Competitor · 2 self-reported hackathons'
+    );
+
+    // Self-declared portfolio link
+    const portfolioLinks = screen.getByTestId('candidate-portfolio-links');
+    expect(portfolioLinks).toBeInTheDocument();
+    const portfolioAnchor = screen.getByRole('link', { name: /portfolio/i });
+    expect(portfolioAnchor).toHaveAttribute('href', 'https://alice.dev');
+    expect(portfolioAnchor).toHaveAttribute('rel', 'noopener noreferrer');
+
+    // Inspect Profile toggle button
+    const inspectBtn = screen.getByTestId('inspect-candidate-p-1');
+    expect(inspectBtn).toHaveTextContent('Inspect Profile');
+    expect(inspectBtn).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('inspected-profile-p-1')).not.toBeInTheDocument();
+
+    // Expand profile
+    fireEvent.click(inspectBtn);
+
+    expect(inspectBtn).toHaveTextContent('Hide Profile');
+    expect(inspectBtn).toHaveAttribute('aria-expanded', 'true');
+    const inspectedRegion = screen.getByTestId('inspected-profile-p-1');
+    expect(inspectedRegion).toBeInTheDocument();
+
+    // Inside CandidateProfileCard under PART viewer category:
+    // Display name, handle, role, institution rendered
+    expect(screen.getAllByText('Alice Coder').length).toBeGreaterThanOrEqual(2);
+    // Private contact is strictly NOT rendered
+    expect(screen.queryByText(/@alice_private_discord/i)).not.toBeInTheDocument();
+
+    // Collapse profile
+    fireEvent.click(inspectBtn);
+    expect(inspectBtn).toHaveTextContent('Inspect Profile');
+    expect(inspectBtn).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('inspected-profile-p-1')).not.toBeInTheDocument();
+  });
 });

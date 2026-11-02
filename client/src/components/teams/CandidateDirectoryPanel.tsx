@@ -13,6 +13,8 @@ import {
   type SkillMatchMode,
 } from './candidateDirectoryApi';
 import type { ExperienceBadge } from '../profile/hackathonHistoryValidation';
+import { CandidateProfileCard } from '../profile/CandidateProfileCard';
+import { isValidHttpsPortfolioUrl } from '../profile/profileValidation';
 
 export interface CandidateDirectoryPanelProps {
   teamId: string;
@@ -56,6 +58,7 @@ export function CandidateDirectoryPanel({
   const [loadState, setLoadState] = useState<LoadState>('idle');
   const [result, setResult] = useState<CandidateDirectoryResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [inspectedParticipantId, setInspectedParticipantId] = useState<string | null>(null);
 
   const updateDraft = (field: keyof CandidateDirectoryFilterDraft, value: string) => {
     setDraft((prev) => ({ ...prev, [field]: value }));
@@ -526,6 +529,11 @@ export function CandidateDirectoryPanel({
                     )}
                   </div>
 
+                  {/* Self-reported Experience Summary (US-007) */}
+                  <p className="text-xs text-ink-muted" data-testid="candidate-experience-summary">
+                    {candidate.experienceBadge} · {candidate.hackathonCount} self-reported hackathon{candidate.hackathonCount === 1 ? '' : 's'}
+                  </p>
+
                   {/* Skills List with Non-Color Matched Indicator (FR-042) */}
                   <div className="space-y-1 pt-1">
                     <p className="text-xs font-semibold text-ink-muted">Skills:</p>
@@ -555,12 +563,77 @@ export function CandidateDirectoryPanel({
                     </div>
                   </div>
 
+                  {/* Self-Declared Portfolio Links */}
+                  {candidate.portfolioLinks && candidate.portfolioLinks.length > 0 && (
+                    <div className="space-y-1 pt-1">
+                      <p className="text-xs font-semibold text-ink-muted">Portfolio Links:</p>
+                      <ul className="flex flex-wrap gap-2 text-xs" data-testid="candidate-portfolio-links">
+                        {candidate.portfolioLinks
+                          .filter((link) => isValidHttpsPortfolioUrl(link.url))
+                          .map((link, idx) => (
+                            <li key={idx}>
+                              <a
+                                href={link.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-forest hover:underline inline-flex items-center gap-1 font-medium"
+                              >
+                                {link.label || 'Portfolio'}
+                                <span className="text-[10px] text-ink-muted">(Self-declared)</span>
+                              </a>
+                            </li>
+                          ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {candidate.selfDeclaredNotice && (
                     <p className="text-[11px] text-ink-muted italic pt-1">
                       {candidate.selfDeclaredNotice}
                     </p>
                   )}
                 </div>
+
+                {/* Profile Inspection Toggle and Dedicated Region (US-014 AC 4) */}
+                <div className="pt-2 border-t border-cream-200 flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    data-testid={`inspect-candidate-${candidate.participantId}`}
+                    aria-expanded={inspectedParticipantId === candidate.participantId}
+                    onClick={() => {
+                      setInspectedParticipantId((prev) =>
+                        prev === candidate.participantId ? null : candidate.participantId
+                      );
+                    }}
+                    className="px-3 py-1.5 text-xs font-medium text-forest border border-forest/30 rounded bg-forest-50/50 hover:bg-forest-100 transition-colors"
+                  >
+                    {inspectedParticipantId === candidate.participantId ? 'Hide Profile' : 'Inspect Profile'}
+                  </button>
+                </div>
+
+                {inspectedParticipantId === candidate.participantId && (
+                  <div
+                    data-testid={`inspected-profile-${candidate.participantId}`}
+                    className="pt-3 border-t border-cream-200 mt-2"
+                  >
+                    <CandidateProfileCard
+                      viewerCategory="PART"
+                      profile={{
+                        displayName: candidate.displayName,
+                        handle: candidate.handle,
+                        primaryRole: candidate.primaryRole,
+                        institution: candidate.institution,
+                        skills: candidate.skills,
+                        portfolioLinks: candidate.portfolioLinks,
+                        selfDeclaredNotice: candidate.selfDeclaredNotice,
+                        hackathonCount: candidate.hackathonCount,
+                        experienceBadge: candidate.experienceBadge,
+                        experienceBadgeSelfReported: candidate.experienceBadgeSelfReported,
+                        hackathonHistory: candidate.hackathonHistory,
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             ))}
           </div>
