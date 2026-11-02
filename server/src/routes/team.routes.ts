@@ -33,6 +33,7 @@ import {
   listOpenTeamsHandler,
 } from '../controllers/team.controller.js';
 import { getVacancyRecommendationsHandler } from '../controllers/recommendations.controller.js';
+import { getTeamCandidateDirectoryHandler } from '../controllers/candidateDirectory.controller.js';
 import {
   issueInvitationHandler,
   listTeamInvitationsHandler,
@@ -88,6 +89,14 @@ teamRouter.get(
   validateTeamIdParams,
   requireTeamOwner,
   getVacancyRecommendationsHandler
+);
+/** US-014 / FR-040 — active team owner candidate directory search & filter. */
+teamRouter.get(
+  '/:teamId/candidates',
+  ...participantAuth,
+  validateTeamIdParams,
+  requireTeamOwner,
+  getTeamCandidateDirectoryHandler
 );
 teamRouter.get(
   '/:teamId/invitations',
