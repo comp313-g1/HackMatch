@@ -9,6 +9,7 @@ import { profileRepository, type IProfileRepository } from '../db/profile.reposi
 import { availabilityRepository, type IAvailabilityRepository } from '../repositories/availability.repository.js';
 import {
   listAvailableCandidates,
+  isLookingForTeamProfileComplete,
   type AvailableCandidateCard,
 } from './availability.service.js';
 import {
@@ -201,6 +202,29 @@ export function filterDirectoryCandidates(
 }
 
 /**
+ * Collects all confirmed participant IDs for a team and its event (US-014 AC 1, FR-040).
+ */
+export async function collectConfirmedEventParticipantIds(
+  teamId: string,
+  eventId: string,
+  rosterMemberIds: string[],
+  teamsRepo: Pick<ITeamsRepository, 'listConfirmedParticipantIdsForTeam'> & {
+    listConfirmedParticipantIdsForEvent?: (eventId: string) => Promise<string[]>;
+  }
+): Promise<Set<string>> {
+  const teamConfirmedIds = await teamsRepo.listConfirmedParticipantIdsForTeam(teamId);
+  const eventConfirmedIds = teamsRepo.listConfirmedParticipantIdsForEvent
+    ? await teamsRepo.listConfirmedParticipantIdsForEvent(eventId)
+    : [];
+
+  return new Set<string>([
+    ...rosterMemberIds,
+    ...teamConfirmedIds,
+    ...eventConfirmedIds,
+  ]);
+}
+
+/**
  * Searches candidate pool for active team owner, strictly excluding all confirmed event participants.
  */
 export async function queryCandidateDirectoryForTeamOwner(
@@ -239,16 +263,12 @@ export async function queryCandidateDirectoryForTeamOwner(
 
   // Collect all confirmed participant IDs for the team & event (US-014 AC 1, FR-040)
   const rosterConfirmedIds = (viewParts.members ?? []).map((m) => m.participant_id);
-  const teamConfirmedIds = await deps.teamsRepo.listConfirmedParticipantIdsForTeam(teamId);
-  const eventConfirmedIds = deps.teamsRepo.listConfirmedParticipantIdsForEvent
-    ? await deps.teamsRepo.listConfirmedParticipantIdsForEvent(viewParts.team.event_id)
-    : [];
-
-  const confirmedParticipantIds = new Set<string>([
-    ...rosterConfirmedIds,
-    ...teamConfirmedIds,
-    ...eventConfirmedIds,
-  ]);
+  const confirmedParticipantIds = await collectConfirmedEventParticipantIds(
+    teamId,
+    viewParts.team.event_id,
+    rosterConfirmedIds,
+    deps.teamsRepo
+  );
 
   const eligibilityContext: RecommendationEligibilityContext = {
     teamId,
@@ -259,6 +279,7 @@ export async function queryCandidateDirectoryForTeamOwner(
 
   const pool = await deps.listAvailableCandidates();
   const partitioned = partitionRecommendationCandidates(pool, eligibilityContext);
+  const exclusions = { ...partitioned.summary };
 
   const normalizedFilters = {
     skills: (filters?.skills ?? []).map((s) => s.trim()).filter(Boolean),
@@ -276,10 +297,19 @@ export async function queryCandidateDirectoryForTeamOwner(
   for (const c of partitioned.eligible) {
     const fullProfile = await deps.profileRepo.getFullProfile(c.participantId);
     if (fullProfile.profile?.moderation_status === 'Hidden') {
+      exclusions.unavailable += 1;
+      exclusions.totalExcluded += 1;
+      continue;
+    }
+    if (!isLookingForTeamProfileComplete(fullProfile)) {
+      exclusions.unavailable += 1;
+      exclusions.totalExcluded += 1;
       continue;
     }
     const participant = await deps.participantsRepo.findById(c.participantId);
     if (!participant) {
+      exclusions.inactive += 1;
+      exclusions.totalExcluded += 1;
       continue;
     }
 
@@ -332,6 +362,6 @@ export async function queryCandidateDirectoryForTeamOwner(
     totalMatched: filteredCards.length,
     empty: filteredCards.length === 0,
     message,
-    exclusions: partitioned.summary,
+    exclusions,
   };
 }

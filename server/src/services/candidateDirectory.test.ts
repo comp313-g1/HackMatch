@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   queryCandidateDirectoryForTeamOwner,
   filterDirectoryCandidates,
+  collectConfirmedEventParticipantIds,
   type CandidateDirectoryDeps,
   type DirectoryCandidateCard,
 } from './candidateDirectory.js';
@@ -210,6 +211,25 @@ describe('Candidate Directory Service (US-014 / FR-040)', () => {
   });
 
   describe('Candidate Exclusion and Projection (US-014 AC 1, AC 3, FR-040)', () => {
+    it('collectConfirmedEventParticipantIds unites team, event, and roster confirmed participants', async () => {
+      const mockRepo = {
+        listConfirmedParticipantIdsForTeam: vi.fn().mockResolvedValue(['p-team-1']),
+        listConfirmedParticipantIdsForEvent: vi.fn().mockResolvedValue(['p-event-1', 'p-event-2']),
+      };
+      const res = await collectConfirmedEventParticipantIds('team-1', 'event-1', ['p-roster-1'], mockRepo);
+      expect(Array.from(res)).toEqual(
+        expect.arrayContaining(['p-roster-1', 'p-team-1', 'p-event-1', 'p-event-2'])
+      );
+    });
+
+    it('collectConfirmedEventParticipantIds handles missing listConfirmedParticipantIdsForEvent gracefully', async () => {
+      const mockRepo = {
+        listConfirmedParticipantIdsForTeam: vi.fn().mockResolvedValue(['p-team-1']),
+      };
+      const res = await collectConfirmedEventParticipantIds('team-1', 'event-1', ['p-roster-1'], mockRepo);
+      expect(Array.from(res)).toEqual(['p-roster-1', 'p-team-1']);
+    });
+
     it('excludes confirmed participants across event teams and the owner', async () => {
       const confirmedOtherId = 'c2222222-2222-4222-8222-222222222222';
       const deps = createMockDeps({
@@ -253,6 +273,74 @@ describe('Candidate Directory Service (US-014 / FR-040)', () => {
       expect(card.experienceBadge).toBe('Competitor');
       expect(card.hackathonCount).toBe(1);
       expect(card.hackathonHistory).toHaveLength(1);
+    });
+
+    it('excludes candidate when profile moderation_status is Hidden and updates exclusions', async () => {
+      const hiddenProfile: FullParticipantProfileRecord = {
+        ...candidateProfile,
+        profile: {
+          ...candidateProfile.profile!,
+          moderation_status: 'Hidden',
+        },
+      };
+      const deps = createMockDeps({
+        profileRepo: {
+          getFullProfile: vi.fn().mockResolvedValue(hiddenProfile),
+        },
+      });
+
+      const res = await queryCandidateDirectoryForTeamOwner(
+        { actorParticipantId: ownerId, teamId },
+        deps
+      );
+
+      expect(res.totalEligible).toBe(0);
+      expect(res.candidates).toHaveLength(0);
+      expect(res.exclusions.unavailable).toBe(1);
+      expect(res.exclusions.totalExcluded).toBe(1);
+      expect(res.message).toBe(
+        'No eligible Looking-for-Team candidates are available for this event. Confirmed event participants and inactive accounts are excluded.'
+      );
+    });
+
+    it('excludes candidate when Looking for Team profile is incomplete (e.g. no skills)', async () => {
+      const incompleteProfile: FullParticipantProfileRecord = {
+        ...candidateProfile,
+        skills: [],
+      };
+      const deps = createMockDeps({
+        profileRepo: {
+          getFullProfile: vi.fn().mockResolvedValue(incompleteProfile),
+        },
+      });
+
+      const res = await queryCandidateDirectoryForTeamOwner(
+        { actorParticipantId: ownerId, teamId },
+        deps
+      );
+
+      expect(res.totalEligible).toBe(0);
+      expect(res.candidates).toHaveLength(0);
+      expect(res.exclusions.unavailable).toBe(1);
+    });
+
+    it('sets filter broadening message when candidates exist but none match selected filters', async () => {
+      const deps = createMockDeps();
+      const res = await queryCandidateDirectoryForTeamOwner(
+        {
+          actorParticipantId: ownerId,
+          teamId,
+          filters: { skills: ['Rust'] },
+        },
+        deps
+      );
+
+      expect(res.totalEligible).toBe(1);
+      expect(res.totalMatched).toBe(0);
+      expect(res.candidates).toHaveLength(0);
+      expect(res.message).toBe(
+        'No eligible candidates match the selected filters. Try broadening your skills, role, hours, or experience badge criteria.'
+      );
     });
   });
 
