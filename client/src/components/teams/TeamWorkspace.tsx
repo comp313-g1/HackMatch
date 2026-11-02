@@ -4,6 +4,7 @@ import { fetchMyTeam, TeamApiError, AuthRequiredError } from './teamApi';
 import { TeamListingForm } from './TeamListingForm';
 import { ModerationStatusNotice } from './ModerationStatusNotice';
 import { VacancyPanel } from './VacancyPanel';
+import { CandidateDirectoryPanel } from './CandidateDirectoryPanel';
 import { OwnerInvitationsPanel } from './OwnerInvitationsPanel';
 import { TeamRosterPanel } from './TeamRosterPanel';
 import { LeaveTeamPanel } from './LeaveTeamPanel';
@@ -295,6 +296,17 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
               setInvitationsRefreshKey((k) => k + 1);
             }}
           />
+
+          {!isLocked && (
+            <CandidateDirectoryPanel
+              teamId={team.id}
+              openVacancies={team.vacancies.filter((v) => v.status === 'Open')}
+              disabled={Boolean(isLocked)}
+              onInvitationIssued={() => {
+                setInvitationsRefreshKey((k) => k + 1);
+              }}
+            />
+          )}
 
           <OwnerInvitationsPanel
             teamId={team.id}
