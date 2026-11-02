@@ -112,6 +112,9 @@ describe('profilePrivacy service (US-006 / #67 / FR-014)', () => {
     expect(projected.email).toBeUndefined();
     expect(projected.participantId).toBeUndefined();
     expect(projected.firebase_uid).toBeUndefined();
+    expect(projected.hackathonHistory).toBeUndefined();
+    expect(projected.experienceBadge).toBeUndefined();
+    expect(projected.hackathonCount).toBeUndefined();
   });
 
   it('PART projection includes permitted profile fields and self-declared links while hiding sharedContactHandle, email, and internal IDs (US-006 AC 3, AC 4 / T4)', () => {
@@ -139,6 +142,9 @@ describe('profilePrivacy service (US-006 / #67 / FR-014)', () => {
     expect(projected.email).toBeUndefined();
     expect(projected.participantId).toBeUndefined();
     expect(projected.firebase_uid).toBeUndefined();
+    expect(projected.hackathonHistory).toEqual([]);
+    expect(projected.experienceBadge).toBe('Beginner');
+    expect(projected.hackathonCount).toBe(0);
   });
 
   it('CONFIRMED_TEAMMATE projection includes sharedContactHandle and audience notice while keeping email and internal IDs private (US-006 AC 4 / T5)', () => {
@@ -154,5 +160,90 @@ describe('profilePrivacy service (US-006 / #67 / FR-014)', () => {
     expect(projected.email).toBeUndefined();
     expect(projected.participantId).toBeUndefined();
     expect(projected.firebase_uid).toBeUndefined();
+  });
+
+  it('computes experienceBadge and projects hackathonHistory for authenticated PART viewers (US-007 AC 2, AC 3 / FR-016)', () => {
+    const recordWithHistory: FullParticipantProfileRecord = {
+      ...sampleRecord,
+      history: [
+        {
+          id: 'hist-1',
+          participant_id: 'part-secret-uuid-999',
+          event_name: 'Hack The North 2024',
+          event_date: '2024-09-15',
+          team_role: 'AI/ML',
+          project_title: 'VisionAssist',
+          project_url: 'https://github.com/maya_ml/vision',
+          created_at: '2024-09-16T00:00:00.000Z',
+          updated_at: '2024-09-16T00:00:00.000Z',
+        },
+        {
+          id: 'hist-2',
+          participant_id: 'part-secret-uuid-999',
+          event_name: 'UofTHacks XI',
+          event_date: '2024-01-20',
+          team_role: 'Backend',
+          project_title: 'TransitPulse',
+          project_url: 'https://github.com/maya_ml/transit',
+          created_at: '2024-01-21T00:00:00.000Z',
+          updated_at: '2024-01-21T00:00:00.000Z',
+        },
+      ],
+    };
+
+    const projected = projectProfileForViewer(
+      sampleParticipant,
+      recordWithHistory,
+      'PART'
+    ) as unknown as Record<string, unknown>;
+
+    expect(projected.hackathonCount).toBe(2);
+    expect(projected.experienceBadge).toBe('Competitor');
+    expect(projected.experienceBadgeSelfReported).toBe(true);
+    expect(projected.hackathonHistory).toEqual([
+      {
+        id: 'hist-1',
+        eventName: 'Hack The North 2024',
+        eventDate: '2024-09-15',
+        teamRole: 'AI/ML',
+        projectTitle: 'VisionAssist',
+        projectUrl: 'https://github.com/maya_ml/vision',
+      },
+      {
+        id: 'hist-2',
+        eventName: 'UofTHacks XI',
+        eventDate: '2024-01-20',
+        teamRole: 'Backend',
+        projectTitle: 'TransitPulse',
+        projectUrl: 'https://github.com/maya_ml/transit',
+      },
+    ]);
+  });
+
+  it('computes Veteran experienceBadge for 4 or more records', () => {
+    const recordWithFour: FullParticipantProfileRecord = {
+      ...sampleRecord,
+      history: Array(4).fill({
+        id: 'hist-x',
+        participant_id: 'part-secret-uuid-999',
+        event_name: 'Hack',
+        event_date: '2024-01-01',
+        team_role: 'Frontend',
+        project_title: 'App',
+        project_url: 'https://example.com',
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-01T00:00:00.000Z',
+      }),
+    };
+
+    const projected = projectProfileForViewer(
+      sampleParticipant,
+      recordWithFour,
+      'OWNER'
+    ) as unknown as Record<string, unknown>;
+
+    expect(projected.hackathonCount).toBe(4);
+    expect(projected.experienceBadge).toBe('Veteran');
+    expect(projected.experienceBadgeSelfReported).toBe(true);
   });
 });

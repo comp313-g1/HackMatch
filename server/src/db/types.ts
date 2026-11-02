@@ -211,6 +211,30 @@ export interface CreateParticipantPortfolioDTO {
   label?: string | null;
 }
 
+export type ExperienceBadge = 'Beginner' | 'Competitor' | 'Veteran';
+
+export interface ParticipantHackathonHistory {
+  id: string;
+  participant_id: string;
+  event_name: string;
+  event_date: string; // ISO YYYY-MM-DD
+  team_role: ParticipantPrimaryRole;
+  project_title: string;
+  project_url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateHackathonHistoryDTO {
+  event_name: string;
+  event_date: string;
+  team_role: ParticipantPrimaryRole;
+  project_title: string;
+  project_url: string;
+}
+
+export type UpdateHackathonHistoryDTO = CreateHackathonHistoryDTO;
+
 export type PendingEventSubmissionStatus = 'Pending' | 'Approved' | 'Rejected' | 'Merged';
 
 export interface PendingEventSubmission {

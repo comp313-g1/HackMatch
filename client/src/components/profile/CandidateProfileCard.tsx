@@ -1,5 +1,10 @@
 import React from 'react';
 import { isValidHttpsPortfolioUrl } from './profileValidation';
+import {
+  type ExperienceBadge,
+  type HackathonHistoryItem,
+  computeExperienceBadge,
+} from './hackathonHistoryValidation';
 
 export type ProfileViewerCategory = 'VISITOR' | 'PART' | 'CONFIRMED_TEAMMATE' | 'OWNER';
 
@@ -19,6 +24,10 @@ export interface CandidateProfileData {
   sharedContactHandle?: string | null;
   sharedContactAudienceNotice?: string;
   selfDeclaredNotice?: string;
+  hackathonCount?: number;
+  experienceBadge?: ExperienceBadge;
+  experienceBadgeSelfReported?: boolean;
+  hackathonHistory?: HackathonHistoryItem[];
 }
 
 export interface CandidateProfileCardProps {
@@ -124,6 +133,16 @@ export function CandidateProfileCard({
     isValidHttpsPortfolioUrl(link.url)
   );
   const skills = profile.skills ?? [];
+  const hackathonCount =
+    profile.hackathonCount ??
+    (Array.isArray(profile.hackathonHistory) ? profile.hackathonHistory.length : 0);
+  const experienceBadge = profile.experienceBadge ?? computeExperienceBadge(hackathonCount);
+
+  const badgeColors: Record<ExperienceBadge, string> = {
+    Beginner: 'bg-cream-100 text-ink-800 border-cream-300',
+    Competitor: 'bg-forest-50 text-forest-800 border-forest-300',
+    Veteran: 'bg-amber-50 text-amber-900 border-amber-300',
+  };
 
   return (
     <article
@@ -205,6 +224,66 @@ export function CandidateProfileCard({
           </ul>
         ) : (
           <p className="text-xs text-ink-muted">No portfolio links listed.</p>
+        )}
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              Past Hackathons
+            </span>
+            <span
+              data-testid="experience-badge-pill"
+              className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${badgeColors[experienceBadge]}`}
+            >
+              {experienceBadge}
+            </span>
+          </div>
+          <span
+            data-testid="experience-record-count"
+            className="text-[11px] font-medium px-2 py-0.5 rounded bg-cream-100 text-ink-muted"
+          >
+            {hackathonCount} self-reported {hackathonCount === 1 ? 'hackathon' : 'hackathons'}
+          </span>
+        </div>
+        {profile.hackathonHistory && profile.hackathonHistory.length > 0 ? (
+          <ul className="space-y-2" aria-label="Candidate hackathon history">
+            {profile.hackathonHistory.map((item) => (
+              <li
+                key={item.id}
+                className="p-2.5 bg-cream-50 border border-cream-200 rounded-md text-xs space-y-1"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="font-semibold text-forest-900">{item.eventName}</span>
+                    <span className="text-ink-muted ml-1.5 text-[11px]">({item.eventDate})</span>
+                  </div>
+                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-white border border-cream-200 text-forest-800">
+                    {item.teamRole}
+                  </span>
+                </div>
+                <div className="text-ink">
+                  <span className="text-ink-muted font-medium">Project: </span>
+                  {item.projectTitle}
+                </div>
+                {item.projectUrl && isValidHttpsPortfolioUrl(item.projectUrl) && (
+                  <div>
+                    <a
+                      href={item.projectUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-forest-700 underline hover:text-forest-900 break-all text-[11px]"
+                    >
+                      {item.projectUrl}
+                    </a>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-ink-muted">No past hackathons recorded.</p>
         )}
       </div>
 

@@ -7,13 +7,29 @@ import {
   CandidateProfileCard,
   type CandidateProfileData,
 } from '../profile/CandidateProfileCard';
+import { HackathonHistorySection } from '../profile/HackathonHistorySection';
+import type {
+  HackathonHistoryItem,
+  ExperienceBadge,
+} from '../profile/hackathonHistoryValidation';
 
 export interface SignedInPanelProps {
   email: string | null;
   onSignedOut?: () => void;
+  role?: string;
+  userRole?: string;
+  accountStatus?: string;
+  getIdToken?: () => Promise<string>;
 }
 
-export function SignedInPanel({ email, onSignedOut }: SignedInPanelProps): React.JSX.Element {
+export function SignedInPanel({
+  email,
+  onSignedOut,
+  role,
+  userRole,
+  accountStatus,
+  getIdToken,
+}: SignedInPanelProps): React.JSX.Element {
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showProfileSection, setShowProfileSection] = useState(false);
@@ -21,6 +37,13 @@ export function SignedInPanel({ email, onSignedOut }: SignedInPanelProps): React
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const [currentProfile, setCurrentProfile] = useState<CandidateProfileData | null>(null);
+  const [participantMeta, setParticipantMeta] = useState<{
+    role?: string;
+    accountStatus?: string;
+  } | null>(null);
+
+  const tokenGetter =
+    getIdToken || (auth.currentUser ? () => auth.currentUser!.getIdToken() : undefined);
 
   const fetchProfile = useCallback(async () => {
     setLoadingProfile(true);
@@ -30,6 +53,12 @@ export function SignedInPanel({ email, onSignedOut }: SignedInPanelProps): React
       const data = await response.json().catch(() => null);
       if (response.ok && data?.profile) {
         setCurrentProfile(data.profile as CandidateProfileData);
+        if (data.participant) {
+          setParticipantMeta({
+            role: data.participant.role,
+            accountStatus: data.participant.accountStatus,
+          });
+        }
       } else {
         setProfileLoadError(data?.error || 'Could not load your technical profile.');
       }
@@ -70,8 +99,30 @@ export function SignedInPanel({ email, onSignedOut }: SignedInPanelProps): React
     }
   };
 
+  const handleHistoryUpdated = useCallback(
+    (history: HackathonHistoryItem[], badge: ExperienceBadge) => {
+      setCurrentProfile((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          hackathonHistory: history,
+          hackathonCount: history.length,
+          experienceBadge: badge,
+          experienceBadgeSelfReported: true,
+        };
+      });
+    },
+    []
+  );
+
   const isProfileEmpty =
     !currentProfile || (!currentProfile.primaryRole && !currentProfile.handle);
+
+  const effectiveAccountStatus = accountStatus ?? participantMeta?.accountStatus;
+  const effectiveRole = userRole ?? role ?? participantMeta?.role;
+  const isSuspended = effectiveAccountStatus === 'SUSPENDED';
+  const isAdmin = effectiveRole === 'ADMIN';
+  const canManageHistory = !isSuspended && !isAdmin;
 
   return (
     <div className="space-y-6">
@@ -122,14 +173,27 @@ export function SignedInPanel({ email, onSignedOut }: SignedInPanelProps): React
               onRetry={() => void fetchProfile()}
             />
           ) : isEditingProfile ? (
-            <ProfileEditorForm
-              initialValues={currentProfile as ProfileEditorInitialValues | undefined}
-              onSaved={(saved) => {
-                setCurrentProfile(saved as unknown as CandidateProfileData);
-                setIsEditingProfile(false);
-              }}
-              onCancel={() => setIsEditingProfile(false)}
-            />
+            <div className="space-y-4">
+              <ProfileEditorForm
+                initialValues={currentProfile as ProfileEditorInitialValues | undefined}
+                onSaved={(saved) => {
+                  setCurrentProfile((prev) => ({
+                    ...prev,
+                    ...(saved as unknown as CandidateProfileData),
+                  }));
+                  setIsEditingProfile(false);
+                }}
+                onCancel={() => setIsEditingProfile(false)}
+              />
+              {canManageHistory && (
+                <HackathonHistorySection
+                  viewerCategory="OWNER"
+                  initialHistory={currentProfile?.hackathonHistory}
+                  getIdToken={tokenGetter}
+                  onHistoryUpdated={handleHistoryUpdated}
+                />
+              )}
+            </div>
           ) : (
             <div className="space-y-4">
               <CandidateProfileCard
@@ -143,6 +207,14 @@ export function SignedInPanel({ email, onSignedOut }: SignedInPanelProps): React
               >
                 {isProfileEmpty ? 'Create Technical Profile' : 'Edit Technical Profile'}
               </button>
+              {canManageHistory && (
+                <HackathonHistorySection
+                  viewerCategory="OWNER"
+                  initialHistory={currentProfile?.hackathonHistory}
+                  getIdToken={tokenGetter}
+                  onHistoryUpdated={handleHistoryUpdated}
+                />
+              )}
             </div>
           )}
         </div>

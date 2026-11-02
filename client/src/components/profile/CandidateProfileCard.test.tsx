@@ -111,4 +111,91 @@ describe('CandidateProfileCard Privacy Boundaries (US-006 / #67 / FR-014)', () =
     );
     expect(screen.getByText(/code samples \(https:\/\/github\.com\/maya_ml\)/i)).toBeInTheDocument();
   });
+
+  it('VISITOR view suppresses hackathon history and experience badges completely (US-007 AC 3)', () => {
+    render(
+      <CandidateProfileCard
+        viewerCategory="VISITOR"
+        profile={{
+          ...sampleProfile,
+          hackathonCount: 2,
+          experienceBadge: 'Competitor',
+          hackathonHistory: [
+            {
+              id: 'hist-1',
+              participantId: 'part-1',
+              eventName: 'Hack The North 2024',
+              eventDate: '2024-09-15',
+              teamRole: 'Frontend',
+              projectTitle: 'EcoTrack AI',
+              projectUrl: 'https://github.com/maya/ecotrack',
+            },
+          ],
+        }}
+      />
+    );
+
+    expect(screen.queryByTestId('experience-badge-pill')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('experience-record-count')).not.toBeInTheDocument();
+    expect(screen.queryByText(/hack the north 2024/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ecotrack ai/i)).not.toBeInTheDocument();
+  });
+
+  it('PART view displays self-reported experience badge, count, and past hackathon records (US-007 AC 1, AC 2)', () => {
+    render(
+      <CandidateProfileCard
+        viewerCategory="PART"
+        profile={{
+          ...sampleProfile,
+          hackathonCount: 1,
+          experienceBadge: 'Competitor',
+          hackathonHistory: [
+            {
+              id: 'hist-1',
+              participantId: 'part-1',
+              eventName: 'Hack The North 2024',
+              eventDate: '2024-09-15',
+              teamRole: 'Frontend',
+              projectTitle: 'EcoTrack AI',
+              projectUrl: 'https://github.com/maya/ecotrack',
+            },
+          ],
+        }}
+      />
+    );
+
+    const badgePill = screen.getByTestId('experience-badge-pill');
+    expect(badgePill).toHaveTextContent('Competitor');
+    expect(screen.getByTestId('experience-record-count')).toHaveTextContent(
+      '1 self-reported hackathon'
+    );
+    expect(screen.getByText('Hack The North 2024')).toBeInTheDocument();
+    expect(screen.getByText('(2024-09-15)')).toBeInTheDocument();
+    expect(screen.getByText('Frontend')).toBeInTheDocument();
+    expect(screen.getByText('EcoTrack AI')).toBeInTheDocument();
+
+    const projectLink = screen.getByRole('link', { name: 'https://github.com/maya/ecotrack' });
+    expect(projectLink).toHaveAttribute('href', 'https://github.com/maya/ecotrack');
+    expect(projectLink).toHaveAttribute('target', '_blank');
+    expect(projectLink).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
+  it('PART view defaults to Beginner badge and indicates empty history when none recorded (US-007 AC 2)', () => {
+    render(
+      <CandidateProfileCard
+        viewerCategory="PART"
+        profile={{
+          ...sampleProfile,
+          hackathonHistory: [],
+        }}
+      />
+    );
+
+    const badgePill = screen.getByTestId('experience-badge-pill');
+    expect(badgePill).toHaveTextContent('Beginner');
+    expect(screen.getByTestId('experience-record-count')).toHaveTextContent(
+      '0 self-reported hackathons'
+    );
+    expect(screen.getByText(/no past hackathons recorded/i)).toBeInTheDocument();
+  });
 });

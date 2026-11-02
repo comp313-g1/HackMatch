@@ -78,7 +78,7 @@ describe('GET /api/teams Open Teams Browse & Visitor Privacy (US-013 / Task 4)',
     },
     event: {
       status: 'Published',
-      end_date: '2026-10-30T12:00:00.000Z',
+      end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     },
     openVacancies: [
       {

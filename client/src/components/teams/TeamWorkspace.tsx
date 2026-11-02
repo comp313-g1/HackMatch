@@ -246,6 +246,7 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
       {/* Lifecycle Read-Only Notice / locked badge (#211) */}
       {isLocked && team.lifecycle?.reason === 'Locked' ? (
         <div
+          role="note"
           className="flex flex-wrap items-center gap-3"
           data-testid="owner-locked-roster-banner"
         >

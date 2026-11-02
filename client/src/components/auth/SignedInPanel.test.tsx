@@ -118,4 +118,64 @@ describe('SignedInPanel', () => {
     expect(screen.queryByLabelText(/display handle/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /edit technical profile/i })).toBeInTheDocument();
   });
+
+  it('renders owner HackathonHistorySection with add button for active participant, but suppresses for ADMIN or SUSPENDED (US-007-T6)', async () => {
+    vi.spyOn(authFetchModule, 'authFetch').mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/profiles/me')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              profile: {
+                handle: 'jane_coder',
+                primaryRole: 'Frontend',
+                skills: ['React'],
+                portfolioLinks: [],
+                hackathonCount: 1,
+                experienceBadge: 'Competitor',
+                hackathonHistory: [
+                  {
+                    id: 'hist-1',
+                    eventName: 'Hack The North',
+                    eventDate: '2024-09-15',
+                    teamRole: 'Frontend',
+                    projectTitle: 'EcoTrack',
+                    projectUrl: 'https://github.com/jane/ecotrack',
+                  },
+                ],
+              },
+              participant: {
+                role: 'PARTICIPANT',
+                accountStatus: 'ACTIVE',
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          )
+        );
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`));
+    });
+
+    const { unmount } = render(<SignedInPanel email="jane@example.com" />);
+    fireEvent.click(screen.getByRole('button', { name: /manage technical profile/i }));
+
+    expect((await screen.findAllByText('Hack The North')).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole('button', { name: /\+ add past hackathon/i })).toBeInTheDocument();
+    unmount();
+
+    // Verify SUSPENDED account suppresses HackathonHistorySection
+    const { unmount: unmountSuspended } = render(
+      <SignedInPanel email="suspended@example.com" accountStatus="SUSPENDED" />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /manage technical profile/i }));
+    expect(await screen.findByText('@jane_coder')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /\+ add past hackathon/i })).not.toBeInTheDocument();
+    unmountSuspended();
+
+    // Verify ADMIN role suppresses HackathonHistorySection
+    render(<SignedInPanel email="admin@example.com" userRole="ADMIN" />);
+    fireEvent.click(screen.getByRole('button', { name: /manage technical profile/i }));
+    expect(await screen.findByText('@jane_coder')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /\+ add past hackathon/i })).not.toBeInTheDocument();
+  });
 });

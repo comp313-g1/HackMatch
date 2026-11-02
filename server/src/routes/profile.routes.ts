@@ -9,6 +9,11 @@ import {
   getParticipantProfile,
   getVisitorProfilePreview,
   updateParticipantProfile,
+  getMyHackathonHistory,
+  getParticipantHackathonHistory,
+  createHackathonHistoryEntry,
+  updateHackathonHistoryEntry,
+  deleteHackathonHistoryEntry,
 } from '../controllers/profile.controller.js';
 
 export const profileRouter = Router();
@@ -38,6 +43,47 @@ profileRouter.put(
 );
 
 /**
+ * Participant hackathon history routes (US-007 / FR-015).
+ * Protected by Firebase ID token verification, mandatory MFA claim, active account check,
+ * and PART role enforcement.
+ */
+profileRouter.get(
+  '/me/history',
+  requireFirebaseAuth,
+  requireMfa,
+  requireActiveAccount,
+  requireParticipantRole,
+  getMyHackathonHistory
+);
+
+profileRouter.post(
+  '/me/history',
+  requireFirebaseAuth,
+  requireMfa,
+  requireActiveAccount,
+  requireParticipantRole,
+  createHackathonHistoryEntry
+);
+
+profileRouter.put(
+  '/me/history/:historyId',
+  requireFirebaseAuth,
+  requireMfa,
+  requireActiveAccount,
+  requireParticipantRole,
+  updateHackathonHistoryEntry
+);
+
+profileRouter.delete(
+  '/me/history/:historyId',
+  requireFirebaseAuth,
+  requireMfa,
+  requireActiveAccount,
+  requireParticipantRole,
+  deleteHackathonHistoryEntry
+);
+
+/**
  * Public anonymized preview endpoint for Visitors (US-006 AC 3 / FR-014).
  * Never exposes member handles, portfolio links, private contacts, or emails.
  */
@@ -59,4 +105,40 @@ profileRouter.put(
   requireActiveAccount,
   requireParticipantRole,
   updateParticipantProfile
+);
+
+profileRouter.get(
+  '/:participantId/history',
+  requireFirebaseAuth,
+  requireMfa,
+  requireActiveAccount,
+  requireParticipantRole,
+  getParticipantHackathonHistory
+);
+
+profileRouter.post(
+  '/:participantId/history',
+  requireFirebaseAuth,
+  requireMfa,
+  requireActiveAccount,
+  requireParticipantRole,
+  createHackathonHistoryEntry
+);
+
+profileRouter.put(
+  '/:participantId/history/:historyId',
+  requireFirebaseAuth,
+  requireMfa,
+  requireActiveAccount,
+  requireParticipantRole,
+  updateHackathonHistoryEntry
+);
+
+profileRouter.delete(
+  '/:participantId/history/:historyId',
+  requireFirebaseAuth,
+  requireMfa,
+  requireActiveAccount,
+  requireParticipantRole,
+  deleteHackathonHistoryEntry
 );
