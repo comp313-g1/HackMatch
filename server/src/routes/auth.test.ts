@@ -2462,10 +2462,11 @@ describe('Auth Routes (POST /api/auth/oauth/sign-in)', () => {
         });
 
       expect(response.status).toBe(502);
-      expect(response.body).toEqual({
-        error: 'Failed to dispatch verification code email. Please try again.',
+      expect(response.body).toMatchObject({
         code: 'EMAIL_DELIVERY_FAILED',
+        retryable: true,
       });
+      expect(response.body.error).toMatch(/try again/i);
 
       expect(mfaRepository.invalidatePendingChallenges).toHaveBeenCalledWith(mockExistingLinkedParticipant.id);
     });
