@@ -6,6 +6,12 @@ export { AuthRequiredError };
 
 export type SkillMatchMode = 'AND' | 'OR';
 
+export const MAX_FILTER_SKILLS = 10;
+export const MAX_SKILL_LENGTH = 50;
+export const MAX_SEARCH_LENGTH = 80;
+export const MIN_COMMITMENT_HOURS = 1;
+export const MAX_COMMITMENT_HOURS = 168;
+
 export interface CandidateDirectoryFilters {
   skills?: string[];
   skillMatchMode?: SkillMatchMode;
@@ -16,6 +22,32 @@ export interface CandidateDirectoryFilters {
   badge?: ExperienceBadge | null;
   goal?: TeamGoal | null;
   search?: string | null;
+}
+
+export interface CandidateDirectoryFilterDraft {
+  skillsInput?: string;
+  skillMatchMode?: SkillMatchMode;
+  role?: string;
+  desiredRole?: string;
+  badge?: string;
+  minHours?: string;
+  maxHours?: string;
+  goal?: string;
+  search?: string;
+}
+
+export interface CandidateDirectoryFieldErrors {
+  skills?: string;
+  skillMatchMode?: string;
+  role?: string;
+  desiredRole?: string;
+  badge?: string;
+  minHours?: string;
+  maxHours?: string;
+  hours?: string;
+  goal?: string;
+  search?: string;
+  _form?: string;
 }
 
 export interface DirectoryCandidate {
@@ -81,6 +113,108 @@ export class CandidateDirectoryApiError extends Error {
     super(message || code);
     this.name = 'CandidateDirectoryApiError';
   }
+}
+
+/**
+ * Validates candidate directory filter draft on client side to prevent invalid network calls
+ * while preserving all user-entered inputs on error (NR-010).
+ */
+export function validateCandidateDirectoryFilterDraft(
+  draft: CandidateDirectoryFilterDraft
+): { ok: boolean; errors: CandidateDirectoryFieldErrors; filters?: CandidateDirectoryFilters } {
+  const errors: CandidateDirectoryFieldErrors = {};
+  const filters: CandidateDirectoryFilters = {
+    skills: [],
+    skillMatchMode: draft.skillMatchMode === 'OR' ? 'OR' : 'AND',
+    role: null,
+    desiredRole: null,
+    minHours: null,
+    maxHours: null,
+    badge: null,
+    goal: null,
+    search: null,
+  };
+
+  if (draft.skillsInput !== undefined && draft.skillsInput.trim() !== '') {
+    const rawSkills = draft.skillsInput.split(',').map((s) => s.trim()).filter(Boolean);
+    const seen = new Set<string>();
+    const deduped: string[] = [];
+    for (const skill of rawSkills) {
+      const lower = skill.toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        deduped.push(skill);
+      }
+    }
+
+    if (deduped.length > MAX_FILTER_SKILLS) {
+      errors.skills = `Skills filter cannot exceed ${MAX_FILTER_SKILLS} skills.`;
+    } else {
+      const tooLong = deduped.find((s) => s.length > MAX_SKILL_LENGTH);
+      if (tooLong) {
+        errors.skills = `Each skill cannot exceed ${MAX_SKILL_LENGTH} characters.`;
+      } else {
+        filters.skills = deduped;
+      }
+    }
+  }
+
+  if (draft.role !== undefined && draft.role.trim() !== '') {
+    filters.role = draft.role.trim() as ParticipantPrimaryRole;
+  }
+
+  if (draft.desiredRole !== undefined && draft.desiredRole.trim() !== '') {
+    filters.desiredRole = draft.desiredRole.trim() as ParticipantPrimaryRole;
+  }
+
+  if (draft.badge !== undefined && draft.badge.trim() !== '') {
+    filters.badge = draft.badge.trim() as ExperienceBadge;
+  }
+
+  if (draft.goal !== undefined && draft.goal.trim() !== '') {
+    filters.goal = draft.goal.trim() as TeamGoal;
+  }
+
+  let minH: number | null = null;
+  let maxH: number | null = null;
+  if (draft.minHours !== undefined && draft.minHours.trim() !== '') {
+    const n = Number(draft.minHours.trim());
+    if (!Number.isInteger(n) || n < MIN_COMMITMENT_HOURS || n > MAX_COMMITMENT_HOURS) {
+      errors.minHours = `Minimum commitment hours must be an integer between ${MIN_COMMITMENT_HOURS} and ${MAX_COMMITMENT_HOURS}.`;
+    } else {
+      minH = n;
+      filters.minHours = n;
+    }
+  }
+
+  if (draft.maxHours !== undefined && draft.maxHours.trim() !== '') {
+    const n = Number(draft.maxHours.trim());
+    if (!Number.isInteger(n) || n < MIN_COMMITMENT_HOURS || n > MAX_COMMITMENT_HOURS) {
+      errors.maxHours = `Maximum commitment hours must be an integer between ${MIN_COMMITMENT_HOURS} and ${MAX_COMMITMENT_HOURS}.`;
+    } else {
+      maxH = n;
+      filters.maxHours = n;
+    }
+  }
+
+  if (minH !== null && maxH !== null && minH > maxH) {
+    errors.hours = 'Minimum commitment hours cannot exceed maximum commitment hours.';
+  }
+
+  if (draft.search !== undefined && draft.search.trim() !== '') {
+    const trimmed = draft.search.trim();
+    if (trimmed.length > MAX_SEARCH_LENGTH) {
+      errors.search = `Search query cannot exceed ${MAX_SEARCH_LENGTH} characters.`;
+    } else {
+      filters.search = trimmed;
+    }
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { ok: false, errors };
+  }
+
+  return { ok: true, errors: {}, filters };
 }
 
 /**

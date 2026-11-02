@@ -34,6 +34,7 @@ import {
 } from '../controllers/team.controller.js';
 import { getVacancyRecommendationsHandler } from '../controllers/recommendations.controller.js';
 import { getTeamCandidateDirectoryHandler } from '../controllers/candidateDirectory.controller.js';
+import { validateCandidateDirectoryQueryMiddleware } from '../validators/candidateDirectory.validator.js';
 import {
   issueInvitationHandler,
   listTeamInvitationsHandler,
@@ -96,6 +97,7 @@ teamRouter.get(
   ...participantAuth,
   validateTeamIdParams,
   requireTeamOwner,
+  validateCandidateDirectoryQueryMiddleware,
   getTeamCandidateDirectoryHandler
 );
 teamRouter.get(

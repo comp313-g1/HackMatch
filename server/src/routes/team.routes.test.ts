@@ -757,6 +757,21 @@ describe('Express Team Listing & Vacancy Endpoints (US-012 / #120)', () => {
       expect(response.body.code).toBe('TEAM_NOT_FOUND');
     });
 
+    it('returns 400 VALIDATION_ERROR when query parameters are invalid', async () => {
+      const response = await request(app)
+        .get(`/api/teams/${sampleTeamId}/candidates?minHours=50&maxHours=10&skillMatchMode=INVALID`)
+        .set('Authorization', validTokenHeader);
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.errors).toEqual(
+        expect.objectContaining({
+          hours: 'Minimum commitment hours cannot exceed maximum commitment hours.',
+          skillMatchMode: 'Skill match mode must be "AND" or "OR".',
+        })
+      );
+    });
+
     it('returns 200 with candidate directory for active team owner', async () => {
       const mockResult: candidateDirectoryService.CandidateDirectoryResult = {
         teamId: sampleTeamId,
