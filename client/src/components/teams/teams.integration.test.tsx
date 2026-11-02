@@ -270,7 +270,7 @@ describe('US-012 Client Integration Suite (TeamWorkspace & Lifecycle)', () => {
 
     // 2. Add Vacancy Slot
     fireEvent.click(screen.getByRole('button', { name: /add open slot/i }));
-    fireEvent.change(screen.getByLabelText(/role/i), {
+    fireEvent.change(screen.getByLabelText(/^role/i), {
       target: { value: 'Frontend' },
     });
     fireEvent.change(screen.getByLabelText(/required skills/i), {
@@ -285,7 +285,7 @@ describe('US-012 Client Integration Suite (TeamWorkspace & Lifecycle)', () => {
 
     // 3. Edit Vacancy Slot
     fireEvent.click(screen.getByRole('button', { name: /^edit$/i }));
-    fireEvent.change(screen.getByLabelText(/role/i), {
+    fireEvent.change(screen.getByLabelText(/^role/i), {
       target: { value: 'Backend' },
     });
     fireEvent.change(screen.getByLabelText(/required skills/i), {
@@ -304,7 +304,7 @@ describe('US-012 Client Integration Suite (TeamWorkspace & Lifecycle)', () => {
       expect(screen.getByRole('button', { name: /add slot/i })).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByLabelText(/role/i), {
+    fireEvent.change(screen.getByLabelText(/^role/i), {
       target: { value: 'Mobile' },
     });
     fireEvent.change(screen.getByLabelText(/required skills/i), {
@@ -517,7 +517,7 @@ describe('US-012 Client Integration Suite (TeamWorkspace & Lifecycle)', () => {
     render(<TeamWorkspace eventId={EVENT_ID} />);
 
     await waitFor(() => {
-      expect(screen.getByText('UI/UX')).toBeInTheDocument();
+      expect(screen.getAllByText('UI/UX')[0]).toBeInTheDocument();
     });
 
     // 1. Vacancy removal alertdialog Escape
