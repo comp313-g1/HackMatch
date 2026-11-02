@@ -3,7 +3,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { CandidateDirectoryPanel } from './CandidateDirectoryPanel';
 import * as candidateDirectoryApi from './candidateDirectoryApi';
+import * as invitationsApi from './invitationsApi';
 import type { CandidateDirectoryResponse, DirectoryCandidate } from './candidateDirectoryApi';
+import type { TeamVacancyView } from './teamTypes';
 
 vi.mock('./candidateDirectoryApi', async () => {
   const actual = await vi.importActual<typeof import('./candidateDirectoryApi')>(
@@ -15,7 +17,31 @@ vi.mock('./candidateDirectoryApi', async () => {
   };
 });
 
+vi.mock('./invitationsApi', async () => {
+  const actual = await vi.importActual<typeof import('./invitationsApi')>('./invitationsApi');
+  return {
+    ...actual,
+    issueTeamInvitation: vi.fn(),
+  };
+});
+
 const fetchMock = vi.mocked(candidateDirectoryApi.fetchTeamCandidateDirectory);
+const issueInviteMock = vi.mocked(invitationsApi.issueTeamInvitation);
+
+const mockOpenVacancies: TeamVacancyView[] = [
+  {
+    id: 'vac-frontend',
+    role: 'Frontend',
+    skills: ['React', 'TypeScript'],
+    status: 'Open',
+  },
+  {
+    id: 'vac-backend',
+    role: 'Backend',
+    skills: ['Node.js'],
+    status: 'Open',
+  },
+];
 
 const mockCandidate: DirectoryCandidate = {
   participantId: 'p-1',
@@ -244,5 +270,149 @@ describe('CandidateDirectoryPanel (US-014-T4 / #139)', () => {
     expect(inspectBtn).toHaveTextContent('Inspect Profile');
     expect(inspectBtn).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByTestId('inspected-profile-p-1')).not.toBeInTheDocument();
+  });
+
+  describe('US-017 Invitation Flow from Directory Cards (US-014-T6 / FR-049)', () => {
+    it('disables Invite button and shows helper text when openVacancies is empty', async () => {
+      fetchMock.mockResolvedValueOnce(mockResponse);
+
+      render(<CandidateDirectoryPanel teamId="t-1" openVacancies={[]} />);
+
+      fireEvent.click(screen.getByTestId('directory-search-submit'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('directory-open-invite-p-1')).toBeInTheDocument();
+      });
+
+      const inviteBtn = screen.getByTestId('directory-open-invite-p-1');
+      expect(inviteBtn).toBeDisabled();
+      expect(
+        screen.getByText('Add an open vacancy slot on your team to invite candidates.')
+      ).toBeInTheDocument();
+    });
+
+    it('opens inline invitation composer auto-defaulting to candidate matching role slot', async () => {
+      fetchMock.mockResolvedValueOnce(mockResponse);
+
+      render(
+        <CandidateDirectoryPanel
+          teamId="t-1"
+          openVacancies={mockOpenVacancies}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('directory-search-submit'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('directory-open-invite-p-1')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('directory-open-invite-p-1'));
+
+      expect(screen.getByTestId('directory-invite-form')).toBeInTheDocument();
+      const select = screen.getByTestId('directory-invite-slot-select') as HTMLSelectElement;
+      // Candidate primary/desired role is 'Frontend', so should auto-default to 'vac-frontend'
+      expect(select.value).toBe('vac-frontend');
+    });
+
+    it('submits invitation successfully, shows confirmation banner, updates button state, and notifies parent', async () => {
+      fetchMock.mockResolvedValueOnce(mockResponse);
+      const onInvited = vi.fn();
+      issueInviteMock.mockResolvedValueOnce({
+        id: 'inv-1',
+        teamId: 't-1',
+        vacancyId: 'vac-frontend',
+        inviteeParticipantId: 'p-1',
+        status: 'Pending',
+        requestType: 'Invitation',
+        expiresAt: '2026-10-25T12:00:00Z',
+        createdAt: '2026-10-18T12:00:00Z',
+        teamName: 'HackMatch Innovators',
+        vacancyRole: 'Frontend',
+        source: 'direct',
+        notice: 'Invitation sent',
+      });
+
+      render(
+        <CandidateDirectoryPanel
+          teamId="t-1"
+          openVacancies={mockOpenVacancies}
+          onInvitationIssued={onInvited}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('directory-search-submit'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('directory-open-invite-p-1')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('directory-open-invite-p-1'));
+      fireEvent.click(screen.getByTestId('directory-confirm-invite'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('directory-invite-success')).toBeInTheDocument();
+      });
+
+      expect(issueInviteMock).toHaveBeenCalledWith('t-1', {
+        vacancyId: 'vac-frontend',
+        inviteeParticipantId: 'p-1',
+        source: 'direct',
+      });
+
+      expect(onInvited).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('directory-invite-success')).toHaveTextContent(
+        /invitation sent for the frontend slot/i
+      );
+
+      // Button now disabled with "Invitation sent"
+      const inviteBtn = screen.getByTestId('directory-open-invite-p-1');
+      expect(inviteBtn).toBeDisabled();
+      expect(inviteBtn).toHaveTextContent('Invitation sent');
+    });
+
+    it('preserves draft and results when invitation issuance fails with conflict or network error (NR-010, NR-017)', async () => {
+      fetchMock.mockResolvedValueOnce(mockResponse);
+      issueInviteMock.mockRejectedValueOnce(
+        new invitationsApi.InvitationsApiError(
+          409,
+          'CONFLICT_ALREADY_INVITED',
+          undefined,
+          undefined,
+          'Candidate already has a pending invitation for this team.'
+        )
+      );
+
+      render(
+        <CandidateDirectoryPanel
+          teamId="t-1"
+          openVacancies={mockOpenVacancies}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('directory-search-submit'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('directory-open-invite-p-1')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('directory-open-invite-p-1'));
+      fireEvent.click(screen.getByTestId('directory-confirm-invite'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('directory-invite-error')).toBeInTheDocument();
+      });
+
+      expect(screen.getByTestId('directory-invite-error')).toHaveTextContent(
+        'Candidate already has a pending invitation for this team.'
+      );
+      // Composer and directory results kept intact
+      expect(screen.getByTestId('directory-invite-form')).toBeInTheDocument();
+      expect(screen.getByTestId('candidate-display-name')).toHaveTextContent('Alice Coder');
+
+      // Cancel button dismisses composer
+      fireEvent.click(screen.getByTestId('directory-cancel-invite'));
+      expect(screen.queryByTestId('directory-invite-form')).not.toBeInTheDocument();
+    });
   });
 });

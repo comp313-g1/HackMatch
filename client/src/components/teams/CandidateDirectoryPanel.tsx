@@ -15,6 +15,10 @@ import {
 import type { ExperienceBadge } from '../profile/hackathonHistoryValidation';
 import { CandidateProfileCard } from '../profile/CandidateProfileCard';
 import { isValidHttpsPortfolioUrl } from '../profile/profileValidation';
+import {
+  issueTeamInvitation,
+  InvitationsApiError,
+} from './invitationsApi';
 
 export interface CandidateDirectoryPanelProps {
   teamId: string;
@@ -51,7 +55,9 @@ const initialDraft: CandidateDirectoryFilterDraft = {
 
 export function CandidateDirectoryPanel({
   teamId,
+  openVacancies = [],
   disabled = false,
+  onInvitationIssued,
 }: CandidateDirectoryPanelProps): React.JSX.Element {
   const [draft, setDraft] = useState<CandidateDirectoryFilterDraft>(initialDraft);
   const [fieldErrors, setFieldErrors] = useState<CandidateDirectoryFieldErrors>({});
@@ -59,6 +65,15 @@ export function CandidateDirectoryPanel({
   const [result, setResult] = useState<CandidateDirectoryResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [inspectedParticipantId, setInspectedParticipantId] = useState<string | null>(null);
+
+  // US-017 Invitation states (US-014-T6 / FR-049)
+  const [inviteDraftParticipantId, setInviteDraftParticipantId] = useState<string | null>(null);
+  const [selectedVacancyId, setSelectedVacancyId] = useState<string>('');
+  const [inviting, setInviting] = useState<boolean>(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteFieldErrors, setInviteFieldErrors] = useState<{ vacancyId?: string; inviteeParticipantId?: string }>({});
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
+  const [invitedParticipantIds, setInvitedParticipantIds] = useState<Set<string>>(() => new Set());
 
   const updateDraft = (field: keyof CandidateDirectoryFilterDraft, value: string) => {
     setDraft((prev) => ({ ...prev, [field]: value }));
@@ -106,6 +121,64 @@ export function CandidateDirectoryPanel({
     setDraft(initialDraft);
     setFieldErrors({});
     setErrorMessage(null);
+  };
+
+  const handleOpenInvite = (candidate: DirectoryCandidate) => {
+    setInviteError(null);
+    setInviteFieldErrors({});
+    setInviteSuccess(null);
+    setInviteDraftParticipantId(candidate.participantId);
+
+    // Auto-defaults to a vacancy matching the candidate's desiredRole or primaryRole, or openVacancies[0]?.id
+    const matchingVacancy = openVacancies.find(
+      (v) =>
+        (candidate.desiredRole && v.role === candidate.desiredRole) ||
+        (candidate.primaryRole && v.role === candidate.primaryRole)
+    );
+    setSelectedVacancyId(matchingVacancy?.id ?? openVacancies[0]?.id ?? '');
+  };
+
+  const handleSendInvitation = async (inviteeParticipantId: string) => {
+    if (!selectedVacancyId) {
+      setInviteFieldErrors({ vacancyId: 'Please select an open vacancy slot.' });
+      return;
+    }
+    setInviting(true);
+    setInviteError(null);
+    setInviteFieldErrors({});
+
+    try {
+      const invitation = await issueTeamInvitation(teamId, {
+        vacancyId: selectedVacancyId,
+        inviteeParticipantId,
+        source: 'direct',
+      });
+
+      setInvitedParticipantIds((prev) => new Set(prev).add(inviteeParticipantId));
+      setInviteDraftParticipantId(null);
+      setInviteSuccess(
+        `Invitation sent for the ${invitation.vacancyRole} slot. Expires ${new Date(
+          invitation.expiresAt
+        ).toLocaleString()}.`
+      );
+      onInvitationIssued?.();
+    } catch (err: unknown) {
+      if (err instanceof AuthRequiredError) {
+        setInviteError('You need to sign in to send invitations.');
+      } else if (err instanceof InvitationsApiError) {
+        if (err.errors) {
+          setInviteFieldErrors({
+            vacancyId: err.errors.vacancyId,
+            inviteeParticipantId: err.errors.inviteeParticipantId,
+          });
+        }
+        setInviteError(err.message || 'Failed to send invitation.');
+      } else {
+        setInviteError(err instanceof Error ? err.message : 'Failed to send invitation.');
+      }
+    } finally {
+      setInviting(false);
+    }
   };
 
   return (
@@ -467,6 +540,25 @@ export function CandidateDirectoryPanel({
             Found {result.totalMatched} matching candidate{result.totalMatched === 1 ? '' : 's'} (out of {result.totalEligible} eligible in event pool)
           </div>
 
+          {inviteSuccess && (
+            <div
+              role="status"
+              aria-live="polite"
+              data-testid="directory-invite-success"
+              className="p-3 text-xs text-forest-900 bg-forest-50 border border-forest-200 rounded-md flex items-center justify-between gap-2"
+            >
+              <p>{inviteSuccess}</p>
+              <button
+                type="button"
+                onClick={() => setInviteSuccess(null)}
+                className="text-forest-800 hover:text-forest-950 font-bold px-1"
+                aria-label="Dismiss confirmation"
+              >
+                ×
+              </button>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {result.candidates.map((candidate: DirectoryCandidate) => (
               <div
@@ -594,7 +686,7 @@ export function CandidateDirectoryPanel({
                   )}
                 </div>
 
-                {/* Profile Inspection Toggle and Dedicated Region (US-014 AC 4) */}
+                {/* Profile Inspection & Invitation Action Area (US-014 AC 4 / FR-049) */}
                 <div className="pt-2 border-t border-cream-200 flex flex-wrap items-center justify-between gap-2">
                   <button
                     type="button"
@@ -609,7 +701,111 @@ export function CandidateDirectoryPanel({
                   >
                     {inspectedParticipantId === candidate.participantId ? 'Hide Profile' : 'Inspect Profile'}
                   </button>
+
+                  <div>
+                    <button
+                      type="button"
+                      data-testid={`directory-open-invite-${candidate.participantId}`}
+                      disabled={
+                        disabled ||
+                        openVacancies.length === 0 ||
+                        invitedParticipantIds.has(candidate.participantId) ||
+                        inviteDraftParticipantId === candidate.participantId
+                      }
+                      onClick={() => handleOpenInvite(candidate)}
+                      className="px-3 py-1.5 text-xs font-semibold text-white bg-forest rounded hover:bg-forest-800 disabled:opacity-50 transition-colors"
+                    >
+                      {invitedParticipantIds.has(candidate.participantId)
+                        ? 'Invitation sent'
+                        : 'Invite to Team'}
+                    </button>
+                    {openVacancies.length === 0 && (
+                      <p className="text-[11px] text-ink-muted mt-1">
+                        Add an open vacancy slot on your team to invite candidates.
+                      </p>
+                    )}
+                  </div>
                 </div>
+
+                {/* Inline US-017 Invitation Composer */}
+                {inviteDraftParticipantId === candidate.participantId && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void handleSendInvitation(candidate.participantId);
+                    }}
+                    data-testid="directory-invite-form"
+                    className="p-3 bg-cream-50/70 border border-cream-300 rounded-md space-y-3 mt-2"
+                  >
+                    <div>
+                      <label
+                        htmlFor={`directory-invite-slot-${candidate.participantId}`}
+                        className="block text-xs font-semibold text-forest-900 mb-1"
+                      >
+                        Select open vacancy slot
+                      </label>
+                      <select
+                        id={`directory-invite-slot-${candidate.participantId}`}
+                        data-testid="directory-invite-slot-select"
+                        value={selectedVacancyId}
+                        onChange={(e) => setSelectedVacancyId(e.target.value)}
+                        disabled={inviting}
+                        className="w-full text-xs px-2.5 py-1.5 border border-cream-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-1 focus:ring-forest focus:border-forest"
+                      >
+                        {openVacancies.map((vacancy) => (
+                          <option key={vacancy.id} value={vacancy.id}>
+                            {vacancy.role}
+                            {vacancy.skills && vacancy.skills.length > 0
+                              ? ` (${vacancy.skills.join(', ')})`
+                              : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {inviteFieldErrors.vacancyId && (
+                        <p role="alert" className="text-xs text-red-600 mt-1">
+                          {inviteFieldErrors.vacancyId}
+                        </p>
+                      )}
+                    </div>
+
+                    {inviteError && (
+                      <div
+                        role="alert"
+                        data-testid="directory-invite-error"
+                        className="p-2 text-xs text-red-800 bg-red-50 border border-red-200 rounded space-y-1"
+                      >
+                        <p className="font-semibold">{inviteError}</p>
+                        <p className="text-ink-muted">
+                          Your invitation details and candidate directory results have been kept.
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="submit"
+                        data-testid="directory-confirm-invite"
+                        disabled={inviting || !selectedVacancyId}
+                        className="px-3 py-1.5 bg-forest text-white text-xs font-semibold rounded hover:bg-forest-800 disabled:opacity-50"
+                      >
+                        {inviting ? 'Sending…' : 'Send Invitation'}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="directory-cancel-invite"
+                        disabled={inviting}
+                        onClick={() => {
+                          setInviteDraftParticipantId(null);
+                          setInviteError(null);
+                          setInviteFieldErrors({});
+                        }}
+                        className="px-3 py-1.5 bg-white text-ink border border-cream-300 text-xs font-medium rounded hover:bg-cream-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
 
                 {inspectedParticipantId === candidate.participantId && (
                   <div
