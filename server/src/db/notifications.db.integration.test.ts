@@ -9,6 +9,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseClient } from './client.js';
 import { config } from '../config/index.js';
+import { notificationsRepository } from './notifications.repository.js';
 
 const isGated = process.env.RUN_DB_INTEGRATION !== '1';
 
@@ -174,6 +175,52 @@ describe.skipIf(isGated)('US-021 Notification Model Postgres Suite (#197)', () =
     expect(count).toBe(1);
   });
 
+  it('pages newest-first with a keyset cursor, without gaps or duplicates', async () => {
+    const pid = await createParticipant('page');
+    const created: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      created.push((await notify(pid, 'team_invitation')).id);
+    }
+
+    const seen: string[] = [];
+    let cursor: { createdAt: string; id: string } | null = null;
+    for (let guard = 0; guard < 5; guard++) {
+      const page = await notificationsRepository.listForParticipant(pid, {
+        limit: 2,
+        cursor,
+      });
+      if (page.length === 0) break;
+      seen.push(...page.map((r) => r.id));
+      const last = page[page.length - 1];
+      cursor = { createdAt: last.created_at, id: last.id };
+    }
+
+    expect(seen).toHaveLength(5);
+    expect(new Set(seen)).toEqual(new Set(created));
+  });
+
+  it('filters unread-only and by category and counts unread accurately', async () => {
+    const pid = await createParticipant('filter');
+    const inv = await notify(pid, 'team_invitation');
+    await notify(pid, 'TEAM_ROSTER_LOCKED');
+    await supabase.rpc('mark_participant_notification_read', {
+      p_participant: pid,
+      p_notification: inv.id,
+    });
+
+    const unread = await notificationsRepository.listForParticipant(pid, {
+      limit: 10,
+      unreadOnly: true,
+    });
+    expect(unread.map((r) => r.category)).toEqual(['roster']);
+
+    const invitations = await notificationsRepository.listForParticipant(pid, {
+      limit: 10,
+      category: 'invitation',
+    });
+    expect(invitations.map((r) => r.id)).toEqual([inv.id]);
+    expect(await notificationsRepository.countUnread(pid)).toBe(1);
+  });
   it('rejects null arguments with VALIDATION_ERROR', async () => {
     const { error } = await supabase.rpc('mark_all_participant_notifications_read', {
       p_participant: null,

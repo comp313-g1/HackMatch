@@ -14,10 +14,13 @@ import {
   NOTIFICATION_MESSAGE_MAX_LENGTH,
   NOTIFICATION_TYPE_MAX_LENGTH,
   normalizeNotificationMessage,
+  type NotificationCategory,
 } from '../db/notificationModel.js';
 import {
   notificationsRepository,
+  type INotificationFeedRepository,
   type INotificationsRepository,
+  type NotificationCursor,
 } from '../db/notifications.repository.js';
 import type { ParticipantNotification } from '../db/types.js';
 import {
@@ -236,4 +239,109 @@ export async function notifyEventVerificationOutcome(
     },
     deps
   );
+}
+
+
+// ---------------------------------------------------------------------------
+// US-021 / #199 notification list, mark-read and mark-all-read (FR-063, FR-065)
+// ---------------------------------------------------------------------------
+
+export interface NotificationListResult {
+  notifications: NotificationView[];
+  unreadCount: number;
+  nextCursor: string | null;
+}
+
+export interface NotificationFeedDeps {
+  repository?: INotificationsRepository & INotificationFeedRepository;
+}
+
+export function encodeNotificationCursor(cursor: NotificationCursor): string {
+  return Buffer.from(JSON.stringify([cursor.createdAt, cursor.id]), 'utf8').toString(
+    'base64url'
+  );
+}
+
+export interface ListNotificationsInput {
+  participantId: string;
+  limit: number;
+  cursor: NotificationCursor | null;
+  unreadOnly: boolean;
+  category: NotificationCategory | null;
+}
+
+/** Newest-first feed for one participant plus the unread badge count. */
+export async function listNotifications(
+  input: ListNotificationsInput,
+  deps: NotificationFeedDeps = {}
+): Promise<NotificationListResult> {
+  const repository = deps.repository ?? notificationsRepository;
+
+  // Fetch one extra row to know whether another page exists.
+  const [rows, unreadCount] = await Promise.all([
+    repository.listForParticipant(input.participantId, {
+      limit: input.limit + 1,
+      cursor: input.cursor,
+      unreadOnly: input.unreadOnly,
+      category: input.category,
+    }),
+    repository.countUnread(input.participantId),
+  ]);
+
+  const hasMore = rows.length > input.limit;
+  const page = hasMore ? rows.slice(0, input.limit) : rows;
+  const last = page[page.length - 1];
+
+  return {
+    notifications: page.map(toNotificationView),
+    unreadCount,
+    nextCursor:
+      hasMore && last
+        ? encodeNotificationCursor({ createdAt: last.created_at, id: last.id })
+        : null,
+  };
+}
+
+function toFeedError(err: unknown): NotificationServiceError | null {
+  const message = err instanceof Error ? err.message : (err as { message?: unknown })?.message;
+  if (typeof message !== 'string') return null;
+  if (message.includes('NOTIFICATION_NOT_FOUND')) {
+    return new NotificationServiceError(404, 'NOTIFICATION_NOT_FOUND', 'Notification not found.');
+  }
+  if (message.includes('VALIDATION_ERROR')) {
+    return new NotificationServiceError(400, 'VALIDATION_ERROR', 'Validation failed.');
+  }
+  return null;
+}
+
+/** Idempotent; another account's id is indistinguishable from a missing one (404). */
+export async function markNotificationRead(
+  participantId: string,
+  notificationId: string,
+  deps: NotificationFeedDeps = {}
+): Promise<{ notification: NotificationView; alreadyRead: boolean; unreadCount: number }> {
+  const repository = deps.repository ?? notificationsRepository;
+  try {
+    const result = await repository.markRead(participantId, notificationId);
+    return {
+      notification: toNotificationView(result.notification),
+      alreadyRead: result.alreadyRead,
+      unreadCount: result.unreadCount,
+    };
+  } catch (err) {
+    throw toFeedError(err) ?? err;
+  }
+}
+
+export async function markAllNotificationsRead(
+  participantId: string,
+  deps: NotificationFeedDeps = {}
+): Promise<{ markedCount: number; unreadCount: number }> {
+  const repository = deps.repository ?? notificationsRepository;
+  try {
+    const result = await repository.markAllRead(participantId);
+    return { markedCount: result.markedCount, unreadCount: result.unreadCount };
+  } catch (err) {
+    throw toFeedError(err) ?? err;
+  }
 }
