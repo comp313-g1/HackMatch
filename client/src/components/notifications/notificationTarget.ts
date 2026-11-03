@@ -70,3 +70,17 @@ export function formatBadgeCount(count: number): string | null {
   if (!Number.isFinite(count) || count <= 0) return null;
   return count > 99 ? '99+' : String(Math.floor(count));
 }
+
+/** Short hint shown on each item describing where clicking leads; null when it only marks read. */
+export function describeNotificationTarget(target: NotificationTarget): string | null {
+  switch (target.kind) {
+    case 'requests':
+      return target.tab === 'invitations'
+        ? 'Opens Requests › Invitations'
+        : 'Opens Requests › Applications';
+    case 'team':
+      return 'Opens your team';
+    default:
+      return null;
+  }
+}

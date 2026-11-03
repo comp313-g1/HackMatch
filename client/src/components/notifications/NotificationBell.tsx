@@ -7,12 +7,13 @@ import {
   NotificationsApiError,
 } from './notificationsApi';
 import {
+  describeNotificationTarget,
   formatBadgeCount,
   formatRelativeTime,
   resolveNotificationTarget,
   type NotificationTarget,
 } from './notificationTarget';
-import { CATEGORY_LABELS, type NotificationView } from './notificationTypes';
+import { getNotificationLabel, type NotificationView } from './notificationTypes';
 
 export const NOTIFICATION_PAGE_SIZE = 20;
 export const NOTIFICATION_POLL_MS = 30_000;
@@ -170,10 +171,14 @@ export function NotificationBell({
     try {
       const result = await markNotificationRead(notification.id);
       if (mounted.current) {
+        // Read response fields before the state updater so a malformed response
+        // cannot throw during render; fall back to the optimistic values.
+        const confirmedReadAt = result?.notification?.readAt ?? optimisticReadAt;
+        const confirmedUnread = result?.unreadCount;
         setItems((prev) =>
-          prev.map((n) => (n.id === notification.id ? { ...n, readAt: result.notification.readAt } : n))
+          prev.map((n) => (n.id === notification.id ? { ...n, readAt: confirmedReadAt } : n))
         );
-        setUnreadCount(result.unreadCount);
+        if (typeof confirmedUnread === 'number') setUnreadCount(confirmedUnread);
       }
       return true;
     } catch (err: unknown) {
@@ -333,7 +338,7 @@ export function NotificationBell({
                         >
                           <span className="flex items-center gap-2">
                             <span className="rounded bg-cream-100 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                              {CATEGORY_LABELS[n.category] ?? CATEGORY_LABELS.general}
+                              {getNotificationLabel(n)}
                             </span>
                             {unread && (
                               <>
@@ -352,6 +357,14 @@ export function NotificationBell({
                           >
                             {n.message}
                           </span>
+                          {(() => {
+                            const hint = describeNotificationTarget(resolveNotificationTarget(n));
+                            return hint ? (
+                              <span className="mt-1 block text-xs font-medium text-forest-800">
+                                {hint}
+                              </span>
+                            ) : null;
+                          })()}
                         </button>
                         {unread && (
                           <button

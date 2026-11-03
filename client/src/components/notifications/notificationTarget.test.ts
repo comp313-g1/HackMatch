@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
+  describeNotificationTarget,
   formatBadgeCount,
   formatRelativeTime,
   resolveNotificationTarget,
 } from './notificationTarget';
-import type { NotificationCategory, NotificationView } from './notificationTypes';
+import { getNotificationLabel, type NotificationCategory, type NotificationView } from './notificationTypes';
 
 const EVENT = '33333333-3333-4333-8333-333333333333';
 
@@ -94,5 +95,42 @@ describe('formatRelativeTime', () => {
   });
   it('returns an empty string for invalid input', () => {
     expect(formatRelativeTime('nope', now)).toBe('');
+  });
+});
+
+describe('getNotificationLabel (US-021 AC 2)', () => {
+  it('uses a specific label per alert type', () => {
+    const cases: Array<[string, NotificationCategory, string]> = [
+      ['team_invitation', 'invitation', 'Invitation'],
+      ['team_application_submitted', 'application', 'Application received'],
+      ['team_application_approved', 'decision', 'Application approved'],
+      ['team_application_declined', 'decision', 'Application declined'],
+      ['TEAM_ROSTER_LOCKED', 'roster', 'Roster locked'],
+      ['event_verification_approved', 'event_verification', 'Event approved'],
+      ['event_verification_rejected', 'event_verification', 'Event not approved'],
+      ['REQUEST_CANCELED_TEAM_FULL', 'general', 'Request canceled'],
+      ['moderation_warning', 'general', 'Moderation notice'],
+    ];
+    for (const [type, category, label] of cases) {
+      expect(getNotificationLabel({ type, category })).toBe(label);
+    }
+  });
+
+  it('falls back to the category label for unknown types', () => {
+    expect(getNotificationLabel({ type: 'something_new', category: 'roster' })).toBe('Roster');
+    expect(getNotificationLabel({ type: 'something_new', category: 'general' })).toBe('Update');
+  });
+});
+
+describe('describeNotificationTarget', () => {
+  it('describes each destination and returns null when there is none', () => {
+    expect(describeNotificationTarget({ kind: 'requests', tab: 'invitations' })).toBe(
+      'Opens Requests › Invitations'
+    );
+    expect(describeNotificationTarget({ kind: 'requests', tab: 'applications' })).toBe(
+      'Opens Requests › Applications'
+    );
+    expect(describeNotificationTarget({ kind: 'team', eventId: null })).toBe('Opens your team');
+    expect(describeNotificationTarget({ kind: 'none' })).toBeNull();
   });
 });

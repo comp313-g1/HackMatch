@@ -45,7 +45,7 @@ const read = make({
   id: 'n3',
   type: 'TEAM_ROSTER_LOCKED',
   category: 'roster',
-  message: 'Roster locked',
+  message: 'Your team roster is now final',
   readAt: NOW,
 });
 
@@ -109,8 +109,11 @@ describe('NotificationBell (US-021 / #200)', () => {
     resolve(page([invitation, decision, read], 2));
     const list = await screen.findByRole('list', { name: /notification list/i });
     expect(within(list).getByText('Invitation')).toBeInTheDocument();
-    expect(within(list).getByText('Decision')).toBeInTheDocument();
-    expect(within(list).getByText('Roster')).toBeInTheDocument();
+    expect(within(list).getByText('Application approved')).toBeInTheDocument();
+    expect(within(list).getByText('Roster locked')).toBeInTheDocument();
+    expect(within(list).getByText('Opens Requests › Invitations')).toBeInTheDocument();
+    expect(within(list).getByText('Opens Requests › Applications')).toBeInTheDocument();
+    expect(within(list).getByText('Opens your team')).toBeInTheDocument();
     expect(within(list).getAllByText('Unread')).toHaveLength(2);
   });
 
@@ -241,7 +244,7 @@ describe('NotificationBell (US-021 / #200)', () => {
     fireEvent.click(bell());
     await screen.findByRole('list', { name: /notification list/i });
 
-    fireEvent.click(screen.getByText('Roster locked'));
+    fireEvent.click(screen.getByText('Your team roster is now final'));
 
     expect(onNavigate).toHaveBeenCalledWith(
       { kind: 'team', eventId: 'e1' },
@@ -266,6 +269,25 @@ describe('NotificationBell (US-021 / #200)', () => {
     expect(screen.getAllByText(/invitation to team rocket/i)).toHaveLength(1);
     expect(listNotifications).toHaveBeenLastCalledWith({ limit: 20, cursor: 'cursor-1' });
     expect(screen.queryByRole('button', { name: /load older/i })).not.toBeInTheDocument();
+  });
+
+  it('shows no destination hint for a notification that only marks read', async () => {
+    const rejected = make({
+      id: 'n9',
+      type: 'event_verification_rejected',
+      category: 'event_verification',
+      message: 'Your event was not approved',
+    });
+    vi.mocked(listNotifications).mockResolvedValue(page([rejected], 1));
+    renderBell();
+    await screen.findByTestId('notification-badge');
+    fireEvent.click(bell());
+    const list = await screen.findByRole('list', { name: /notification list/i });
+    expect(within(list).getByText('Event not approved')).toBeInTheDocument();
+    expect(within(list).queryByText(/^Opens /)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Your event was not approved'));
+    expect(onNavigate).toHaveBeenCalledWith({ kind: 'none' }, expect.objectContaining({ id: 'n9' }));
   });
 
   it('closes on Escape and returns focus to the bell', async () => {
