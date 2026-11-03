@@ -4,6 +4,7 @@ import type { DecodedIdToken } from 'firebase-admin/auth';
 import { app } from '../app.js';
 import { participantsRepository } from '../db/participants.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
+import * as candidateDirectoryService from '../services/candidateDirectory.js';
 import { MFA_CLAIM } from '../utils/mfaClaim.js';
 import type { Participant, Team, TeamMembership, TeamVacancy } from '../db/types.js';
 
@@ -724,6 +725,122 @@ describe('Express Team Listing & Vacancy Endpoints (US-012 / #120)', () => {
       expect(response.status).toBe(409);
       expect(response.body.code).toBe('TEAM_NOT_MUTABLE');
       expect(response.body.details).toEqual({ reason: 'Disbanded' });
+    });
+  });
+
+  describe('GET /api/teams/:teamId/candidates (Candidate Directory Search & Filter)', () => {
+    it('returns 401 UNAUTHORIZED when no token is provided', async () => {
+      const response = await request(app).get(`/api/teams/${sampleTeamId}/candidates`);
+      expect(response.status).toBe(401);
+      expect(response.body.code).toBe('UNAUTHORIZED');
+    });
+
+    it('returns 403 FORBIDDEN_NOT_TEAM_OWNER when requester is not the team owner', async () => {
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(otherParticipant);
+
+      const response = await request(app)
+        .get(`/api/teams/${sampleTeamId}/candidates`)
+        .set('Authorization', validTokenHeader);
+
+      expect(response.status).toBe(403);
+      expect(response.body.code).toBe('FORBIDDEN_NOT_TEAM_OWNER');
+    });
+
+    it('returns 404 TEAM_NOT_FOUND when team does not exist', async () => {
+      vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(null);
+
+      const response = await request(app)
+        .get(`/api/teams/${sampleTeamId}/candidates`)
+        .set('Authorization', validTokenHeader);
+
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('TEAM_NOT_FOUND');
+    });
+
+    it('returns 400 VALIDATION_ERROR when query parameters are invalid', async () => {
+      const response = await request(app)
+        .get(`/api/teams/${sampleTeamId}/candidates?minHours=50&maxHours=10&skillMatchMode=INVALID`)
+        .set('Authorization', validTokenHeader);
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.errors).toEqual(
+        expect.objectContaining({
+          hours: 'Minimum commitment hours cannot exceed maximum commitment hours.',
+          skillMatchMode: 'Skill match mode must be "AND" or "OR".',
+        })
+      );
+    });
+
+    it('returns 200 with candidate directory for active team owner', async () => {
+      const mockResult: candidateDirectoryService.CandidateDirectoryResult = {
+        teamId: sampleTeamId,
+        eventId: sampleEventId,
+        filters: {
+          skills: ['React'],
+          skillMatchMode: 'AND',
+          role: 'Frontend',
+          desiredRole: null,
+          minHours: null,
+          maxHours: null,
+          badge: null,
+          goal: null,
+          search: null,
+        },
+        candidates: [
+          {
+            participantId: '88888888-8888-4888-8888-888888888888',
+            displayName: 'Alice Coder',
+            handle: 'alice_c',
+            institution: 'Centennial College',
+            primaryRole: 'Frontend',
+            desiredRole: 'Frontend',
+            commitmentHours: 20,
+            goal: 'Project Completion',
+            skills: ['React', 'TypeScript'],
+            matchedSkills: ['React'],
+            skillsSelfDeclared: true,
+            portfolioLinks: [{ url: 'https://github.com/alice', label: 'GitHub', isSelfDeclared: true }],
+            selfDeclaredNotice: 'Self-declared',
+            hackathonCount: 2,
+            experienceBadge: 'Competitor',
+            experienceBadgeSelfReported: true,
+            selfReportedNotice: 'Self-reported',
+            hackathonHistory: [],
+            updatedAt: '2026-10-18T10:00:00.000Z',
+          },
+        ],
+        totalEligible: 1,
+        totalMatched: 1,
+        empty: false,
+        message: null,
+        exclusions: { inactive: 0, unavailable: 0, confirmed: 0, owner: 0, totalExcluded: 0 },
+      };
+
+      const querySpy = vi
+        .spyOn(candidateDirectoryService, 'queryCandidateDirectoryForTeamOwner')
+        .mockResolvedValue(mockResult);
+
+      const response = await request(app)
+        .get(`/api/teams/${sampleTeamId}/candidates?skills=React&role=Frontend`)
+        .set('Authorization', validTokenHeader);
+
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body.teamId).toBe(sampleTeamId);
+      expect(response.body.candidates).toHaveLength(1);
+      expect(response.body.candidates[0].handle).toBe('alice_c');
+      expect(querySpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorParticipantId: ownerParticipant.id,
+          teamId: sampleTeamId,
+          filters: expect.objectContaining({
+            skills: ['React'],
+            role: 'Frontend',
+          }),
+        }),
+        undefined
+      );
     });
   });
 });
