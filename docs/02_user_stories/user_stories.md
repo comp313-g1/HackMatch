@@ -19,7 +19,7 @@ Every story below follows the standardized format:
 - **Priority:** High, Medium, or Low.
 - **Complexity/Effort Estimate:** Small, Medium, or Large.
 - **Related Stories:** References to current canonical IDs; related stories are not automatically blockers.
-- **Sprint 1 tasks:** Numbered list mirrored from [task disaggregation](../05_sprint_1/task_disaggregation.md) when the story has Sprint 1 work. Eliminated stories (~~US-008–US-010~~) remain listed with strikethrough.
+- **Task disaggregation:** Numbered list mirrored from [task disaggregation](../05_sprint_1/task_disaggregation.md) when a story has planned or completed implementation work. Eliminated stories (~~US-008–US-010~~) remain listed with strikethrough.
 
 ---
 
@@ -34,6 +34,27 @@ Every story below follows the standardized format:
 | Rule-Based Matching | US-015 | — | US-016 |
 | Invitations, Applications, and Rosters | US-017, US-018, US-019, US-020, US-022 | US-021, US-023, US-024 | — |
 | Platform Administration and Trust | US-026, US-027 | US-025, US-028 | — |
+
+### Iteration 2 Planning Status
+
+Iteration 2 completes the remaining Should-Have work before beginning May-Have stories. This table records delivery planning status only; it does not replace or rewrite the accepted story statements and acceptance criteria below.
+
+| Planning Order | User Story | Delivery Category | Current Status |
+|---:|---|---|---|
+| — | US-007 | Should-Have | Done / out of active Iteration 2 scope |
+| — | US-014 | Should-Have | Completed |
+| 1 | US-021 | Should-Have | In progress |
+| 2 | US-023 | Should-Have | Planned |
+| 3 | US-024 | Should-Have | Planned |
+| 4 | US-025 | Should-Have | Planned |
+| 5 | US-028 | Should-Have | Planned |
+| 6 | US-031 | Should-Have | Planned |
+| 7 | US-032 | Should-Have | Planned |
+| 8 | US-033 | Should-Have | Planned |
+| 9 | US-034 | Should-Have | Planned |
+| 10 | US-029 | May-Have | Planned after the Should-Haves |
+| 11 | US-035 | May-Have | Planned after the Should-Haves |
+| 12 | US-016 | May-Have | Planned after the Should-Haves |
 
 ---
 
@@ -305,7 +326,15 @@ These stories govern account creation, federated single sign-on, multi-factor cr
 
 **Related Stories:** US-006, US-014, US-015
 
-**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+**Iteration 2 tasks:** (7 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create PostgreSQL hackathon-history records for participant profiles
+2. Add Express history create, edit, list, and delete endpoints
+3. Validate event name, date, role, project title, and HTTPS URL
+4. Compute Beginner, Competitor, and Veteran badges
+5. Build React history editor and profile display
+6. Apply authenticated viewing and owner-only edit permissions
+7. Add Vitest and integration tests for history and badge recalculation
 
 
 ---
@@ -335,7 +364,15 @@ These stories govern account creation, federated single sign-on, multi-factor cr
 
 **Related Stories:** US-003, US-004
 
-**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+**Iteration 2 tasks:** (7 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Define the approved future authenticator enrollment and fallback design
+2. Add protected TOTP secret enrollment storage
+3. Build QR enrollment and confirmation-code screens
+4. Add reauthentication and recovery-code controls
+5. Protect secrets from logs and other accounts
+6. Preserve email OTP and the five-attempt/15-minute lock policy
+7. Add Vitest and integration tests for setup failure and activation
 
 
 ---
@@ -579,7 +616,15 @@ These stories govern event-specific participant availability declarations, struc
 
 **Related Stories:** US-006, US-007, US-011, US-012, US-015, US-017
 
-**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+**Iteration 2 tasks:** (7 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create candidate-directory query service for active team owners
+2. Add AND/OR skills, role, hours, badge, and availability filters
+3. Exclude all confirmed event participants from results
+4. Build React candidate directory and filter controls
+5. Apply US-006 privacy fields and link profile inspection
+6. Connect candidate cards to US-017 invitations
+7. Add Vitest and integration tests for LEAD access and filters
 
 
 ---
@@ -653,7 +698,15 @@ These stories compute deterministic compatibility scores between solo participan
 
 **Related Stories:** US-006, US-011, US-013, US-018
 
-**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+**Iteration 2 tasks:** (7 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Define reverse matching inputs and team eligibility rules
+2. Create recommendation query for a selected event and PART profile
+3. Calculate match percentage and matched skill tags
+4. Build React recommended-teams page and empty state
+5. Connect suggestions to the US-018 application form
+6. Add permission checks for the participant's own profile
+7. Add Vitest and integration tests for recommendations
 
 
 ---
@@ -852,7 +905,16 @@ These stories manage formal team recruitment state transitions, in-app alerts, c
 
 **Related Stories:** US-009, US-010, US-017, US-018, US-019, US-020
 
-**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+**Iteration 2 tasks:** (8 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create PostgreSQL notification model and unread indexes
+2. Create notification service for recruitment and event events
+3. Add Express notification list, read, and mark-all endpoints
+4. Build React navigation bell, unread badge, and dropdown
+5. Add notification type labels and deep links to action views
+6. Add real-time refresh or polling for new alerts
+7. Add empty, read, and permission states
+8. Add Vitest and integration tests for notification creation and reading
 
 
 ---
@@ -920,7 +982,16 @@ These stories manage formal team recruitment state transitions, in-app alerts, c
 
 **Related Stories:** US-012, US-019, US-022, US-024
 
-**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+**Iteration 2 tasks:** (8 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create PostgreSQL locked-team workspace, link, note, and revision models
+2. Add member-only workspace authorization for active locked teams
+3. Create owner-only HTTPS external-link endpoints
+4. Create shared markdown note and revision endpoints
+5. Add stale-save conflict handling using revision versions
+6. Build React workspace, member contacts, links, note editor, and revisions
+7. Apply privacy rules and deletion handling for shared data
+8. Add Vitest and integration tests for workspace access and concurrent saves
 
 
 ---
@@ -949,7 +1020,15 @@ These stories manage formal team recruitment state transitions, in-app alerts, c
 
 **Related Stories:** US-010, US-022, US-023
 
-**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+**Iteration 2 tasks:** (7 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Define canonical roster snapshot serialization
+2. Create export service for HTML, PDF, and JSON formats
+3. Add checksum generation and included-field change detection
+4. Build React export controls and download states
+5. Exclude email and private contact fields from exports
+6. Add locked-member authorization and historical snapshot handling
+7. Add Vitest and integration tests for export content and checksums
 
 
 ---
@@ -982,7 +1061,15 @@ These stories govern user abuse reporting, administrative moderation, account en
 
 **Related Stories:** US-006, US-012, US-026
 
-**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+**Iteration 2 tasks:** (7 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create PostgreSQL moderation-report model and target references
+2. Build report modal for profiles, teams, and event listings
+3. Add category and optional explanation validation
+4. Enforce five reports per account per rolling hour
+5. Create US-026 moderation cases and receipt confirmation
+6. Protect reports from other participants and apply PART authentication
+7. Add Vitest and integration tests for report limits and targets
 
 
 ---
@@ -1091,7 +1178,15 @@ These stories govern user abuse reporting, administrative moderation, account en
 
 **Related Stories:** US-010, US-026, US-027
 
-**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+**Iteration 2 tasks:** (7 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create append-only audit-record query endpoint
+2. Build React audit table with record ID, actor, action, target, reason, outcome, and UTC time
+3. Add actor, action-type, and date filters
+4. Add empty state and pagination for no or many results
+5. Apply read-only ADMIN permissions and deny record mutations
+6. Apply retention and pseudonymization display rules
+7. Add Vitest and integration tests for filters and access
 
 
 ---
@@ -1176,7 +1271,15 @@ These stories govern user abuse reporting, administrative moderation, account en
 
 **Related Stories:** US-012, US-022, US-030
 
-**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+**Iteration 2 tasks:** (7 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Add team-channel linkage and lookup indexes to the chat model
+2. Provision or link each team channel idempotently
+3. Implement confirmed-team-member authorization for chat access
+4. Build member-gated team channel and message endpoints
+5. Define team lifecycle behavior for private channel history
+6. Build React team-chat view with preserved drafts
+7. Add Vitest and route tests for team-chat membership privacy
 
 
 ---
@@ -1207,7 +1310,15 @@ These stories govern user abuse reporting, administrative moderation, account en
 
 **Related Stories:** US-006, US-030, US-027
 
-**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+**Iteration 2 tasks:** (7 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create direct-message thread and participant data models
+2. Build idempotent open-or-continue DM thread endpoint
+3. Build DM inbox, thread, and send-message endpoints
+4. Enforce DM participant, verification, suspension, and block rules
+5. Build React DM inbox, thread, and composer views
+6. Apply chat privacy projections to direct messages
+7. Add Vitest and route tests for DM access and validation
 
 
 ---
@@ -1237,7 +1348,14 @@ These stories govern user abuse reporting, administrative moderation, account en
 
 **Related Stories:** US-025, US-026, US-030
 
-**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+**Iteration 2 tasks:** (6 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Extend moderation case targets for chat channels and messages
+2. Build ADMIN chat-case creation with mandatory reason
+3. Return privacy-safe chat evidence summaries
+4. Connect participant message reports to the moderation pipeline
+5. Build ADMIN chat moderation case controls
+6. Add tests for chat moderation authorization, privacy, and action records
 
 
 ---
@@ -1267,7 +1385,14 @@ These stories govern user abuse reporting, administrative moderation, account en
 
 **Related Stories:** US-021, US-030, US-032
 
-**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+**Iteration 2 tasks:** (6 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Create per-participant chat read cursors and unread indexes
+2. Build unread-count services for channels and direct messages
+3. Define and persist deterministic mention metadata
+4. Implement atomic mark-thread-read behavior
+5. Integrate channel, DM, and navigation unread badges in React
+6. Add Vitest and integration tests for unread and mention accuracy
 
 
 ---
@@ -1296,5 +1421,14 @@ These stories govern user abuse reporting, administrative moderation, account en
 
 **Related Stories:** US-030, US-031, US-032
 
-**Sprint 1 tasks:** None recorded in [task disaggregation](../05_sprint_1/task_disaggregation.md) for this story.
+**Iteration 2 tasks:** (8 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+
+1. Approve rich-chat scope, security policy, capacity limits, and feature flags
+2. Add message-reaction models and API operations
+3. Build accessible reaction controls and summaries in React
+4. Implement authorized realtime typing indicators with expiry
+5. Build React typing-indicator states and realtime cleanup
+6. Implement secure attachment upload, scanning, and storage controls
+7. Build attachment composer, preview, download, and failure states
+8. Add tests for rich-chat authorization, privacy, fallback, and limits
 
