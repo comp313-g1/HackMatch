@@ -21,7 +21,11 @@ const LIST_QUERY_KEYS = new Set(['limit', 'cursor', 'unread', 'category']);
 const ISO_TIMESTAMP_REGEX =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/;
 
+/** A real cursor is ~100 chars (timestamp + UUID); anything far larger is never decoded. */
+export const NOTIFICATION_CURSOR_MAX_LENGTH = 200;
+
 export function decodeNotificationCursor(raw: string): NotificationCursor | null {
+  if (raw.length > NOTIFICATION_CURSOR_MAX_LENGTH) return null;
   try {
     const parsed: unknown = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
     if (!Array.isArray(parsed) || parsed.length !== 2) return null;

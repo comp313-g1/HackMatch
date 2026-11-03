@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
+  NOTIFICATION_CURSOR_MAX_LENGTH,
   NOTIFICATION_DEFAULT_LIMIT,
   decodeNotificationCursor,
   validateNotificationListQueryInput,
@@ -35,6 +36,17 @@ describe('notifications.validator (US-021 / #199)', () => {
     expect(
       decodeNotificationCursor(Buffer.from(JSON.stringify(['2026-11-03T10:00:00Z', 'nope'])).toString('base64url'))
     ).toBeNull();
+  });
+
+  it('rejects an oversized cursor before decoding and accepts one at a real size', () => {
+    const cursor = encodeNotificationCursor({ createdAt: '2026-11-03T10:00:00.123456+00:00', id: ID });
+    expect(cursor.length).toBeLessThan(NOTIFICATION_CURSOR_MAX_LENGTH);
+    expect(decodeNotificationCursor(cursor)).not.toBeNull();
+
+    const spy = vi.spyOn(Buffer, 'from');
+    expect(decodeNotificationCursor('A'.repeat(NOTIFICATION_CURSOR_MAX_LENGTH + 1))).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 
   it('rejects array-valued and unknown parameters', () => {
