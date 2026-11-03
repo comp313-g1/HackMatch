@@ -1,3 +1,5 @@
+import type { NotificationCategory } from './notificationModel.js';
+
 export type ParticipantRole = 'PART' | 'ADMIN';
 
 /** US-030 / #343 / FR-086 chat presence statuses. */
@@ -450,7 +452,13 @@ export interface ParticipantNotification {
   participant_id: string;
   team_id: string | null;
   event_id: string | null;
+  /** Deep-link target for invitation/application alerts (US-021). */
+  request_id: string | null;
+  /** Deep-link target for event verification alerts (US-021). */
+  submission_id: string | null;
   type: string;
+  /** Derived from `type` by the database (US-021). */
+  category: NotificationCategory;
   message: string;
   created_at: string;
   read_at: string | null;
