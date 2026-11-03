@@ -10,6 +10,7 @@ import {
   type IdTokenResult,
 } from 'firebase/auth';
 import App from './App';
+import { listNotifications, markNotificationRead } from './components/notifications/notificationsApi';
 
 vi.mock('firebase/auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('firebase/auth')>();
@@ -56,6 +57,17 @@ vi.mock('./services/availabilityApi', () => ({
   updateMyAvailability: vi.fn(),
 }));
 
+vi.mock('./components/notifications/notificationsApi', async () => {
+  const actual = await vi.importActual<typeof import('./components/notifications/notificationsApi')>(
+    './components/notifications/notificationsApi'
+  );
+  return {
+    ...actual,
+    listNotifications: vi.fn().mockResolvedValue({ notifications: [], unreadCount: 0, nextCursor: null }),
+    markNotificationRead: vi.fn().mockResolvedValue({ notification: { readAt: '2026-11-03T12:00:00Z' }, alreadyRead: false, unreadCount: 0 }),
+    markAllNotificationsRead: vi.fn(),
+  };
+});
 describe('App Component (View Routing and Integration)', () => {
   const mockApplyActionCode = vi.mocked(applyActionCode);
 
@@ -362,6 +374,66 @@ describe('App Component (View Routing and Integration)', () => {
     expect(within(primaryNav()).queryByRole('button', { name: /^admin/i })).not.toBeInTheDocument();
     expect(within(primaryNav()).queryByRole('button', { name: /^moderation$/i })).not.toBeInTheDocument();
     expect(within(primaryNav()).queryByRole('button', { name: /^accounts$/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the notification bell with unread badge for a signed-in participant (US-021 AC 1)', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    mockSignedInUser({ mfaComplete: true, role: 'PART' });
+    vi.mocked(listNotifications).mockResolvedValue({ notifications: [], unreadCount: 4, nextCursor: null });
+
+    render(<App />);
+
+    expect(await screen.findByRole('button', { name: /notifications, 4 unread/i })).toBeInTheDocument();
+    expect(await screen.findByTestId('notification-badge')).toHaveTextContent('4');
+  });
+
+  it('hides the notification bell when signed out, MFA is pending, or the user is an admin', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    const { unmount } = render(<App />);
+    expect(screen.queryByRole('button', { name: /^notifications,/i })).not.toBeInTheDocument();
+    unmount();
+
+    mockSignedInUser({ mfaComplete: false, role: 'PART' });
+    const pending = render(<App />);
+    expect(await screen.findByTestId('header-verification-pending')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^notifications,/i })).not.toBeInTheDocument();
+    pending.unmount();
+
+    mockSignedInUser({ mfaComplete: true, role: 'ADMIN' });
+    render(<App />);
+    expect(await within(primaryNav()).findByRole('button', { name: /^admin/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^notifications,/i })).not.toBeInTheDocument();
+  });
+
+  it('opens the Invitations tab when an invitation notification is clicked (US-021 AC 3)', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    mockSignedInUser({ mfaComplete: true, role: 'PART' });
+    vi.mocked(listNotifications).mockResolvedValue({
+      notifications: [
+        {
+          id: 'n1',
+          type: 'team_invitation',
+          category: 'invitation',
+          message: 'You were invited to Team Rocket',
+          teamId: 't1',
+          eventId: 'e1',
+          requestId: null,
+          submissionId: null,
+          readAt: null,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+      unreadCount: 1,
+      nextCursor: null,
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /notifications, 1 unread/i }));
+    fireEvent.click(await screen.findByText('You were invited to Team Rocket'));
+
+    expect(await screen.findByRole('heading', { name: /^requests$/i, level: 2 })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /notifications/i })).not.toBeInTheDocument();
+    expect(markNotificationRead).toHaveBeenCalledWith('n1');
   });
 
   it('ADMIN navbar exposes Moderation and Accounts under Admin menu (#359 / #358)', async () => {
