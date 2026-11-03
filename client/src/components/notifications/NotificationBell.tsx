@@ -13,6 +13,11 @@ import {
   resolveNotificationTarget,
   type NotificationTarget,
 } from './notificationTarget';
+import {
+  connectNotificationStream,
+  type NotificationStreamEvent,
+  type StreamStatus,
+} from './notificationStream';
 import { getNotificationLabel, type NotificationView } from './notificationTypes';
 
 export const NOTIFICATION_PAGE_SIZE = 20;
@@ -21,8 +26,10 @@ export const NOTIFICATION_POLL_MS = 30_000;
 export interface NotificationBellProps {
   /** Called when a notification is clicked; the app routes to the matching view. */
   onNavigate: (target: NotificationTarget, notification: NotificationView) => void;
-  /** Badge refresh interval; 0 disables polling. */
+  /** Fallback polling interval, used only while the live stream is not connected; 0 disables polling. */
   pollIntervalMs?: number;
+  /** Injection seam for the live stream (tests). */
+  connectStream?: typeof connectNotificationStream;
 }
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error';
@@ -41,6 +48,7 @@ function describeError(err: unknown, fallback: string): string {
 export function NotificationBell({
   onNavigate,
   pollIntervalMs = NOTIFICATION_POLL_MS,
+  connectStream = connectNotificationStream,
 }: NotificationBellProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationView[]>([]);
@@ -51,7 +59,11 @@ export function NotificationBell({
   const [loadingMore, setLoadingMore] = useState(false);
   const [markAllPending, setMarkAllPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [streamStatus, setStreamStatus] = useState<StreamStatus>('connecting');
+  const [announcement, setAnnouncement] = useState('');
 
+  const openRef = useRef(false);
+  const loadStateRef = useRef<LoadState>('idle');
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const requestSeq = useRef(0);
@@ -99,13 +111,48 @@ export function NotificationBell({
   }, [refreshBadge]);
 
   useEffect(() => {
-    if (open || pollIntervalMs <= 0) return;
+    openRef.current = open;
+    loadStateRef.current = loadState;
+  }, [open, loadState]);
+
+  // US-021 / #202 live stream. Events update the badge and (when loaded) the list
+  // immediately; every (re)connect reconciles with the server to catch anything
+  // that arrived while the stream was down.
+  useEffect(() => {
+    const stop = connectStream({
+      onStatus: (status) => {
+        if (!mounted.current) return;
+        setStreamStatus(status);
+        if (status === 'connected') {
+          void refreshBadge();
+          if (openRef.current) void loadFirstPage();
+        }
+      },
+      onNotification: (event: NotificationStreamEvent) => {
+        if (!mounted.current) return;
+        setUnreadCount(event.unreadCount);
+        if (loadStateRef.current === 'ready') {
+          setItems((prev) =>
+            prev.some((n) => n.id === event.notification.id) ? prev : [event.notification, ...prev]
+          );
+        }
+        setAnnouncement(`New notification: ${event.notification.message}`);
+      },
+    });
+    return stop;
+  }, [connectStream, refreshBadge, loadFirstPage]);
+
+  // Polling is only the fallback for when the live stream is not connected.
+  const liveConnected = streamStatus === 'connected';
+  useEffect(() => {
+    if (liveConnected || pollIntervalMs <= 0) return;
     const timer = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
-      void refreshBadge();
+      if (openRef.current) void loadFirstPage();
+      else void refreshBadge();
     }, pollIntervalMs);
     return () => window.clearInterval(timer);
-  }, [open, pollIntervalMs, refreshBadge]);
+  }, [liveConnected, pollIntervalMs, refreshBadge, loadFirstPage]);
 
   // Close on outside pointer and Escape (focus returns to the bell).
   useEffect(() => {
@@ -265,6 +312,10 @@ export function NotificationBell({
         )}
       </button>
 
+      <span className="sr-only" aria-live="polite" data-testid="notification-announcer">
+        {announcement}
+      </span>
+
       {open && (
         <div
           id={panelId}
@@ -394,6 +445,13 @@ export function NotificationBell({
                 </div>
               )}
             </>
+          )}
+
+          {(streamStatus === 'reconnecting' || streamStatus === 'unavailable') && (
+            <p className="border-t border-cream-200 px-4 py-2 text-xs text-ink-muted" data-testid="live-updates-note">
+              Live updates are unavailable right now. Checking for new alerts every{' '}
+              {Math.round(pollIntervalMs / 1000) || 30} seconds.
+            </p>
           )}
         </div>
       )}

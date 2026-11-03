@@ -5,6 +5,9 @@ import { app } from '../app.js';
 import { participantsRepository } from '../db/participants.repository.js';
 import { notificationsRepository } from '../db/notifications.repository.js';
 import { encodeNotificationCursor } from '../services/notifications.js';
+import { notificationHub } from '../services/notificationHub.js';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { MFA_CLAIM } from '../utils/mfaClaim.js';
 import type { Participant, ParticipantNotification } from '../db/types.js';
 
@@ -288,6 +291,71 @@ describe('Express Notification Endpoints (US-021 / #199 / FR-063, FR-065)', () =
     });
   });
 
+  describe('GET /api/notifications/stream (US-021 / #202)', () => {
+    it('denies Visitors with 401 and unverified accounts with 403', async () => {
+      expect((await request(app).get('/api/notifications/stream')).status).toBe(401);
+
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue({
+        ...participant,
+        is_verified: false,
+      });
+      const res = await request(app).get('/api/notifications/stream').set('Authorization', auth);
+      expect(res.status).toBe(403);
+    });
+
+    it('streams the caller\'s live notifications over SSE and cleans up on disconnect', async () => {
+      const server = app.listen(0);
+      const { port } = server.address() as AddressInfo;
+      const received: string[] = [];
+
+      const event = {
+        notification: {
+          id: NOTIFICATION_ID,
+          type: 'team_invitation',
+          category: 'invitation' as const,
+          message: 'Live invite',
+          teamId: null,
+          eventId: null,
+          requestId: null,
+          submissionId: null,
+          readAt: null,
+          createdAt: '2026-11-03T10:00:00.000Z',
+        },
+        unreadCount: 7,
+      };
+
+      try {
+        const req = await new Promise<http.ClientRequest>((resolve, reject) => {
+          const r = http.get(
+            { port, path: '/api/notifications/stream', headers: { Authorization: auth } },
+            (res) => {
+              expect(res.statusCode).toBe(200);
+              expect(res.headers['content-type']).toMatch(/text\/event-stream/);
+              expect(res.headers['cache-control']).toMatch(/no-cache/);
+              res.setEncoding('utf8');
+              res.on('data', (chunk: string) => received.push(chunk));
+              resolve(r);
+            }
+          );
+          r.on('error', reject);
+        });
+
+        await vi.waitFor(() => expect(received.join('')).toContain('event: ready'));
+        expect(notificationHub.subscriberCount(OWN_ID)).toBe(1);
+
+        notificationHub.publish(OWN_ID, event);
+        notificationHub.publish('someone-else', event);
+        await vi.waitFor(() => expect(received.join('')).toContain('Live invite'));
+        expect(received.join('').match(/event: notification/g)).toHaveLength(1);
+
+        req.destroy();
+        await vi.waitFor(() => expect(notificationHub.subscriberCount(OWN_ID)).toBe(0));
+      } finally {
+        server.closeAllConnections?.();
+        await new Promise((r) => server.close(r));
+      }
+    });
+  });
   describe('POST /api/notifications/read-all', () => {
     it('marks all of the caller\'s notifications read', async () => {
       const markAll = vi

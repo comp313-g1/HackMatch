@@ -1,9 +1,14 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NotificationBell } from './NotificationBell';
 import { NotificationsApiError } from './notificationsApi';
 import type { NotificationView } from './notificationTypes';
+import type {
+  NotificationStreamEvent,
+  NotificationStreamHandlers,
+  StreamStatus,
+} from './notificationStream';
 
 vi.mock('./notificationsApi', async () => {
   const actual = await vi.importActual<typeof import('./notificationsApi')>('./notificationsApi');
@@ -55,15 +60,40 @@ const page = (notifications: NotificationView[], unreadCount: number, nextCursor
   nextCursor,
 });
 
+/** Controllable stand-in for the live stream. */
+function fakeStream() {
+  let handlers: NotificationStreamHandlers | null = null;
+  const stop = vi.fn();
+  const connect = vi.fn((h: NotificationStreamHandlers) => {
+    handlers = h;
+    return stop;
+  });
+  return {
+    connect,
+    stop,
+    status: (s: StreamStatus) => act(() => handlers?.onStatus(s)),
+    push: (e: NotificationStreamEvent) => act(() => handlers?.onNotification(e)),
+  };
+}
+
 describe('NotificationBell (US-021 / #200)', () => {
   const onNavigate = vi.fn();
+  let stream: ReturnType<typeof fakeStream>;
 
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(listNotifications).mockResolvedValue(page([], 0));
+    stream = fakeStream();
   });
 
-  const renderBell = () => render(<NotificationBell onNavigate={onNavigate} pollIntervalMs={0} />);
+  const renderBell = (pollIntervalMs = 0) =>
+    render(
+      <NotificationBell
+        onNavigate={onNavigate}
+        pollIntervalMs={pollIntervalMs}
+        connectStream={stream.connect}
+      />
+    );
   const bell = () => screen.getByRole('button', { name: /^notifications,/i });
 
   it('shows no badge when there are no unread notifications', async () => {
@@ -89,7 +119,7 @@ describe('NotificationBell (US-021 / #200)', () => {
   it('keeps the last badge value when a background refresh fails', async () => {
     vi.mocked(listNotifications).mockResolvedValueOnce(page([], 2));
     vi.mocked(listNotifications).mockRejectedValue(new NotificationsApiError(0, 'NETWORK'));
-    render(<NotificationBell onNavigate={onNavigate} pollIntervalMs={20} />);
+    renderBell(20);
     expect(await screen.findByTestId('notification-badge')).toHaveTextContent('2');
     await waitFor(() => expect(vi.mocked(listNotifications).mock.calls.length).toBeGreaterThan(2));
     expect(screen.getByTestId('notification-badge')).toHaveTextContent('2');

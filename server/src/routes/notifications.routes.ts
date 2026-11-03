@@ -16,6 +16,7 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from '../services/notifications.js';
+import { openNotificationStream } from '../services/notificationStream.js';
 
 export const notificationsRouter = Router();
 
@@ -60,6 +61,20 @@ notificationsRouter.get(
     } catch (err) {
       handleNotificationError(err, res, next);
     }
+  }
+);
+
+/**
+ * GET /api/notifications/stream
+ * Server-Sent Events: pushes the caller's new notifications live (US-021 / #202).
+ * The client uses fetch streaming (EventSource cannot send the Firebase bearer
+ * token) and falls back to polling GET /api/notifications if this is unavailable.
+ */
+notificationsRouter.get(
+  '/stream',
+  ...notificationsAuthGuard,
+  (req: Request, res: Response): void => {
+    openNotificationStream(req, res, req.participant!.id);
   }
 );
 
