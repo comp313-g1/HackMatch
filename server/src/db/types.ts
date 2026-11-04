@@ -542,3 +542,58 @@ export interface CreateChatMessageDTO {
   body: string;
 }
 
+/** US-023 / #US-023-T1 locked team workspace models (FR-068, FR-069, FR-070). */
+export interface TeamWorkspaceRecord {
+  team_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeamWorkspaceLink {
+  id: string;
+  team_id: string;
+  label: string;
+  url: string;
+  display_order: number;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpsertWorkspaceLinkInput {
+  label: string;
+  url: string;
+  display_order?: number;
+}
+
+export interface TeamWorkspaceNote {
+  team_id: string;
+  content: string;
+  version: number;
+  updated_by: string | null;
+  author_display_name: string | null;
+  author_pseudonymized_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeamWorkspaceNoteRevision {
+  id: string;
+  team_id: string;
+  version: number;
+  content: string;
+  author_id: string | null;
+  author_display_name: string;
+  author_pseudonymized_at: string | null;
+  created_at: string;
+}
+
+export interface SaveWorkspaceNoteInput {
+  teamId: string;
+  actorId: string;
+  content: string;
+  expectedVersion: number;
+  authorDisplayName: string;
+}
+
+

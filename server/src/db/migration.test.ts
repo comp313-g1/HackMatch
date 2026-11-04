@@ -1976,3 +1976,74 @@ describe('0044_extend_participant_notifications_for_notification_center.sql (US-
     expect(sql).toMatch(/WHERE\s+participant_id\s*=\s*p_participant\s+AND\s+read_at\s+IS\s+NULL/i);
   });
 });
+
+describe('0046_create_team_workspace_models.sql DDL (US-023 / #US-023-T1)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0046_create_team_workspace_models.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(100);
+  });
+
+  it('creates team_workspaces, team_workspace_links, team_workspace_notes, and revisions tables', () => {
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+team_workspaces\s*\(/i);
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+team_workspace_links\s*\(/i);
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+team_workspace_notes\s*\(/i);
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+team_workspace_note_revisions\s*\(/i);
+  });
+
+  it('enforces row level security on all 4 tables', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_workspaces\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_workspace_links\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_workspace_notes\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_workspace_note_revisions\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+  });
+
+  it('enforces link validation, HTTPS check, and display order constraints', () => {
+    expect(sql).toMatch(/url\s+LIKE\s+'https:\/\/%'/i);
+    expect(sql).toMatch(/LENGTH\(TRIM\(url\)\)\s*>\s*8/i);
+    expect(sql).toMatch(/LENGTH\(url\)\s*<=\s*2048/i);
+    expect(sql).toMatch(/LENGTH\(TRIM\(label\)\)\s*>=\s*1/i);
+    expect(sql).toMatch(/LENGTH\(TRIM\(label\)\)\s*<=\s*80/i);
+    expect(sql).toMatch(/display_order\s*>=\s*0\s+AND\s+display_order\s*<\s*10/i);
+  });
+
+  it('enforces note and revision versioning and content constraints', () => {
+    expect(sql).toMatch(/LENGTH\(content\)\s*<=\s*10000/i);
+    expect(sql).toMatch(/version\s+INTEGER\s+NOT\s+NULL\s+CHECK\s*\(\s*version\s*>=\s*1\s*\)/i);
+    expect(sql).toMatch(
+      /CONSTRAINT\s+uq_team_workspace_note_revisions_team_version\s+UNIQUE\s*\(\s*team_id\s*,\s*version\s*\)/i
+    );
+  });
+
+  it('creates indexing for link order, revision version, and author lookup', () => {
+    expect(sql).toMatch(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_team_workspace_links_team_order/i);
+    expect(sql).toMatch(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_team_workspace_note_revisions_team_version/i);
+    expect(sql).toMatch(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_team_workspace_note_revisions_author/i);
+  });
+
+  it('defines secure service_role-only atomic note save and link replacement functions', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+save_team_workspace_note/i);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+replace_team_workspace_links/i);
+    expect(sql).toMatch(/pg_advisory_xact_lock/i);
+    expect(sql).toMatch(/WORKSPACE_NOTE_CONFLICT/);
+    expect(sql).toMatch(/FORBIDDEN_WORKSPACE_LINKS_OWNER_ONLY/);
+    expect(sql).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+save_team_workspace_note[\s\S]*FROM\s+PUBLIC,\s*anon,\s*authenticated/i
+    );
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+save_team_workspace_note[\s\S]*TO\s+service_role/i
+    );
+    expect(sql).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+replace_team_workspace_links[\s\S]*FROM\s+PUBLIC,\s*anon,\s*authenticated/i
+    );
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+replace_team_workspace_links[\s\S]*TO\s+service_role/i
+    );
+  });
+});
+
