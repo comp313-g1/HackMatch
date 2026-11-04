@@ -244,3 +244,125 @@ describe('GET /api/teams/:teamId/workspace (US-023 / #US-023-T2 / FR-068)', () =
     expect(res.body.isOwner).toBe(false);
   });
 });
+
+describe('PUT /api/teams/:teamId/workspace/links (US-023 / #US-023-T3 / FR-069)', () => {
+  const linksPath = `/api/teams/${sampleTeamId}/workspace/links`;
+  const validLinksPayload = {
+    links: [
+      { label: 'GitHub Repo', url: 'https://github.com/org/repo', display_order: 0 },
+      { label: 'Figma Board', url: 'https://figma.com/file/123', display_order: 1 },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockVerifyIdToken.mockResolvedValue(validOwnerDecodedToken);
+    vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(ownerParticipant);
+    vi.spyOn(participantsRepository, 'findById').mockImplementation(async (id: string) => {
+      if (id === ownerParticipant.id) return ownerParticipant;
+      if (id === otherParticipant.id) return otherParticipant;
+      if (id === adminParticipant.id) return adminParticipant;
+      return null;
+    });
+    vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(lockedTeamViewParts.team);
+    vi.spyOn(teamsRepository, 'getTeamViewParts').mockResolvedValue(lockedTeamViewParts);
+    vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([
+      ownerParticipant.id,
+      otherParticipant.id,
+    ]);
+    vi.spyOn(teamWorkspaceRepository, 'replaceLinksForTeam').mockImplementation(
+      async (_teamId, _actorId, links) =>
+        links.map((l, i) => ({
+          id: `link-${i}`,
+          team_id: sampleTeamId,
+          label: l.label,
+          url: l.url,
+          display_order: l.display_order ?? i,
+          updated_by: ownerParticipant.id,
+          created_at: '2026-10-25T13:00:00Z',
+          updated_at: '2026-10-25T13:00:00Z',
+        }))
+    );
+  });
+
+  it('returns 401 when request is unauthenticated', async () => {
+    const res = await request(app)
+      .put(linksPath)
+      .send(validLinksPayload);
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('UNAUTHORIZED');
+  });
+
+  it('returns 400 when links payload fails validation (e.g. insecure HTTP scheme)', async () => {
+    const invalidPayload = {
+      links: [{ label: 'Insecure Link', url: 'http://insecure.example.com' }],
+    };
+
+    const res = await request(app)
+      .put(linksPath)
+      .set('Authorization', validTokenHeader)
+      .send(invalidPayload);
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+    expect(res.body.error).toContain('Validation failed. Existing workspace links were not modified.');
+    expect(res.body.errors['links[0].url']).toContain('valid HTTPS link');
+    expect(teamWorkspaceRepository.replaceLinksForTeam).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when links payload contains duplicate URLs within same team', async () => {
+    const duplicatePayload = {
+      links: [
+        { label: 'Repo 1', url: 'https://github.com/myteam/project' },
+        { label: 'Repo 2', url: 'HTTPS://GITHUB.COM/myteam/project' },
+      ],
+    };
+
+    const res = await request(app)
+      .put(linksPath)
+      .set('Authorization', validTokenHeader)
+      .send(duplicatePayload);
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+    expect(res.body.errors['links[1].url']).toContain('Duplicate link URL');
+    expect(teamWorkspaceRepository.replaceLinksForTeam).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 FORBIDDEN_WORKSPACE_LINKS_OWNER_ONLY when non-owner confirmed member tries to update links (FR-069)', async () => {
+    mockVerifyIdToken.mockResolvedValue(validOtherDecodedToken);
+    vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(otherParticipant);
+
+    const res = await request(app)
+      .put(linksPath)
+      .set('Authorization', otherTokenHeader)
+      .send(validLinksPayload);
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN_WORKSPACE_LINKS_OWNER_ONLY');
+    expect(teamWorkspaceRepository.replaceLinksForTeam).not.toHaveBeenCalled();
+  });
+
+  it('returns 200 with updated links and no-store cache when authenticated as team owner', async () => {
+    const res = await request(app)
+      .put(linksPath)
+      .set('Authorization', validTokenHeader)
+      .send(validLinksPayload);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.body.teamId).toBe(sampleTeamId);
+    expect(res.body.links).toHaveLength(2);
+    expect(res.body.links[0]?.label).toBe('GitHub Repo');
+    expect(res.body.links[1]?.label).toBe('Figma Board');
+    expect(teamWorkspaceRepository.replaceLinksForTeam).toHaveBeenCalledWith(
+      sampleTeamId,
+      ownerParticipant.id,
+      [
+        { label: 'GitHub Repo', url: 'https://github.com/org/repo', display_order: 0 },
+        { label: 'Figma Board', url: 'https://figma.com/file/123', display_order: 1 },
+      ]
+    );
+  });
+});
+

@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   authorizeLockedTeamWorkspaceMember,
   getPrivateTeamWorkspace,
+  updateWorkspaceExternalLinks,
   type TeamWorkspaceServiceDeps,
 } from './teamWorkspace.js';
 import { TeamServiceError } from './teamErrors.js';
@@ -14,6 +15,7 @@ import type {
   TeamWorkspaceLink,
   TeamWorkspaceNote,
   TeamWorkspaceNoteRevision,
+  UpsertWorkspaceLinkInput,
 } from '../db/types.js';
 import type { FullParticipantProfileRecord } from '../db/profile.repository.js';
 
@@ -189,6 +191,23 @@ function createMockDeps(overrides: Partial<TeamWorkspaceServiceDeps> = {}): Team
       listLinksByTeamId: vi.fn(async () => []),
       getNoteByTeamId: vi.fn(async () => null),
       listRevisionsByTeamId: vi.fn(async () => []),
+      replaceLinksForTeam: vi.fn(
+        async (
+          _teamId: string,
+          _actorId: string,
+          links: UpsertWorkspaceLinkInput[]
+        ) =>
+          links.map((l: UpsertWorkspaceLinkInput, i: number) => ({
+            id: `link-${i}`,
+            team_id: teamId,
+            label: l.label,
+            url: l.url,
+            display_order: l.display_order ?? i,
+            updated_by: ownerId,
+            created_at: '2026-10-25T13:00:00Z',
+            updated_at: '2026-10-25T13:00:00Z',
+          }))
+      ),
     },
     ...overrides,
   };
@@ -368,6 +387,7 @@ describe('teamWorkspace service (US-023 / #US-023-T2)', () => {
 
       const deps = createMockDeps({
         workspaceRepo: {
+          ...createMockDeps().workspaceRepo!,
           listLinksByTeamId: vi.fn(async () => [sampleLink]),
           getNoteByTeamId: vi.fn(async () => sampleNote),
           listRevisionsByTeamId: vi.fn(async () => [sampleRevision]),
@@ -380,4 +400,86 @@ describe('teamWorkspace service (US-023 / #US-023-T2)', () => {
       expect(workspace.revisions).toEqual([sampleRevision]);
     });
   });
+
+  describe('updateWorkspaceExternalLinks (US-023 / #US-023-T3 / FR-069)', () => {
+    it('throws FORBIDDEN_WORKSPACE_LINKS_OWNER_ONLY when non-owner confirmed member tries to update links', async () => {
+      const deps = createMockDeps();
+      await expect(
+        updateWorkspaceExternalLinks(
+          {
+            actorId: memberId,
+            teamId,
+            links: [{ label: 'Docs', url: 'https://docs.google.com' }],
+          },
+          deps
+        )
+      ).rejects.toThrow(new TeamServiceError('FORBIDDEN_WORKSPACE_LINKS_OWNER_ONLY'));
+    });
+
+    it('throws WORKSPACE_ACCESS_DENIED when unrelated user tries to update links', async () => {
+      const deps = createMockDeps();
+      await expect(
+        updateWorkspaceExternalLinks(
+          {
+            actorId: outsiderId,
+            teamId,
+            links: [{ label: 'Docs', url: 'https://docs.google.com' }],
+          },
+          deps
+        )
+      ).rejects.toThrow(new TeamServiceError('WORKSPACE_ACCESS_DENIED'));
+    });
+
+    it('throws WORKSPACE_TEAM_NOT_LOCKED when team is not locked', async () => {
+      const deps = createMockDeps({
+        teamsRepo: {
+          getTeamViewParts: vi.fn(async () => ({
+            ...sampleTeamParts,
+            team: openTeam,
+          })),
+          listConfirmedParticipantIdsForTeam: vi.fn(async () => [ownerId, memberId]),
+        },
+      });
+
+      await expect(
+        updateWorkspaceExternalLinks(
+          {
+            actorId: ownerId,
+            teamId,
+            links: [{ label: 'Docs', url: 'https://docs.google.com' }],
+          },
+          deps
+        )
+      ).rejects.toThrow(
+        new TeamServiceError('WORKSPACE_TEAM_NOT_LOCKED', {
+          recruitmentStatus: 'Open',
+        })
+      );
+    });
+
+    it('succeeds for team owner, calling replaceLinksForTeam and returning updated links', async () => {
+      const deps = createMockDeps();
+      const inputLinks = [
+        { label: 'Repo', url: 'https://github.com/org/repo', display_order: 0 },
+        { label: 'Figma', url: 'https://figma.com/file/123', display_order: 1 },
+      ];
+
+      const result = await updateWorkspaceExternalLinks(
+        { actorId: ownerId, teamId, links: inputLinks },
+        deps
+      );
+
+      expect(result.teamId).toBe(teamId);
+      expect(result.links).toHaveLength(2);
+      expect(result.links[0]?.label).toBe('Repo');
+      expect(result.links[1]?.label).toBe('Figma');
+      expect(typeof result.updatedAt).toBe('string');
+      expect(deps.workspaceRepo?.replaceLinksForTeam).toHaveBeenCalledWith(
+        teamId,
+        ownerId,
+        inputLinks
+      );
+    });
+  });
 });
+

@@ -11,6 +11,7 @@ import type {
   TeamWorkspaceLink,
   TeamWorkspaceNote,
   TeamWorkspaceNoteRevision,
+  UpsertWorkspaceLinkInput,
 } from '../db/types.js';
 import {
   participantsRepository,
@@ -76,7 +77,10 @@ export interface TeamWorkspaceServiceDeps {
   profileRepo?: Pick<IProfileRepository, 'getFullProfile'>;
   workspaceRepo?: Pick<
     ITeamWorkspaceRepository,
-    'listLinksByTeamId' | 'getNoteByTeamId' | 'listRevisionsByTeamId'
+    | 'listLinksByTeamId'
+    | 'getNoteByTeamId'
+    | 'listRevisionsByTeamId'
+    | 'replaceLinksForTeam'
   >;
 }
 
@@ -221,3 +225,46 @@ export async function getPrivateTeamWorkspace(
     revisions,
   };
 }
+
+/**
+ * Updates shared external tool links for a locked team.
+ * Strictly restricted to the team owner (FR-069, US-023 AC 3).
+ */
+export async function updateWorkspaceExternalLinks(
+  input: {
+    actorId: string;
+    teamId: string;
+    links: UpsertWorkspaceLinkInput[];
+  },
+  deps: TeamWorkspaceServiceDeps = {}
+): Promise<{
+  teamId: string;
+  links: TeamWorkspaceLink[];
+  updatedAt: string;
+}> {
+  const workspaceRepo = deps.workspaceRepo ?? teamWorkspaceRepository;
+
+  const access = await authorizeLockedTeamWorkspaceMember(
+    input.actorId,
+    input.teamId,
+    deps
+  );
+
+  // FR-069 / US-023 AC 3: Only the team owner can update external tool links
+  if (!access.isOwner || access.viewerRole !== 'Owner') {
+    throw new TeamServiceError('FORBIDDEN_WORKSPACE_LINKS_OWNER_ONLY');
+  }
+
+  const updatedLinks = await workspaceRepo.replaceLinksForTeam(
+    input.teamId,
+    input.actorId,
+    input.links
+  );
+
+  return {
+    teamId: input.teamId,
+    links: updatedLinks,
+    updatedAt: new Date().toISOString(),
+  };
+}
+

@@ -44,7 +44,11 @@ import {
   submitApplicationHandler,
 } from '../controllers/applications.controller.js';
 import { validateSubmitApplicationBody } from '../validators/application.validator.js';
-import { getTeamWorkspaceHandler } from '../controllers/teamWorkspace.controller.js';
+import {
+  getTeamWorkspaceHandler,
+  updateTeamWorkspaceLinksHandler,
+} from '../controllers/teamWorkspace.controller.js';
+import { validateWorkspaceLinksBody } from '../validators/teamWorkspace.validator.js';
 
 export const teamRouter = Router();
 
@@ -82,6 +86,15 @@ teamRouter.get(
   ...participantAuth,
   validateTeamIdParams,
   getTeamWorkspaceHandler
+);
+/** US-023 / #US-023-T3 / FR-069 — owner-only external HTTPS links update. */
+teamRouter.put(
+  '/:teamId/workspace/links',
+  ...participantAuth,
+  validateTeamIdParams,
+  requireJsonObjectBody,
+  validateWorkspaceLinksBody,
+  updateTeamWorkspaceLinksHandler
 );
 teamRouter.patch('/:teamId', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateUpdateTeamBody, updateTeamHandler);
 teamRouter.post('/:teamId/vacancies', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateVacancyBody, addVacancyHandler);
