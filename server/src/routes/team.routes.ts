@@ -44,6 +44,7 @@ import {
   submitApplicationHandler,
 } from '../controllers/applications.controller.js';
 import { validateSubmitApplicationBody } from '../validators/application.validator.js';
+import { getTeamWorkspaceHandler } from '../controllers/teamWorkspace.controller.js';
 
 export const teamRouter = Router();
 
@@ -74,6 +75,13 @@ teamRouter.post(
   validateTeamIdParams,
   requireTeamOwner,
   lockTeamHandler
+);
+/** US-023 / #US-023-T2 / FR-068 — member-only private coordination workspace for locked teams. */
+teamRouter.get(
+  '/:teamId/workspace',
+  ...participantAuth,
+  validateTeamIdParams,
+  getTeamWorkspaceHandler
 );
 teamRouter.patch('/:teamId', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateUpdateTeamBody, updateTeamHandler);
 teamRouter.post('/:teamId/vacancies', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateVacancyBody, addVacancyHandler);
