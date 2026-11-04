@@ -512,4 +512,133 @@ describe('PrivateCoordinationWorkspace component (US-023 / #US-023-T6)', () => {
       ).not.toBeInTheDocument();
     });
   });
+
+  describe('Loading and Error Recovery States (NR-010)', () => {
+    it('displays loading indicator while fetching private workspace', async () => {
+      let resolvePromise: (value: PrivateTeamWorkspaceView) => void;
+      const delayedPromise = new Promise<PrivateTeamWorkspaceView>((resolve) => {
+        resolvePromise = resolve;
+      });
+      vi.spyOn(teamWorkspaceApi, 'fetchPrivateTeamWorkspace').mockReturnValue(
+        delayedPromise
+      );
+
+      render(
+        <PrivateCoordinationWorkspace
+          teamId={sampleTeamId}
+          viewerRole="Owner"
+          autoLoad={true}
+        />
+      );
+
+      expect(
+        screen.getByText('Loading private team workspace...')
+      ).toBeInTheDocument();
+
+      resolvePromise!(createMockWorkspace());
+      await waitFor(() => {
+        expect(
+          screen.queryByText('Loading private team workspace...')
+        ).not.toBeInTheDocument();
+      });
+      expect(
+        screen.getByTestId('private-coordination-workspace')
+      ).toBeInTheDocument();
+    });
+
+    it('renders error alert when workspace fetch fails and retries on Reload Workspace', async () => {
+      const fetchSpy = vi
+        .spyOn(teamWorkspaceApi, 'fetchPrivateTeamWorkspace')
+        .mockRejectedValueOnce(new Error('Network error loading workspace'))
+        .mockResolvedValueOnce(createMockWorkspace());
+
+      render(
+        <PrivateCoordinationWorkspace
+          teamId={sampleTeamId}
+          viewerRole="Owner"
+          autoLoad={true}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText('Workspace Unavailable')).toBeInTheDocument();
+      expect(
+        screen.getByText('Network error loading workspace')
+      ).toBeInTheDocument();
+
+      const reloadBtn = screen.getByRole('button', {
+        name: /reload workspace/i,
+      });
+      fireEvent.click(reloadBtn);
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('private-coordination-workspace')
+        ).toBeInTheDocument();
+      });
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('Markdown XSS Sanitization in UI (NR-009)', () => {
+    it('neutralizes dangerous scripts and unsafe link schemes in live note preview and inspected revisions', async () => {
+      const xssWorkspace = createMockWorkspace({
+        note: {
+          ...mockNote,
+          content:
+            '# Concept\n<script>alert("xss")</script><img src="x" onerror="steal()" />[Safe Link](https://safe.example.com) and [Malicious](javascript:alert(1))',
+        },
+        revisions: [
+          {
+            ...mockRevisions[0],
+            content:
+              '# Initial Revision\n<iframe src="evil.com"></iframe>[Insecure Link](http://insecure.example.com)',
+          },
+        ],
+      });
+
+      vi.spyOn(teamWorkspaceApi, 'fetchPrivateTeamWorkspace').mockResolvedValue(
+        xssWorkspace
+      );
+
+      render(
+        <PrivateCoordinationWorkspace
+          teamId={sampleTeamId}
+          viewerRole="Owner"
+          autoLoad={true}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-note-preview')).toBeInTheDocument();
+      });
+
+      const preview = screen.getByTestId('workspace-note-preview');
+      expect(preview.querySelector('script')).toBeNull();
+      expect(preview.querySelector('img')).toBeNull();
+      expect(preview).toHaveTextContent('Concept');
+      expect(preview).toHaveTextContent('[unsafe link removed]');
+
+      const safeLink = within(preview).getByRole('link', { name: 'Safe Link' });
+      expect(safeLink).toHaveAttribute('href', 'https://safe.example.com');
+      expect(within(preview).queryByRole('link', { name: 'Malicious' })).toBeNull();
+
+      // Inspect revision
+      const inspectBtn = screen.getByTestId('inspect-revision-1');
+      fireEvent.click(inspectBtn);
+
+      const inspectedContent = screen.getByTestId(
+        'inspected-revision-content-1'
+      );
+      expect(inspectedContent.querySelector('iframe')).toBeNull();
+      expect(inspectedContent).toHaveTextContent('Initial Revision');
+      expect(inspectedContent).toHaveTextContent('[unsafe link removed]');
+      expect(
+        within(inspectedContent).queryByRole('link', { name: 'Insecure Link' })
+      ).toBeNull();
+    });
+  });
 });

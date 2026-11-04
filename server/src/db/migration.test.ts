@@ -2014,6 +2014,7 @@ describe('0046_create_team_workspace_models.sql DDL (US-023 / #US-023-T1)', () =
 
   it('enforces note and revision versioning and content constraints', () => {
     expect(sql).toMatch(/LENGTH\(content\)\s*<=\s*10000/i);
+    expect(sql).toMatch(/version\s+INTEGER\s+NOT\s+NULL\s+DEFAULT\s+0\s+CHECK\s*\(\s*version\s*>=\s*0\s*\)/i);
     expect(sql).toMatch(/version\s+INTEGER\s+NOT\s+NULL\s+CHECK\s*\(\s*version\s*>=\s*1\s*\)/i);
     expect(sql).toMatch(
       /CONSTRAINT\s+uq_team_workspace_note_revisions_team_version\s+UNIQUE\s*\(\s*team_id\s*,\s*version\s*\)/i
@@ -2028,6 +2029,7 @@ describe('0046_create_team_workspace_models.sql DDL (US-023 / #US-023-T1)', () =
 
   it('defines secure service_role-only atomic note save and link replacement functions', () => {
     expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+save_team_workspace_note/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
     expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+replace_team_workspace_links/i);
     expect(sql).toMatch(/pg_advisory_xact_lock/i);
     expect(sql).toMatch(/WORKSPACE_NOTE_CONFLICT/);
