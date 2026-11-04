@@ -1918,3 +1918,61 @@ describe('0043_create_participant_hackathon_history.sql DDL (US-007 / #US-007-T1
 
 
 
+
+describe('0044_extend_participant_notifications_for_notification_center.sql (US-021 / #197)', () => {
+  const sql = fs.readFileSync(
+    path.resolve(
+      __dirname,
+      '../../../supabase/migrations/0044_extend_participant_notifications_for_notification_center.sql'
+    ),
+    'utf-8'
+  );
+
+  it('extends the existing table additively instead of recreating it', () => {
+    expect(sql).not.toMatch(/CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?participant_notifications/i);
+    expect(sql).not.toMatch(/DROP\s+TABLE|DROP\s+COLUMN|TRUNCATE|DELETE\s+FROM/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+category\s+VARCHAR\(30\)\s+NOT\s+NULL\s+DEFAULT\s+'general'/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+request_id\s+UUID\s+REFERENCES\s+team_requests\(id\)\s+ON\s+DELETE\s+SET\s+NULL/i);
+    expect(sql).toMatch(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+submission_id\s+UUID\s+REFERENCES\s+pending_event_submissions\(id\)\s+ON\s+DELETE\s+SET\s+NULL/i);
+  });
+
+  it('constrains category and read-state integrity idempotently', () => {
+    expect(sql).toMatch(/chk_participant_notifications_category[\s\S]*'invitation'[\s\S]*'application'[\s\S]*'decision'[\s\S]*'roster'[\s\S]*'event_verification'[\s\S]*'general'/i);
+    expect(sql).toMatch(/chk_participant_notifications_read_after_created[\s\S]*read_at\s+IS\s+NULL\s+OR\s+read_at\s*>=\s*created_at/i);
+    expect(sql).toMatch(/IF\s+NOT\s+EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+pg_constraint/i);
+  });
+
+  it('derives category from type so existing producers keep working', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+notification_category_for_type/i);
+    expect(sql).toMatch(/BEFORE\s+INSERT\s+OR\s+UPDATE\s+OF\s+type\s+ON\s+participant_notifications/i);
+    expect(sql).toMatch(/UPDATE\s+participant_notifications\s+SET\s+category\s*=\s*notification_category_for_type/i);
+  });
+
+  it('adds partial unread indexes for the badge count and unread feed', () => {
+    expect(sql).toMatch(
+      /CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_participant_notifications_unread\s+ON\s+participant_notifications\(participant_id,\s*created_at\s+DESC\)\s+WHERE\s+read_at\s+IS\s+NULL/i
+    );
+    expect(sql).toMatch(
+      /idx_participant_notifications_unread_category\s+ON\s+participant_notifications\(participant_id,\s*category,\s*created_at\s+DESC\)\s+WHERE\s+read_at\s+IS\s+NULL/i
+    );
+  });
+
+  it('creates service-role-only owner-scoped mark-read functions', () => {
+    for (const fn of [
+      'mark_participant_notification_read\\(UUID,\\s*UUID\\)',
+      'mark_all_participant_notifications_read\\(UUID\\)',
+    ]) {
+      expect(sql).toMatch(new RegExp(`REVOKE\\s+ALL\\s+ON\\s+FUNCTION\\s+${fn}\\s+FROM\\s+PUBLIC,\\s*anon,\\s*authenticated`, 'i'));
+      expect(sql).toMatch(new RegExp(`GRANT\\s+EXECUTE\\s+ON\\s+FUNCTION\\s+${fn}\\s+TO\\s+service_role`, 'i'));
+    }
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/SET\s+search_path\s*=\s*public/i);
+  });
+
+  it('scopes mark-read to the owner without leaking other accounts', () => {
+    expect(sql).toMatch(/WHERE\s+id\s*=\s*p_notification\s+AND\s+participant_id\s*=\s*p_participant\s+FOR\s+UPDATE/i);
+    expect(sql).toMatch(/NOTIFICATION_NOT_FOUND/);
+    expect(sql).toMatch(/VALIDATION_ERROR/);
+    expect(sql).toMatch(/WHERE\s+participant_id\s*=\s*p_participant\s+AND\s+read_at\s+IS\s+NULL/i);
+  });
+});

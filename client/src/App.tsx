@@ -22,6 +22,8 @@ import { RequestsPage, type RequestsTab } from './components/RequestsPage';
 import { ModerationSafetyPage } from './components/moderation/ModerationSafetyPage';
 import { AccountEnforcementPage } from './components/accounts/AccountEnforcementPage';
 import { ChatPage } from './components/chat/ChatPage';
+import { NotificationBell } from './components/notifications/NotificationBell';
+import type { NotificationTarget } from './components/notifications/notificationTarget';
 import type { OpenTeamApplyTarget } from './components/teams/openTeamsApi';
 import type { OtpChallenge } from './components/auth/providerSignIn';
 
@@ -276,6 +278,16 @@ export function App(): React.JSX.Element {
     setCurrentView('chat');
   };
 
+  /** US-021 AC 3 — route a clicked notification to its action view. */
+  const handleNotificationNavigate = (target: NotificationTarget) => {
+    if (target.kind === 'requests') {
+      goToRequests(target.tab);
+    } else if (target.kind === 'team') {
+      if (target.eventId) handleSelectEvent(target.eventId);
+      else goToTeam();
+    }
+  };
+
   useEffect(() => {
     if (!accountMenuOpen && !adminMenuOpen) return;
     const onPointerDown = (event: MouseEvent) => {
@@ -332,7 +344,7 @@ export function App(): React.JSX.Element {
           </button>
 
           {/* Desktop Primary Nav (#358) */}
-          <nav className="hidden md:flex items-center gap-2 lg:gap-3" aria-label="Primary">
+          <nav className="hidden md:flex md:ml-auto items-center gap-2 lg:gap-3" aria-label="Primary">
             <button
               type="button"
               onClick={goToBrowseTeams}
@@ -499,6 +511,13 @@ export function App(): React.JSX.Element {
               </>
             )}
           </nav>
+
+          {/* US-021 — notification bell for signed-in participants (ADMIN has no participant alerts). */}
+          {sessionReady && !showAdminNav && (
+            <div className="ml-auto md:ml-0">
+              <NotificationBell onNavigate={handleNotificationNavigate} />
+            </div>
+          )}
 
           {/* Mobile Menu Button per wireframe (md:hidden) */}
           <button
