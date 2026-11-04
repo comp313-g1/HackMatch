@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   validateWorkspaceLinksInput,
+  validateWorkspaceNoteInput,
 } from './teamWorkspace.validator.js';
 
 describe('teamWorkspace.validator (US-023 / #US-023-T3 / FR-069)', () => {
@@ -175,6 +176,115 @@ describe('teamWorkspace.validator (US-023 / #US-023-T3 / FR-069)', () => {
             display_order: 1,
           },
         ]);
+      }
+    });
+  });
+
+  describe('validateWorkspaceNoteInput (US-023 / #US-023-T4 / FR-070)', () => {
+    it('rejects non-object bodies, null, undefined, and arrays', () => {
+      expect(validateWorkspaceNoteInput(null).ok).toBe(false);
+      expect(validateWorkspaceNoteInput(undefined).ok).toBe(false);
+      expect(validateWorkspaceNoteInput('hello').ok).toBe(false);
+      expect(validateWorkspaceNoteInput(123).ok).toBe(false);
+      expect(validateWorkspaceNoteInput([]).ok).toBe(false);
+    });
+
+    it('rejects unknown or forbidden tampering properties', () => {
+      const versionAttack = validateWorkspaceNoteInput({
+        content: '# Concept',
+        expectedVersion: 1,
+        version: 5,
+      });
+      expect(versionAttack.ok).toBe(false);
+      if (!versionAttack.ok) {
+        expect(versionAttack.errors.body).toContain('Property "version" is not permitted');
+      }
+
+      const authorAttack = validateWorkspaceNoteInput({
+        content: '# Concept',
+        expectedVersion: 1,
+        authorId: 'fake-id',
+      });
+      expect(authorAttack.ok).toBe(false);
+
+      const unknownProp = validateWorkspaceNoteInput({
+        content: '# Concept',
+        expectedVersion: 1,
+        injected: 'hack',
+      });
+      expect(unknownProp.ok).toBe(false);
+      if (!unknownProp.ok) {
+        expect(unknownProp.errors.body).toContain('Only "content" and "expectedVersion" are permitted');
+      }
+    });
+
+    it('validates note content (must be non-empty string <= 10,000 chars)', () => {
+      const missingContent = validateWorkspaceNoteInput({ expectedVersion: 0 });
+      expect(missingContent.ok).toBe(false);
+      if (!missingContent.ok) {
+        expect(missingContent.errors.content).toContain('Note content is required');
+      }
+
+      const emptyContent = validateWorkspaceNoteInput({
+        content: '   \n\t  ',
+        expectedVersion: 0,
+      });
+      expect(emptyContent.ok).toBe(false);
+      if (!emptyContent.ok) {
+        expect(emptyContent.errors.content).toContain('cannot be empty');
+      }
+
+      const excessiveContent = validateWorkspaceNoteInput({
+        content: 'a'.repeat(10001),
+        expectedVersion: 0,
+      });
+      expect(excessiveContent.ok).toBe(false);
+      if (!excessiveContent.ok) {
+        expect(excessiveContent.errors.content).toContain('cannot exceed 10000 characters');
+      }
+    });
+
+    it('validates expectedVersion (must be integer >= 0)', () => {
+      const missingVersion = validateWorkspaceNoteInput({ content: '# Architecture' });
+      expect(missingVersion.ok).toBe(false);
+      if (!missingVersion.ok) {
+        expect(missingVersion.errors.expectedVersion).toContain('expectedVersion is required');
+      }
+
+      const negativeVersion = validateWorkspaceNoteInput({
+        content: '# Architecture',
+        expectedVersion: -1,
+      });
+      expect(negativeVersion.ok).toBe(false);
+      if (!negativeVersion.ok) {
+        expect(negativeVersion.errors.expectedVersion).toContain('must be a non-negative integer');
+      }
+
+      const floatVersion = validateWorkspaceNoteInput({
+        content: '# Architecture',
+        expectedVersion: 1.5,
+      });
+      expect(floatVersion.ok).toBe(false);
+
+      const stringVersion = validateWorkspaceNoteInput({
+        content: '# Architecture',
+        expectedVersion: '0',
+      });
+      expect(stringVersion.ok).toBe(false);
+    });
+
+    it('normalizes carriage returns and trims outer whitespace for valid payload', () => {
+      const res = validateWorkspaceNoteInput({
+        content: '  # HackMatch Architecture\r\n\r\n- Step 1: Design\r\n- Step 2: Implement  ',
+        expectedVersion: 2,
+      });
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.sanitized).toEqual({
+          content: '# HackMatch Architecture\n\n- Step 1: Design\n- Step 2: Implement',
+          expectedVersion: 2,
+        });
       }
     });
   });

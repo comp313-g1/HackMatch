@@ -46,9 +46,14 @@ import {
 import { validateSubmitApplicationBody } from '../validators/application.validator.js';
 import {
   getTeamWorkspaceHandler,
+  listTeamWorkspaceRevisionsHandler,
+  saveTeamWorkspaceNoteHandler,
   updateTeamWorkspaceLinksHandler,
 } from '../controllers/teamWorkspace.controller.js';
-import { validateWorkspaceLinksBody } from '../validators/teamWorkspace.validator.js';
+import {
+  validateWorkspaceLinksBody,
+  validateWorkspaceNoteBody,
+} from '../validators/teamWorkspace.validator.js';
 
 export const teamRouter = Router();
 
@@ -95,6 +100,22 @@ teamRouter.put(
   requireJsonObjectBody,
   validateWorkspaceLinksBody,
   updateTeamWorkspaceLinksHandler
+);
+/** US-023 / #US-023-T4 / FR-070 — collaborative team note save with optimistic locking. */
+teamRouter.put(
+  '/:teamId/workspace/note',
+  ...participantAuth,
+  validateTeamIdParams,
+  requireJsonObjectBody,
+  validateWorkspaceNoteBody,
+  saveTeamWorkspaceNoteHandler
+);
+/** US-023 / #US-023-T4 / FR-070 — inspect team note revision history. */
+teamRouter.get(
+  '/:teamId/workspace/revisions',
+  ...participantAuth,
+  validateTeamIdParams,
+  listTeamWorkspaceRevisionsHandler
 );
 teamRouter.patch('/:teamId', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateUpdateTeamBody, updateTeamHandler);
 teamRouter.post('/:teamId/vacancies', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateVacancyBody, addVacancyHandler);

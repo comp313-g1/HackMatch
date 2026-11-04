@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   authorizeLockedTeamWorkspaceMember,
   getPrivateTeamWorkspace,
+  listWorkspaceNoteRevisions,
+  saveWorkspaceSharedNote,
   updateWorkspaceExternalLinks,
   type TeamWorkspaceServiceDeps,
 } from './teamWorkspace.js';
@@ -208,6 +210,28 @@ function createMockDeps(overrides: Partial<TeamWorkspaceServiceDeps> = {}): Team
             updated_at: '2026-10-25T13:00:00Z',
           }))
       ),
+      saveNoteWithOptimisticLock: vi.fn(async (input) => ({
+        note: {
+          team_id: input.teamId,
+          content: input.content,
+          version: input.expectedVersion + 1,
+          updated_by: input.actorId,
+          author_display_name: input.authorDisplayName,
+          author_pseudonymized_at: null,
+          created_at: '2026-10-25T14:00:00Z',
+          updated_at: '2026-10-25T14:00:00Z',
+        },
+        revision: {
+          id: 'new-rev-1',
+          team_id: input.teamId,
+          version: input.expectedVersion + 1,
+          content: input.content,
+          author_id: input.actorId,
+          author_display_name: input.authorDisplayName,
+          author_pseudonymized_at: null,
+          created_at: '2026-10-25T14:00:00Z',
+        },
+      })),
     },
     ...overrides,
   };
@@ -479,6 +503,147 @@ describe('teamWorkspace service (US-023 / #US-023-T2)', () => {
         ownerId,
         inputLinks
       );
+    });
+  });
+
+  describe('saveWorkspaceSharedNote (US-023 / #US-023-T4 / FR-070)', () => {
+    it('throws WORKSPACE_ACCESS_DENIED when actor is not a confirmed member of the locked team', async () => {
+      const deps = createMockDeps();
+      await expect(
+        saveWorkspaceSharedNote(
+          {
+            actorId: outsiderId,
+            teamId,
+            content: '# New Concept',
+            expectedVersion: 0,
+          },
+          deps
+        )
+      ).rejects.toThrow(new TeamServiceError('WORKSPACE_ACCESS_DENIED'));
+    });
+
+    it('throws WORKSPACE_TEAM_NOT_LOCKED when team is not locked', async () => {
+      const deps = createMockDeps({
+        teamsRepo: {
+          getTeamViewParts: vi.fn(async () => ({
+            ...sampleTeamParts,
+            team: openTeam,
+          })),
+          listConfirmedParticipantIdsForTeam: vi.fn(async () => [ownerId, memberId]),
+        },
+      });
+
+      await expect(
+        saveWorkspaceSharedNote(
+          {
+            actorId: memberId,
+            teamId,
+            content: '# Concept',
+            expectedVersion: 0,
+          },
+          deps
+        )
+      ).rejects.toThrow(
+        new TeamServiceError('WORKSPACE_TEAM_NOT_LOCKED', {
+          recruitmentStatus: 'Open',
+        })
+      );
+    });
+
+    it('succeeds for confirmed member, calling saveNoteWithOptimisticLock with authorDisplayName', async () => {
+      const deps = createMockDeps();
+      const result = await saveWorkspaceSharedNote(
+        {
+          actorId: memberId,
+          teamId,
+          content: '# Shared Architecture\n\n- Backend Express',
+          expectedVersion: 0,
+        },
+        deps
+      );
+
+      expect(result.teamId).toBe(teamId);
+      expect(result.note.content).toBe('# Shared Architecture\n\n- Backend Express');
+      expect(result.note.version).toBe(1);
+      expect(result.revision.version).toBe(1);
+      expect(result.revision.author_display_name).toBe('memberhandle');
+      expect(deps.workspaceRepo?.saveNoteWithOptimisticLock).toHaveBeenCalledWith({
+        teamId,
+        actorId: memberId,
+        authorDisplayName: 'memberhandle',
+        content: '# Shared Architecture\n\n- Backend Express',
+        expectedVersion: 0,
+      });
+    });
+
+    it('falls back to full_name if profile handle is not found', async () => {
+      const deps = createMockDeps({
+        profileRepo: {
+          getFullProfile: vi.fn(async () => ({
+            profile: null,
+            skills: [],
+            portfolios: [],
+            history: [],
+          })),
+        },
+      });
+
+      const result = await saveWorkspaceSharedNote(
+        {
+          actorId: memberId,
+          teamId,
+          content: '# Fallback Author',
+          expectedVersion: 0,
+        },
+        deps
+      );
+
+      expect(result.revision.author_display_name).toBe('Member User');
+    });
+  });
+
+  describe('listWorkspaceNoteRevisions (US-023 / #US-023-T4 / FR-070)', () => {
+    it('throws WORKSPACE_ACCESS_DENIED when actor is not a confirmed member of the team', async () => {
+      const deps = createMockDeps();
+      await expect(
+        listWorkspaceNoteRevisions(outsiderId, teamId, deps)
+      ).rejects.toThrow(new TeamServiceError('WORKSPACE_ACCESS_DENIED'));
+    });
+
+    it('returns current note and revision list for confirmed member', async () => {
+      const sampleRevision: TeamWorkspaceNoteRevision = {
+        id: 'rev-1',
+        team_id: teamId,
+        version: 1,
+        content: '# Concept v1',
+        author_id: ownerId,
+        author_display_name: 'Owner User',
+        author_pseudonymized_at: null,
+        created_at: '2026-10-25T14:00:00Z',
+      };
+
+      const deps = createMockDeps({
+        workspaceRepo: {
+          ...createMockDeps().workspaceRepo!,
+          getNoteByTeamId: vi.fn(async () => ({
+            team_id: teamId,
+            content: '# Concept v1',
+            version: 1,
+            updated_by: ownerId,
+            author_display_name: 'Owner User',
+            author_pseudonymized_at: null,
+            created_at: '2026-10-25T14:00:00Z',
+            updated_at: '2026-10-25T14:00:00Z',
+          })),
+          listRevisionsByTeamId: vi.fn(async () => [sampleRevision]),
+        },
+      });
+
+      const result = await listWorkspaceNoteRevisions(memberId, teamId, deps);
+      expect(result.teamId).toBe(teamId);
+      expect(result.note?.version).toBe(1);
+      expect(result.revisions).toHaveLength(1);
+      expect(result.revisions[0]?.content).toBe('# Concept v1');
     });
   });
 });

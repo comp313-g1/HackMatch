@@ -81,6 +81,7 @@ export interface TeamWorkspaceServiceDeps {
     | 'getNoteByTeamId'
     | 'listRevisionsByTeamId'
     | 'replaceLinksForTeam'
+    | 'saveNoteWithOptimisticLock'
   >;
 }
 
@@ -267,4 +268,90 @@ export async function updateWorkspaceExternalLinks(
     updatedAt: new Date().toISOString(),
   };
 }
+
+/**
+ * Saves or updates a shared team markdown concept note with optimistic concurrency.
+ * Permitted for any active confirmed member of a locked team (FR-070, US-023 AC 4).
+ * Creates an append-only revision record.
+ */
+export async function saveWorkspaceSharedNote(
+  input: {
+    actorId: string;
+    teamId: string;
+    content: string;
+    expectedVersion: number;
+  },
+  deps: TeamWorkspaceServiceDeps = {}
+): Promise<{
+  teamId: string;
+  note: TeamWorkspaceNote;
+  revision: TeamWorkspaceNoteRevision;
+  revisions: TeamWorkspaceNoteRevision[];
+}> {
+  const profileRepo = deps.profileRepo ?? profileRepository;
+  const workspaceRepo = deps.workspaceRepo ?? teamWorkspaceRepository;
+
+  const access = await authorizeLockedTeamWorkspaceMember(
+    input.actorId,
+    input.teamId,
+    deps
+  );
+
+  let authorDisplayName = access.actor.full_name;
+  try {
+    const fullProfile = await profileRepo.getFullProfile(input.actorId);
+    if (fullProfile?.profile?.handle) {
+      authorDisplayName = fullProfile.profile.handle;
+    }
+  } catch {
+    // Graceful fallback to actor full_name
+  }
+
+  const saved = await workspaceRepo.saveNoteWithOptimisticLock({
+    teamId: input.teamId,
+    actorId: input.actorId,
+    authorDisplayName,
+    content: input.content,
+    expectedVersion: input.expectedVersion,
+  });
+
+  const revisions = await workspaceRepo.listRevisionsByTeamId(input.teamId);
+
+  return {
+    teamId: input.teamId,
+    note: saved.note,
+    revision: saved.revision,
+    revisions,
+  };
+}
+
+/**
+ * Lists shared team note and its immutable revision history.
+ * Permitted for any confirmed member of the locked team (FR-070, US-023 AC 4).
+ */
+export async function listWorkspaceNoteRevisions(
+  actorId: string,
+  teamId: string,
+  deps: TeamWorkspaceServiceDeps = {}
+): Promise<{
+  teamId: string;
+  note: TeamWorkspaceNote | null;
+  revisions: TeamWorkspaceNoteRevision[];
+}> {
+  const workspaceRepo = deps.workspaceRepo ?? teamWorkspaceRepository;
+
+  await authorizeLockedTeamWorkspaceMember(actorId, teamId, deps);
+
+  const [note, revisions] = await Promise.all([
+    workspaceRepo.getNoteByTeamId(teamId),
+    workspaceRepo.listRevisionsByTeamId(teamId),
+  ]);
+
+  return {
+    teamId,
+    note,
+    revisions,
+  };
+}
+
 

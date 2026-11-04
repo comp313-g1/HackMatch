@@ -10,6 +10,7 @@ import {
   WORKSPACE_LINK_LABEL_MAX_LENGTH,
   WORKSPACE_LINK_URL_MAX_LENGTH,
   WORKSPACE_MAX_LINKS,
+  WORKSPACE_NOTE_MAX_LENGTH,
 } from '../db/teamWorkspaceModel.js';
 import { isValidHttpsPortfolioUrl } from './profile.validator.js';
 import type { UpsertWorkspaceLinkInput } from '../db/types.js';
@@ -228,3 +229,141 @@ export function validateWorkspaceLinksBody(
     result.links;
   next();
 }
+
+export interface WorkspaceNoteValidationSuccess {
+  ok: true;
+  sanitized: {
+    content: string;
+    expectedVersion: number;
+  };
+}
+
+export interface WorkspaceNoteValidationFailure {
+  ok: false;
+  errors: Record<string, string>;
+}
+
+export type WorkspaceNoteValidationResult =
+  | WorkspaceNoteValidationSuccess
+  | WorkspaceNoteValidationFailure;
+
+const FORBIDDEN_NOTE_KEYS = new Set([
+  'version',
+  'authorid',
+  'author_id',
+  'authordisplayname',
+  'author_display_name',
+  'teamid',
+  'team_id',
+  'createdat',
+  'created_at',
+  'updatedat',
+  'updated_at',
+]);
+
+const ALLOWED_NOTE_KEYS = new Set(['content', 'expectedversion']);
+
+/**
+ * Validates collaborative team note update payload:
+ * - Requires object with only "content" and "expectedVersion".
+ * - "content" must be non-empty string, length 1..10000.
+ * - "expectedVersion" must be non-negative integer (>= 0).
+ */
+export function validateWorkspaceNoteInput(
+  body: unknown
+): WorkspaceNoteValidationResult {
+  const errors: Record<string, string> = {};
+
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return {
+      ok: false,
+      errors: { body: 'Request body must be a valid JSON object.' },
+    };
+  }
+
+  const record = body as Record<string, unknown>;
+  const keys = Object.keys(record);
+
+  for (const key of keys) {
+    const lowerKey = key.toLowerCase();
+    if (FORBIDDEN_NOTE_KEYS.has(lowerKey)) {
+      errors.body = `Property "${key}" is not permitted.`;
+      return { ok: false, errors };
+    }
+    if (!ALLOWED_NOTE_KEYS.has(lowerKey)) {
+      errors.body = `Unknown property "${key}". Only "content" and "expectedVersion" are permitted.`;
+      return { ok: false, errors };
+    }
+  }
+
+  // Validate content
+  let normalizedContent = '';
+  if (record.content === undefined || record.content === null) {
+    errors.content = 'Note content is required.';
+  } else if (typeof record.content !== 'string') {
+    errors.content = 'Note content must be a string.';
+  } else {
+    normalizedContent = record.content.replace(/\r\n/g, '\n').trim();
+    if (normalizedContent.length === 0) {
+      errors.content = 'Note content cannot be empty.';
+    } else if (normalizedContent.length > WORKSPACE_NOTE_MAX_LENGTH) {
+      errors.content = `Note content cannot exceed ${WORKSPACE_NOTE_MAX_LENGTH} characters.`;
+    }
+  }
+
+  // Validate expectedVersion
+  let validatedExpectedVersion = 0;
+  if (record.expectedVersion === undefined || record.expectedVersion === null) {
+    errors.expectedVersion = 'expectedVersion is required.';
+  } else if (
+    typeof record.expectedVersion !== 'number' ||
+    !Number.isInteger(record.expectedVersion) ||
+    record.expectedVersion < 0
+  ) {
+    errors.expectedVersion =
+      'expectedVersion must be a non-negative integer (e.g. 0, 1, 2).';
+  } else {
+    validatedExpectedVersion = record.expectedVersion;
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { ok: false, errors };
+  }
+
+  return {
+    ok: true,
+    sanitized: {
+      content: normalizedContent,
+      expectedVersion: validatedExpectedVersion,
+    },
+  };
+}
+
+/**
+ * Express middleware to validate collaborative team note updates.
+ * Halts with 400 VALIDATION_ERROR before database write occurs, preserving existing data (NR-010).
+ */
+export function validateWorkspaceNoteBody(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const result = validateWorkspaceNoteInput(req.body);
+
+  if (!result.ok) {
+    res.status(400).json({
+      error: 'Validation failed. Existing workspace note was not modified.',
+      code: 'VALIDATION_ERROR',
+      errors: result.errors,
+    });
+    return;
+  }
+
+  (
+    req as Request & {
+      validatedWorkspaceNote?: { content: string; expectedVersion: number };
+    }
+  ).validatedWorkspaceNote = result.sanitized;
+  next();
+}
+

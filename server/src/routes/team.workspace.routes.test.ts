@@ -366,3 +366,219 @@ describe('PUT /api/teams/:teamId/workspace/links (US-023 / #US-023-T3 / FR-069)'
   });
 });
 
+describe('PUT /api/teams/:teamId/workspace/note (US-023 / #US-023-T4 / FR-070)', () => {
+  const notePath = `/api/teams/${sampleTeamId}/workspace/note`;
+  const validNotePayload = {
+    content: '# Team Brainstorming\n\n- User stories\n- Wireframes',
+    expectedVersion: 0,
+  };
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockVerifyIdToken.mockResolvedValue(validOwnerDecodedToken);
+    vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(ownerParticipant);
+    vi.spyOn(participantsRepository, 'findById').mockImplementation(async (id: string) => {
+      if (id === ownerParticipant.id) return ownerParticipant;
+      if (id === otherParticipant.id) return otherParticipant;
+      if (id === adminParticipant.id) return adminParticipant;
+      return null;
+    });
+    vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(lockedTeamViewParts.team);
+    vi.spyOn(teamsRepository, 'getTeamViewParts').mockResolvedValue(lockedTeamViewParts);
+    vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([
+      ownerParticipant.id,
+      otherParticipant.id,
+    ]);
+    vi.spyOn(profileRepository, 'getFullProfile').mockResolvedValue({
+      profile: mockProfile,
+      skills: mockSkills,
+      portfolios: mockPortfolios,
+      history: [],
+    });
+    vi.spyOn(teamWorkspaceRepository, 'saveNoteWithOptimisticLock').mockResolvedValue({
+      note: {
+        team_id: sampleTeamId,
+        content: validNotePayload.content,
+        version: 1,
+        updated_by: ownerParticipant.id,
+        author_display_name: 'ownerhandle',
+        author_pseudonymized_at: null,
+        created_at: '2026-10-25T14:00:00Z',
+        updated_at: '2026-10-25T14:00:00Z',
+      },
+      revision: {
+        id: 'rev-1',
+        team_id: sampleTeamId,
+        version: 1,
+        content: validNotePayload.content,
+        author_id: ownerParticipant.id,
+        author_display_name: 'ownerhandle',
+        author_pseudonymized_at: null,
+        created_at: '2026-10-25T14:00:00Z',
+      },
+    });
+    vi.spyOn(teamWorkspaceRepository, 'listRevisionsByTeamId').mockResolvedValue([
+      {
+        id: 'rev-1',
+        team_id: sampleTeamId,
+        version: 1,
+        content: validNotePayload.content,
+        author_id: ownerParticipant.id,
+        author_display_name: 'ownerhandle',
+        author_pseudonymized_at: null,
+        created_at: '2026-10-25T14:00:00Z',
+      },
+    ]);
+  });
+
+  it('returns 401 when request is unauthenticated', async () => {
+    const res = await request(app)
+      .put(notePath)
+      .send(validNotePayload);
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('UNAUTHORIZED');
+  });
+
+  it('returns 400 when note payload fails validation (e.g. negative expectedVersion)', async () => {
+    const res = await request(app)
+      .put(notePath)
+      .set('Authorization', validTokenHeader)
+      .send({ content: 'Test note', expectedVersion: -1 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+    expect(res.body.error).toContain('Validation failed. Existing workspace note was not modified.');
+    expect(res.body.errors.expectedVersion).toContain('must be a non-negative integer');
+    expect(teamWorkspaceRepository.saveNoteWithOptimisticLock).not.toHaveBeenCalled();
+  });
+
+  it('returns 200 and saves note with optimistic lock when authenticated as team member', async () => {
+    mockVerifyIdToken.mockResolvedValue(validOtherDecodedToken);
+    vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(otherParticipant);
+
+    const res = await request(app)
+      .put(notePath)
+      .set('Authorization', otherTokenHeader)
+      .send(validNotePayload);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.body.teamId).toBe(sampleTeamId);
+    expect(res.body.note.version).toBe(1);
+    expect(res.body.revision.version).toBe(1);
+    expect(res.body.revisions).toHaveLength(1);
+    expect(teamWorkspaceRepository.saveNoteWithOptimisticLock).toHaveBeenCalledWith({
+      teamId: sampleTeamId,
+      actorId: otherParticipant.id,
+      authorDisplayName: 'ownerhandle',
+      content: validNotePayload.content,
+      expectedVersion: 0,
+    });
+  });
+
+  it('returns 409 WORKSPACE_NOTE_CONFLICT when expectedVersion does not match current version', async () => {
+    const conflictError = {
+      message: 'WORKSPACE_NOTE_CONFLICT',
+      code: 'P0001',
+      detail: JSON.stringify({
+        currentVersion: 3,
+        expectedVersion: 1,
+        currentContent: '# Conflicting edit',
+        authorDisplayName: 'Alice',
+      }),
+    };
+    vi.spyOn(teamWorkspaceRepository, 'saveNoteWithOptimisticLock').mockRejectedValue(conflictError);
+
+    const res = await request(app)
+      .put(notePath)
+      .set('Authorization', validTokenHeader)
+      .send({ content: '# My edit', expectedVersion: 1 });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('WORKSPACE_NOTE_CONFLICT');
+    expect(res.body.details).toEqual({
+      currentVersion: 3,
+      expectedVersion: 1,
+      currentContent: '# Conflicting edit',
+      authorDisplayName: 'Alice',
+    });
+  });
+});
+
+describe('GET /api/teams/:teamId/workspace/revisions (US-023 / #US-023-T4 / FR-070)', () => {
+  const revisionsPath = `/api/teams/${sampleTeamId}/workspace/revisions`;
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockVerifyIdToken.mockResolvedValue(validOwnerDecodedToken);
+    vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(ownerParticipant);
+    vi.spyOn(participantsRepository, 'findById').mockImplementation(async (id: string) => {
+      if (id === ownerParticipant.id) return ownerParticipant;
+      if (id === otherParticipant.id) return otherParticipant;
+      if (id === adminParticipant.id) return adminParticipant;
+      return null;
+    });
+    vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(lockedTeamViewParts.team);
+    vi.spyOn(teamsRepository, 'getTeamViewParts').mockResolvedValue(lockedTeamViewParts);
+    vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([
+      ownerParticipant.id,
+      otherParticipant.id,
+    ]);
+    vi.spyOn(teamWorkspaceRepository, 'getNoteByTeamId').mockResolvedValue({
+      team_id: sampleTeamId,
+      content: '# Current Note',
+      version: 2,
+      updated_by: ownerParticipant.id,
+      author_display_name: 'ownerhandle',
+      author_pseudonymized_at: null,
+      created_at: '2026-10-25T14:00:00Z',
+      updated_at: '2026-10-25T15:00:00Z',
+    });
+    vi.spyOn(teamWorkspaceRepository, 'listRevisionsByTeamId').mockResolvedValue([
+      {
+        id: 'rev-2',
+        team_id: sampleTeamId,
+        version: 2,
+        content: '# Current Note',
+        author_id: ownerParticipant.id,
+        author_display_name: 'ownerhandle',
+        author_pseudonymized_at: null,
+        created_at: '2026-10-25T15:00:00Z',
+      },
+      {
+        id: 'rev-1',
+        team_id: sampleTeamId,
+        version: 1,
+        content: '# Initial Note',
+        author_id: otherParticipant.id,
+        author_display_name: 'mate',
+        author_pseudonymized_at: null,
+        created_at: '2026-10-25T14:00:00Z',
+      },
+    ]);
+  });
+
+  it('returns 401 when request is unauthenticated', async () => {
+    const res = await request(app).get(revisionsPath);
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 200 with note and immutable revisions history for confirmed member', async () => {
+    mockVerifyIdToken.mockResolvedValue(validOtherDecodedToken);
+    vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(otherParticipant);
+
+    const res = await request(app)
+      .get(revisionsPath)
+      .set('Authorization', otherTokenHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.body.teamId).toBe(sampleTeamId);
+    expect(res.body.note.version).toBe(2);
+    expect(res.body.revisions).toHaveLength(2);
+    expect(res.body.revisions[0]?.version).toBe(2);
+    expect(res.body.revisions[1]?.version).toBe(1);
+  });
+});
+
+
