@@ -33,7 +33,7 @@ import {
   projectProfileForViewer,
   type PermittedCandidateProfileView,
 } from './profilePrivacy.js';
-import { TeamServiceError } from './teamErrors.js';
+import { TeamServiceError, toTeamServiceError } from './teamErrors.js';
 
 export interface TeammateContactCard {
   participantId: string;
@@ -307,22 +307,51 @@ export async function saveWorkspaceSharedNote(
     // Graceful fallback to actor full_name
   }
 
-  const saved = await workspaceRepo.saveNoteWithOptimisticLock({
-    teamId: input.teamId,
-    actorId: input.actorId,
-    authorDisplayName,
-    content: input.content,
-    expectedVersion: input.expectedVersion,
-  });
+  try {
+    const saved = await workspaceRepo.saveNoteWithOptimisticLock({
+      teamId: input.teamId,
+      actorId: input.actorId,
+      authorDisplayName,
+      content: input.content,
+      expectedVersion: input.expectedVersion,
+    });
 
-  const revisions = await workspaceRepo.listRevisionsByTeamId(input.teamId);
+    const revisions = await workspaceRepo.listRevisionsByTeamId(input.teamId);
 
-  return {
-    teamId: input.teamId,
-    note: saved.note,
-    revision: saved.revision,
-    revisions,
-  };
+    return {
+      teamId: input.teamId,
+      note: saved.note,
+      revision: saved.revision,
+      revisions,
+    };
+  } catch (rawErr) {
+    const serviceErr = toTeamServiceError(rawErr);
+    if (serviceErr && serviceErr.code === 'WORKSPACE_NOTE_CONFLICT') {
+      try {
+        const [latestNote, latestRevisions] = await Promise.all([
+          workspaceRepo.getNoteByTeamId(input.teamId),
+          workspaceRepo.listRevisionsByTeamId(input.teamId),
+        ]);
+        const currentVersion =
+          latestNote?.version ??
+          (serviceErr.details?.currentVersion as number) ??
+          0;
+        const enrichedDetails: Record<string, unknown> = {
+          ...(serviceErr.details ?? {}),
+          expectedVersion: input.expectedVersion,
+          currentVersion,
+          latestNote,
+          revisions: latestRevisions,
+          latestRevisions,
+        };
+        throw new TeamServiceError('WORKSPACE_NOTE_CONFLICT', enrichedDetails);
+      } catch (enrichErr) {
+        if (enrichErr instanceof TeamServiceError) throw enrichErr;
+        throw serviceErr;
+      }
+    }
+    throw rawErr;
+  }
 }
 
 /**

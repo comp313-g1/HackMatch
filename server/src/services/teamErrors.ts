@@ -273,6 +273,8 @@ export function toTeamServiceError(err: unknown): TeamServiceError | null {
         } catch {
           parsedDetails = { raw: rawDetail };
         }
+      } else if (rawDetail && typeof rawDetail === 'object') {
+        parsedDetails = rawDetail as Record<string, unknown>;
       }
       return new TeamServiceError(message as TeamErrorCode, parsedDetails);
     }

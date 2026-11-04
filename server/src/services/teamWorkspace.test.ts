@@ -600,6 +600,69 @@ describe('teamWorkspace service (US-023 / #US-023-T2)', () => {
 
       expect(result.revision.author_display_name).toBe('Member User');
     });
+
+    it('throws WORKSPACE_NOTE_CONFLICT with enriched details when expectedVersion !== currentVersion (FR-070 / US-023-T5)', async () => {
+      const latestNote: TeamWorkspaceNote = {
+        team_id: teamId,
+        content: '# Concept Updated by Teammate',
+        version: 2,
+        updated_by: ownerId,
+        author_display_name: 'Owner User',
+        author_pseudonymized_at: null,
+        created_at: '2026-10-25T14:00:00Z',
+        updated_at: '2026-10-25T14:10:00Z',
+      };
+      const latestRevision: TeamWorkspaceNoteRevision = {
+        id: 'rev-2',
+        team_id: teamId,
+        version: 2,
+        content: '# Concept Updated by Teammate',
+        author_id: ownerId,
+        author_display_name: 'Owner User',
+        author_pseudonymized_at: null,
+        created_at: '2026-10-25T14:10:00Z',
+      };
+
+      const deps = createMockDeps({
+        workspaceRepo: {
+          ...createMockDeps().workspaceRepo!,
+          saveNoteWithOptimisticLock: vi.fn(async () => {
+            throw new TeamServiceError('WORKSPACE_NOTE_CONFLICT', {
+              expectedVersion: 1,
+              currentVersion: 2,
+            });
+          }),
+          getNoteByTeamId: vi.fn(async () => latestNote),
+          listRevisionsByTeamId: vi.fn(async () => [latestRevision]),
+        },
+      });
+
+      let caughtErr: unknown = null;
+      try {
+        await saveWorkspaceSharedNote(
+          {
+            actorId: memberId,
+            teamId,
+            content: '# Stale Save Attempt',
+            expectedVersion: 1,
+          },
+          deps
+        );
+      } catch (err) {
+        caughtErr = err;
+      }
+
+      expect(caughtErr).toBeInstanceOf(TeamServiceError);
+      const serviceErr = caughtErr as TeamServiceError;
+      expect(serviceErr.code).toBe('WORKSPACE_NOTE_CONFLICT');
+      expect(serviceErr.status).toBe(409);
+      expect(serviceErr.details).toMatchObject({
+        expectedVersion: 1,
+        currentVersion: 2,
+        latestNote,
+        revisions: [latestRevision],
+      });
+    });
   });
 
   describe('listWorkspaceNoteRevisions (US-023 / #US-023-T4 / FR-070)', () => {

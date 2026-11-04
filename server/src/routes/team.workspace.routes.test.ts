@@ -503,6 +503,54 @@ describe('PUT /api/teams/:teamId/workspace/note (US-023 / #US-023-T4 / FR-070)',
       authorDisplayName: 'Alice',
     });
   });
+
+  it('enriches 409 conflict response with latestNote and revisions when repository provides them (US-023-T5)', async () => {
+    const latestNote = {
+      team_id: sampleTeamId,
+      content: '# Current Server Note',
+      version: 3,
+      updated_by: otherParticipant.id,
+      author_display_name: 'Alice',
+      author_pseudonymized_at: null,
+      created_at: '2026-10-25T14:00:00Z',
+      updated_at: '2026-10-25T15:30:00Z',
+    };
+    const latestRevisions = [
+      {
+        id: 'rev-3',
+        team_id: sampleTeamId,
+        version: 3,
+        content: '# Current Server Note',
+        author_id: otherParticipant.id,
+        author_display_name: 'Alice',
+        author_pseudonymized_at: null,
+        created_at: '2026-10-25T15:30:00Z',
+      },
+    ];
+
+    vi.spyOn(teamWorkspaceRepository, 'saveNoteWithOptimisticLock').mockRejectedValue({
+      message: 'WORKSPACE_NOTE_CONFLICT',
+      code: 'P0001',
+      detail: JSON.stringify({
+        currentVersion: 3,
+        expectedVersion: 1,
+      }),
+    });
+    vi.spyOn(teamWorkspaceRepository, 'getNoteByTeamId').mockResolvedValue(latestNote);
+    vi.spyOn(teamWorkspaceRepository, 'listRevisionsByTeamId').mockResolvedValue(latestRevisions);
+
+    const res = await request(app)
+      .put(notePath)
+      .set('Authorization', validTokenHeader)
+      .send({ content: '# My stale edit', expectedVersion: 1 });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('WORKSPACE_NOTE_CONFLICT');
+    expect(res.body.details.expectedVersion).toBe(1);
+    expect(res.body.details.currentVersion).toBe(3);
+    expect(res.body.details.latestNote).toEqual(latestNote);
+    expect(res.body.details.revisions).toEqual(latestRevisions);
+  });
 });
 
 describe('GET /api/teams/:teamId/workspace/revisions (US-023 / #US-023-T4 / FR-070)', () => {
