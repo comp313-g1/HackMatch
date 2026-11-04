@@ -423,6 +423,50 @@ describe('teamWorkspace service (US-023 / #US-023-T2)', () => {
       expect(workspace.note).toEqual(sampleNote);
       expect(workspace.revisions).toEqual([sampleRevision]);
     });
+
+    it('scrubs private auth and PII keys and returns privacy flags (US-023 AC 2 / NR-004)', async () => {
+      const deps = createMockDeps();
+      const workspace = await getPrivateTeamWorkspace(ownerId, teamId, deps);
+
+      expect(workspace.privacy).toBeDefined();
+      expect(workspace.privacy?.emailsScrubbed).toBe(true);
+      expect(workspace.privacy?.authUidsScrubbed).toBe(true);
+      expect(workspace).not.toHaveProperty('email');
+      expect(workspace).not.toHaveProperty('firebase_uid');
+      expect(workspace.teammates[0]).not.toHaveProperty('email');
+      expect(workspace.teammates[0]).not.toHaveProperty('firebase_uid');
+    });
+
+    it('pseudonymizes deleted/deactivated teammates in locked workspace (NR-023)', async () => {
+      const deactivatedMember: Participant = {
+        ...memberParticipant,
+        is_deactivated: true,
+        deactivated_at: '2026-10-26T12:00:00Z',
+        firebase_uid: `deleted:${memberParticipant.id}`,
+      };
+
+      const deps = createMockDeps({
+        participantsRepo: {
+          findById: vi.fn(async (id: string) => {
+            if (id === ownerId) return ownerParticipant;
+            if (id === memberId) return deactivatedMember;
+            return null;
+          }),
+        },
+      });
+
+      const workspace = await getPrivateTeamWorkspace(ownerId, teamId, deps);
+      const memberContact = workspace.teammates.find(
+        (t) => t.participantId === memberId
+      );
+
+      expect(memberContact).toBeDefined();
+      expect(memberContact?.displayName).toMatch(/^Former Member [0-9a-f]{8}$/);
+      expect(memberContact?.handle).toBeNull();
+      expect(memberContact?.sharedContactHandle).toBeNull();
+      expect(memberContact?.portfolioLinks).toEqual([]);
+      expect(memberContact?.isPseudonymized).toBe(true);
+    });
   });
 
   describe('updateWorkspaceExternalLinks (US-023 / #US-023-T3 / FR-069)', () => {
@@ -599,6 +643,33 @@ describe('teamWorkspace service (US-023 / #US-023-T2)', () => {
       );
 
       expect(result.revision.author_display_name).toBe('Member User');
+    });
+
+    it('sanitizes dangerous markdown before saving to repository (NR-009)', async () => {
+      const deps = createMockDeps();
+      const dangerousMarkdown =
+        '# Valid Title\n<script>alert("hack")</script>[Attack](javascript:steal()) and [Repo](https://github.com/org/repo)';
+
+      await saveWorkspaceSharedNote(
+        {
+          actorId: memberId,
+          teamId,
+          content: dangerousMarkdown,
+          expectedVersion: 0,
+        },
+        deps
+      );
+
+      expect(deps.workspaceRepo?.saveNoteWithOptimisticLock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.not.stringContaining('<script'),
+        })
+      );
+      expect(deps.workspaceRepo?.saveNoteWithOptimisticLock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringContaining('Attack [unsafe link removed]'),
+        })
+      );
     });
 
     it('throws WORKSPACE_NOTE_CONFLICT with enriched details when expectedVersion !== currentVersion (FR-070 / US-023-T5)', async () => {

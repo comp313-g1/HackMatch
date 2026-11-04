@@ -34,26 +34,17 @@ import {
   type PermittedCandidateProfileView,
 } from './profilePrivacy.js';
 import { TeamServiceError, toTeamServiceError } from './teamErrors.js';
+import {
+  projectWorkspaceTeammateContact,
+  resolveWorkspaceRevisionAuthor,
+  sanitizeWorkspaceMarkdown,
+  scrubPrivateWorkspaceFields,
+  workspacePrivacyFlags,
+  type WorkspaceTeammateContact,
+} from './workspacePrivacy.js';
 
-export interface TeammateContactCard {
-  participantId: string;
-  displayName: string;
-  handle: string | null;
-  teamRole: TeamMembershipRole;
-  primaryRole: string | null;
-  institution: string | null;
-  skills: string[];
-  skillsSelfDeclared: boolean;
-  portfolioLinks: Array<{
-    url: string;
-    label: string | null;
-    isSelfDeclared: boolean;
-  }>;
-  selfDeclaredNotice: string;
-  sharedContactHandle: string | null;
-  sharedContactAudienceNotice?: string;
-  experienceBadge?: string;
-}
+export type TeammateContactCard = WorkspaceTeammateContact;
+export { type WorkspaceTeammateContact };
 
 export interface PrivateTeamWorkspaceView {
   teamId: string;
@@ -62,10 +53,11 @@ export interface PrivateTeamWorkspaceView {
   lockedAt: string;
   viewerRole: TeamMembershipRole;
   isOwner: boolean;
-  teammates: TeammateContactCard[];
+  teammates: WorkspaceTeammateContact[];
   links: TeamWorkspaceLink[];
   note: TeamWorkspaceNote | null;
   revisions: TeamWorkspaceNoteRevision[];
+  privacy?: ReturnType<typeof workspacePrivacyFlags>;
 }
 
 export interface TeamWorkspaceServiceDeps {
@@ -168,8 +160,8 @@ export async function getPrivateTeamWorkspace(
   const { viewParts, viewerRole, isOwner } =
     await authorizeLockedTeamWorkspaceMember(actorId, teamId, deps);
 
-  // Build privacy-scrubbed teammate contacts (US-023 AC 2)
-  const teammates: TeammateContactCard[] = [];
+  // Build privacy-scrubbed teammate contacts with pseudonymization (US-023 AC 2, NR-023)
+  const teammates: WorkspaceTeammateContact[] = [];
   for (const member of viewParts.members) {
     const fullProfile = await profileRepo.getFullProfile(member.participant_id);
     const participantRecord =
@@ -190,21 +182,19 @@ export async function getPrivateTeamWorkspace(
       'CONFIRMED_TEAMMATE'
     ) as PermittedCandidateProfileView;
 
-    teammates.push({
-      participantId: member.participant_id,
-      displayName: projected.displayName,
-      handle: projected.handle,
-      teamRole: member.role,
-      primaryRole: projected.primaryRole,
-      institution: projected.institution,
-      skills: projected.skills,
-      skillsSelfDeclared: projected.skillsSelfDeclared,
-      portfolioLinks: projected.portfolioLinks,
-      selfDeclaredNotice: projected.selfDeclaredNotice,
-      sharedContactHandle: projected.sharedContactHandle ?? null,
-      sharedContactAudienceNotice: projected.sharedContactAudienceNotice,
-      experienceBadge: projected.experienceBadge,
-    });
+    teammates.push(
+      projectWorkspaceTeammateContact({
+        participant: participantRecord,
+        projectedProfile: projected,
+        membership: {
+          role: member.role,
+          joined_at: member.joined_at,
+          identity_pseudonymized_at: (
+            member as { identity_pseudonymized_at?: string | null }
+          ).identity_pseudonymized_at,
+        },
+      })
+    );
   }
 
   const [links, note, revisions] = await Promise.all([
@@ -213,7 +203,19 @@ export async function getPrivateTeamWorkspace(
     workspaceRepo.listRevisionsByTeamId(teamId),
   ]);
 
-  return {
+  const resolvedRevisions = revisions.map((rev) => ({
+    ...rev,
+    author_display_name: resolveWorkspaceRevisionAuthor(rev),
+  }));
+
+  const resolvedNote = note
+    ? {
+        ...note,
+        author_display_name: resolveWorkspaceRevisionAuthor(note),
+      }
+    : null;
+
+  return scrubPrivateWorkspaceFields({
     teamId,
     teamName: viewParts.team.name,
     recruitmentStatus: viewParts.team.recruitment_status,
@@ -222,9 +224,10 @@ export async function getPrivateTeamWorkspace(
     isOwner,
     teammates,
     links,
-    note,
-    revisions,
-  };
+    note: resolvedNote,
+    revisions: resolvedRevisions,
+    privacy: workspacePrivacyFlags(),
+  });
 }
 
 /**
@@ -262,11 +265,11 @@ export async function updateWorkspaceExternalLinks(
     input.links
   );
 
-  return {
+  return scrubPrivateWorkspaceFields({
     teamId: input.teamId,
     links: updatedLinks,
     updatedAt: new Date().toISOString(),
-  };
+  });
 }
 
 /**
@@ -307,23 +310,34 @@ export async function saveWorkspaceSharedNote(
     // Graceful fallback to actor full_name
   }
 
+  const sanitizedContent = sanitizeWorkspaceMarkdown(input.content);
+
   try {
     const saved = await workspaceRepo.saveNoteWithOptimisticLock({
       teamId: input.teamId,
       actorId: input.actorId,
       authorDisplayName,
-      content: input.content,
+      content: sanitizedContent,
       expectedVersion: input.expectedVersion,
     });
 
     const revisions = await workspaceRepo.listRevisionsByTeamId(input.teamId);
 
-    return {
+    return scrubPrivateWorkspaceFields({
       teamId: input.teamId,
-      note: saved.note,
-      revision: saved.revision,
-      revisions,
-    };
+      note: {
+        ...saved.note,
+        author_display_name: resolveWorkspaceRevisionAuthor(saved.note),
+      },
+      revision: {
+        ...saved.revision,
+        author_display_name: resolveWorkspaceRevisionAuthor(saved.revision),
+      },
+      revisions: revisions.map((rev) => ({
+        ...rev,
+        author_display_name: resolveWorkspaceRevisionAuthor(rev),
+      })),
+    });
   } catch (rawErr) {
     const serviceErr = toTeamServiceError(rawErr);
     if (serviceErr && serviceErr.code === 'WORKSPACE_NOTE_CONFLICT') {
@@ -376,11 +390,19 @@ export async function listWorkspaceNoteRevisions(
     workspaceRepo.listRevisionsByTeamId(teamId),
   ]);
 
-  return {
+  return scrubPrivateWorkspaceFields({
     teamId,
-    note,
-    revisions,
-  };
+    note: note
+      ? {
+          ...note,
+          author_display_name: resolveWorkspaceRevisionAuthor(note),
+        }
+      : null,
+    revisions: revisions.map((rev) => ({
+      ...rev,
+      author_display_name: resolveWorkspaceRevisionAuthor(rev),
+    })),
+  });
 }
 
 
