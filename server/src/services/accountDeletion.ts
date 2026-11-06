@@ -11,6 +11,7 @@ import {
 } from './accountManagement.js';
 import { applySuspensionCascade } from './accountSuspensionCascade.js';
 import { pseudonymizeHistoricalMemberships } from './membershipPseudonymization.js';
+import { refreshLockedTeamManifestsAfterPseudonymization } from './teamManifest.js';
 
 export const DELETION_TARGET_NOTICE =
   'Proposed 30-day live-PII processing target under R-06 / NR-023; not an automatic legal-compliance claim.';
@@ -222,6 +223,15 @@ async function processLiveDeletion(params: {
   // #253 — pseudonymize historical membership snapshots; never delete locked roster rows.
   const membershipPseudo = await pseudonymizeHistoricalMemberships(target.id);
   const eraseStats = await eraseLiveAccountPii(target.id);
+
+  // US-024 / US-027 / NR-023: Best-effort refresh of locked manifests to replace deleted member PII
+  if (membershipPseudo.lockedTeamIdsPreserved.length > 0) {
+    try {
+      await refreshLockedTeamManifestsAfterPseudonymization(membershipPseudo.lockedTeamIdsPreserved);
+    } catch {
+      // Non-fatal: do not block account deletion
+    }
+  }
 
   try {
     if (firebaseUid && !firebaseUid.startsWith('deleted:')) {

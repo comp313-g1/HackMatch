@@ -46,7 +46,9 @@ export type TeamErrorCode =
   | 'ALREADY_LOCKED'
   | 'BELOW_MIN_MEMBERS'
   | 'ABOVE_MAX_MEMBERS'
-  | 'MEMBER_CONFIRMED_ELSEWHERE';
+  | 'MEMBER_CONFIRMED_ELSEWHERE'
+  | 'MANIFEST_ACCESS_DENIED'
+  | 'MANIFEST_TEAM_NOT_LOCKED';
 
 export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message: string }> = {
   EVENT_NOT_FOUND: { status: 404, message: 'Event not found.' },
@@ -205,6 +207,14 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
     status: 409,
     message:
       'A confirmed member already has another confirmed membership for this event.',
+  },
+  MANIFEST_ACCESS_DENIED: {
+    status: 403,
+    message: 'Only active confirmed members of this locked team may export the team manifest.',
+  },
+  MANIFEST_TEAM_NOT_LOCKED: {
+    status: 403,
+    message: 'Team manifest export is only available after the team roster is locked.',
   },
 };
 

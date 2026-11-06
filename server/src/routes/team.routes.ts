@@ -44,6 +44,14 @@ import {
   submitApplicationHandler,
 } from '../controllers/applications.controller.js';
 import { validateSubmitApplicationBody } from '../validators/application.validator.js';
+import {
+  validateManifestExportQueryMiddleware,
+  validateManifestVerifyBodyMiddleware,
+} from '../validators/teamManifest.validator.js';
+import {
+  getTeamManifestHandler,
+  verifyTeamManifestChecksumHandler,
+} from '../controllers/teamManifest.controller.js';
 
 export const teamRouter = Router();
 
@@ -145,4 +153,23 @@ teamRouter.post(
 );
 /** US-019 / #183 / FR-059 — confirmed non-owner leave (not owner-gated). */
 teamRouter.post('/:teamId/leave', ...participantAuth, validateTeamIdParams, leaveTeamHandler);
+
+/** US-024 / #228 / FR-071 — export locked team manifest and check-in verification card. */
+teamRouter.get(
+  '/:teamId/manifest',
+  ...participantAuth,
+  validateTeamIdParams,
+  validateManifestExportQueryMiddleware,
+  getTeamManifestHandler
+);
+
+/** US-024 / #228 / FR-072 — verify SHA-256 checksum comparison against stored server snapshot. */
+teamRouter.post(
+  '/:teamId/manifest/verify',
+  ...participantAuth,
+  validateTeamIdParams,
+  requireJsonObjectBody,
+  validateManifestVerifyBodyMiddleware,
+  verifyTeamManifestChecksumHandler
+);
 
