@@ -78,18 +78,78 @@ export function escapePdfString(str: string): string {
     .replace(/[^\x20-\x7E]/g, '?');
 }
 
+export const FORBIDDEN_MANIFEST_PRIVATE_KEYS = new Set([
+  'email',
+  'identity_email',
+  'identityemail',
+  'shared_contact_handle',
+  'sharedcontacthandle',
+  'shared_contact_audience_notice',
+  'sharedcontactaudiencenotice',
+  'private_contact',
+  'privatecontact',
+  'communication_link',
+  'communicationlink',
+  'firebase_uid',
+  'firebaseuid',
+  'password',
+  'otp_hash',
+  'otphash',
+  'token',
+  'id_token',
+  'refresh_token',
+  'mfa_secret',
+  'recovery_codes',
+  'credentials',
+]);
+
+export const EMAIL_PATTERN_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+
+/**
+ * Recursively scrubs private keys and inline email patterns from any manifest payload or snapshot.
+ */
+export function scrubManifestPrivateFields<T>(value: T): T {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    return value.replace(EMAIL_PATTERN_REGEX, '[REDACTED_EMAIL]') as unknown as T;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => scrubManifestPrivateFields(item)) as unknown as T;
+  }
+
+  if (typeof value === 'object') {
+    const cleaned: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value)) {
+      const lowerKey = key.toLowerCase();
+      if (FORBIDDEN_MANIFEST_PRIVATE_KEYS.has(lowerKey)) {
+        continue;
+      }
+      cleaned[key] = scrubManifestPrivateFields(val);
+    }
+    return cleaned as T;
+  }
+
+  return value;
+}
+
 /**
  * Generates formatted JSON with manifest snapshot and integrity metadata (US-024 / FR-071).
  */
 export function formatManifestAsJson(payload: TeamManifestExportPayload): string {
-  return JSON.stringify(payload, null, 2);
+  const scrubbed = scrubManifestPrivateFields(payload);
+  return JSON.stringify(scrubbed, null, 2);
 }
 
 /**
  * Generates an accessible, printable HTML verification card with print media styles (US-024 / FR-071).
  */
 export function renderPrintableManifestHtml(payload: TeamManifestExportPayload): string {
-  const { snapshot, integrity, exportedAt } = payload;
+  const scrubbed = scrubManifestPrivateFields(payload);
+  const { snapshot, integrity, exportedAt } = scrubbed;
   const escapedTeamName = escapeManifestHtml(snapshot.teamName);
   const escapedEventTitle = escapeManifestHtml(snapshot.eventTitle);
   const formattedLockTime = new Date(snapshot.lockedAt).toLocaleString('en-US', {
@@ -374,7 +434,8 @@ export function renderPrintableManifestHtml(payload: TeamManifestExportPayload):
 export function buildDeterministicManifestPdf(
   payload: TeamManifestExportPayload
 ): Uint8Array {
-  const { snapshot, integrity, exportedAt } = payload;
+  const scrubbed = scrubManifestPrivateFields(payload);
+  const { snapshot, integrity, exportedAt } = scrubbed;
 
   const lines: string[] = [];
   lines.push('BT');

@@ -1,4 +1,5 @@
 import type { CanonicalRosterSnapshot } from '../db/types.js';
+import { scrubManifestPrivateFields } from './manifestPrivacy.js';
 
 export type ManifestExportFormat = 'json' | 'html' | 'pdf';
 
@@ -54,14 +55,16 @@ export function escapePdfString(str: string): string {
  * Generates formatted JSON with manifest snapshot and integrity metadata (US-024 / FR-071).
  */
 export function formatManifestAsJson(payload: TeamManifestExportPayload): string {
-  return JSON.stringify(payload, null, 2);
+  const scrubbed = scrubManifestPrivateFields(payload);
+  return JSON.stringify(scrubbed, null, 2);
 }
 
 /**
  * Generates an accessible, printable HTML verification card with print media styles (US-024 / FR-071).
  */
 export function renderPrintableManifestHtml(payload: TeamManifestExportPayload): string {
-  const { snapshot, integrity, exportedAt } = payload;
+  const scrubbed = scrubManifestPrivateFields(payload);
+  const { snapshot, integrity, exportedAt } = scrubbed;
   const escapedTeamName = escapeManifestHtml(snapshot.teamName);
   const escapedEventTitle = escapeManifestHtml(snapshot.eventTitle);
   const formattedLockTime = new Date(snapshot.lockedAt).toLocaleString('en-US', {
@@ -346,7 +349,8 @@ export function renderPrintableManifestHtml(payload: TeamManifestExportPayload):
 export function buildDeterministicManifestPdf(
   payload: TeamManifestExportPayload
 ): Uint8Array {
-  const { snapshot, integrity, exportedAt } = payload;
+  const scrubbed = scrubManifestPrivateFields(payload);
+  const { snapshot, integrity, exportedAt } = scrubbed;
 
   const lines: string[] = [];
   lines.push('BT');
