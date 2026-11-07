@@ -572,3 +572,127 @@ export interface CreateChatMessageDTO {
   body: string;
 }
 
+/** US-023 / #US-023-T1 locked team workspace models (FR-068, FR-069, FR-070). */
+export interface TeamWorkspaceRecord {
+  team_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeamWorkspaceLink {
+  id: string;
+  team_id: string;
+  label: string;
+  url: string;
+  display_order: number;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpsertWorkspaceLinkInput {
+  label: string;
+  url: string;
+  display_order?: number;
+}
+
+export interface TeamWorkspaceNote {
+  team_id: string;
+  content: string;
+  version: number;
+  updated_by: string | null;
+  author_display_name: string | null;
+  author_pseudonymized_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeamWorkspaceNoteRevision {
+  id: string;
+  team_id: string;
+  version: number;
+  content: string;
+  author_id: string | null;
+  author_display_name: string;
+  author_pseudonymized_at: string | null;
+  created_at: string;
+}
+
+export interface SaveWorkspaceNoteInput {
+  teamId: string;
+  actorId: string;
+  content: string;
+  expectedVersion: number;
+  authorDisplayName: string;
+}
+
+/** US-024 / #223 / FR-071 & FR-072 locked team manifest exports and snapshots. */
+export type ManifestExportFormat = 'json' | 'html' | 'pdf';
+
+export interface CanonicalRosterPortfolioLink {
+  label: string | null;
+  url: string;
+}
+
+export interface CanonicalRosterMember {
+  participantId: string;
+  displayName: string;
+  handle: string | null;
+  teamRole: TeamMembershipRole;
+  primaryRole: ParticipantPrimaryRole | null;
+  institution: string | null;
+  portfolioLinks: CanonicalRosterPortfolioLink[];
+  joinedAt: string;
+  isPseudonymized: boolean;
+}
+
+export interface CanonicalRosterSnapshot {
+  schemaVersion: '1.0';
+  teamId: string;
+  teamName: string;
+  eventId: string;
+  eventTitle: string;
+  lockedAt: string;
+  memberCount: number;
+  members: CanonicalRosterMember[];
+}
+
+export interface TeamRosterManifestRecord {
+  team_id: string;
+  event_id: string;
+  schema_version: string;
+  locked_at: string;
+  member_count: number;
+  snapshot_json: CanonicalRosterSnapshot;
+  canonical_json: string;
+  checksum: string;
+  last_exported_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeamRosterManifestSnapshotRow {
+  id: string;
+  team_id: string;
+  schema_version: string;
+  locked_at: string;
+  member_count: number;
+  snapshot_json: CanonicalRosterSnapshot;
+  canonical_json: string;
+  checksum: string;
+  recorded_by: string | null;
+  created_at: string;
+}
+
+export interface SaveManifestSnapshotInput {
+  teamId: string;
+  eventId: string;
+  lockedAt: string;
+  memberCount: number;
+  snapshotJson: CanonicalRosterSnapshot;
+  canonicalJson: string;
+  checksum: string;
+  actorId?: string | null;
+}
+
+

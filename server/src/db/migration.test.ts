@@ -1977,6 +1977,120 @@ describe('0044_extend_participant_notifications_for_notification_center.sql (US-
   });
 });
 
+describe('0046_create_team_workspace_models.sql DDL (US-023 / #US-023-T1)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0046_create_team_workspace_models.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(100);
+  });
+
+  it('creates team_workspaces, team_workspace_links, team_workspace_notes, and revisions tables', () => {
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+team_workspaces\s*\(/i);
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+team_workspace_links\s*\(/i);
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+team_workspace_notes\s*\(/i);
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+team_workspace_note_revisions\s*\(/i);
+  });
+
+  it('enforces row level security on all 4 tables', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_workspaces\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_workspace_links\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_workspace_notes\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_workspace_note_revisions\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+  });
+
+  it('enforces link validation, HTTPS check, and display order constraints', () => {
+    expect(sql).toMatch(/url\s+LIKE\s+'https:\/\/%'/i);
+    expect(sql).toMatch(/LENGTH\(TRIM\(url\)\)\s*>\s*8/i);
+    expect(sql).toMatch(/LENGTH\(url\)\s*<=\s*2048/i);
+    expect(sql).toMatch(/LENGTH\(TRIM\(label\)\)\s*>=\s*1/i);
+    expect(sql).toMatch(/LENGTH\(TRIM\(label\)\)\s*<=\s*80/i);
+    expect(sql).toMatch(/display_order\s*>=\s*0\s+AND\s+display_order\s*<\s*10/i);
+  });
+
+  it('enforces note and revision versioning and content constraints', () => {
+    expect(sql).toMatch(/LENGTH\(content\)\s*<=\s*10000/i);
+    expect(sql).toMatch(/version\s+INTEGER\s+NOT\s+NULL\s+DEFAULT\s+0\s+CHECK\s*\(\s*version\s*>=\s*0\s*\)/i);
+    expect(sql).toMatch(/version\s+INTEGER\s+NOT\s+NULL\s+CHECK\s*\(\s*version\s*>=\s*1\s*\)/i);
+    expect(sql).toMatch(
+      /CONSTRAINT\s+uq_team_workspace_note_revisions_team_version\s+UNIQUE\s*\(\s*team_id\s*,\s*version\s*\)/i
+    );
+  });
+
+  it('creates indexing for link order, revision version, and author lookup', () => {
+    expect(sql).toMatch(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_team_workspace_links_team_order/i);
+    expect(sql).toMatch(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_team_workspace_note_revisions_team_version/i);
+    expect(sql).toMatch(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_team_workspace_note_revisions_author/i);
+  });
+
+  it('defines secure service_role-only atomic note save and link replacement functions', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+save_team_workspace_note/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+replace_team_workspace_links/i);
+    expect(sql).toMatch(/pg_advisory_xact_lock/i);
+    expect(sql).toMatch(/WORKSPACE_NOTE_CONFLICT/);
+    expect(sql).toMatch(/FORBIDDEN_WORKSPACE_LINKS_OWNER_ONLY/);
+    expect(sql).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+save_team_workspace_note[\s\S]*FROM\s+PUBLIC,\s*anon,\s*authenticated/i
+    );
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+save_team_workspace_note[\s\S]*TO\s+service_role/i
+    );
+    expect(sql).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+replace_team_workspace_links[\s\S]*FROM\s+PUBLIC,\s*anon,\s*authenticated/i
+    );
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+replace_team_workspace_links[\s\S]*TO\s+service_role/i
+    );
+  });
+});
+
+describe('0047_create_team_roster_manifest_snapshots.sql DDL (US-024 / #223 / FR-071 & FR-072)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0047_create_team_roster_manifest_snapshots.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(100);
+  });
+
+  it('creates team_roster_manifests with RLS, constraints, and indexes', () => {
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+team_roster_manifests/i);
+    expect(sql).toMatch(/team_id\s+UUID\s+PRIMARY\s+KEY\s+REFERENCES\s+teams\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(sql).toMatch(/schema_version\s+VARCHAR\(16\)\s+NOT\s+NULL\s+DEFAULT\s+'1\.0'/i);
+    expect(sql).toMatch(/member_count\s+INTEGER\s+NOT\s+NULL\s+CHECK\s*\(\s*member_count\s*>=\s*2\s*\)/i);
+    expect(sql).toMatch(/checksum\s+VARCHAR\(71\)\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/checksum\s+~\s+'\^sha256:\[0-9a-f\]\{64\}\$'/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_roster_manifests\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+    expect(sql).toMatch(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_team_roster_manifests_checksum/i);
+  });
+
+  it('creates team_roster_manifest_snapshots with unique team-checksum constraint and RLS', () => {
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+team_roster_manifest_snapshots/i);
+    expect(sql).toMatch(/CONSTRAINT\s+uq_team_roster_manifest_snapshots_team_checksum\s+UNIQUE\s*\(\s*team_id\s*,\s*checksum\s*\)/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_roster_manifest_snapshots\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+    expect(sql).toMatch(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_team_roster_manifest_snapshots_team_created/i);
+  });
+
+  it('defines record_team_roster_manifest_snapshot with SECURITY DEFINER and advisory lock', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+record_team_roster_manifest_snapshot/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/SET\s+search_path\s*=\s*public/i);
+    expect(sql).toMatch(/pg_advisory_xact_lock/i);
+    expect(sql).toMatch(/hackmatch:manifest:team:/i);
+    expect(sql).toMatch(/recruitment_status\s*<>\s*'Locked'/i);
+    expect(sql).toMatch(/REVOKE\s+ALL\s+ON\s+FUNCTION\s+record_team_roster_manifest_snapshot[\s\S]*?FROM\s+PUBLIC,\s*anon,\s*authenticated/i);
+    expect(sql).toMatch(/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+record_team_roster_manifest_snapshot[\s\S]*?TO\s+service_role/i);
+  });
+});
+
 describe('0048_create_moderation_reports.sql (US-025 / #231 / #237)', () => {
   const sql = fs.readFileSync(
     path.resolve(

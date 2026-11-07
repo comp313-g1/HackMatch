@@ -44,6 +44,24 @@ import {
   submitApplicationHandler,
 } from '../controllers/applications.controller.js';
 import { validateSubmitApplicationBody } from '../validators/application.validator.js';
+import {
+  getTeamWorkspaceHandler,
+  listTeamWorkspaceRevisionsHandler,
+  saveTeamWorkspaceNoteHandler,
+  updateTeamWorkspaceLinksHandler,
+} from '../controllers/teamWorkspace.controller.js';
+import {
+  validateWorkspaceLinksBody,
+  validateWorkspaceNoteBody,
+} from '../validators/teamWorkspace.validator.js';
+import {
+  validateManifestExportQueryMiddleware,
+  validateManifestVerifyBodyMiddleware,
+} from '../validators/teamManifest.validator.js';
+import {
+  getTeamManifestHandler,
+  verifyTeamManifestChecksumHandler,
+} from '../controllers/teamManifest.controller.js';
 
 export const teamRouter = Router();
 
@@ -74,6 +92,38 @@ teamRouter.post(
   validateTeamIdParams,
   requireTeamOwner,
   lockTeamHandler
+);
+/** US-023 / #US-023-T2 / FR-068 — member-only private coordination workspace for locked teams. */
+teamRouter.get(
+  '/:teamId/workspace',
+  ...participantAuth,
+  validateTeamIdParams,
+  getTeamWorkspaceHandler
+);
+/** US-023 / #US-023-T3 / FR-069 — owner-only external HTTPS links update. */
+teamRouter.put(
+  '/:teamId/workspace/links',
+  ...participantAuth,
+  validateTeamIdParams,
+  requireJsonObjectBody,
+  validateWorkspaceLinksBody,
+  updateTeamWorkspaceLinksHandler
+);
+/** US-023 / #US-023-T4 / FR-070 — collaborative team note save with optimistic locking. */
+teamRouter.put(
+  '/:teamId/workspace/note',
+  ...participantAuth,
+  validateTeamIdParams,
+  requireJsonObjectBody,
+  validateWorkspaceNoteBody,
+  saveTeamWorkspaceNoteHandler
+);
+/** US-023 / #US-023-T4 / FR-070 — inspect team note revision history. */
+teamRouter.get(
+  '/:teamId/workspace/revisions',
+  ...participantAuth,
+  validateTeamIdParams,
+  listTeamWorkspaceRevisionsHandler
 );
 teamRouter.patch('/:teamId', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateUpdateTeamBody, updateTeamHandler);
 teamRouter.post('/:teamId/vacancies', ...participantAuth, validateTeamIdParams, requireTeamOwner, requireJsonObjectBody, validateVacancyBody, addVacancyHandler);
@@ -145,4 +195,23 @@ teamRouter.post(
 );
 /** US-019 / #183 / FR-059 — confirmed non-owner leave (not owner-gated). */
 teamRouter.post('/:teamId/leave', ...participantAuth, validateTeamIdParams, leaveTeamHandler);
+
+/** US-024 / #228 / FR-071 — export locked team manifest and check-in verification card. */
+teamRouter.get(
+  '/:teamId/manifest',
+  ...participantAuth,
+  validateTeamIdParams,
+  validateManifestExportQueryMiddleware,
+  getTeamManifestHandler
+);
+
+/** US-024 / #228 / FR-072 — verify SHA-256 checksum comparison against stored server snapshot. */
+teamRouter.post(
+  '/:teamId/manifest/verify',
+  ...participantAuth,
+  validateTeamIdParams,
+  requireJsonObjectBody,
+  validateManifestVerifyBodyMiddleware,
+  verifyTeamManifestChecksumHandler
+);
 

@@ -46,7 +46,13 @@ export type TeamErrorCode =
   | 'ALREADY_LOCKED'
   | 'BELOW_MIN_MEMBERS'
   | 'ABOVE_MAX_MEMBERS'
-  | 'MEMBER_CONFIRMED_ELSEWHERE';
+  | 'MEMBER_CONFIRMED_ELSEWHERE'
+  | 'WORKSPACE_ACCESS_DENIED'
+  | 'WORKSPACE_TEAM_NOT_LOCKED'
+  | 'FORBIDDEN_WORKSPACE_LINKS_OWNER_ONLY'
+  | 'WORKSPACE_NOTE_CONFLICT'
+  | 'MANIFEST_ACCESS_DENIED'
+  | 'MANIFEST_TEAM_NOT_LOCKED';
 
 export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message: string }> = {
   EVENT_NOT_FOUND: { status: 404, message: 'Event not found.' },
@@ -206,6 +212,33 @@ export const TEAM_ERROR_CATALOG: Record<TeamErrorCode, { status: number; message
     message:
       'A confirmed member already has another confirmed membership for this event.',
   },
+  WORKSPACE_ACCESS_DENIED: {
+    status: 403,
+    message:
+      'Only active confirmed members of this locked team can access the private coordination workspace.',
+  },
+  WORKSPACE_TEAM_NOT_LOCKED: {
+    status: 403,
+    message:
+      'The private coordination workspace is only available after the team roster is locked.',
+  },
+  FORBIDDEN_WORKSPACE_LINKS_OWNER_ONLY: {
+    status: 403,
+    message: 'Only the team owner can update shared external tool links.',
+  },
+  WORKSPACE_NOTE_CONFLICT: {
+    status: 409,
+    message:
+      'This note was updated by another teammate since you loaded it. Review the latest revision before saving.',
+  },
+  MANIFEST_ACCESS_DENIED: {
+    status: 403,
+    message: 'Only active confirmed members of this locked team may export the team manifest.',
+  },
+  MANIFEST_TEAM_NOT_LOCKED: {
+    status: 403,
+    message: 'Team manifest export is only available after the team roster is locked.',
+  },
 };
 
 export class TeamServiceError extends Error {
@@ -250,6 +283,8 @@ export function toTeamServiceError(err: unknown): TeamServiceError | null {
         } catch {
           parsedDetails = { raw: rawDetail };
         }
+      } else if (rawDetail && typeof rawDetail === 'object') {
+        parsedDetails = rawDetail as Record<string, unknown>;
       }
       return new TeamServiceError(message as TeamErrorCode, parsedDetails);
     }
