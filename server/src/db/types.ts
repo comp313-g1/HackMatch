@@ -475,8 +475,38 @@ export interface EventAvailability {
   updated_at: string;
 }
 
-/** US-026 / FR-075 moderation queue target kinds. */
-export type ModerationTargetType = 'team' | 'profile' | 'url';
+/** US-025 / US-026 / FR-073 / FR-075 moderation queue and report target kinds. */
+export type ModerationTargetType = 'team' | 'profile' | 'event' | 'url';
+
+export type ModerationReportTargetType = 'team' | 'profile' | 'event' | 'url';
+
+export type ModerationReportCategory =
+  | 'Harassment'
+  | 'Spam'
+  | 'Phishing Link'
+  | 'Fake Account';
+
+export interface ModerationReportRecord {
+  id: string;
+  reporter_id: string;
+  target_type: ModerationReportTargetType;
+  target_id: string;
+  category: ModerationReportCategory;
+  explanation: string | null;
+  flagged_url: string | null;
+  case_id: string | null;
+  created_at: string;
+}
+
+export interface CreateModerationReportDTO {
+  reporter_id: string;
+  target_type: ModerationReportTargetType;
+  target_id: string;
+  category: ModerationReportCategory;
+  explanation?: string | null;
+  flagged_url?: string | null;
+  case_id?: string | null;
+}
 
 export type ModerationCaseStatus = 'Open' | 'Dismissed' | 'Resolved';
 

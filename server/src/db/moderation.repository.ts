@@ -28,6 +28,12 @@ export interface IModerationRepository {
   resolveCase(id: string, input: ResolveModerationCaseInput): Promise<ModerationCase>;
   insertActionRecord(data: CreateEventActionRecordDTO): Promise<EventActionRecord>;
   listActionRecordsForCase(caseId: string): Promise<EventActionRecord[]>;
+  findOpenCaseByTarget(
+    targetType: ModerationCase['target_type'],
+    targetId: string,
+    flaggedUrl?: string | null
+  ): Promise<ModerationCase | null>;
+  incrementCaseReportCount(caseId: string): Promise<ModerationCase | null>;
 }
 
 const DEFAULT_QUEUE_LIMIT = 100;
@@ -152,5 +158,52 @@ export const moderationRepository: IModerationRepository = {
       const summary = row.safe_state_summary as Record<string, unknown> | null;
       return summary?.caseId === caseId;
     });
+  },
+
+  async findOpenCaseByTarget(
+    targetType: ModerationCase['target_type'],
+    targetId: string,
+    flaggedUrl?: string | null
+  ): Promise<ModerationCase | null> {
+    const client = getSupabaseClient();
+    let query = client
+      .from('moderation_cases')
+      .select('*')
+      .eq('status', 'Open')
+      .eq('target_type', targetType)
+      .eq('target_id', targetId)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (targetType === 'url') {
+      if (flaggedUrl) {
+        query = query.eq('flagged_url', flaggedUrl);
+      }
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    const cases = (data || []) as ModerationCase[];
+    return cases.length > 0 ? cases[0] : null;
+  },
+
+  async incrementCaseReportCount(caseId: string): Promise<ModerationCase | null> {
+    const existing = await this.findById(caseId);
+    if (!existing) return null;
+
+    const client = getSupabaseClient();
+    const nextCount = (existing.report_count || 0) + 1;
+    const { data, error } = await client
+      .from('moderation_cases')
+      .update({
+        report_count: nextCount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', caseId)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return data as ModerationCase;
   },
 };

@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { isValidHttpsPortfolioUrl } from './profileValidation';
 import {
   type ExperienceBadge,
   type HackathonHistoryItem,
   computeExperienceBadge,
 } from './hackathonHistoryValidation';
+import { ReportAbuseModal } from '../moderation/ReportAbuseModal';
+import type { ReportTargetSummary } from '../moderation/reportTypes';
 
 export type ProfileViewerCategory = 'VISITOR' | 'PART' | 'CONFIRMED_TEAMMATE' | 'OWNER';
 
@@ -15,6 +17,8 @@ export interface CandidatePortfolioLink {
 }
 
 export interface CandidateProfileData {
+  id?: string;
+  participantId?: string;
   displayName?: string;
   handle?: string | null;
   primaryRole?: string | null;
@@ -37,6 +41,7 @@ export interface CandidateProfileCardProps {
   error?: string | null;
   onRetry?: () => void;
   onRequestSignIn?: () => void;
+  onReportProfile?: (target: ReportTargetSummary) => void;
 }
 
 export function CandidateProfileCard({
@@ -46,7 +51,9 @@ export function CandidateProfileCard({
   error = null,
   onRetry,
   onRequestSignIn,
+  onReportProfile,
 }: CandidateProfileCardProps): React.JSX.Element {
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   if (loading) {
     return (
       <article
@@ -308,6 +315,45 @@ export function CandidateProfileCard({
           </p>
         </div>
       )}
+
+      {(viewerCategory === 'PART' || viewerCategory === 'CONFIRMED_TEAMMATE') &&
+        Boolean(profile.id || profile.participantId || onReportProfile) && (
+          <div className="pt-2 border-t border-cream-100 flex justify-end">
+            <button
+              type="button"
+              data-testid="report-profile-btn"
+              aria-label={`Report profile for ${profile.displayName || profile.handle || 'Participant'}`}
+              onClick={() => {
+                const reportTarget: ReportTargetSummary = {
+                  targetType: 'profile',
+                  targetId: profile.id || profile.participantId || '',
+                  targetName:
+                    profile.displayName ||
+                    (profile.handle ? `@${profile.handle}` : 'Participant'),
+                };
+                if (onReportProfile) {
+                  onReportProfile(reportTarget);
+                } else {
+                  setIsReportModalOpen(true);
+                }
+              }}
+              className="px-2.5 py-1 text-xs font-medium text-red-700 hover:text-red-900 hover:bg-red-50 rounded border border-red-200 focus:outline-none focus:ring-2 focus:ring-red-700"
+            >
+              Report Profile
+            </button>
+            <ReportAbuseModal
+              isOpen={isReportModalOpen}
+              target={{
+                targetType: 'profile',
+                targetId: profile.id || profile.participantId || '',
+                targetName:
+                  profile.displayName ||
+                  (profile.handle ? `@${profile.handle}` : 'Participant'),
+              }}
+              onClose={() => setIsReportModalOpen(false)}
+            />
+          </div>
+        )}
     </article>
   );
 }

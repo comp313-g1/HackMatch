@@ -2091,3 +2091,53 @@ describe('0047_create_team_roster_manifest_snapshots.sql DDL (US-024 / #223 / FR
   });
 });
 
+describe('0048_create_moderation_reports.sql (US-025 / #231 / #237)', () => {
+  const sql = fs.readFileSync(
+    path.resolve(
+      __dirname,
+      '../../../supabase/migrations/0048_create_moderation_reports.sql'
+    ),
+    'utf-8'
+  );
+
+  it('widens moderation_cases target_type constraint to allow event targets', () => {
+    expect(sql).toMatch(/ALTER\s+TABLE\s+moderation_cases[\s\S]*CHECK\s*\(\s*target_type\s+IN\s*\('team',\s*'profile',\s*'event',\s*'url'\)\s*\)/i);
+  });
+
+  it('permits PART report submissions on moderation_cases check_moderation_case_creator_role trigger', () => {
+    expect(sql).toMatch(/check_moderation_case_creator_role/i);
+    expect(sql).toMatch(/NEW\.report_count\s*>=\s*1/i);
+    expect(sql).toMatch(/v_role\s*=\s*'PART'/i);
+  });
+
+  it('creates moderation_reports table with required columns, constraints, and RLS', () => {
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+moderation_reports/i);
+    expect(sql).toMatch(/target_type\s+VARCHAR\(20\)\s+NOT\s+NULL\s+CHECK\s*\(\s*target_type\s+IN\s*\('team',\s*'profile',\s*'event',\s*'url'\)\s*\)/i);
+    expect(sql).toMatch(/category\s+VARCHAR\(30\)\s+NOT\s+NULL\s+CHECK\s*\(\s*category\s+IN\s*\('Harassment',\s*'Spam',\s*'Phishing Link',\s*'Fake Account'\)\s*\)/i);
+    expect(sql).toMatch(/LENGTH\(TRIM\(explanation\)\)\s*>\s*0\s+AND\s+LENGTH\(explanation\)\s*<=\s*1000/i);
+    expect(sql).toMatch(/flagged_url\s+LIKE\s+'https:\/\/%'/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+moderation_reports\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+  });
+
+  it('creates rolling-hour rate limiting, target, and case reference indexes', () => {
+    expect(sql).toMatch(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_moderation_reports_reporter_created_at\s+ON\s+moderation_reports\s*\(\s*reporter_id,\s*created_at\s+DESC\s*\)/i);
+    expect(sql).toMatch(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_moderation_reports_target\s+ON\s+moderation_reports\s*\(\s*target_type,\s*target_id\s*\)/i);
+    expect(sql).toMatch(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_moderation_reports_case_id\s+ON\s+moderation_reports\s*\(\s*case_id\s*\)/i);
+  });
+
+  it('creates target reference validation trigger forbidding self-reporting and inactive targets', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+validate_moderation_report_target/i);
+    expect(sql).toMatch(/SELF_REPORT_FORBIDDEN/i);
+    expect(sql).toMatch(/TARGET_NOT_FOUND/i);
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trg_moderation_reports_target_ref/i);
+  });
+
+  it('defines service-role-only submit_moderation_report function with advisory lock and rolling limit', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+submit_moderation_report/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/pg_advisory_xact_lock/i);
+    expect(sql).toMatch(/INTERVAL\s+'1 hour'/i);
+    expect(sql).toMatch(/REVOKE\s+ALL\s+ON\s+FUNCTION\s+submit_moderation_report[\s\S]*FROM\s+PUBLIC,\s*anon,\s*authenticated/i);
+    expect(sql).toMatch(/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+submit_moderation_report[\s\S]*TO\s+service_role/i);
+  });
+});
