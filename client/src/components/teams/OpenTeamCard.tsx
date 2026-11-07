@@ -1,15 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type {
   OpenTeamPartCard,
   OpenTeamVisitorPreview,
   OpenTeamApplyTarget,
 } from './openTeamsApi';
+import { ReportAbuseModal } from '../moderation/ReportAbuseModal';
+import type { ReportTargetSummary } from '../moderation/reportTypes';
 
 export interface OpenTeamCardProps {
   team: OpenTeamPartCard | OpenTeamVisitorPreview;
   viewer: 'PART' | 'VISITOR';
   onApply: (target: OpenTeamApplyTarget) => void;
   onSignIn: () => void;
+  onReportTeam?: (target: ReportTargetSummary) => void;
 }
 
 export function OpenTeamCard({
@@ -17,9 +20,18 @@ export function OpenTeamCard({
   viewer,
   onApply,
   onSignIn,
+  onReportTeam,
 }: OpenTeamCardProps): React.JSX.Element {
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+
   if (viewer === 'PART') {
     const partTeam = team as OpenTeamPartCard;
+    const reportTarget: ReportTargetSummary = {
+      targetType: 'team',
+      targetId: partTeam.id,
+      targetName: partTeam.name,
+    };
+
     return (
       <article
         aria-label={`Team ${partTeam.name}`}
@@ -44,6 +56,23 @@ export function OpenTeamCard({
                 )}
               </div>
             </div>
+            {!partTeam.isViewerMember && (
+              <button
+                type="button"
+                data-testid={`report-team-btn-${partTeam.id}`}
+                aria-label={`Report team listing ${partTeam.name}`}
+                onClick={() => {
+                  if (onReportTeam) {
+                    onReportTeam(reportTarget);
+                  } else {
+                    setIsReportModalOpen(true);
+                  }
+                }}
+                className="shrink-0 px-2.5 py-1 text-xs font-medium text-red-700 hover:text-red-900 hover:bg-red-50 rounded border border-red-200 focus:outline-none focus:ring-2 focus:ring-red-700"
+              >
+                Report
+              </button>
+            )}
           </div>
 
           {/* Pitch */}
@@ -118,6 +147,12 @@ export function OpenTeamCard({
             ))}
           </div>
         </div>
+
+        <ReportAbuseModal
+          isOpen={isReportModalOpen}
+          target={reportTarget}
+          onClose={() => setIsReportModalOpen(false)}
+        />
       </article>
     );
   }
