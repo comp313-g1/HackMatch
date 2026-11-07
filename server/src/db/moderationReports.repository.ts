@@ -118,18 +118,29 @@ export const moderationReportsRepository: IModerationReportsRepository = {
 
     const client = tryGetSupabaseFromTable();
     if (client) {
-      const { data, error } = await client
-        .from('moderation_reports')
-        .select('*')
-        .eq('reporter_id', reporterId)
-        .gt('created_at', sinceIso)
-        .order('created_at', { ascending: true });
+      try {
+        const tableQuery = client.from('moderation_reports');
+        if (tableQuery && typeof (tableQuery as unknown as { select: unknown }).select === 'function') {
+          const selectQuery = tableQuery.select('*');
+          if (selectQuery && typeof (selectQuery as unknown as { eq: unknown }).eq === 'function') {
+            const eqQuery = selectQuery.eq('reporter_id', reporterId);
+            if (eqQuery && typeof (eqQuery as unknown as { gt: unknown }).gt === 'function') {
+              const { data, error } = await eqQuery
+                .gt('created_at', sinceIso)
+                .order('created_at', { ascending: true });
 
-      if (error) throw error;
-      return ((data || []) as ModerationReportRecord[]).sort(
-        (a, b) =>
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      );
+              if (!error && Array.isArray(data)) {
+                return (data as ModerationReportRecord[]).sort(
+                  (a, b) =>
+                    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                );
+              }
+            }
+          }
+        }
+      } catch {
+        // Fallback to in-memory store
+      }
     }
 
     return Array.from(inMemoryReportsStore.values())

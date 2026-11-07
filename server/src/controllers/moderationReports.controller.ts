@@ -14,7 +14,7 @@ export const createModerationReportHandler: RequestHandler = async (
   req: Request,
   res: Response
 ): Promise<void> => {
-  const participant = res.locals.participant;
+  const participant = req.participant || res.locals.participant;
   if (!participant || !participant.id) {
     res.setHeader('Cache-Control', 'no-store');
     res.status(401).json({
