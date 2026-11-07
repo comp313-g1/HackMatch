@@ -2,6 +2,7 @@ import { moderationRepository } from '../db/moderation.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import { profileRepository } from '../db/profile.repository.js';
 import { participantsRepository } from '../db/participants.repository.js';
+import { getSupabaseClient } from '../db/client.js';
 import type {
   ModerationCase,
   ModerationCaseStatus,
@@ -105,10 +106,25 @@ export interface SanitizedUrlTarget {
   };
 }
 
+export interface SanitizedEventTarget {
+  type: 'event';
+  event: {
+    id: string;
+    title: string;
+    format: string;
+    status: string;
+    startDate: string;
+    endDate: string;
+    location: string | null;
+    officialUrl: string;
+  };
+}
+
 export type SanitizedModerationTarget =
   | SanitizedTeamTarget
   | SanitizedProfileTarget
-  | SanitizedUrlTarget;
+  | SanitizedUrlTarget
+  | SanitizedEventTarget;
 
 export interface ModerationCaseDetailView {
   case: ModerationCaseView;
@@ -140,6 +156,25 @@ async function assertTargetExists(
   if (targetType === 'team' || targetType === 'url') {
     const team = await teamsRepository.findTeamById(targetId);
     if (!team) {
+      throw new ModerationServiceError(
+        404,
+        'TARGET_NOT_FOUND',
+        'The moderation target was not found.',
+        { targetType, targetId }
+      );
+    }
+    return;
+  }
+
+  if (targetType === 'event') {
+    const client = getSupabaseClient();
+    const { data: event, error } = await client
+      .from('events')
+      .select('id, title, status')
+      .eq('id', targetId)
+      .maybeSingle();
+
+    if (error || !event || event.status !== 'Published') {
       throw new ModerationServiceError(
         404,
         'TARGET_NOT_FOUND',
@@ -225,6 +260,38 @@ async function loadSanitizedProfileTarget(
   };
 }
 
+async function loadSanitizedEventTarget(eventId: string): Promise<SanitizedEventTarget> {
+  const client = getSupabaseClient();
+  const { data: event, error } = await client
+    .from('events')
+    .select('id, title, format, status, start_date, end_date, location, official_url')
+    .eq('id', eventId)
+    .maybeSingle();
+
+  if (error || !event) {
+    throw new ModerationServiceError(
+      404,
+      'TARGET_NOT_FOUND',
+      'The moderation target was not found.',
+      { targetType: 'event', targetId: eventId }
+    );
+  }
+
+  return {
+    type: 'event',
+    event: {
+      id: event.id,
+      title: event.title,
+      format: event.format,
+      status: event.status,
+      startDate: event.start_date,
+      endDate: event.end_date,
+      location: event.location ?? null,
+      officialUrl: event.official_url,
+    },
+  };
+}
+
 /**
  * Builds the sanitized target payload for case detail.
  * Omits credentials, email, firebase_uid, and shared_contact_handle (FR-076 / FR-079).
@@ -241,6 +308,8 @@ export async function loadSanitizedTarget(
     target = await loadSanitizedTeamTarget(targetId);
   } else if (targetType === 'profile') {
     target = await loadSanitizedProfileTarget(targetId);
+  } else if (targetType === 'event') {
+    target = await loadSanitizedEventTarget(targetId);
   } else {
     if (!flaggedUrl) {
       throw new ModerationServiceError(

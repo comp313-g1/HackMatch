@@ -1,6 +1,6 @@
 /** Client shapes for US-026 / #241 moderation queue and case view. */
 
-export type ModerationTargetType = 'team' | 'profile' | 'url';
+export type ModerationTargetType = 'team' | 'profile' | 'event' | 'url';
 export type ModerationCaseStatus = 'Open' | 'Dismissed' | 'Resolved';
 export type ModerationDecisionAction =
   | 'dismiss'
