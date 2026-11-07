@@ -25,12 +25,35 @@ export interface ValidateReportResult {
   normalized?: SubmitReportPayload;
 }
 
+export function isValidReportCategory(
+  value: string | null | undefined
+): value is ReportCategory {
+  if (typeof value !== 'string') return false;
+  return (REPORT_CATEGORIES as readonly string[]).includes(value.trim());
+}
+
+export function isValidReportTargetType(
+  value: string | null | undefined
+): value is ReportTargetType {
+  if (typeof value !== 'string') return false;
+  return (REPORT_TARGET_TYPES as readonly string[]).includes(value.trim());
+}
+
 export function normalizeReportExplanation(
   value: string | null | undefined
 ): string | null {
   if (value == null) return null;
   const trimmed = value.trim();
   return trimmed.length === 0 ? null : trimmed;
+}
+
+export function isReportExplanationTooLong(
+  value: string | null | undefined
+): boolean {
+  const normalized = normalizeReportExplanation(value);
+  return (
+    normalized !== null && [...normalized].length > MAX_REPORT_EXPLANATION_LENGTH
+  );
 }
 
 export function normalizeReportFlaggedUrl(
@@ -69,14 +92,12 @@ export function validateReportSubmissionInput(
 ): ValidateReportResult {
   const fieldErrors: Record<string, string> = {};
 
-  const rawTargetType =
-    typeof input.targetType === 'string' ? input.targetType.trim() : '';
   let targetType: ReportTargetType | null = null;
-  if (!(REPORT_TARGET_TYPES as readonly string[]).includes(rawTargetType)) {
+  if (!isValidReportTargetType(input.targetType)) {
     fieldErrors.targetType =
       'Please select a valid report target (team, profile, event, or url).';
   } else {
-    targetType = rawTargetType as ReportTargetType;
+    targetType = input.targetType!.trim() as ReportTargetType;
   }
 
   const rawTargetId =
@@ -85,22 +106,23 @@ export function validateReportSubmissionInput(
     fieldErrors.targetId = 'A valid target identifier is required.';
   }
 
-  const rawCategory =
-    typeof input.category === 'string' ? input.category.trim() : '';
   let category: ReportCategory | null = null;
-  if (!(REPORT_CATEGORIES as readonly string[]).includes(rawCategory)) {
+  if (!isValidReportCategory(input.category)) {
     fieldErrors.category =
       'Please select a valid category (Harassment, Spam, Phishing Link, or Fake Account).';
   } else {
-    category = rawCategory as ReportCategory;
+    category = input.category!.trim() as ReportCategory;
   }
 
-  const explanation = normalizeReportExplanation(input.explanation);
-  if (
-    explanation !== null &&
-    [...explanation].length > MAX_REPORT_EXPLANATION_LENGTH
-  ) {
-    fieldErrors.explanation = `Explanation must not exceed ${MAX_REPORT_EXPLANATION_LENGTH} characters.`;
+  let explanation: string | null = null;
+  if (input.explanation !== undefined && input.explanation !== null) {
+    if (typeof input.explanation !== 'string') {
+      fieldErrors.explanation = 'Explanation must be a string when provided.';
+    } else if (isReportExplanationTooLong(input.explanation)) {
+      fieldErrors.explanation = `Explanation must not exceed ${MAX_REPORT_EXPLANATION_LENGTH} characters.`;
+    } else {
+      explanation = normalizeReportExplanation(input.explanation);
+    }
   }
 
   const flaggedUrl = normalizeReportFlaggedUrl(input.flaggedUrl);
