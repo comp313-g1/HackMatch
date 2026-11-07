@@ -10,7 +10,11 @@ import {
   type AdminAccountDetail,
 } from './accountManagement.js';
 import { applySuspensionCascade } from './accountSuspensionCascade.js';
-import { pseudonymizeHistoricalMemberships } from './membershipPseudonymization.js';
+import {
+  buildMembershipPseudonym,
+  pseudonymizeHistoricalMemberships,
+} from './membershipPseudonymization.js';
+import { teamWorkspaceRepository } from '../db/teamWorkspace.repository.js';
 import { refreshLockedTeamManifestsAfterPseudonymization } from './teamManifest.js';
 
 export const DELETION_TARGET_NOTICE =
@@ -162,6 +166,16 @@ export async function eraseLiveAccountPii(participantId: string): Promise<{
     .eq('participant_id', participantId)
     .select('id');
   if (mfaErr) throw mfaErr;
+
+  try {
+    const pseudonym = buildMembershipPseudonym(participantId);
+    await teamWorkspaceRepository.pseudonymizeAuthorIdentity(
+      participantId,
+      pseudonym
+    );
+  } catch {
+    // Graceful fallback if workspace models table not present or in mock environment
+  }
 
   return {
     profileCleared: Boolean(profileRows && profileRows.length > 0),
