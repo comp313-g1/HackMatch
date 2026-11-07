@@ -1,3 +1,5 @@
+import { authFetch, AuthRequiredError } from '../../config/authFetch';
+import { auth } from '../../config/firebase';
 import type {
   ReportApiErrorResponse,
   ReportReceiptDto,
@@ -12,22 +14,42 @@ export async function submitModerationReport(
   payload: SubmitReportPayload,
   authToken?: string
 ): Promise<SubmitModerationReportResult> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-
-  if (authToken && authToken.trim().length > 0) {
-    headers.Authorization = authToken.startsWith('Bearer ')
-      ? authToken
-      : `Bearer ${authToken}`;
-  }
-
   try {
-    const response = await fetch('/api/reports', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-    });
+    let response: Response;
+
+    if (authToken && authToken.trim().length > 0) {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Authorization: authToken.startsWith('Bearer ')
+          ? authToken
+          : `Bearer ${authToken}`,
+      };
+      response = await fetch('/api/reports', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+    } else {
+      if (!auth.currentUser) {
+        return {
+          ok: false,
+          status: 401,
+          error: {
+            code: 'UNAUTHORIZED',
+            message:
+              'You must be signed in as a verified participant to submit a report.',
+          },
+        };
+      }
+
+      response = await authFetch('/api/reports', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+    }
 
     const body = (await response.json().catch(() => ({}))) as Record<
       string,
@@ -83,7 +105,18 @@ export async function submitModerationReport(
         retryAfterSeconds,
       },
     };
-  } catch {
+  } catch (error) {
+    if (error instanceof AuthRequiredError) {
+      return {
+        ok: false,
+        status: 401,
+        error: {
+          code: 'UNAUTHORIZED',
+          message:
+            'You must be signed in as a verified participant to submit a report.',
+        },
+      };
+    }
     return {
       ok: false,
       status: 0,
