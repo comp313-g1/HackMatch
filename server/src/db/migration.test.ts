@@ -2049,3 +2049,45 @@ describe('0046_create_team_workspace_models.sql DDL (US-023 / #US-023-T1)', () =
   });
 });
 
+describe('0047_create_team_roster_manifest_snapshots.sql DDL (US-024 / #223 / FR-071 & FR-072)', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../../supabase/migrations/0047_create_team_roster_manifest_snapshots.sql'
+  );
+  const sql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration file exists and is not empty', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    expect(sql.length).toBeGreaterThan(100);
+  });
+
+  it('creates team_roster_manifests with RLS, constraints, and indexes', () => {
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+team_roster_manifests/i);
+    expect(sql).toMatch(/team_id\s+UUID\s+PRIMARY\s+KEY\s+REFERENCES\s+teams\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(sql).toMatch(/schema_version\s+VARCHAR\(16\)\s+NOT\s+NULL\s+DEFAULT\s+'1\.0'/i);
+    expect(sql).toMatch(/member_count\s+INTEGER\s+NOT\s+NULL\s+CHECK\s*\(\s*member_count\s*>=\s*2\s*\)/i);
+    expect(sql).toMatch(/checksum\s+VARCHAR\(71\)\s+NOT\s+NULL/i);
+    expect(sql).toMatch(/checksum\s+~\s+'\^sha256:\[0-9a-f\]\{64\}\$'/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_roster_manifests\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+    expect(sql).toMatch(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_team_roster_manifests_checksum/i);
+  });
+
+  it('creates team_roster_manifest_snapshots with unique team-checksum constraint and RLS', () => {
+    expect(sql).toMatch(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+team_roster_manifest_snapshots/i);
+    expect(sql).toMatch(/CONSTRAINT\s+uq_team_roster_manifest_snapshots_team_checksum\s+UNIQUE\s*\(\s*team_id\s*,\s*checksum\s*\)/i);
+    expect(sql).toMatch(/ALTER\s+TABLE\s+team_roster_manifest_snapshots\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i);
+    expect(sql).toMatch(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_team_roster_manifest_snapshots_team_created/i);
+  });
+
+  it('defines record_team_roster_manifest_snapshot with SECURITY DEFINER and advisory lock', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+record_team_roster_manifest_snapshot/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/SET\s+search_path\s*=\s*public/i);
+    expect(sql).toMatch(/pg_advisory_xact_lock/i);
+    expect(sql).toMatch(/hackmatch:manifest:team:/i);
+    expect(sql).toMatch(/recruitment_status\s*<>\s*'Locked'/i);
+    expect(sql).toMatch(/REVOKE\s+ALL\s+ON\s+FUNCTION\s+record_team_roster_manifest_snapshot[\s\S]*?FROM\s+PUBLIC,\s*anon,\s*authenticated/i);
+    expect(sql).toMatch(/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+record_team_roster_manifest_snapshot[\s\S]*?TO\s+service_role/i);
+  });
+});
+

@@ -15,6 +15,7 @@ import { LockedRosterBadge } from './LockedRosterBadge';
 import { POST_LOCK_UI_NOTICE } from './postLockGuards';
 import { canceledRequestsOnLockNotice } from './requestCancelReason';
 import { PrivateCoordinationWorkspace } from './PrivateCoordinationWorkspace';
+import { TeamManifestCard } from './TeamManifestCard';
 
 export interface TeamWorkspaceProps {
   eventId: string;
@@ -225,11 +226,14 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
         />
 
         {isLocked && team.lifecycle?.reason === 'Locked' ? (
-          <PrivateCoordinationWorkspace
-            teamId={team.id}
-            viewerRole={team.viewerRole}
-            autoLoad={false}
-          />
+          <>
+            <PrivateCoordinationWorkspace
+              teamId={team.id}
+              viewerRole={team.viewerRole}
+              autoLoad={false}
+            />
+            <TeamManifestCard teamId={team.id} team={team} autoLoad={false} />
+          </>
         ) : null}
       </div>
     );
@@ -422,6 +426,10 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
               setStatusNotice('Team disbanded. All pending requests were canceled.');
             }}
           />
+
+          {isLocked && team.lifecycle?.reason === 'Locked' ? (
+            <TeamManifestCard teamId={team.id} team={team} autoLoad={false} />
+          ) : null}
         </div>
       </div>
     </div>
