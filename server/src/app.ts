@@ -23,6 +23,7 @@ import { reportsRouter } from './routes/reports.routes.js';
 import { accountsRouter } from './routes/accounts.routes.js';
 import { securityConfig } from './config/security.js';
 import { createRequireHttps } from './middleware/requireHttps.js';
+import { auditRouter } from './routes/audit.routes.js';
 
 export const app: Express = express();
 
@@ -65,6 +66,7 @@ app.use('/api/scoring', scoringRouter);
 app.use('/api/admin/moderation', moderationRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/admin/accounts', accountsRouter);
+app.use('/api/admin/audit-records', auditRouter);
 app.use('/api', actionsRouter);
 
 // Fallback 404 handler
