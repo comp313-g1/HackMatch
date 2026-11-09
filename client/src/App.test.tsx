@@ -10,6 +10,7 @@ import {
   type IdTokenResult,
 } from 'firebase/auth';
 import App from './App';
+import { fetchAuditRecords } from './components/audit/auditApi';
 import { listNotifications, markNotificationRead } from './components/notifications/notificationsApi';
 
 vi.mock('firebase/auth', async (importOriginal) => {
@@ -68,6 +69,16 @@ vi.mock('./components/notifications/notificationsApi', async () => {
     markAllNotificationsRead: vi.fn(),
   };
 });
+vi.mock('./components/audit/auditApi', async () => {
+  const actual = await vi.importActual<typeof import('./components/audit/auditApi')>(
+    './components/audit/auditApi'
+  );
+  return {
+    ...actual,
+    fetchAuditRecords: vi.fn().mockResolvedValue({ records: [], hasMore: false, nextCursor: null }),
+  };
+});
+
 describe('App Component (View Routing and Integration)', () => {
   const mockApplyActionCode = vi.mocked(applyActionCode);
 
@@ -447,6 +458,87 @@ describe('App Component (View Routing and Integration)', () => {
     expect(await screen.findByRole('menuitem', { name: /^moderation$/i })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /^accounts$/i })).toBeInTheDocument();
     expect(within(primaryNav()).getByRole('button', { name: /^my teams$/i })).toBeInTheDocument();
+  });
+
+  it('ADMIN Admin menu offers an Audit log entry that opens the audit records page (US-028 / #259)', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    mockSignedInUser({ mfaComplete: true, role: 'ADMIN', displayName: 'Alex Admin' });
+    vi.mocked(fetchAuditRecords).mockResolvedValue({
+      records: [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          actorId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          actionType: 'moderation_warn',
+          category: 'moderation',
+          targetType: 'team',
+          targetId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+          reason: 'Spam in pitch',
+          outcome: 'Applied',
+          safeStateSummary: {},
+          createdAt: '2026-11-03T10:00:00.000000Z',
+        },
+      ],
+      hasMore: false,
+      nextCursor: null,
+    });
+
+    render(<App />);
+
+    fireEvent.click(await within(primaryNav()).findByRole('button', { name: /^admin/i }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^audit log$/i }));
+
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(screen.getByText('Spam in pitch')).toBeInTheDocument();
+    expect(screen.getByText('2026-11-03 10:00:00 UTC')).toBeInTheDocument();
+    expect(fetchAuditRecords).toHaveBeenCalledWith({ limit: 25 });
+  });
+
+  it('opens the audit records page directly from ?view=audit for an ADMIN', async () => {
+    window.history.pushState({}, '', '/?view=audit');
+    mockSignedInUser({ mfaComplete: true, role: 'ADMIN' });
+    vi.mocked(fetchAuditRecords).mockResolvedValue({ records: [], hasMore: false, nextCursor: null });
+
+    render(<App />);
+
+    expect(await screen.findByTestId('audit-empty')).toBeInTheDocument();
+  });
+
+  it('shows the access-denied state if a non-admin reaches the audit page (server returns 403)', async () => {
+    window.history.pushState({}, '', '/?view=audit');
+    mockSignedInUser({ mfaComplete: true, role: 'PART' });
+    const { AuditApiError } = await import('./components/audit/auditApi');
+    vi.mocked(fetchAuditRecords).mockRejectedValue(new AuditApiError(403, 'FORBIDDEN_ROLE', 'x'));
+
+    render(<App />);
+
+    expect(await screen.findByTestId('audit-denied')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('PART users never see an Audit log entry in the desktop or mobile menus (US-028 AC 3)', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    mockSignedInUser({ mfaComplete: true, role: 'PART' });
+
+    render(<App />);
+
+    expect(await within(primaryNav()).findByRole('button', { name: /^my teams$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /audit log/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /audit log/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /open menu/i }));
+    const mobile = screen.getByRole('region', { name: /mobile navigation/i });
+    expect(within(mobile).queryByRole('button', { name: /audit log/i })).not.toBeInTheDocument();
+  });
+
+  it('ADMIN mobile menu includes Audit log', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    mockSignedInUser({ mfaComplete: true, role: 'ADMIN' });
+
+    render(<App />);
+
+    await within(primaryNav()).findByRole('button', { name: /^admin/i });
+    fireEvent.click(screen.getByRole('button', { name: /open menu/i }));
+    const mobile = screen.getByRole('region', { name: /mobile navigation/i });
+    expect(within(mobile).getByRole('button', { name: /^audit log$/i })).toBeInTheDocument();
   });
 
   it('PART mobile menu also hides Moderation and Accounts (#359 / #358)', async () => {
