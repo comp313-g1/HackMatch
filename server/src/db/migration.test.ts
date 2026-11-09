@@ -2141,3 +2141,72 @@ describe('0048_create_moderation_reports.sql (US-025 / #231 / #237)', () => {
     expect(sql).toMatch(/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+submit_moderation_report[\s\S]*TO\s+service_role/i);
   });
 });
+
+describe('0049_create_admin_audit_record_query.sql (US-028 / #258)', () => {
+  const sql = fs.readFileSync(
+    path.resolve(__dirname, '../../../supabase/migrations/0049_create_admin_audit_record_query.sql'),
+    'utf-8'
+  );
+
+  it('adds newest-first composite indexes for the actor, action-type and date filters', () => {
+    expect(sql).toMatch(
+      /CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_event_action_records_created_at_id\s+ON\s+event_action_records\(created_at\s+DESC,\s*id\s+DESC\)/i
+    );
+    expect(sql).toMatch(
+      /idx_event_action_records_actor_created\s+ON\s+event_action_records\(actor_id,\s*created_at\s+DESC,\s*id\s+DESC\)/i
+    );
+    expect(sql).toMatch(
+      /idx_event_action_records_action_created\s+ON\s+event_action_records\(action_type\s+varchar_pattern_ops,\s*created_at\s+DESC,\s*id\s+DESC\)/i
+    );
+  });
+
+  it('is additive: never recreates, alters, or drops the audit table or its triggers', () => {
+    expect(sql).not.toMatch(/CREATE\s+TABLE|DROP\s+TABLE|DROP\s+TRIGGER|DROP\s+INDEX|ALTER\s+TABLE|TRUNCATE\s+event|DELETE\s+FROM|UPDATE\s+event_action_records/i);
+  });
+
+  it('removes UPDATE/DELETE/TRUNCATE from every application role (append-only, defense in depth)', () => {
+    expect(sql).toMatch(
+      /REVOKE\s+UPDATE,\s*DELETE,\s*TRUNCATE\s+ON\s+event_action_records\s+FROM\s+PUBLIC,\s*anon,\s*authenticated,\s*service_role/i
+    );
+  });
+
+  it('creates a read-only, ADMIN-verifying, service-role-only security-definer query', () => {
+    expect(sql).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+query_admin_audit_records/i);
+    expect(sql).toMatch(/\bSTABLE\b/i);
+    expect(sql).toMatch(/SECURITY\s+DEFINER/i);
+    expect(sql).toMatch(/SET\s+search_path\s*=\s*public/i);
+    expect(sql).toMatch(/v_role\s+IS\s+DISTINCT\s+FROM\s+'ADMIN'/i);
+    expect(sql).toMatch(/v_suspended\s+IS\s+TRUE/i);
+    expect(sql).toMatch(/FORBIDDEN_NOT_ADMIN/);
+    expect(sql).toMatch(/REVOKE\s+ALL\s+ON\s+FUNCTION\s+query_admin_audit_records[\s\S]*?FROM\s+PUBLIC,\s*anon,\s*authenticated/i);
+    expect(sql).toMatch(/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+query_admin_audit_records[\s\S]*?TO\s+service_role/i);
+  });
+
+  it('never writes: the function body contains no INSERT/UPDATE/DELETE', () => {
+    const body = sql.slice(sql.indexOf('CREATE OR REPLACE FUNCTION query_admin_audit_records'));
+    expect(body.slice(0, body.indexOf('REVOKE ALL ON FUNCTION'))).not.toMatch(/\b(INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|TRUNCATE)\b/i);
+  });
+
+  it('authorizes before validating, so a non-admin learns nothing from validation errors', () => {
+    expect(sql.indexOf('FORBIDDEN_NOT_ADMIN')).toBeLessThan(sql.indexOf("RAISE EXCEPTION 'VALIDATION_ERROR'"));
+  });
+
+  it('validates limit, category, date order, and cursor completeness', () => {
+    expect(sql).toMatch(/p_limit\s+IS\s+NULL\s+OR\s+p_limit\s*<\s*1\s+OR\s+p_limit\s*>\s*100/i);
+    expect(sql).toMatch(/p_category\s+NOT\s+IN\s*\(\s*'event',\s*'moderation',\s*'account'\s*\)/i);
+    expect(sql).toMatch(/p_from\s*>\s*p_to/i);
+    expect(sql).toMatch(/\(p_cursor_created_at\s+IS\s+NULL\)\s*<>\s*\(p_cursor_id\s+IS\s+NULL\)/i);
+  });
+
+  it('pages with a stable (created_at, id) keyset and one look-ahead row in a single statement', () => {
+    expect(sql).toMatch(/ORDER\s+BY\s+r\.created_at\s+DESC,\s*r\.id\s+DESC\s+LIMIT\s+p_limit\s*\+\s*1/i);
+    expect(sql).toMatch(/\(r\.created_at,\s*r\.id\)\s*<\s*\(p_cursor_created_at,\s*p_cursor_id\)/i);
+  });
+
+  it('filters by exact action type (no LIKE on user input) and inclusive date bounds', () => {
+    expect(sql).toMatch(/r\.action_type\s*=\s*v_action/i);
+    expect(sql).not.toMatch(/LIKE\s+v_action|LIKE\s+p_action/i);
+    expect(sql).toMatch(/r\.created_at\s*>=\s*p_from/i);
+    expect(sql).toMatch(/r\.created_at\s*<=\s*p_to/i);
+  });
+});

@@ -21,6 +21,7 @@ import { scoringRouter } from './routes/scoring.routes.js';
 import { moderationRouter } from './routes/moderation.routes.js';
 import { reportsRouter } from './routes/reports.routes.js';
 import { accountsRouter } from './routes/accounts.routes.js';
+import { auditRecordsRouter } from './routes/auditRecords.routes.js';
 import { securityConfig } from './config/security.js';
 import { createRequireHttps } from './middleware/requireHttps.js';
 
@@ -65,6 +66,7 @@ app.use('/api/scoring', scoringRouter);
 app.use('/api/admin/moderation', moderationRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/admin/accounts', accountsRouter);
+app.use('/api/admin/audit-records', auditRecordsRouter);
 app.use('/api', actionsRouter);
 
 // Fallback 404 handler
