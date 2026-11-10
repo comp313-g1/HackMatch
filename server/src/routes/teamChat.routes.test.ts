@@ -154,11 +154,58 @@ describe('Member-gated team channel endpoints (US-031 / #381 / FR-090)', () => {
       expect(chatRepository.findChannelByTeamId).toHaveBeenCalledWith(TEAM_ID);
     });
 
-    it('404 TEAM_CHANNEL_NOT_FOUND when the team has no channel yet', async () => {
-      vi.mocked(chatRepository.findChannelByTeamId).mockResolvedValue(null);
+    it('creates the channel on first open when the team has none yet (#431), then opens it', async () => {
+      // Looked up twice while empty (the route, then inside provisioning), then the channel exists.
+      vi.mocked(chatRepository.findChannelByTeamId)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue(channel);
+      vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue({
+        id: TEAM_ID,
+        name: 'Alpha Squad',
+        owner_participant_id: member.id,
+        recruitment_status: 'Open',
+        disbanded_at: null,
+      } as never);
+      vi.spyOn(chatRepository, 'provisionOrLinkTeamChannel').mockResolvedValue({ channel, created: true });
+
       const res = await request(app).get(BASE).set(auth);
+
+      expect(res.status).toBe(200);
+      expect(res.body.channel).toMatchObject({ id: CHANNEL_ID, teamId: TEAM_ID });
+      expect(chatRepository.provisionOrLinkTeamChannel).toHaveBeenCalledTimes(1);
+      expect(chatRepository.provisionOrLinkTeamChannel).toHaveBeenCalledWith(
+        expect.objectContaining({ team_id: TEAM_ID, created_by: member.id })
+      );
+    });
+
+    it('404 TEAM_CHANNEL_NOT_FOUND when the team has no channel and cannot get one (disbanded)', async () => {
+      vi.mocked(chatRepository.findChannelByTeamId).mockResolvedValue(null);
+      vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue({
+        id: TEAM_ID,
+        name: 'Alpha Squad',
+        owner_participant_id: member.id,
+        recruitment_status: 'Disbanded',
+        disbanded_at: '2026-11-01T00:00:00.000Z',
+      } as never);
+      const provision = vi.spyOn(chatRepository, 'provisionOrLinkTeamChannel');
+
+      const res = await request(app).get(BASE).set(auth);
+
       expect(res.status).toBe(404);
       expect(res.body.code).toBe('TEAM_CHANNEL_NOT_FOUND');
+      expect(provision).not.toHaveBeenCalled();
+    });
+
+    it('a non-member never causes a channel to be created', async () => {
+      vi.mocked(teamsRepository.findConfirmedTeamIdsForParticipant).mockResolvedValue([OTHER_TEAM_ID]);
+      vi.mocked(chatRepository.findChannelByTeamId).mockResolvedValue(null);
+      const provision = vi.spyOn(chatRepository, 'provisionOrLinkTeamChannel');
+
+      const res = await request(app).get(BASE).set(auth);
+
+      expect(res.status).toBe(403);
+      expect(provision).not.toHaveBeenCalled();
     });
 
     it('fails closed if the stored channel is not this team\'s team channel', async () => {

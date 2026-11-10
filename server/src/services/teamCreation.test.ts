@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createTeam } from './teamCreation.js';
 import { TeamServiceError, type TeamErrorCode } from './teamErrors.js';
-import type { ITeamsRepository, CreateTeamWithOwnerInput } from '../db/teams.repository.js';
+import { teamsRepository, type ITeamsRepository, type CreateTeamWithOwnerInput } from '../db/teams.repository.js';
+import { chatRepository } from '../db/chat.repository.js';
 import type { Team, TeamMembership } from '../db/types.js';
 
 describe('teamCreation service unit tests (US-012 / #119)', () => {
@@ -131,5 +132,92 @@ describe('teamCreation service unit tests (US-012 / #119)', () => {
 
     await expect(createTeam(sampleInput, { repo: mockRepo })).rejects.toBe(unknownErr);
   });
-});
 
+  describe('private chat channel provisioning (#431)', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    const repoThatCreates = () =>
+      ({
+        createTeamWithOwner: vi.fn().mockResolvedValue({ team: sampleTeam, membership: sampleMembership }),
+      }) as unknown as ITeamsRepository;
+
+    it('creates the team chat channel right after the team exists', async () => {
+      const provisionTeamChannel = vi.fn().mockResolvedValue({ created: true });
+      const result = await createTeam(sampleInput, { repo: repoThatCreates(), provisionTeamChannel });
+      expect(provisionTeamChannel).toHaveBeenCalledTimes(1);
+      expect(provisionTeamChannel).toHaveBeenCalledWith(sampleTeam.id);
+      expect(result.team.id).toBe(sampleTeam.id);
+    });
+
+    it('still returns the new team when the channel could not be created (it is created on first open)', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const provisionTeamChannel = vi.fn().mockRejectedValue(new Error('chat database unavailable'));
+
+      const result = await createTeam(sampleInput, { repo: repoThatCreates(), provisionTeamChannel });
+
+      expect(result.team.id).toBe(sampleTeam.id);
+      expect(result.membership.role).toBe('Owner');
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(sampleTeam.id));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('chat database unavailable'));
+      warn.mockRestore();
+    });
+
+    it('does not create a channel when the team itself could not be created', async () => {
+      const provisionTeamChannel = vi.fn();
+      const failing = {
+        createTeamWithOwner: vi.fn().mockRejectedValue(new Error('ECONNRESET')),
+      } as unknown as ITeamsRepository;
+
+      await expect(createTeam(sampleInput, { repo: failing, provisionTeamChannel })).rejects.toThrow('ECONNRESET');
+      expect(provisionTeamChannel).not.toHaveBeenCalled();
+    });
+
+    it('creates the channel after the owner availability is cleared, and not before the team exists', async () => {
+      const order: string[] = [];
+      const repo = {
+        createTeamWithOwner: vi.fn().mockImplementation(async () => {
+          order.push('team');
+          return { team: sampleTeam, membership: sampleMembership };
+        }),
+      } as unknown as ITeamsRepository;
+      await createTeam(sampleInput, {
+        repo,
+        availabilityRepo: {
+          clearLookingForTeamStatus: vi.fn().mockImplementation(async () => {
+            order.push('availability');
+            return true;
+          }),
+        },
+        provisionTeamChannel: vi.fn().mockImplementation(async () => {
+          order.push('channel');
+        }),
+      });
+      expect(order).toEqual(['team', 'availability', 'channel']);
+    });
+
+    it('the production default (no dependencies passed, as the create-team endpoint does) creates the channel', async () => {
+      vi.spyOn(teamsRepository, 'createTeamWithOwner').mockResolvedValue({ team: sampleTeam, membership: sampleMembership });
+      vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(sampleTeam);
+      vi.spyOn(chatRepository, 'findChannelByTeamId').mockResolvedValue(null);
+      const provision = vi.spyOn(chatRepository, 'provisionOrLinkTeamChannel').mockResolvedValue({
+        channel: { id: 'c1', title: 'Team: Hackers United', description: 'd', created_by: sampleTeam.owner_participant_id, channel_type: 'team', team_id: sampleTeam.id, created_at: 'x', updated_at: 'x' },
+        created: true,
+      });
+
+      await createTeam(sampleInput);
+
+      expect(provision).toHaveBeenCalledTimes(1);
+      expect(provision).toHaveBeenCalledWith(
+        expect.objectContaining({ team_id: sampleTeam.id, created_by: sampleTeam.owner_participant_id })
+      );
+    });
+
+    it('callers that pass no provisioning dependency (older tests, scripts) skip the step', async () => {
+      await expect(createTeam(sampleInput, { repo: repoThatCreates() })).resolves.toMatchObject({
+        team: { id: sampleTeam.id },
+      });
+    });
+  });
+});
