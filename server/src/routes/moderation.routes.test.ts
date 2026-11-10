@@ -4,9 +4,11 @@ import type { DecodedIdToken } from 'firebase-admin/auth';
 import { app } from '../app.js';
 import { participantsRepository } from '../db/participants.repository.js';
 import { moderationRepository } from '../db/moderation.repository.js';
+import { moderationTargetRepository } from '../db/moderationTarget.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import { profileRepository } from '../db/profile.repository.js';
 import { MFA_CLAIM } from '../utils/mfaClaim.js';
+import { MODERATION_REASON_MAX } from '../validators/moderation.validator.js';
 import type { ModerationCase, Participant, Team } from '../db/types.js';
 
 const mockVerifyIdToken = vi.fn();
@@ -396,6 +398,229 @@ describe('ADMIN moderation queue + target detail (US-026 / #239)', () => {
       expect(res.status).toBe(403);
       expect(res.body.code).toBe('FORBIDDEN_ROLE');
       expect(createSpy).not.toHaveBeenCalled();
+    });
+
+    describe('US-033 ADMIN chat-case creation (#393)', () => {
+      const channelId = '44444444-4444-4444-8444-444444444444';
+      const messageId = '55555555-5555-4555-8555-555555555555';
+
+      function chatCase(
+        targetType: 'chat_channel' | 'chat_message',
+        targetId: string,
+        reason: string
+      ): ModerationCase {
+        return {
+          id: '66666666-6666-4666-8666-666666666666',
+          target_type: targetType,
+          target_id: targetId,
+          reason,
+          status: 'Open',
+          created_by: adminParticipant.id,
+          report_count: 0,
+          flagged_url: null,
+          created_at: '2026-11-10T01:00:00.000Z',
+          updated_at: '2026-11-10T01:00:00.000Z',
+        };
+      }
+
+      it.each([
+        ['chat_channel', channelId, 'chatChannelExists'],
+        ['chat_message', messageId, 'chatMessageExists'],
+      ] as const)(
+        'allows an authenticated ADMIN to create a %s case through the existing US-026 endpoint',
+        async (targetType, targetId, lookup) => {
+          const reason = '  Repeated abusive chat content  ';
+          vi.spyOn(moderationTargetRepository, lookup).mockResolvedValue(true);
+          const createSpy = vi
+            .spyOn(moderationRepository, 'createCase')
+            .mockResolvedValue(chatCase(targetType, targetId, reason.trim()));
+
+          const res = await request(app)
+            .post('/api/admin/moderation/cases')
+            .set('Authorization', authHeader)
+            .send({ targetType, targetId, reason });
+
+          expect(res.status).toBe(201);
+          expect(res.headers['cache-control']).toMatch(/no-store/i);
+          expect(res.body.case).toMatchObject({
+            targetType,
+            targetId,
+            reason: reason.trim(),
+            status: 'Open',
+            reportCount: 0,
+            flaggedUrl: null,
+            createdBy: adminParticipant.id,
+          });
+          expect(createSpy).toHaveBeenCalledWith({
+            target_type: targetType,
+            target_id: targetId,
+            reason: reason.trim(),
+            created_by: adminParticipant.id,
+            flagged_url: null,
+          });
+          expect(JSON.stringify(res.body)).not.toMatch(
+            /messageBody|channelMembership|email|firebase|credential|token|otp/i
+          );
+        }
+      );
+
+      it('returns 401 before target lookup when the visitor is unauthenticated', async () => {
+        const targetLookup = vi.spyOn(moderationTargetRepository, 'chatChannelExists');
+        const createSpy = vi.spyOn(moderationRepository, 'createCase');
+
+        const res = await request(app).post('/api/admin/moderation/cases').send({
+          targetType: 'chat_channel',
+          targetId: channelId,
+          reason: 'Should not run',
+        });
+
+        expect(res.status).toBe(401);
+        expect(res.body.code).toBe('UNAUTHORIZED');
+        expect(targetLookup).not.toHaveBeenCalled();
+        expect(createSpy).not.toHaveBeenCalled();
+      });
+
+      it('returns 403 before target lookup for an authenticated PART caller', async () => {
+        mockVerifyIdToken.mockResolvedValue(partToken);
+        vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(partParticipant);
+        const targetLookup = vi.spyOn(moderationTargetRepository, 'chatMessageExists');
+        const createSpy = vi.spyOn(moderationRepository, 'createCase');
+
+        const res = await request(app)
+          .post('/api/admin/moderation/cases')
+          .set('Authorization', authHeader)
+          .send({
+            targetType: 'chat_message',
+            targetId: messageId,
+            reason: 'Should not run',
+          });
+
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe('FORBIDDEN_ROLE');
+        expect(targetLookup).not.toHaveBeenCalled();
+        expect(createSpy).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['missing', undefined],
+        ['empty', ''],
+        ['whitespace-only', '   '],
+        ['over-limit', 'x'.repeat(MODERATION_REASON_MAX + 1)],
+      ])('rejects a %s reason before target lookup', async (_label, reason) => {
+        const targetLookup = vi.spyOn(moderationTargetRepository, 'chatMessageExists');
+        const createSpy = vi.spyOn(moderationRepository, 'createCase');
+        const body: Record<string, unknown> = {
+          targetType: 'chat_message',
+          targetId: messageId,
+        };
+        if (reason !== undefined) body.reason = reason;
+
+        const res = await request(app)
+          .post('/api/admin/moderation/cases')
+          .set('Authorization', authHeader)
+          .send(body);
+
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('VALIDATION_ERROR');
+        expect(res.body.errors.reason).toBeTruthy();
+        expect(res.body.submitted).toEqual(body);
+        expect(targetLookup).not.toHaveBeenCalled();
+        expect(createSpy).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['malformed target ID', { targetType: 'chat_channel', targetId: 'not-a-uuid' }, 'targetId'],
+        ['unsupported target type', { targetType: 'direct_message', targetId: messageId }, 'targetType'],
+      ] as const)('rejects %s without resolving chat data', async (_label, target, errorField) => {
+        const channelLookup = vi.spyOn(moderationTargetRepository, 'chatChannelExists');
+        const messageLookup = vi.spyOn(moderationTargetRepository, 'chatMessageExists');
+        const createSpy = vi.spyOn(moderationRepository, 'createCase');
+
+        const res = await request(app)
+          .post('/api/admin/moderation/cases')
+          .set('Authorization', authHeader)
+          .send({ ...target, reason: 'Invalid target request' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('VALIDATION_ERROR');
+        expect(res.body.errors[errorField]).toBeTruthy();
+        expect(channelLookup).not.toHaveBeenCalled();
+        expect(messageLookup).not.toHaveBeenCalled();
+        expect(createSpy).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['chat_channel', channelId, 'chatChannelExists'],
+        ['chat_message', messageId, 'chatMessageExists'],
+      ] as const)('returns the same safe 404 for a stale %s target', async (targetType, targetId, lookup) => {
+        vi.spyOn(moderationTargetRepository, lookup).mockResolvedValue(false);
+        const createSpy = vi.spyOn(moderationRepository, 'createCase');
+
+        const res = await request(app)
+          .post('/api/admin/moderation/cases')
+          .set('Authorization', authHeader)
+          .send({ targetType, targetId, reason: 'Target is now stale' });
+
+        expect(res.status).toBe(404);
+        expect(res.body).toEqual({
+          error: 'The moderation target was not found.',
+          code: 'TARGET_NOT_FOUND',
+          details: { targetType, targetId },
+        });
+        expect(JSON.stringify(res.body)).not.toMatch(
+          /SELECT|chat_channels|chat_messages|body|author|member|email|token|otp|stack/i
+        );
+        expect(createSpy).not.toHaveBeenCalled();
+      });
+
+      it('rejects a channel identifier labelled as chat_message without checking the channel table', async () => {
+        const channelLookup = vi
+          .spyOn(moderationTargetRepository, 'chatChannelExists')
+          .mockResolvedValue(true);
+        const messageLookup = vi
+          .spyOn(moderationTargetRepository, 'chatMessageExists')
+          .mockResolvedValue(false);
+        const createSpy = vi.spyOn(moderationRepository, 'createCase');
+
+        const res = await request(app)
+          .post('/api/admin/moderation/cases')
+          .set('Authorization', authHeader)
+          .send({
+            targetType: 'chat_message',
+            targetId: channelId,
+            reason: 'Mismatched entity type',
+          });
+
+        expect(res.status).toBe(404);
+        expect(res.body.code).toBe('TARGET_NOT_FOUND');
+        expect(messageLookup).toHaveBeenCalledWith(channelId);
+        expect(channelLookup).not.toHaveBeenCalled();
+        expect(createSpy).not.toHaveBeenCalled();
+      });
+
+      it('returns a generic 500 if target validation fails unexpectedly', async () => {
+        const privateFailure =
+          'SELECT body FROM chat_messages: private-message-content admin@example.test';
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        vi.spyOn(moderationTargetRepository, 'chatMessageExists').mockRejectedValue(
+          new Error(privateFailure)
+        );
+
+        const res = await request(app)
+          .post('/api/admin/moderation/cases')
+          .set('Authorization', authHeader)
+          .send({
+            targetType: 'chat_message',
+            targetId: messageId,
+            reason: 'Validate safely',
+          });
+
+        expect(res.status).toBe(500);
+        expect(res.body.error).toBe('Internal Server Error');
+        expect(JSON.stringify(res.body)).not.toMatch(
+          /private-message-content|admin@example|SELECT body|stack/i
+        );
+      });
     });
   });
 });

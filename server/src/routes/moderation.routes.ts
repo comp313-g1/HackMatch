@@ -18,7 +18,7 @@ import {
 export const moderationRouter = Router();
 
 /**
- * US-026 / #240 — every moderation route is ADMIN-only via router-level RBAC.
+ * US-026 / #240 and US-033 / #393 — every moderation route is ADMIN-only via router-level RBAC.
  * Decision actions (dismiss/redact/warn/hide/URL-disable) inherit the same guard.
  */
 moderationRouter.use(...requireModerationAdmin);
