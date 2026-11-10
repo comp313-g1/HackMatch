@@ -34,7 +34,11 @@
  */
 
 import type { ParticipantPrimaryRole, Team, TeamGoal, TeamVacancy } from '../db/types.js';
-import { teamsRepository, type ITeamsRepository } from '../db/teams.repository.js';
+import {
+  teamsRepository,
+  type ITeamsRepository,
+  type OpenTeamRecord,
+} from '../db/teams.repository.js';
 import { participantsRepository } from '../db/participants.repository.js';
 import {
   profileRepository,
@@ -52,7 +56,9 @@ import {
   type SlotScoringInput,
 } from './compatibilityScoring.js';
 import { SELF_DECLARED_RECOMMENDATION_NOTICE } from './recommendations.js';
+import { filterOpenTeams } from './openTeams.js';
 import type { PublicScoreExplanation } from './scoreExplanation.js';
+import { TeamServiceError } from './teamErrors.js';
 
 /** Maximum number of ranked teams returned to one participant (AC-1). */
 export const RECOMMENDED_TEAMS_CAP = 10;
@@ -193,3 +199,129 @@ export function toCandidateScoringInput(
 
 /** Self-declared-data disclaimer reused verbatim from US-015. */
 export const RECOMMENDED_TEAMS_NOTICE = SELF_DECLARED_RECOMMENDATION_NOTICE;
+
+interface RecommendationPair {
+  record: OpenTeamRecord;
+  vacancy: OpenTeamRecord['openVacancies'][number];
+}
+
+/**
+ * Loads the signed-in participant's scoring candidate side.
+ *
+ * Missing profile / skills / availability rows are not errors: FR-043 scores a missing
+ * input as 0 instead of inventing a value. A missing participant row is an error because
+ * the auth guard already resolved one — reuses the existing 403 code rather than adding one.
+ */
+async function loadParticipantScoringProfile(
+  actorId: string,
+  deps: RecommendedTeamsServiceDeps
+): Promise<ParticipantScoringProfile> {
+  const participant = await deps.participantsRepo.findById(actorId);
+  if (!participant) {
+    throw new TeamServiceError('PARTICIPANT_NOT_ELIGIBLE', {
+      reason: 'PARTICIPANT_NOT_FOUND',
+    });
+  }
+
+  const [profile, skills, availability] = await Promise.all([
+    deps.profileRepo.findProfileByParticipantId(actorId),
+    deps.profileRepo.findSkillsByParticipantId(actorId),
+    deps.availabilityRepo.findByParticipantId(actorId),
+  ]);
+
+  return {
+    primaryRole: availability?.desiredRole ?? profile?.primary_role ?? null,
+    skills: skills
+      .map((skill) => skill.skill_name.trim())
+      .filter((name) => name.length > 0),
+    commitmentHours: availability?.commitmentHours ?? null,
+    goal: availability?.goal ?? null,
+  };
+}
+
+/**
+ * Expands eligible open teams into (team, vacancy) pairs.
+ *
+ * Exclusions, in addition to everything `filterOpenTeams` already applies (moderation
+ * hidden, non-mutable lifecycle, no open vacancy):
+ *   - teams the actor already holds a Confirmed membership in
+ *   - teams the actor owns
+ */
+function selectEligiblePairs(
+  records: OpenTeamRecord[],
+  excludedTeamIds: ReadonlySet<string>,
+  actorId: string,
+  now: Date
+): RecommendationPair[] {
+  const openTeams = filterOpenTeams(records, RECOMMENDED_TEAMS_OPEN_QUERY, now);
+  const pairs: RecommendationPair[] = [];
+
+  for (const record of openTeams) {
+    if (record.team.owner_participant_id === actorId) continue;
+    if (excludedTeamIds.has(record.team.id)) continue;
+    for (const vacancy of record.openVacancies) {
+      pairs.push({ record, vacancy });
+    }
+  }
+
+  return pairs;
+}
+
+function toUnrankedTeam(pair: RecommendationPair): RecommendedTeam {
+  return {
+    teamId: pair.record.team.id,
+    teamName: pair.record.team.name,
+    vacancyId: pair.vacancy.id,
+    role: pair.vacancy.role,
+    teamGoal: pair.record.team.goal,
+    commitmentHours: Number(pair.record.team.commitment_hours),
+  };
+}
+
+/**
+ * Recommends open team vacancies to the signed-in participant (AC-1 / AC-6).
+ *
+ * Platform-wide, zero-argument by design: the actor is the token subject, never a query
+ * parameter, so a participant can only ever see their own ranking.
+ */
+export async function getRecommendedTeamsForParticipant(
+  actorId: string,
+  partialDeps?: Partial<RecommendedTeamsServiceDeps>
+): Promise<RecommendedTeamsResponse> {
+  const deps = resolveDeps(partialDeps);
+  const now = deps.now ? deps.now() : new Date();
+
+  // Fails fast for an authenticated-but-missing participant; the declared inputs are
+  // consumed by the scoring projection.
+  await loadParticipantScoringProfile(actorId, deps);
+
+  const [records, confirmedTeamIds] = await Promise.all([
+    deps.teamsRepo.findOpenTeamRecords({ withMemberIdentities: false }),
+    deps.teamsRepo.findConfirmedTeamIdsForParticipant(actorId),
+  ]);
+
+  const pairs = selectEligiblePairs(
+    records,
+    new Set(confirmedTeamIds),
+    actorId,
+    now
+  ).slice(0, RECOMMENDED_TEAMS_CAP);
+
+  if (pairs.length === 0) {
+    return {
+      status: 'ok',
+      teams: [],
+      empty: true,
+      message: EMPTY_RECOMMENDED_TEAMS_MESSAGE,
+      notice: RECOMMENDED_TEAMS_NOTICE,
+    };
+  }
+
+  return {
+    status: 'ok',
+    teams: pairs.map(toUnrankedTeam),
+    empty: false,
+    message: null,
+    notice: RECOMMENDED_TEAMS_NOTICE,
+  };
+}
