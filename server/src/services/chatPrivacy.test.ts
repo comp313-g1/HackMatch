@@ -95,4 +95,91 @@ describe('chatPrivacy (US-030 / #345 / FR-089)', () => {
     });
     expect(publicPayloadHasPrivateChatKey(payload)).toBe(false);
   });
+
+  describe('team-chat privacy scrubbing (US-031 / #384 / FR-089 & FR-090)', () => {
+    it.each([
+      'shared_contact_handle',
+      'sharedContactHandle',
+      'private_note',
+      'workspace_notes',
+      'workspaceNote',
+      'team_notes',
+      'teamNotes',
+      'mfa_secret',
+      'recovery_codes',
+      'api_key',
+    ])('identifies %s as a private chat key that must never leak', (key) => {
+      expect(isPrivateChatKey(key)).toBe(true);
+    });
+
+    it.each(['teamId', 'channelType', 'channelId', 'authorId', 'authorHandle', 'body', 'createdAt'])(
+      'permits safe team-chat projection field %s',
+      (key) => {
+        expect(isPrivateChatKey(key)).toBe(false);
+      }
+    );
+
+    it('scrubs poisoned team channel and message payloads while keeping team linkage and author handles', () => {
+      const poisonedPayload = {
+        status: 'ok',
+        channel: {
+          id: '11111111-1111-4111-8111-111111111111',
+          title: 'Team: Alpha Squad',
+          description: 'Private team coordination channel',
+          createdBy: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          channelType: 'team',
+          teamId: '22222222-2222-4222-8222-222222222222',
+          createdAt: '2026-11-09T20:00:00.000Z',
+          updatedAt: '2026-11-09T20:00:00.000Z',
+          email: 'owner@example.com',
+          shared_contact_handle: '@secret_discord',
+          workspace_notes: 'Internal note',
+        },
+        messages: [
+          {
+            id: '33333333-3333-4333-8333-333333333333',
+            channelId: '11111111-1111-4111-8111-111111111111',
+            authorId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            authorHandle: 'alpha_lead',
+            body: 'Sprint tasks assigned',
+            createdAt: '2026-11-09T20:05:00.000Z',
+            email: 'owner@example.com',
+            firebase_uid: 'fb-owner',
+            password: 'HashPassword123',
+            otp_hash: '998877',
+            mfa_secret: 'totp-secret',
+          },
+        ],
+      };
+
+      expect(publicPayloadHasPrivateChatKey(poisonedPayload)).toBe(true);
+
+      const safePayload = buildChatSuccessPayload(poisonedPayload);
+
+      expect(publicPayloadHasPrivateChatKey(safePayload)).toBe(false);
+      expect(safePayload.channel).toEqual({
+        id: '11111111-1111-4111-8111-111111111111',
+        title: 'Team: Alpha Squad',
+        description: 'Private team coordination channel',
+        createdBy: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        channelType: 'team',
+        teamId: '22222222-2222-4222-8222-222222222222',
+        createdAt: '2026-11-09T20:00:00.000Z',
+        updatedAt: '2026-11-09T20:00:00.000Z',
+      });
+      expect(safePayload.messages).toEqual([
+        {
+          id: '33333333-3333-4333-8333-333333333333',
+          channelId: '11111111-1111-4111-8111-111111111111',
+          authorId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          authorHandle: 'alpha_lead',
+          body: 'Sprint tasks assigned',
+          createdAt: '2026-11-09T20:05:00.000Z',
+        },
+      ]);
+      expect(JSON.stringify(safePayload)).not.toMatch(
+        /owner@example\.com|@secret_discord|Internal note|fb-owner|HashPassword123|998877|totp-secret/
+      );
+    });
+  });
 });

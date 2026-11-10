@@ -7,6 +7,7 @@ import { chatRepository } from '../db/chat.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import { profileRepository } from '../db/profile.repository.js';
 import { MFA_CLAIM } from '../utils/mfaClaim.js';
+import { publicPayloadHasPrivateChatKey } from '../services/chatPrivacy.js';
 import type { ChatChannel, ChatMessage, Participant } from '../db/types.js';
 
 const mockVerifyIdToken = vi.fn();
@@ -245,5 +246,148 @@ describe('Member-gated team channel endpoints (US-031 / #381 / FR-090)', () => {
     const res = await request(app).get(`/api/chat/channels/${CHANNEL_ID}/messages`).set(auth);
     expect(res.status).toBe(404);
     expect(res.body.code).toBe('CHANNEL_NOT_FOUND');
+  });
+
+  describe('stale membership, account state, validation redaction, and message-field privacy (US-031 / #384)', () => {
+    it.each(['Removed', 'Released'] as const)(
+      'denies a former member whose membership transitioned to %s on read and write while preserving history for active teammates',
+      async (_staleStatus) => {
+        const formerMember: Participant = {
+          ...member,
+          id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          firebase_uid: 'fb-former',
+          email: 'former@example.com',
+        };
+        const historicalMsg: ChatMessage = {
+          id: '55555555-5555-4555-8555-555555555555',
+          channel_id: CHANNEL_ID,
+          author_id: formerMember.id,
+          body: 'Earlier contribution before leaving',
+          created_at: '2026-10-21T00:30:00.000Z',
+        };
+
+        // 1. Active confirmed member can still read the former member's historical message
+        vi.mocked(chatRepository.listMessagesByChannel).mockResolvedValue([historicalMsg, message]);
+        const activeRead = await request(app).get(`${BASE}/messages`).set(auth);
+        expect(activeRead.status).toBe(200);
+        expect(activeRead.body.messages.map((m: { body: string }) => m.body)).toEqual([
+          'Earlier contribution before leaving',
+          'secret plan',
+        ]);
+
+        // 2. Former member (no longer in Confirmed list) is denied on GET /chat, GET /messages, and POST /messages
+        mockVerifyIdToken.mockResolvedValue({ ...token, uid: formerMember.firebase_uid });
+        vi.mocked(participantsRepository.findByFirebaseUid).mockResolvedValue(formerMember);
+        vi.mocked(participantsRepository.findById).mockResolvedValue(formerMember);
+        vi.mocked(teamsRepository.findConfirmedTeamIdsForParticipant).mockResolvedValue([]);
+        vi.mocked(chatRepository.findChannelByTeamId).mockClear();
+        vi.mocked(chatRepository.listMessagesByChannel).mockClear();
+        vi.mocked(chatRepository.createMessage).mockClear();
+
+        for (const res of [
+          await request(app).get(BASE).set(auth),
+          await request(app).get(`${BASE}/messages`).set(auth),
+          await request(app).post(`${BASE}/messages`).set(auth).send({ body: 'try post after removal' }),
+        ]) {
+          expect(res.status).toBe(403);
+          expect(res.body.code).toBe('FORBIDDEN_NOT_TEAM_MEMBER');
+          expect(JSON.stringify(res.body)).not.toContain('Earlier contribution');
+          expect(JSON.stringify(res.body)).not.toContain('secret plan');
+        }
+        expect(chatRepository.findChannelByTeamId).not.toHaveBeenCalled();
+        expect(chatRepository.listMessagesByChannel).not.toHaveBeenCalled();
+        expect(chatRepository.createMessage).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each([
+      ['unverified PART', { is_verified: false }, 'EMAIL_NOT_VERIFIED'],
+      ['suspended PART', { is_suspended: true }, 'ACCOUNT_SUSPENDED'],
+      ['deactivated PART', { is_deactivated: true, is_suspended: true }, 'ACCOUNT_SUSPENDED'],
+    ] as const)('denies %s with 403 (%s) before checking team membership or messages', async (_label, patch, expectedCode) => {
+      const blocked: Participant = { ...member, ...patch };
+      vi.mocked(participantsRepository.findByFirebaseUid).mockResolvedValue(blocked);
+      vi.mocked(participantsRepository.findById).mockResolvedValue(blocked);
+
+      const res = await request(app).get(`${BASE}/messages`).set(auth);
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe(expectedCode);
+      expect(teamsRepository.findConfirmedTeamIdsForParticipant).not.toHaveBeenCalled();
+      expect(chatRepository.listMessagesByChannel).not.toHaveBeenCalled();
+    });
+
+    it('denies missing MFA claim with 403 MFA_REQUIRED before checking membership', async () => {
+      mockVerifyIdToken.mockResolvedValue({
+        uid: 'fb-member',
+        email: 'member@example.com',
+        role: 'PART',
+        auth_time: AUTH_TIME,
+      } as unknown as DecodedIdToken);
+
+      const res = await request(app).get(BASE).set(auth);
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('MFA_REQUIRED');
+      expect(teamsRepository.findConfirmedTeamIdsForParticipant).not.toHaveBeenCalled();
+    });
+
+    it('redacts sensitive fields in validation error submitted echo and preserves message draft (FR-089 / NR-017)', async () => {
+      const res = await request(app).post(`${BASE}/messages`).set(auth).send({
+        body: '   ',
+        email: 'member@example.com',
+        password: 'SecretPassword!',
+        otp: '654321',
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('VALIDATION_ERROR');
+      expect(res.body.submitted).toMatchObject({
+        body: '   ',
+        email: '[redacted]',
+        password: '[redacted]',
+        otp: '[redacted]',
+      });
+      expect(JSON.stringify(res.body)).not.toMatch(/member@example\.com|SecretPassword!|654321/);
+    });
+
+    it('scrubs poisoned repository fields from channel and message responses (FR-089 / FR-090)', async () => {
+      vi.mocked(chatRepository.findChannelByTeamId).mockResolvedValue({
+        ...channel,
+        email: 'owner@example.com',
+        password: 'leaked-password',
+        otp_hash: 'leaked-otp',
+        firebase_uid: 'fb-owner',
+        shared_contact_handle: '@private_discord',
+        workspace_notes: 'Confidential workspace notes',
+      } as never);
+      vi.mocked(chatRepository.listMessagesByChannel).mockResolvedValue([
+        {
+          ...message,
+          email: 'member@example.com',
+          password: 'leaked-password',
+          otp_hash: 'leaked-otp',
+          firebase_uid: 'fb-member',
+          shared_contact_handle: '@private_discord',
+          mfa_secret: 'totp-secret',
+        } as never,
+      ]);
+
+      const chRes = await request(app).get(BASE).set(auth);
+      expect(chRes.status).toBe(200);
+      expect(publicPayloadHasPrivateChatKey(chRes.body)).toBe(false);
+      expect(chRes.body.privacy).toMatchObject({
+        credentialsIncluded: false,
+        otpsIncluded: false,
+        emailsIncluded: false,
+      });
+
+      const msgRes = await request(app).get(`${BASE}/messages`).set(auth);
+      expect(msgRes.status).toBe(200);
+      expect(publicPayloadHasPrivateChatKey(msgRes.body)).toBe(false);
+      expect(JSON.stringify(msgRes.body)).not.toMatch(
+        /owner@example\.com|member@example\.com|leaked-password|leaked-otp|fb-owner|fb-member|@private_discord|Confidential workspace notes|totp-secret/
+      );
+    });
   });
 });

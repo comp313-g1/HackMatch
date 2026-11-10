@@ -7,8 +7,11 @@ import {
   createChannel,
   listChannelMessages,
   listChannels,
+  listTeamChannelMessages,
+  openTeamChannel,
   provisionOrLinkTeamChannel,
   sendChannelMessage,
+  sendTeamChannelMessage,
   toChannelView,
 } from './chat.js';
 
@@ -310,6 +313,131 @@ describe('chat service (US-030 / #344)', () => {
       );
       expect(result.created).toBe(true);
       expect(result.channel.createdBy).toBe(ACTOR_ID);
+    });
+  });
+
+  describe('openTeamChannel, listTeamChannelMessages, and sendTeamChannelMessage (US-031 / #381 / #384)', () => {
+    const TEAM_ID = '123e4567-e89b-42d3-a456-426614174000';
+    const OTHER_TEAM_ID = '99999999-9999-4999-8999-999999999999';
+    const CHANNEL_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const MEMBER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+    const teamChannelRow = (overrides: Record<string, unknown> = {}) => ({
+      id: CHANNEL_ID,
+      title: 'Team: Alpha Squad',
+      description: 'Private team coordination channel',
+      created_by: MEMBER_ID,
+      channel_type: 'team' as const,
+      team_id: TEAM_ID,
+      created_at: '2026-11-09T20:00:00.000Z',
+      updated_at: '2026-11-09T20:00:00.000Z',
+      ...overrides,
+    });
+
+    it('opens a valid team channel and scrubs any leaked sensitive fields', async () => {
+      vi.spyOn(chatRepository, 'findChannelByTeamId').mockResolvedValue(
+        teamChannelRow({
+          email: 'leak@example.com',
+          password: 'secret',
+          otp_hash: 'otp123',
+        }) as never
+      );
+
+      const view = await openTeamChannel(TEAM_ID);
+
+      expect(view).toMatchObject({
+        id: CHANNEL_ID,
+        title: 'Team: Alpha Squad',
+        channelType: 'team',
+        teamId: TEAM_ID,
+      });
+      expect(view).not.toHaveProperty('email');
+      expect(view).not.toHaveProperty('password');
+      expect(view).not.toHaveProperty('otp_hash');
+    });
+
+    it.each([
+      ['blank teamId', '   ', null],
+      ['missing channel', TEAM_ID, null],
+      ['mismatched team_id', TEAM_ID, teamChannelRow({ team_id: OTHER_TEAM_ID })],
+      ['public channel_type', TEAM_ID, teamChannelRow({ channel_type: 'public' })],
+    ])('fails closed with 404 TEAM_CHANNEL_NOT_FOUND for %s', async (_label, teamId, row) => {
+      vi.spyOn(chatRepository, 'findChannelByTeamId').mockResolvedValue(row as never);
+
+      await expect(openTeamChannel(teamId)).rejects.toMatchObject({
+        status: 404,
+        code: 'TEAM_CHANNEL_NOT_FOUND',
+      });
+      await expect(listTeamChannelMessages(teamId)).rejects.toMatchObject({
+        status: 404,
+        code: 'TEAM_CHANNEL_NOT_FOUND',
+      });
+      await expect(
+        sendTeamChannelMessage({ teamId, authorId: MEMBER_ID, body: 'hi' })
+      ).rejects.toMatchObject({
+        status: 404,
+        code: 'TEAM_CHANNEL_NOT_FOUND',
+      });
+    });
+
+    it('lists team channel messages with author handles only and scrubs private fields', async () => {
+      vi.spyOn(chatRepository, 'findChannelByTeamId').mockResolvedValue(teamChannelRow());
+      vi.spyOn(chatRepository, 'listMessagesByChannel').mockResolvedValue([
+        {
+          id: 'm1',
+          channel_id: CHANNEL_ID,
+          author_id: MEMBER_ID,
+          body: 'Private standup update',
+          created_at: '2026-11-09T20:05:00.000Z',
+          email: 'leak@example.com',
+          firebase_uid: 'fb-secret',
+        } as never,
+      ]);
+      vi.spyOn(profileRepository, 'findProfileByParticipantId').mockResolvedValue({
+        participant_id: MEMBER_ID,
+        handle: 'alpha_lead',
+      } as never);
+
+      const messages = await listTeamChannelMessages(TEAM_ID);
+
+      expect(messages).toEqual([
+        {
+          id: 'm1',
+          channelId: CHANNEL_ID,
+          authorId: MEMBER_ID,
+          authorHandle: 'alpha_lead',
+          body: 'Private standup update',
+          createdAt: '2026-11-09T20:05:00.000Z',
+        },
+      ]);
+      expect(JSON.stringify(messages)).not.toMatch(/leak@example\.com|fb-secret/);
+    });
+
+    it('sends a team channel message and resolves null handle when profile is missing', async () => {
+      vi.spyOn(chatRepository, 'findChannelByTeamId').mockResolvedValue(teamChannelRow());
+      vi.spyOn(chatRepository, 'createMessage').mockResolvedValue({
+        id: 'm2',
+        channel_id: CHANNEL_ID,
+        author_id: MEMBER_ID,
+        body: 'Ready for demo',
+        created_at: '2026-11-09T20:10:00.000Z',
+      });
+      vi.spyOn(profileRepository, 'findProfileByParticipantId').mockResolvedValue(null);
+
+      const sent = await sendTeamChannelMessage({
+        teamId: TEAM_ID,
+        authorId: MEMBER_ID,
+        body: 'Ready for demo',
+      });
+
+      expect(sent).toEqual({
+        id: 'm2',
+        channelId: CHANNEL_ID,
+        authorId: MEMBER_ID,
+        authorHandle: null,
+        body: 'Ready for demo',
+        createdAt: '2026-11-09T20:10:00.000Z',
+      });
     });
   });
 });
