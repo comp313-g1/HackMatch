@@ -5,8 +5,19 @@ export interface DirectMessageThread {
   id: string;
   participant_low_id: string;
   participant_high_id: string;
+  /** Added by 0055 for deterministic recent-activity inbox ordering. */
+  last_message_at: string;
   created_at: string;
   updated_at: string;
+}
+
+/** US-032 / #385 persisted text message belonging to one direct-message thread. */
+export interface DirectMessage {
+  id: string;
+  thread_id: string;
+  author_id: string;
+  body: string;
+  created_at: string;
 }
 
 /**

@@ -6,7 +6,14 @@ vi.mock('./client.js', () => ({ getSupabaseClient: vi.fn() }));
 
 const LOW = '11111111-1111-4111-8111-111111111111';
 const HIGH = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-const THREAD = { id: 't1', participant_low_id: LOW, participant_high_id: HIGH, created_at: 'c', updated_at: 'u' };
+const THREAD = {
+  id: 't1',
+  participant_low_id: LOW,
+  participant_high_id: HIGH,
+  last_message_at: 'm',
+  created_at: 'c',
+  updated_at: 'u',
+};
 
 /** Builds a fake client whose select returns `lookups` in order and whose insert returns `insertResult`. */
 function fakeClient(lookups: Array<unknown>, insertResult: { data: unknown; error: unknown }) {
