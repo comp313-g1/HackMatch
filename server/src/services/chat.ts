@@ -1,4 +1,5 @@
 import { chatRepository } from '../db/chat.repository.js';
+import { isPublicChatChannel } from '../db/chatModel.js';
 import { profileRepository } from '../db/profile.repository.js';
 import type { ChatChannel, ChatMessage } from '../db/types.js';
 import { scrubPrivateChatFields } from './chatPrivacy.js';
@@ -102,7 +103,9 @@ export async function listChannelMessages(
   channelId: string
 ): Promise<ChatMessageView[]> {
   const channel = await chatRepository.findChannelById(channelId);
-  if (!channel) {
+  // US-031 / #378: a private team channel is indistinguishable from a missing one here, so the
+  // public endpoints can neither read its messages nor reveal that it exists.
+  if (!channel || !isPublicChatChannel(channel)) {
     throw new ChatServiceError(404, 'CHANNEL_NOT_FOUND', 'Chat channel not found.');
   }
 
@@ -119,7 +122,7 @@ export async function sendChannelMessage(input: {
   body: string;
 }): Promise<ChatMessageView> {
   const channel = await chatRepository.findChannelById(input.channelId);
-  if (!channel) {
+  if (!channel || !isPublicChatChannel(channel)) {
     throw new ChatServiceError(404, 'CHANNEL_NOT_FOUND', 'Chat channel not found.');
   }
 

@@ -17,6 +17,9 @@ export interface ListChatMessagesOptions {
 export interface IChatRepository {
   createChannel(data: CreateChatChannelDTO): Promise<ChatChannel>;
   findChannelById(id: string): Promise<ChatChannel | null>;
+  /** US-031 / #378: the private channel linked to a team, if any (served by uq_chat_channels_team_id). */
+  findChannelByTeamId(teamId: string): Promise<ChatChannel | null>;
+  /** Public (US-030) forums only: private team channels are never listed here. */
   listChannelsNewestFirst(options?: ListChatChannelsOptions): Promise<ChatChannel[]>;
   createMessage(data: CreateChatMessageDTO): Promise<ChatMessage>;
   findMessageById(id: string): Promise<ChatMessage | null>;
@@ -59,6 +62,18 @@ export const chatRepository: IChatRepository = {
     return data as ChatChannel | null;
   },
 
+  async findChannelByTeamId(teamId: string): Promise<ChatChannel | null> {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('chat_channels')
+      .select('*')
+      .eq('team_id', teamId)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data as ChatChannel | null;
+  },
+
   async listChannelsNewestFirst(
     options: ListChatChannelsOptions = {}
   ): Promise<ChatChannel[]> {
@@ -71,6 +86,7 @@ export const chatRepository: IChatRepository = {
     const { data, error } = await client
       .from('chat_channels')
       .select('*')
+      .eq('channel_type', 'public')
       .order('created_at', { ascending: false })
       .limit(limit);
 

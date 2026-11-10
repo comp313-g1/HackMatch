@@ -2253,3 +2253,69 @@ describe('0050_enforce_audit_records_least_privilege.sql (US-028 / #262)', () =>
     expect(files.filter((f) => f.startsWith('0050_'))).toHaveLength(1);
   });
 });
+
+describe('0051_add_team_channel_linkage_to_chat_channels.sql (US-031 / #378)', () => {
+  const sql = fs.readFileSync(
+    path.resolve(__dirname, '../../../supabase/migrations/0051_add_team_channel_linkage_to_chat_channels.sql'),
+    'utf-8'
+  );
+  const code = sql.replace(/--.*$/gm, '');
+
+  it('adds channel_type defaulting to public, so every existing channel stays a public forum', () => {
+    expect(code).toMatch(
+      /ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+channel_type\s+VARCHAR\(10\)\s+NOT\s+NULL\s+DEFAULT\s+'public'/i
+    );
+  });
+
+  it('adds a nullable team_id that references teams and RESTRICTs deletion (history is never cascaded away)', () => {
+    expect(code).toMatch(
+      /ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+team_id\s+UUID\s+NULL\s+REFERENCES\s+teams\(id\)\s+ON\s+DELETE\s+RESTRICT/i
+    );
+    expect(code).not.toMatch(/team_id[^;]*ON\s+DELETE\s+(CASCADE|SET\s+NULL)/i);
+  });
+
+  it('constrains the type and ties it to the team deterministically', () => {
+    expect(code).toMatch(/chk_chat_channels_channel_type[\s\S]*?CHECK\s*\(\s*channel_type\s+IN\s*\(\s*'public'\s*,\s*'team'\s*\)\s*\)/i);
+    expect(code).toMatch(
+      /chk_chat_channels_team_linkage[\s\S]*?\(channel_type\s*=\s*'team'\s+AND\s+team_id\s+IS\s+NOT\s+NULL\)\s+OR\s+\(channel_type\s*=\s*'public'\s+AND\s+team_id\s+IS\s+NULL\)/i
+    );
+    expect(code).toMatch(/IF\s+NOT\s+EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+pg_constraint/i);
+  });
+
+  it('makes the linkage immutable with a BEFORE UPDATE trigger on exactly those two columns', () => {
+    expect(code).toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+prevent_chat_channel_relinking/i);
+    expect(code).toMatch(/NEW\.channel_type\s+IS\s+DISTINCT\s+FROM\s+OLD\.channel_type/i);
+    expect(code).toMatch(/NEW\.team_id\s+IS\s+DISTINCT\s+FROM\s+OLD\.team_id/i);
+    expect(code).toMatch(/CHAT_CHANNEL_LINKAGE_IMMUTABLE/);
+    expect(code).toMatch(
+      /CREATE\s+TRIGGER\s+trigger_chat_channels_prevent_relinking\s+BEFORE\s+UPDATE\s+OF\s+channel_type,\s*team_id\s+ON\s+chat_channels/i
+    );
+  });
+
+  it('adds a unique per-team index (one channel per team, also the team lookup) and a public listing index', () => {
+    expect(code).toMatch(
+      /CREATE\s+UNIQUE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+uq_chat_channels_team_id\s+ON\s+chat_channels\(team_id\)\s+WHERE\s+team_id\s+IS\s+NOT\s+NULL/i
+    );
+    expect(code).toMatch(
+      /CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_chat_channels_public_created_at\s+ON\s+chat_channels\(created_at\s+DESC\)\s+WHERE\s+channel_type\s*=\s*'public'/i
+    );
+  });
+
+  it('is additive and leaves US-030 data, messages and access rules alone', () => {
+    const statementsOnly = code.replace(/'[^']*'/g, "''");
+    expect(statementsOnly).not.toMatch(/DROP\s+(TABLE|COLUMN|INDEX|CONSTRAINT)|TRUNCATE|DELETE\s+FROM|UPDATE\s+\w+\s+SET|INSERT\s+INTO/i);
+    expect(statementsOnly).not.toMatch(/chat_messages/i);
+    expect(statementsOnly).not.toMatch(/CREATE\s+POLICY|ROW\s+LEVEL\s+SECURITY|\bGRANT\b|\bREVOKE\b/i);
+  });
+
+  it('documents both new columns', () => {
+    expect(code).toMatch(/COMMENT\s+ON\s+COLUMN\s+chat_channels\.channel_type\s+IS/i);
+    expect(code).toMatch(/COMMENT\s+ON\s+COLUMN\s+chat_channels\.team_id\s+IS/i);
+  });
+
+  it('follows 0050 with a unique version number', () => {
+    const files = fs.readdirSync(path.resolve(__dirname, '../../../supabase/migrations'));
+    expect(files.filter((f) => f.startsWith('0051_'))).toHaveLength(1);
+    expect(files).toContain('0050_enforce_audit_records_least_privilege.sql');
+  });
+});
