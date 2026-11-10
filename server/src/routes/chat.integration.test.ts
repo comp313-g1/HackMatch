@@ -160,6 +160,8 @@ describe('US-030 / #347 chat integration (happy path, auth, validation, privacy)
         title: 'General',
         description: 'Open forum for verified participants',
         created_by: verifiedPart.id,
+        channel_type: 'public' as const,
+        team_id: null,
         created_at: '2026-10-21T12:00:00.000Z',
         updated_at: '2026-10-21T12:00:00.000Z',
       };
@@ -199,6 +201,8 @@ describe('US-030 / #347 chat integration (happy path, auth, validation, privacy)
         title: 'General',
         description: 'Forum',
         created_by: verifiedPart.id,
+        channel_type: 'public' as const,
+        team_id: null,
         created_at: '2026-10-21T12:00:00.000Z',
         updated_at: '2026-10-21T12:00:00.000Z',
       });
@@ -359,6 +363,8 @@ describe('US-030 / #347 chat integration (happy path, auth, validation, privacy)
         title: 'General',
         description: 'Forum',
         created_by: verifiedPart.id,
+        channel_type: 'public' as const,
+        team_id: null,
         created_at: '2026-10-21T12:00:00.000Z',
         updated_at: '2026-10-21T12:00:00.000Z',
       });

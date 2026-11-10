@@ -144,6 +144,8 @@ describe('Express Chat Endpoints (US-030 / #344 / #347 / FR-087–FR-089)', () =
         title: 'General',
         description: 'Open forum',
         created_by: verifiedParticipant.id,
+        channel_type: 'public',
+        team_id: null,
         created_at: '2026-10-21T12:00:00.000Z',
         updated_at: '2026-10-21T12:00:00.000Z',
       });
@@ -212,6 +214,8 @@ describe('Express Chat Endpoints (US-030 / #344 / #347 / FR-087–FR-089)', () =
         title: 'General',
         description: 'Open forum',
         created_by: verifiedParticipant.id,
+        channel_type: 'public',
+        team_id: null,
         created_at: '2026-10-21T12:00:00.000Z',
         updated_at: '2026-10-21T12:00:00.000Z',
       });
@@ -240,12 +244,72 @@ describe('Express Chat Endpoints (US-030 / #344 / #347 / FR-087–FR-089)', () =
       expect(JSON.stringify(res.body)).not.toMatch(/part@example\.com|password|otp_hash|firebase_uid/i);
     });
 
+    describe('private team channels (US-031 / #378)', () => {
+      const TEAM_CHANNEL_ID = '55555555-5555-4555-8555-555555555555';
+      const teamChannel = () => ({
+        id: TEAM_CHANNEL_ID,
+        title: 'Team chat',
+        description: 'Private',
+        created_by: verifiedParticipant.id,
+        channel_type: 'team' as const,
+        team_id: '123e4567-e89b-42d3-a456-426614174000',
+        created_at: '2026-10-21T12:00:00.000Z',
+        updated_at: '2026-10-21T12:00:00.000Z',
+      });
+
+      it('GET messages of a team channel is 404 CHANNEL_NOT_FOUND and leaks no content', async () => {
+        vi.spyOn(chatRepository, 'findChannelById').mockResolvedValue(teamChannel());
+        const list = vi.spyOn(chatRepository, 'listMessagesByChannel').mockResolvedValue([
+          { id: 'm1', channel_id: TEAM_CHANNEL_ID, author_id: verifiedParticipant.id, body: 'SECRET TEAM PLAN', created_at: '2026-10-21T12:05:00.000Z' },
+        ]);
+
+        const res = await request(app)
+          .get(`/api/chat/channels/${TEAM_CHANNEL_ID}/messages`)
+          .set('Authorization', validTokenHeader);
+
+        expect(res.status).toBe(404);
+        expect(res.body.code).toBe('CHANNEL_NOT_FOUND');
+        expect(JSON.stringify(res.body)).not.toMatch(/SECRET TEAM PLAN|Team chat|team_id|123e4567/);
+        expect(list).not.toHaveBeenCalled();
+      });
+
+      it('POST to a team channel is 404, stores nothing, and the response is the same as for an unknown channel', async () => {
+        vi.spyOn(chatRepository, 'findChannelById').mockResolvedValue(teamChannel());
+        const create = vi.spyOn(chatRepository, 'createMessage');
+
+        const viaTeam = await request(app)
+          .post(`/api/chat/channels/${TEAM_CHANNEL_ID}/messages`)
+          .set('Authorization', validTokenHeader)
+          .send({ body: 'hello' });
+
+        vi.spyOn(chatRepository, 'findChannelById').mockResolvedValue(null);
+        const viaUnknown = await request(app)
+          .post(`/api/chat/channels/${CHANNEL_ID}/messages`)
+          .set('Authorization', validTokenHeader)
+          .send({ body: 'hello' });
+
+        expect(viaTeam.status).toBe(404);
+        expect(viaTeam.body).toEqual(viaUnknown.body);
+        expect(create).not.toHaveBeenCalled();
+      });
+
+      it('the public channel list asks only for public channels', async () => {
+        const list = vi.spyOn(chatRepository, 'listChannelsNewestFirst').mockResolvedValue([]);
+        const res = await request(app).get('/api/chat/channels').set('Authorization', validTokenHeader);
+        expect(res.status).toBe(200);
+        expect(list).toHaveBeenCalledTimes(1);
+        expect(res.body.channels).toEqual([]);
+      });
+    });
+
     it('scrubs leaked sensitive keys from message list payloads (FR-089)', async () => {
       vi.spyOn(chatRepository, 'findChannelById').mockResolvedValue({
         id: CHANNEL_ID,
         title: 'General',
         description: 'Open forum',
         created_by: verifiedParticipant.id,
+        channel_type: 'public',
+        team_id: null,
         created_at: '2026-10-21T12:00:00.000Z',
         updated_at: '2026-10-21T12:00:00.000Z',
       });
@@ -284,6 +348,8 @@ describe('Express Chat Endpoints (US-030 / #344 / #347 / FR-087–FR-089)', () =
         title: 'General',
         description: 'Open forum',
         created_by: verifiedParticipant.id,
+        channel_type: 'public',
+        team_id: null,
         created_at: '2026-10-21T12:00:00.000Z',
         updated_at: '2026-10-21T12:00:00.000Z',
       });

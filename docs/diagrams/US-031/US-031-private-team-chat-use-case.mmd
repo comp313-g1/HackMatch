@@ -1,0 +1,63 @@
+---
+title: "HackMatch — US-031: Private Team Chat Channel for Confirmed Team Members — Use-Case Diagram"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":42,"rankSpacing":58,"padding":14}}}%%
+flowchart TB
+    MEMBER(["Verified active PART<br/>Confirmed team member"]):::identity
+
+    subgraph PRIVATE_CHAT ["US-031 private team channel"]
+        direction LR
+        OPEN(["Open private team chat"]):::chat
+        READ(["Read team message history"]):::chat
+        SEND(["Send text message"]):::chat
+        REFRESH(["Refresh messages"]):::chat
+        OPEN --> READ
+        READ --> REFRESH
+        OPEN --> SEND
+    end
+
+    subgraph UI_STATES ["React interaction states"]
+        direction LR
+        LOADING["Loading<br/>Clear stale team content"]:::internal
+        EMPTY["Empty thread<br/>Composer remains available"]:::internal
+        VALIDATE{"Nonblank body<br/>at most 4,000 characters?"}:::decision
+        KEEP["Validation or send failure<br/>Show error and keep exact draft"]:::denied
+        CLEAR["Successful send<br/>Append message and clear draft"]:::success
+        LOADING --> EMPTY
+        VALIDATE -->|"No"| KEEP
+        VALIDATE -->|"Yes"| CLEAR
+    end
+
+    subgraph PRIVACY ["Membership and privacy boundary"]
+        direction LR
+        VISITOR(["VISITOR"]):::identity
+        NON_MEMBER(["Non-member or<br/>other-team member"]):::identity
+        FORMER(["Removed or Released<br/>former member"]):::identity
+        RESTRICTED(["Suspended, deactivated,<br/>unverified, or unrelated ADMIN"]):::identity
+        DENY["Deny access<br/>No private channel or message leakage"]:::denied
+        VISITOR --> DENY
+        NON_MEMBER --> DENY
+        FORMER --> DENY
+        RESTRICTED --> DENY
+    end
+
+    PUBLIC(["US-030 public participant forums<br/>Separate routes; not team-gated"]):::internal
+    SAFE["Safe message projection<br/>Author handle, timestamp, body<br/>No email, credentials, OTP, or tokens"]:::success
+
+    MEMBER --> LOADING
+    LOADING --> OPEN
+    SEND --> VALIDATE
+    READ --> SAFE
+    CLEAR --> SAFE
+    PUBLIC -. "Distinct public-chat workflow" .-> PRIVATE_CHAT
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef chat fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+    style PRIVATE_CHAT fill:#fbf8ff,stroke:#9ca3af,stroke-width:1px,color:#374151
+    style UI_STATES fill:#fafafa,stroke:#9ca3af,stroke-width:1px,color:#374151
+    style PRIVACY fill:#fff8f9,stroke:#9ca3af,stroke-width:1px,color:#374151
+

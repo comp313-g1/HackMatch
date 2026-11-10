@@ -16,6 +16,7 @@ import { POST_LOCK_UI_NOTICE } from './postLockGuards';
 import { canceledRequestsOnLockNotice } from './requestCancelReason';
 import { PrivateCoordinationWorkspace } from './PrivateCoordinationWorkspace';
 import { TeamManifestCard } from './TeamManifestCard';
+import { TeamChatView } from '../chat/TeamChatView';
 
 export interface TeamWorkspaceProps {
   eventId: string;
@@ -225,6 +226,8 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
           }
         />
 
+        <TeamChatView teamId={team.id} teamName={team.name} />
+
         {isLocked && team.lifecycle?.reason === 'Locked' ? (
           <>
             <PrivateCoordinationWorkspace
@@ -256,6 +259,8 @@ export function TeamWorkspace({ eventId }: TeamWorkspaceProps): React.JSX.Elemen
         moderationHiddenAt={team.moderationHiddenAt}
         linkRemovalNotice={team.linkRemovalNotice}
       />
+
+      <TeamChatView teamId={team.id} teamName={team.name} />
 
       {/* Lifecycle Read-Only Notice / locked badge (#211) */}
       {isLocked && team.lifecycle?.reason === 'Locked' ? (

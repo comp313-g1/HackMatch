@@ -1,0 +1,56 @@
+---
+title: "HackMatch — US-031: Private Team Chat History and Lifecycle — State Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":46,"rankSpacing":60,"padding":14}}}%%
+flowchart TB
+    subgraph CHANNEL_LIFECYCLE ["Persisted channel lifecycle"]
+        direction LR
+        NONE["No private channel yet"]:::internal
+        OPEN["Open team<br/>Confirmed active members read and write"]:::chat
+        LOCKED["Locked team<br/>Confirmed active members still read and write"]:::chat
+        HISTORY["Disbanded team<br/>Private channel history is read-only"]:::internal
+
+        NONE -->|"Provision once for existing non-disbanded team"| OPEN
+        OPEN -->|"Idempotent provision retry returns existing channel"| OPEN
+        OPEN -->|"Roster locks"| LOCKED
+        OPEN -->|"Team disbands"| HISTORY
+        LOCKED -->|"Team disbands"| HISTORY
+    end
+
+    subgraph ACCESS_CHANGES ["Membership and account changes"]
+        direction LR
+        ACCESS_NOTE["Every open, read, and send<br/>rechecks current access"]:::internal
+        CONFIRMED["Status Confirmed<br/>Verified active PART"]:::success
+        FORMER["Status Removed or Released"]:::denied
+        SUSPENDED["Suspended or deactivated"]:::denied
+        REVOKED["Future private access revoked<br/>Prior messages remain stored"]:::denied
+
+        ACCESS_NOTE --> CONFIRMED
+        CONFIRMED -->|"Membership status changes"| FORMER
+        CONFIRMED -->|"Account restricted"| SUSPENDED
+        FORMER --> REVOKED
+        SUSPENDED --> REVOKED
+    end
+
+    subgraph HISTORY_RULES ["Database-enforced history integrity"]
+        direction LR
+        HISTORY_NOTE["Rules apply to every<br/>private team channel state"]:::internal
+        LINK["channel_type and team_id are immutable<br/>One private channel per team"]:::persistence
+        MESSAGE["Team messages cannot be edited or deleted"]:::persistence
+        CHANNEL["Team channel cannot be deleted"]:::persistence
+        MEMBERSHIP["Membership rows are retained<br/>Lifecycle changes use status"]:::persistence
+        HISTORY_NOTE --> LINK --> MESSAGE --> CHANNEL --> MEMBERSHIP
+    end
+
+    CHANNEL_LIFECYCLE ~~~ ACCESS_CHANGES
+    ACCESS_CHANGES ~~~ HISTORY_RULES
+
+    classDef chat fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef persistence fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+    style CHANNEL_LIFECYCLE fill:#fbf8ff,stroke:#9ca3af,stroke-width:1px,color:#374151
+    style ACCESS_CHANGES fill:#fff8f9,stroke:#9ca3af,stroke-width:1px,color:#374151
+    style HISTORY_RULES fill:#f6fcf8,stroke:#9ca3af,stroke-width:1px,color:#374151
+

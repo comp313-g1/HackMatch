@@ -23,6 +23,12 @@ export interface ChatChannelView {
   updatedAt: string;
 }
 
+/** US-031 / #383 private channel projection returned only after team-member authorization. */
+export interface TeamChatChannelView extends ChatChannelView {
+  channelType: 'team';
+  teamId: string;
+}
+
 export interface ChatMessageView {
   id: string;
   channelId: string;

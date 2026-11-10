@@ -14,11 +14,11 @@ This is the single documentation and navigation source for HackMatch engineering
 
 | Item | Count |
 |---|---:|
-| Diagrammed User Stories | 18 |
-| Mermaid sources | 41 |
-| Matching rendered diagram PNGs | 41 |
+| Diagrammed User Stories | 19 |
+| Mermaid sources | 46 |
+| Matching rendered diagram PNGs | 46 |
 | Shared reference images | 1 |
-| Total PNG files | 42 |
+| Total PNG files | 47 |
 
 ## Diagram and visual conventions
 
@@ -65,6 +65,7 @@ Every link below resolves from this central README. “Source” opens the edita
 | **US-026 — Administrative Content Moderation and Safety Queue** | Partial (repository-audited) | Moderation Workflow Sequence ([PNG](US-026/US-026-moderation-workflow-sequence.png), [source](US-026/US-026-moderation-workflow-sequence.mmd))<br>Moderation Case Lifecycle Flow ([PNG](US-026/US-026-moderation-case-lifecycle-flow.png), [source](US-026/US-026-moderation-case-lifecycle-flow.mmd)) |
 | **US-027 — Administrative Account Management and Enforcement** | Partial (repository-audited) | Account Suspension Sequence ([PNG](US-027/US-027-account-suspension-sequence.png), [source](US-027/US-027-account-suspension-sequence.mmd))<br>Verified Account Deletion Sequence ([PNG](US-027/US-027-account-deletion-sequence.png), [source](US-027/US-027-account-deletion-sequence.mmd)) |
 | **US-030 — Participant Chat Forums and Messaging** | Planned — specification-grounded | Chat Use Case ([PNG](US-030/US-030-chat-use-case.png), [source](US-030/US-030-chat-use-case.mmd))<br>Core Chat Sequence ([PNG](US-030/US-030-core-chat-sequence.png), [source](US-030/US-030-core-chat-sequence.mmd))<br>Chat Access and Presence Flow ([PNG](US-030/US-030-presence-access-flow.png), [source](US-030/US-030-presence-access-flow.mmd))<br>Planned Chat Data Model ([PNG](US-030/US-030-chat-data-model.png), [source](US-030/US-030-chat-data-model.mmd)) |
+| **US-031 — Private Team Chat Channel for Confirmed Team Members** | Implemented (repository-audited) | Private Team Chat Use Case ([PNG](US-031/US-031-private-team-chat-use-case.png), [source](US-031/US-031-private-team-chat-use-case.mmd))<br>Private Team Chat Sequence ([PNG](US-031/US-031-private-team-chat-sequence.png), [source](US-031/US-031-private-team-chat-sequence.mmd))<br>Authorization and Privacy Flow ([PNG](US-031/US-031-team-chat-authorization-flow.png), [source](US-031/US-031-team-chat-authorization-flow.mmd))<br>Focused Team Chat Data Model ([PNG](US-031/US-031-team-chat-data-model.png), [source](US-031/US-031-team-chat-data-model.mmd))<br>History and Lifecycle Flow ([PNG](US-031/US-031-team-chat-lifecycle-flow.png), [source](US-031/US-031-team-chat-lifecycle-flow.mmd)) |
 
 ### Stories without story-specific diagrams
 
@@ -97,6 +98,7 @@ These notes preserve the material gaps identified during the diagram audits with
 | US-022 | Lock/freeze behavior exists, but SQL uses event bounds/status and per-event membership rather than fixed 2–4 target-team rules; one focused client accessibility test was failing at audit time. |
 | US-026 | ADMIN moderation exists, but mutation and audit writes are sequential rather than atomic; URL disablement may touch a shadow event and action records lack a direct case relationship. |
 | US-027 | Suspension and verified deletion exist; unsuspension is not implemented, Firebase/PostgreSQL/audit steps are non-atomic, and moderation “Hidden” is reused for account state. |
+| US-031 | One immutable private channel is linked per team; only verified active PART users with current Confirmed membership receive access. Open and Locked teams remain writable, Disbanded channels are read-only history, former members lose access, unrelated ADMIN users have no bypass, and safe projections prevent private-field leakage. |
 
 Focused audits for US-013, US-015, US-017–US-022, US-026, and US-027 could not validate live Supabase transactions in the audit environment; several integration suites use mocks. Treat their diagrams as explanations of inspected code and intended invariants, not proof of a deployed database state.
 

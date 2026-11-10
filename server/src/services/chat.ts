@@ -1,5 +1,12 @@
 import { chatRepository } from '../db/chat.repository.js';
+import {
+  buildTeamChannelDescription,
+  buildTeamChannelTitle,
+  isPublicChatChannel,
+  type ChatChannelType,
+} from '../db/chatModel.js';
 import { profileRepository } from '../db/profile.repository.js';
+import { teamsRepository } from '../db/teams.repository.js';
 import type { ChatChannel, ChatMessage } from '../db/types.js';
 import { scrubPrivateChatFields } from './chatPrivacy.js';
 
@@ -12,6 +19,8 @@ export interface ChatChannelView {
   title: string;
   description: string;
   createdBy: string;
+  channelType?: ChatChannelType;
+  teamId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,6 +57,8 @@ export function toChannelView(channel: ChatChannel): ChatChannelView {
     title: channel.title,
     description: channel.description,
     createdBy: channel.created_by,
+    ...(channel.channel_type !== undefined ? { channelType: channel.channel_type } : {}),
+    ...(channel.team_id !== undefined ? { teamId: channel.team_id } : {}),
     createdAt: channel.created_at,
     updatedAt: channel.updated_at,
   });
@@ -80,6 +91,76 @@ async function resolveAuthorHandles(
   return new Map(entries);
 }
 
+/** US-031 / #381: safe private team channel payload (adds the owning team id). */
+export interface TeamChatChannelView extends ChatChannelView {
+  teamId: string;
+}
+
+async function findTeamChannelOrThrow(teamId: string): Promise<ChatChannel> {
+  const channel = await chatRepository.findChannelByTeamId(teamId);
+  // Fail closed: the row must really be this team's private channel.
+  if (!channel || channel.channel_type !== 'team' || channel.team_id !== teamId) {
+    throw new ChatServiceError(404, 'TEAM_CHANNEL_NOT_FOUND', 'Team channel not found.');
+  }
+  return channel;
+}
+
+/** Translates the lifecycle guards of migration 0052 into content-free 403 responses. */
+export function mapTeamChannelWriteError(err: unknown): ChatServiceError | null {
+  const text = String((err as { message?: unknown } | null)?.message ?? '');
+  if (text.includes('TEAM_CHANNEL_READ_ONLY')) {
+    return new ChatServiceError(403, 'TEAM_CHANNEL_READ_ONLY', 'This team channel is read-only.');
+  }
+  if (text.includes('TEAM_CHANNEL_NOT_A_MEMBER')) {
+    return new ChatServiceError(
+      403,
+      'FORBIDDEN_NOT_TEAM_MEMBER',
+      'Only confirmed team members can use this team channel.'
+    );
+  }
+  if (text.includes('TEAM_CHANNEL_ACCOUNT_SUSPENDED')) {
+    return new ChatServiceError(403, 'ACCOUNT_SUSPENDED', 'This account cannot write to the team channel.');
+  }
+  return null;
+}
+
+/** Caller must already be authorized as a confirmed member (requireConfirmedTeamMember). */
+export async function openTeamChannel(teamId: string): Promise<TeamChatChannelView> {
+  const channel = await findTeamChannelOrThrow(teamId);
+  return scrubPrivateChatFields({ ...toChannelView(channel), teamId });
+}
+
+export async function listTeamChannelMessages(teamId: string): Promise<ChatMessageView[]> {
+  const channel = await findTeamChannelOrThrow(teamId);
+  const messages = await chatRepository.listMessagesByChannel(channel.id);
+  const handles = await resolveAuthorHandles(messages.map((m) => m.author_id));
+  return messages.map((message) =>
+    toMessageView(message, handles.get(message.author_id) ?? null)
+  );
+}
+
+export async function sendTeamChannelMessage(input: {
+  teamId: string;
+  authorId: string;
+  body: string;
+}): Promise<ChatMessageView> {
+  const channel = await findTeamChannelOrThrow(input.teamId);
+  let message: ChatMessage;
+  try {
+    message = await chatRepository.createMessage({
+      channel_id: channel.id,
+      author_id: input.authorId,
+      body: input.body,
+    });
+  } catch (err) {
+    // US-031 / #382: the database re-checks membership, team and account state at insert time,
+    // so a change that lands after the route's gate (a race) still cannot produce a write.
+    throw mapTeamChannelWriteError(err) ?? err;
+  }
+  const profile = await profileRepository.findProfileByParticipantId(input.authorId);
+  return toMessageView(message, profile?.handle ?? null);
+}
+
 export async function listChannels(): Promise<ChatChannelView[]> {
   const channels = await chatRepository.listChannelsNewestFirst();
   return channels.map(toChannelView);
@@ -102,7 +183,9 @@ export async function listChannelMessages(
   channelId: string
 ): Promise<ChatMessageView[]> {
   const channel = await chatRepository.findChannelById(channelId);
-  if (!channel) {
+  // US-031 / #378: a private team channel is indistinguishable from a missing one here, so the
+  // public endpoints can neither read its messages nor reveal that it exists.
+  if (!channel || !isPublicChatChannel(channel)) {
     throw new ChatServiceError(404, 'CHANNEL_NOT_FOUND', 'Chat channel not found.');
   }
 
@@ -119,7 +202,7 @@ export async function sendChannelMessage(input: {
   body: string;
 }): Promise<ChatMessageView> {
   const channel = await chatRepository.findChannelById(input.channelId);
-  if (!channel) {
+  if (!channel || !isPublicChatChannel(channel)) {
     throw new ChatServiceError(404, 'CHANNEL_NOT_FOUND', 'Chat channel not found.');
   }
 
@@ -131,4 +214,70 @@ export async function sendChannelMessage(input: {
 
   const profile = await profileRepository.findProfileByParticipantId(input.authorId);
   return toMessageView(message, profile?.handle ?? null);
+}
+
+export interface ProvisionedTeamChannelResult {
+  channel: ChatChannelView;
+  created: boolean;
+  teamId: string;
+}
+
+/**
+ * US-031 / #378 / T2: Provision or link a team's private chat channel idempotently.
+ * - If channel exists, returns it with created: false (preserving historical linkage even for disbanded teams).
+ * - If team is disbanded and has no channel, refuses with 403 TEAM_CHAT_TEAM_DISBANDED.
+ * - Otherwise provisions channel via chatRepository.provisionOrLinkTeamChannel.
+ */
+export async function provisionOrLinkTeamChannel(input: {
+  teamId: string;
+  actorId?: string;
+}): Promise<ProvisionedTeamChannelResult> {
+  const trimmedTeamId = input.teamId?.trim();
+  if (!trimmedTeamId) {
+    throw new ChatServiceError(400, 'VALIDATION_ERROR', 'teamId is required.');
+  }
+
+  const team = await teamsRepository.findTeamById(trimmedTeamId);
+  if (!team) {
+    throw new ChatServiceError(404, 'TEAM_NOT_FOUND', 'Team not found.');
+  }
+
+  // Preserve historical linkage first if channel already exists for this team (even if Locked or Disbanded)
+  const existing = await chatRepository.findChannelByTeamId(team.id);
+  if (existing) {
+    return {
+      channel: toChannelView({
+        ...existing,
+        team_id: existing.team_id ?? team.id,
+        channel_type: existing.channel_type ?? 'team',
+      }),
+      created: false,
+      teamId: team.id,
+    };
+  }
+
+  if (team.recruitment_status === 'Disbanded' || team.disbanded_at != null) {
+    throw new ChatServiceError(
+      403,
+      'TEAM_CHAT_TEAM_DISBANDED',
+      'Cannot provision a new private chat channel for a disbanded team.'
+    );
+  }
+
+  const title = buildTeamChannelTitle(team.name);
+  const description = buildTeamChannelDescription(team.id, team.name);
+  const createdBy = input.actorId ?? team.owner_participant_id;
+
+  const { channel, created } = await chatRepository.provisionOrLinkTeamChannel({
+    team_id: team.id,
+    title,
+    description,
+    created_by: createdBy,
+  });
+
+  return {
+    channel: toChannelView(channel),
+    created,
+    teamId: team.id,
+  };
 }

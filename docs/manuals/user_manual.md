@@ -4,9 +4,9 @@ This manual explains how to use the current HackMatch web application. It is wri
 
 | Item | Current manual scope |
 |---|---|
-| Version | 3.0 — Issue #353 current-implementation review |
-| Covers | Registration, email verification, sign-in, email OTP, password recovery, profiles, Looking for Team, team discovery, recruitment, requests, roster locking, chat, and ADMIN screens |
-| Does not cover | Removed hackathon-directory workflows (US-008–US-010) or unimplemented post-MVP features |
+| Version | 4.0 — Issue #419 update for completed user stories through US-031 |
+| Covers | Registration, email verification, sign-in, email OTP, password recovery, profiles, hackathon history and experience badges, Looking for Team, team discovery, candidate directory search, recruitment, requests, roster locking, notifications, private team workspace, team manifest export, abuse reporting, chat, and ADMIN screens (moderation, accounts, audit log) |
+| Does not cover | Removed hackathon-directory workflows (US-008–US-010), authenticator-app 2FA (US-029, future), the on-screen private team chat (US-031, server side only so far), or other unimplemented features |
 | Sources checked | Current React components, Express routes and access middleware, tests, User Stories, requirements, and real application captures |
 
 > **Current-scope note:** Team formation is presented as a platform-wide workflow. Users do not choose a hackathon before creating, finding, or joining a team. A few current screens and older real captures still contain words such as “event” or “hackathon”; those are transitional interface or internal-compatibility terms, not a user-facing event-directory workflow.
@@ -26,11 +26,17 @@ This manual explains how to use the current HackMatch web application. It is wri
 11. [Create and manage a team](#11-create-and-manage-a-team)
 12. [Use recommendations and invite candidates](#12-use-recommendations-and-invite-candidates)
 13. [Review applications and lock a roster](#13-review-applications-and-lock-a-roster)
-14. [Use chat and messaging](#14-use-chat-and-messaging)
-15. [Administrator screens](#15-administrator-screens)
-16. [Profile menu, session, and sign out](#16-profile-menu-session-and-sign-out)
-17. [Troubleshooting and FAQ](#17-troubleshooting-and-faq)
-18. [Screenshot coverage](#18-screenshot-coverage)
+14. [Notifications](#14-notifications)
+15. [Hackathon history and experience badge](#15-hackathon-history-and-experience-badge)
+16. [Search the candidate directory](#16-search-the-candidate-directory)
+17. [Use the private team workspace](#17-use-the-private-team-workspace)
+18. [Export the team manifest](#18-export-the-team-manifest)
+19. [Report abusive content](#19-report-abusive-content)
+20. [Use chat and messaging](#20-use-chat-and-messaging)
+21. [Administrator screens](#21-administrator-screens)
+22. [Profile menu, session, and sign out](#22-profile-menu-session-and-sign-out)
+23. [Troubleshooting and FAQ](#23-troubleshooting-and-faq)
+24. [Screenshot coverage](#24-screenshot-coverage)
 
 ## 1. About HackMatch
 
@@ -43,10 +49,15 @@ The current application supports:
 - team creation, vacancy management, recommendations, applications, and invitations;
 - accepting, declining, withdrawing, and reviewing recruitment requests;
 - permanent roster locking once the roster is eligible;
+- an in-app notification bell with unread alerts;
+- self-reported hackathon history with an experience badge;
+- a candidate directory search for Team Leads;
+- a private workspace and an exportable roster manifest for locked teams;
+- reporting of abusive profiles, team listings, and suspicious links;
 - participant presence, forums, and text messages; and
-- ADMIN-only content moderation and account enforcement.
+- ADMIN-only content moderation, account enforcement, and a read-only audit log.
 
-The current application does **not** provide a public hackathon directory, hackathon submission, event approval workflow, direct messages, team-only chat channels, attachments, voice/video, reactions, typing indicators, or a consolidated notification center.
+The current application does **not** provide a public hackathon directory, hackathon submission, event approval workflow, direct messages, a team-only chat screen (the secure server side exists, but the screen is not yet released), attachments, voice/video, reactions, typing indicators, or authenticator-app two-factor sign-in.
 
 ## 2. Roles and access
 
@@ -55,7 +66,7 @@ The current application does **not** provide a public hackathon directory, hacka
 | Visitor | Not signed in. Can view the landing page and anonymized open-team previews, register, or sign in. |
 | `PART` | Stored Participant role. A verified, active Participant can use profiles, discovery, recruitment, teams, and chat after OTP. |
 | Team Lead | Contextual permission held by the Participant who owns a team. It is not a separate account role. |
-| `ADMIN` | Stored Platform Administrator role. Can open **Moderation** and **Accounts** after completing OTP. Public registration never creates an ADMIN. |
+| `ADMIN` | Stored Platform Administrator role. Can open **Moderation**, **Accounts**, and **Audit log** after completing OTP. Public registration never creates an ADMIN. |
 
 Most protected actions require all of the following:
 
@@ -83,9 +94,10 @@ After OTP succeeds, the main navigation shows:
 - **My teams** — owned and joined teams;
 - **Find teammates** — Looking-for-Team profile and candidate cards;
 - **Requests** — tabs for **Applications** and **Invitations**; and
+- the **Notifications** bell, which shows an unread badge; and
 - the account-name menu — **Profile** and **Sign out**.
 
-Chat opens from the floating chat button at the lower-left corner. An ADMIN also sees an **Admin ▾** menu containing **Moderation** and **Accounts**.
+Chat opens from the floating chat button at the lower-left corner. An ADMIN also sees an **Admin ▾** menu containing **Moderation**, **Accounts**, and **Audit log**.
 
 On a small screen, choose **Open menu** to display the same destinations.
 
@@ -180,6 +192,8 @@ An expired, used, or invalid reset link cannot change the password; request a ne
 HackMatch labels skills and portfolio links as self-declared. Portfolio URLs must use HTTPS. Validation errors keep the other entered values. Account email is not displayed on profile or recruitment cards, and the shared contact handle is intended only for confirmed teammates.
 
 **Expected result:** The updated profile is saved and its permitted fields can appear in authenticated recruitment views.
+
+You can also record past hackathons on the same page; see [Hackathon history and experience badge](#15-hackathon-history-and-experience-badge).
 
 ## 8. Set Looking-for-Team availability
 
@@ -363,9 +377,133 @@ Approval rechecks the applicant, team, vacancy, capacity, and current applicatio
 
 Locking is permanent in the current workflow. It cancels remaining pending applications and invitations and prevents ordinary invitations, applications, vacancy changes, member leave/removal, and disbanding.
 
-**Expected result:** The team displays a locked status and the roster becomes read-only.
+**Expected result:** The team displays a locked status and the roster becomes read-only. The locked roster unlocks the private workspace ([§17](#17-use-the-private-team-workspace)) and the manifest export ([§18](#18-export-the-team-manifest)) for its confirmed members.
 
-## 14. Use chat and messaging
+## 14. Notifications
+
+**Purpose:** Be told about invitations, applications, decisions, and roster changes without refreshing pages.
+
+**Prerequisite:** Signed in as a verified active `PART` with OTP complete.
+
+1. Find the **Notifications** bell in the main navigation. A number badge shows how many alerts are unread; the bell reads **Notifications, no unread** when there are none.
+2. Select the bell to open the **Notification list**. Alerts are newest first and each carries a label, such as **Invitation**, **Invitation accepted**, **Invitation declined**, **Application received**, **Application approved**, **Application declined**, **Application withdrawn**, or a **Roster** update.
+3. Select an alert to mark it read and open the related screen (for example your invitations, the team review area, or your team).
+4. Select **Mark all as read** to clear the badge in one step.
+5. If the list is long, select **Load older notifications**.
+
+The bell refreshes by itself about every 30 seconds, and sooner when a live connection is available, so new alerts appear without reloading. When there are no alerts the list shows an empty state. If an alert's target is no longer available you see **That notification is no longer available.** A temporary network problem shows a message with a way to retry and does not lose your list.
+
+![Placeholder: notification bell with unread badge and open dropdown](../assets/wireframes/US-021-notification-bell-dropdown.png)
+
+*Figure 11 — Placeholder: replace with a capture of the Notifications bell, unread badge, and dropdown.*
+
+**Expected result:** Unread count drops as you read alerts, and each alert takes you to the screen where you can act.
+
+## 15. Hackathon history and experience badge
+
+**Purpose:** Share your past hackathon experience so Team Leads can see it. Everything here is **self-reported**; HackMatch does not verify it.
+
+**Prerequisite:** Signed in as a verified active `PART`.
+
+1. Open **Profile** and find **Hackathon History**.
+2. Select **Add Hackathon Record** and enter the event name, date, your team role, the project title, and an HTTPS project link.
+3. Select **Save Record**. A message confirms **Hackathon history saved successfully.**
+4. To change a record, select edit, then **Update Record**. To delete one, select **Remove** and confirm.
+
+Your **experience badge** is calculated from the number of records and is labelled as self-reported:
+
+| Records | Badge |
+|---|---|
+| 0 | Beginner |
+| 1–3 | Competitor |
+| 4 or more | Veteran |
+
+The badge recalculates when you add or remove a record. Signed-in Participants can see permitted history and links on a profile; Visitors cannot. Links must start with `https://`, and validation errors keep what you typed.
+
+![Placeholder: Hackathon History section with records and badge](../assets/wireframes/US-007-hackathon-history.png)
+
+*Figure 12 — Placeholder: replace with a capture of the Hackathon History section and badge.*
+
+## 16. Search the candidate directory
+
+**Purpose:** Let a Team Lead look for suitable candidates manually, in addition to the ranked recommendations.
+
+**Prerequisite:** You own an active, unlocked team. Only the owner can use this search.
+
+1. Open your team from **My teams**.
+2. Find **Candidate Directory Search and Filter**.
+3. Choose any filters:
+   - skills, with **Match ALL listed skills (AND)** or **Match ANY listed skill (OR)**;
+   - **All primary roles** or a specific primary role;
+   - **All desired roles**, **All goals**, and commitment hours; and
+   - **All experience tiers**, or **Beginner (0 hackathons)**, Competitor, or **Veteran (4+ hackathons)**.
+4. Select **Search Candidates**.
+5. Select **Inspect Profile** on a card to see skills and portfolio links, or **Invite to Team**, choose an open vacancy, and select **Send Invitation**.
+
+Cards show only permitted fields (handle, role, self-reported badge, skills). People who are already confirmed members are not listed. If nothing matches you see **No candidates match your criteria.** After an invitation is sent, your filters and results stay in place so you can continue searching.
+
+![Placeholder: Candidate Directory Search and Filter panel](../assets/wireframes/US-014-candidate-directory-search.png)
+
+*Figure 13 — Placeholder: replace with a capture of the candidate search filters and results.*
+
+## 17. Use the private team workspace
+
+**Purpose:** Keep shared links, notes, and teammate contact handles in one private place after the roster is locked.
+
+**Prerequisite:** You are a confirmed member (or the owner) of a **locked** team. Visitors, unrelated Participants, and an ADMIN who is not on the team cannot open it.
+
+1. Open the locked team from **My teams**.
+2. Find the **Private Coordination Workspace**.
+3. Under **Confirmed Teammates & Contact Handles**, review each teammate's role, institution, portfolio links, and shared contact handle. Account emails are never shown, and shared contact handles are visible only to confirmed teammates.
+4. **Owner only:** update the shared external links (for example a meeting or repository link) and select **Save External Links**. Only `https://` links are accepted.
+5. **All members:** edit the shared markdown note and select **Save Shared Note**.
+6. Select **Inspect Revision** to see who changed the note and when; select **Hide Revision** to close it.
+
+If a teammate saved the note after you opened it, your save is refused with **This note was updated by another teammate. Review the latest revision before saving.** Review the latest version, re-apply your change, and save again. Nothing is overwritten silently.
+
+![Placeholder: Private Coordination Workspace](../assets/wireframes/US-023-private-coordination-workspace.png)
+
+*Figure 14 — Placeholder: replace with a capture of the workspace links, note editor, and revisions.*
+
+## 18. Export the team manifest
+
+**Purpose:** Produce a roster record you can share if an event accepts it, with a checksum others can compare.
+
+**Prerequisite:** You are a confirmed member of a **locked** team.
+
+1. Open the locked team and find the manifest card on the team page.
+2. Choose a format:
+   - **Printable HTML Card (.html)**;
+   - **Verification PDF (.pdf)**; or
+   - **JSON Manifest (.json)**.
+3. The export lists the team, the lock time recorded by HackMatch, member display names, institution, portfolio links, and roles. Account emails and private contact handles are **never** included.
+4. To check a copy, paste its SHA-256 checksum into the verification box and select **Verify Checksum**. A match means the roster is identical to the stored snapshot.
+
+The checksum is an integrity check only. It does not prove when the team formed or that an event organizer approved it. If the manifest cannot be loaded you see **Manifest Export Unavailable** with the reason.
+
+![Placeholder: Team manifest export and verification card](../assets/wireframes/US-024-team-manifest-export.png)
+
+*Figure 15 — Placeholder: replace with a capture of the export buttons and checksum verification.*
+
+## 19. Report abusive content
+
+**Purpose:** Tell Administrators about an abusive profile, a team listing, or a suspicious link.
+
+**Prerequisite:** Signed in as a verified active `PART`.
+
+1. Select **Report** on an open team card, or **Report Profile** on a candidate profile.
+2. In the report window, confirm the target (**Team Listing**, **Participant Profile**, **Verified Event Listing**, or **Suspicious External URL**).
+3. Choose a **Category**, such as Harassment, Spam, Phishing Link, or Fake Account.
+4. Optionally add context (up to 1,000 characters). For a suspicious link, enter its full `https://` address.
+5. Select **Submit Report**. A **Receipt ID** confirms that Administrators will see it.
+
+You can send at most **5 reports per hour**. If you reach the limit, wait and try again; the message tells you when. Other Participants cannot see your report. If validation fails, correct the highlighted fields and your text is kept.
+
+![Placeholder: Report abusive content modal](../assets/wireframes/US-025-report-abuse-modal.png)
+
+*Figure 16 — Placeholder: replace with a capture of the report window and the receipt confirmation.*
+
+## 20. Use chat and messaging
 
 **Purpose:** Set presence, create topic forums, and exchange text messages.
 
@@ -380,13 +518,15 @@ Locking is permanent in the current workflow. It cancels remaining pending appli
 
 ![HackMatch chat forum and message thread](../assets/wireframes/US-030-chat-message-thread.png)
 
-*Figure 10 — Participant presence, forum selection, and a text-message thread.*
+*Figure 17 — Participant presence, forum selection, and a text-message thread.*
 
 Current limits are 120 characters for a forum title, 2,000 for its description, and 4,000 for a message. Validation and request failures preserve drafts. Messages show the author handle, UTC-backed timestamp rendered for the viewer, and content; chat responses do not expose account email, passwords, OTPs, or OTP hashes.
 
-Current MVP chat is a shared topic-forum experience. Team-scoped channels, direct messages, reporting hooks, unread/mention badges, reactions, typing indicators, attachments, and voice/video are not available.
+Current chat is a shared topic-forum experience. Direct messages, unread/mention badges, reactions, typing indicators, attachments, and voice/video are not available.
 
-## 15. Administrator screens
+**Private team chat (coming).** The secure back end for a private chat limited to your confirmed teammates is in place, but the on-screen team chat is not released yet, so you will not see it in the app today. When it is released, only active confirmed team members will be able to open or send messages in it, anyone else (including an Administrator who is not on the team) will be refused without seeing any content, a removed member will lose the ability to write while earlier messages stay, and a disbanded team's chat becomes read-only history.
+
+## 21. Administrator screens
 
 Only an active `ADMIN` with OTP complete sees **Admin ▾**. Participants and Visitors are denied by the server even if they attempt a direct request.
 
@@ -401,6 +541,8 @@ Only an active `ADMIN` with OTP complete sees **Admin ▾**. Participants and Vi
 
 Closed cases cannot receive another decision. Failed validation preserves the reason draft.
 
+Cases can also appear in the queue because a Participant reported content (see [§19](#19-report-abusive-content)). Each report creates a moderation case, and the reporter receives a receipt.
+
 ### Accounts
 
 1. Open **Admin ▾ → Accounts**.
@@ -412,7 +554,27 @@ Closed cases cannot receive another decision. Failed validation preserves the re
 
 Suspension revokes access, hides recruitment visibility, and cancels affected pending requests while preserving confirmed memberships. Deletion can be blocked until an owner disbands unlocked teams. The ADMIN interface does not display passwords, OTPs, tokens, or private team notes.
 
-## 16. Profile menu, session, and sign out
+### Audit log
+
+**Purpose:** Review past administrative decisions. The audit log is **read-only**: nobody can edit or delete a record from this page.
+
+1. Open **Admin ▾ → Audit log**.
+2. Read the **Audit records** table. Each row shows the **Record ID**, **Actor**, **Action**, **Target**, a safe summary, the **Reason**/**Outcome**, and the **Time (UTC)**.
+3. Narrow the list with **Filter audit records**:
+   - **Actor** — paste an Actor ID copied from the table;
+   - **Action type** — for example `account_suspend`;
+   - **Category** — Event, Moderation, or Account; and
+   - **From** and **To** dates.
+4. Select **Apply filters**. The line **Showing records where:** repeats the active filters. If nothing matches you see **No records match these filters.**
+5. Use the **Audit records pagination** controls to move between pages and choose a page size of 25, 50, or 100.
+
+Records older than the configured retention period are labelled **Past retention** for review; they are never changed or removed here. Personal details are shown in the reduced form required by the privacy policy. Participants and Visitors cannot open the audit log.
+
+![Placeholder: ADMIN audit log with filters and pagination](../assets/wireframes/US-028-admin-audit-log.png)
+
+*Figure 18 — Placeholder: replace with a capture of the audit table, filters, and pagination.*
+
+## 22. Profile menu, session, and sign out
 
 The account-name menu contains **Profile** and **Sign out**; there is no separate general settings page in the current application.
 
@@ -424,7 +586,7 @@ To end the session:
 
 After sign-out, protected actions require a new primary sign-in and email OTP. Do not use a shared browser without signing out.
 
-## 17. Troubleshooting and FAQ
+## 23. Troubleshooting and FAQ
 
 ### Why can I browse teams but not apply?
 
@@ -454,6 +616,26 @@ Locked teams reject ordinary roster and vacancy changes. A Team Lead cannot leav
 
 Chat requires a verified, active Participant session with OTP complete. It is not available to Visitors, unverified or suspended Participants, or as an ordinary ADMIN feature.
 
+### Why is my notification bell empty or showing an error?
+
+An empty list means no alerts yet. If you see a session message, sign in again. A network message means the bell could not reach the server; it retries by itself, and you can reopen it to try now.
+
+### Why can't I open the workspace or export the manifest?
+
+Both need a **locked** team and a confirmed membership. Ask your Team Lead to lock the roster, and make sure you were not removed from the team.
+
+### Why was my report rejected?
+
+You may have reached the limit of 5 reports per hour, left the category empty, or entered a link that does not start with `https://`.
+
+### Why was my note not saved in the workspace?
+
+A teammate saved a newer version first. Open the latest revision, re-apply your change, and save again.
+
+### Where is the private team chat?
+
+Its secure back end is built, but the on-screen team chat has not been released yet. Use the shared forums in the meantime.
+
 ### What happens when a form fails?
 
 The current forms are designed to keep valid entered values or drafts when validation, network, or server errors occur. Correct the highlighted field or use **Retry**/**Refresh** where offered.
@@ -462,14 +644,16 @@ The current forms are designed to keep valid entered values or drafts when valid
 
 The current user workflow is platform-wide and does not include a hackathon directory. Some visible copy and internal compatibility fields have not yet been renamed. Follow the current navigation in this manual: **Open teams**, **My teams**, **Find teammates**, and **Requests**.
 
-## 18. Screenshot coverage
+## 24. Screenshot coverage
 
-This manual embeds 10 genuine captures from the current feature implementations under [`docs/assets/wireframes/`](../assets/wireframes/README.md). Demo account emails and authentication values are hidden. No screenshot contains passwords, OTP values, tokens, or environment secrets.
+This manual embeds 10 genuine captures and 7 labelled placeholders from the current feature implementations under [`docs/assets/wireframes/`](../assets/wireframes/README.md). Demo account emails and authentication values are hidden. No screenshot contains passwords, OTP values, tokens, or environment secrets.
 
 The browser-control helper was unavailable during this Issue #353 update, so no screenshot was fabricated or replaced. The embedded captures accurately show the documented workflow panels; some retain the previous header labels (**Browse Events**, **Browse Teams**, separate **Applications**/**Invitations**, or a top-level **Chat** link). The current code has consolidated those destinations into **Open teams**, **Requests**, and the floating **Open chat** button as described in §3.
+
+**Placeholders (Issue #419).** Figures 11–16 and 18 point to files that do not exist yet: `US-021-notification-bell-dropdown.png`, `US-007-hackathon-history.png`, `US-014-candidate-directory-search.png`, `US-023-private-coordination-workspace.png`, `US-024-team-manifest-export.png`, `US-025-report-abuse-modal.png`, and `US-028-admin-audit-log.png`. Capture each with demo accounts only (no real emails, OTPs, or tokens), save it in `docs/assets/wireframes/` under the same name, and the image will appear.
 
 Additional real captures for empty, locked, recommendation, application-list, moderation, and account-enforcement states remain available in the same wireframes folder.
 
 ---
 
-HackMatch · COMP 313 · Team 1 · User Manual · Issue #353
+HackMatch · COMP 313 · Team 1 · User Manual · Issue #419

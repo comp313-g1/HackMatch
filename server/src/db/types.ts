@@ -1,3 +1,4 @@
+import type { ChatChannelType } from './chatModel.js';
 import type { NotificationCategory } from './notificationModel.js';
 
 export type ParticipantRole = 'PART' | 'ADMIN';
@@ -541,17 +542,31 @@ export interface CreateModerationCaseDTO {
   report_count?: number;
 }
 
-/** US-030 / #342 chat forum/channel (FR-087). */
+/** US-030 / #342 chat forum/channel (FR-087); US-031 / #378 adds the private team channel linkage. */
 export interface ChatChannel {
   id: string;
   title: string;
   description: string;
   created_by: string;
+  /** 'public' for US-030 forums; 'team' for a private channel tied to one team. */
+  channel_type: ChatChannelType;
+  /** The linked team for a private channel; null for public channels. */
+  team_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface CreateChatChannelDTO {
+  title: string;
+  description: string;
+  created_by: string;
+  channel_type?: ChatChannelType;
+  team_id?: string | null;
+}
+
+/** US-031 / #378 / T2 idempotent team channel provisioning DTO. */
+export interface ProvisionTeamChannelDTO {
+  team_id: string;
   title: string;
   description: string;
   created_by: string;
