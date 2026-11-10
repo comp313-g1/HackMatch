@@ -65,7 +65,9 @@ export async function getModerationCaseDetailHandler(
 }
 
 /**
- * POST /api/admin/moderation/cases — ADMIN opens a case with target, reason, time (US-026 AC 1).
+ * POST /api/admin/moderation/cases — ADMIN opens a case with target, reason, and time.
+ * US-026 supplies the shared creation flow; US-033 / #393 reuses it for
+ * identity-validated chat_channel and chat_message targets.
  */
 export async function createModerationCaseHandler(
   req: Request,

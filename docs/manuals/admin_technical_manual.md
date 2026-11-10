@@ -2,9 +2,9 @@
 
 **Audience:** project administrators, maintainers, developers, and technical reviewers
 
-**Repository baseline:** `US-032/dm-open-or-continue-thread` branch (migrations through `0055`, Issue #420 update)
+**Repository baseline:** `US-033/chat-moderation-targets` branch (migrations through `0057`, Issue #425 update)
 
-**Last reviewed:** November 9, 2026
+**Last reviewed:** November 10, 2026
 
 This manual describes how the current HackMatch implementation is configured, operated, secured, tested, and maintained. It complements the end-user [User Manual](./user_manual.md), the [engineering diagram index](../diagrams/README.md), and the detailed [demo seed guide](../../db-seed/README.md).
 
@@ -34,7 +34,7 @@ This manual describes how the current HackMatch implementation is configured, op
 
 ## 1. System overview
 
-HackMatch is a web application for participant profiles, platform-wide teammate discovery, team recruitment, invitations, applications, roster management, notifications, a private team workspace and manifest export, abuse reporting, administration (moderation, account enforcement, audit review), participant forums chat, a private team chat, and one-to-one direct messages.
+HackMatch is a web application for participant profiles, platform-wide teammate discovery, team recruitment, invitations, applications, roster management, notifications, a private team workspace and manifest export, abuse reporting, administration (including chat moderation, account enforcement, and audit review), participant forums chat, a private team chat, and one-to-one direct messages.
 
 The current user-facing architecture is **Event-Free**:
 
@@ -310,7 +310,7 @@ Review migration diffs and the selected Supabase target before applying any chan
 | Direct messages | `direct_message_threads` (0053, activity column added in 0055), `direct_messages` (0055), `participant_blocks` (0054) |
 | Legacy compatibility | `pending_event_submissions` and event-oriented columns retained by the physical schema |
 
-`moderation_cases.target_id` and `event_action_records.target_id` are polymorphic identifiers interpreted with their target type; they are not physical foreign keys to every possible target table.
+`moderation_cases.target_id`, `moderation_reports.target_id`, and `event_action_records.target_id` are polymorphic identifiers interpreted with their target type. Migration `0056` adds the `chat_channel` and `chat_message` case types, and migration `0057` adds `chat_message` participant reports. These identifiers intentionally are not physical foreign keys to the chat tables; the application and report-validation trigger resolve the correct table from `target_type`.
 
 ### Transactional operations
 
@@ -347,7 +347,8 @@ ADMIN moderation routes are mounted under `/api/admin/moderation` and require va
 The current module supports:
 
 - listing and inspecting moderation cases;
-- creating cases for `team`, `profile`, or `url` targets;
+- creating cases for `team`, `profile`, `url`, `chat_channel`, or `chat_message` targets through the current ADMIN form;
+- resolving privacy-safe chat evidence without returning raw chat rows;
 - viewing action records;
 - dismissing a case; and
 - applying supported decisions such as redact, warn, hide, or disable URL, subject to target type.
@@ -356,15 +357,49 @@ Cases use `Open`, `Dismissed`, and `Resolved` states. Reasons are validated, URL
 
 Depending on target and action, the service can redact a team pitch or profile handle, record a warning and notification, hide a team/profile, or disable a communication URL. It does not delete team memberships as a side effect of content hiding. Action records retain safe actor, target, outcome, and timestamp metadata; credentials and authentication artifacts are excluded.
 
+### Chat moderation targets and ADMIN workflow (US-033)
+
+US-033 extends the US-026 queue; it does not create a second moderation subsystem. Every queue, detail, creation, decision, and action-record route remains behind Firebase authentication, current MFA, active-account enforcement, and the stored `ADMIN` role. A `PART` or visitor cannot retrieve chat evidence or invoke ADMIN decisions.
+
+The supported case targets are:
+
+| Target type | Logical resolution | Physical target FK? |
+|---|---|---|
+| `chat_channel` | `moderation_cases.target_id` is resolved against `chat_channels.id` | No |
+| `chat_message` | `moderation_cases.target_id` is resolved against `chat_messages.id` | No |
+
+The polymorphic `target_type`/`target_id` pair permits existing moderation targets and chat targets to share one table. A single PostgreSQL foreign key cannot safely point to different target tables, so Express validates a UUID against the table selected by the target type before inserting a case. Unsupported types, malformed UUIDs, mismatched types, and targets that do not exist fail with safe validation/not-found responses. Existing case records remain usable if a target later disappears: case detail returns an `Unavailable` channel/message marker instead of querying an unrelated record or exposing a database error.
+
+To open a chat case in **Admin ▾ → Moderation**, the ADMIN selects **Chat channel** or **Chat message**, supplies the target UUID, and enters a nonblank **Reason** (database limit: 2,000 characters). A successful `POST /api/admin/moderation/cases` inserts an `Open` `moderation_cases` row. Invalid input remains in the form so it can be corrected.
+
+Case detail is built from explicit evidence projections:
+
+| Chat target | Allowlisted evidence |
+|---|---|
+| Channel | Target id and availability; `public`/`team` channel type; redacted title and description; creator handle when available; UTC creation time; content-redacted flag |
+| Message | Target id and availability; author handle when available; UTC send time; a redacted/truncated message excerpt of at most 500 characters |
+
+The evidence repository selects only the columns needed for those projections. Text redaction covers account emails, common credential/token forms, OTP-like six-digit codes, PEM material, and long secret-like values. Evidence never includes passwords or hashes, raw OTPs or OTP hashes, authentication/session tokens, Firebase or Supabase credentials, account emails, unrelated profile fields, membership details, or neighboring conversation messages. An ADMIN reviews only the target supplied through the moderation case; ADMIN role is not a general private-chat browser.
+
+The React safety queue labels chat rows as **Chat channel** or **Chat message** and uses the existing loading, empty, retry, selection, validation, success, and error states. When the target is stale, **Case view** shows the unavailable-target state while retaining the case reason, status, report count, and safe action history. Chat targets currently expose **Dismiss** only; `redact`, `warn`, `hide`, and `disable_url` are rejected for chat targets and remain available only where the legacy target/action contract supports them.
+
+A chat dismissal requires a decision reason. The service writes an append-only `event_action_records` row containing `actor_id`, a `moderation_<chat target>` target type, the target UUID, `moderation_dismiss`, reason, outcome, a scrubbed `safe_state_summary`, and UTC `created_at`, then marks the case `Dismissed`. The safe summary carries `caseId` for application-level history lookup; there is no physical action-record-to-case foreign key. As with the existing US-026 flow, the action-record insert and case-state update are sequential writes rather than one database transaction.
+
 ### Participant reports (US-025)
 
-Participants submit reports with `POST /api/reports` (verified active `PART` only). A report captures the target (team listing, profile, event listing, or URL), a category (Harassment, Spam, Phishing Link, Fake Account), and an optional explanation of up to 1,000 characters. URL targets must be HTTPS. Each account may submit at most **5 reports per rolling hour**; further attempts return a rate-limit response. A successful report is stored in `moderation_reports`, creates a linked moderation case, and returns a receipt id to the reporter. `GET /api/reports` and `GET /api/reports/:reportId` always refuse participants, so reports stay confidential to administrators.
+Participants submit reports with `POST /api/reports` (verified active `PART` only). A report captures the target, a category (Harassment, Spam, Phishing Link, Fake Account), and an optional explanation of up to 1,000 characters. URL targets must be HTTPS. Each account may submit at most **5 reports per rolling hour**; further attempts return a rate-limit response. A successful report is stored in `moderation_reports`, links to the existing open case for the same target or creates one, and returns a participant-safe receipt. `GET /api/reports` and `GET /api/reports/:reportId` always refuse participants, so other reports, ADMIN notes, evidence, and action history remain confidential.
+
+Migration `0057` and the reporting service extend this pipeline to `chat_message`. The service resolves the submitted ID to `chat_messages` and its persisted `chat_channels` row before applying normal visibility rules: public forum messages are eligible, while team-channel messages require a current `Confirmed` membership in the linked team. Missing, inaccessible, unrelated-team, and unsupported direct-message identifiers return the same unavailable result without message content or a private-existence signal. US-032 stores messages in `direct_messages`, which the current `chat_message` target deliberately does not resolve.
+
+The participant-report response contains the receipt/case identifiers, category, received status, submission time, and rate-limit metadata, but no other reports or ADMIN-only data. Separate reports for the same message remain separate `moderation_reports` rows and link to one open case under the existing duplicate policy.
+
+**Current client limitation:** the server reporting contract accepts `chat_message`, but `ReportAbuseModal` and the React forum/team-message rows have not been extended with a chat-message target or **Report message** control. The backend pipeline is tested and available for an authorized integrated client, but the current browser UI cannot initiate a chat-message report. Direct-message reporting is not supported.
 
 An empty safety queue is valid. The current seeded `recruitment-v1` scenario intentionally creates no moderation cases.
 
 ![ADMIN moderation safety queue](../assets/wireframes/US-026-admin-moderation-safety-queue.png)
 
-See the [moderation workflow sequence](../diagrams/US-026/US-026-moderation-workflow-sequence.png) and [case lifecycle](../diagrams/US-026/US-026-moderation-case-lifecycle-flow.png).
+See the US-026 [moderation workflow sequence](../diagrams/US-026/US-026-moderation-workflow-sequence.png) and [case lifecycle](../diagrams/US-026/US-026-moderation-case-lifecycle-flow.png). US-033 is documented by the [chat moderation use case](../diagrams/US-033/US-033-chat-moderation-use-case.png), [report/review/action sequence](../diagrams/US-033/US-033-chat-moderation-sequence.png), [polymorphic target model](../diagrams/US-033/US-033-moderation-target-model.png), and [authorization/privacy flow](../diagrams/US-033/US-033-moderation-privacy-flow.png).
 
 ## 13. ADMIN account enforcement
 
@@ -424,7 +459,7 @@ Channel titles and descriptions are required and validated. Message bodies must 
 
 Public forums have no channel-membership persistence or join/leave mechanism: every verified active `PART` passes the same global-channel access gate. Private team channels (below) are gated by team membership instead. There is also no implemented peer-presence directory; `Invisible` is filtered by helper logic, but broader peer visibility policy remains undefined.
 
-Reactions, typing indicators, attachments, voice/video, unread/mention tracking, and moderation/report integration are deferred.
+US-033 moderation/report integration is implemented for `chat_channels` and `chat_messages`; it does not make the ADMIN interface a general chat browser, and direct-message rows are outside the current target contract. Reactions, typing indicators, attachments, voice/video, and unread/mention tracking remain deferred.
 
 ### Private team channels (US-031)
 
@@ -566,8 +601,14 @@ GitHub Actions uses Node 22 and runs dependency installation, commit-message val
 |---|---|
 | US-031 team channel (model, repository, services, routes, real-SQL lifecycle) | `npm run test:us031 --prefix server` |
 | US-032 direct messages (threads, blocks, access, privacy, routes, real SQL) | `npm run test:us032 --prefix server` |
+| US-033 moderation target/report/privacy/audit server coverage | `npm run test --prefix server -- src/validators/moderation.validator.test.ts src/services/moderationChatTargets.test.ts src/services/moderationCases.privacy.test.ts src/services/moderationReports.test.ts src/services/moderationDecisions.test.ts src/routes/moderation.routes.test.ts src/routes/moderation.decide.routes.test.ts src/routes/moderation.actionRecords.routes.test.ts src/routes/reports.routes.test.ts` |
+| US-033 ADMIN moderation UI coverage | `npm run test --prefix client -- src/components/moderation` |
 
 The real-SQL tests run migrations on an in-process PostgreSQL (PGlite, a server dev dependency), so they need no external database.
+
+The #397 suites cover successful ADMIN channel/message cases, PART and visitor denial, malformed and stale targets, mandatory reasons, allowlisted/redacted evidence, participant-report linkage, safe action records, UTC timestamps, and absence of unrelated chat or authentication data. The focused client suite covers chat queue labels, loading and stale-target states, safe evidence rendering, dismissal-only chat controls, kept validation drafts, successful decisions, API failures, and compatibility with non-chat cases.
+
+Issue #425 documentation validation on November 10, 2026 ran the commands above: the focused server selection passed **103 tests in 9 files**, and the client moderation selection passed **70 tests in 10 files**.
 
 ### Earlier branch validation baseline (October 23, 2026)
 
@@ -597,6 +638,7 @@ Current controls include:
 - hashed OTP storage, challenge expiry/invalidation, attempt locking, and issuance limits;
 - Supabase service-role isolation on the server;
 - server-generated privacy projections for visitor/profile/recruitment/admin/chat responses;
+- chat moderation projections that query only the targeted channel/message, redact secret-like text, and never return unrelated conversation history;
 - suspension checks across protected workflows; and
 - exact-ID, target-guarded, redacted demo seed/reset behavior.
 
@@ -668,8 +710,9 @@ Operational rules:
 - Team capacity defaults to four in the current product design, while physical event bounds and current validators can permit configured sizes outside that default.
 - New MFA challenge creation and some ADMIN moderation/account-enforcement workflows consist of sequential cross-service or multi-write operations rather than a single distributed transaction. Retry only after inspecting resulting state.
 - ADMIN account enforcement supports suspension and deletion processing, but not unsuspension/reactivation through the current API.
-- Public chat is global to verified active participants. Peer presence discovery policy, direct messages, rich media, reactions, typing, and moderation hooks are not implemented. Private team channels (US-031) are implemented end to end except automatic provisioning: nothing creates a team's channel when the team is created, so a team has no chat until a channel is provisioned.
+- Public chat is global to verified active participants. Peer presence discovery policy, rich media, reactions, typing, and unread/mention features are not implemented. Private team channels (US-031) are implemented end to end except automatic provisioning: nothing creates a team's channel when the team is created, so a team has no chat until a channel is provisioned.
 - Direct messages (US-032) have a back end and inbox/conversation screens, but no UI to start a new conversation, no block/unblock endpoint or screen (the block rule is enforced against `participant_blocks` only), and no unread or mention tracking.
+- US-033 supports ADMIN cases for `chat_channel`/`chat_message` and participant reports for visible `chat_messages`, but the participant React UI has no **Report message** control. Direct-message rows are not supported moderation targets, and chat cases currently support dismissal only.
 - The audit retention period is not yet approved, so no record is marked "Past retention" by default.
 - US-029 (authenticator-app two-factor authentication) is future scope; every sign-in uses email OTP.
 - The diagram index was produced through repository audits and may lag very recent implementation changes; current source, migrations, and tests govern operations when a status label differs.

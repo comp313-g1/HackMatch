@@ -1,6 +1,12 @@
 /** Client shapes for US-026 / #241 moderation queue and case view. */
 
-export type ModerationTargetType = 'team' | 'profile' | 'event' | 'url';
+export type ModerationTargetType =
+  | 'team'
+  | 'profile'
+  | 'event'
+  | 'url'
+  | 'chat_channel'
+  | 'chat_message';
 export type ModerationCaseStatus = 'Open' | 'Dismissed' | 'Resolved';
 export type ModerationDecisionAction =
   | 'dismiss'
@@ -67,10 +73,66 @@ export interface SanitizedUrlTarget {
   };
 }
 
+export interface SanitizedEventTarget {
+  type: 'event';
+  event: {
+    id: string;
+    title: string;
+    format: string;
+    status: string;
+    startDate: string;
+    endDate: string;
+    location: string | null;
+    officialUrl: string;
+  };
+}
+
+export interface SanitizedChatChannelTarget {
+  type: 'chat_channel';
+  chatChannel:
+    | {
+        id: string;
+        availability: 'Available';
+        channelType: 'public' | 'team';
+        title: string;
+        description: string;
+        creatorHandle: string | null;
+        createdAt: string;
+        contentRedacted: boolean;
+      }
+    | {
+        id: string;
+        availability: 'Unavailable';
+      };
+}
+
+export interface SanitizedChatMessageTarget {
+  type: 'chat_message';
+  chatMessage:
+    | {
+        id: string;
+        availability: 'Available';
+        authorHandle: string | null;
+        createdAt: string;
+        messageContext: {
+          text: string;
+          redacted: boolean;
+          truncated: boolean;
+        };
+      }
+    | {
+        id: string;
+        availability: 'Unavailable';
+      };
+}
+
 export type SanitizedModerationTarget =
   | SanitizedTeamTarget
   | SanitizedProfileTarget
-  | SanitizedUrlTarget;
+  | SanitizedUrlTarget
+  | SanitizedEventTarget
+  | SanitizedChatChannelTarget
+  | SanitizedChatMessageTarget;
 
 /** Privacy boundary returned with case detail (US-026 / #245 / AC 4). */
 export interface ModerationPrivacyFlags {

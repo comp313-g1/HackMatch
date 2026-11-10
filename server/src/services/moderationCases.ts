@@ -1,4 +1,5 @@
 import { moderationRepository } from '../db/moderation.repository.js';
+import { moderationTargetRepository } from '../db/moderationTarget.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import { profileRepository } from '../db/profile.repository.js';
 import { participantsRepository } from '../db/participants.repository.js';
@@ -13,6 +14,12 @@ import {
   scrubPrivateModerationFields,
   type ModerationPrivacyFlags,
 } from './moderationPrivacy.js';
+import {
+  loadChatChannelEvidence,
+  loadChatMessageEvidence,
+  type SanitizedChatChannelTarget,
+  type SanitizedChatMessageTarget,
+} from './moderationChatEvidence.js';
 
 export type ModerationServiceErrorCode =
   | 'TARGET_NOT_FOUND'
@@ -124,7 +131,9 @@ export type SanitizedModerationTarget =
   | SanitizedTeamTarget
   | SanitizedProfileTarget
   | SanitizedUrlTarget
-  | SanitizedEventTarget;
+  | SanitizedEventTarget
+  | SanitizedChatChannelTarget
+  | SanitizedChatMessageTarget;
 
 export interface ModerationCaseDetailView {
   case: ModerationCaseView;
@@ -156,6 +165,23 @@ async function assertTargetExists(
   if (targetType === 'team' || targetType === 'url') {
     const team = await teamsRepository.findTeamById(targetId);
     if (!team) {
+      throw new ModerationServiceError(
+        404,
+        'TARGET_NOT_FOUND',
+        'The moderation target was not found.',
+        { targetType, targetId }
+      );
+    }
+    return;
+  }
+
+  if (targetType === 'chat_channel' || targetType === 'chat_message') {
+    const exists =
+      targetType === 'chat_channel'
+        ? await moderationTargetRepository.chatChannelExists(targetId)
+        : await moderationTargetRepository.chatMessageExists(targetId);
+
+    if (!exists) {
       throw new ModerationServiceError(
         404,
         'TARGET_NOT_FOUND',
@@ -310,6 +336,10 @@ export async function loadSanitizedTarget(
     target = await loadSanitizedProfileTarget(targetId);
   } else if (targetType === 'event') {
     target = await loadSanitizedEventTarget(targetId);
+  } else if (targetType === 'chat_channel') {
+    target = await loadChatChannelEvidence(targetId);
+  } else if (targetType === 'chat_message') {
+    target = await loadChatMessageEvidence(targetId);
   } else {
     if (!flaggedUrl) {
       throw new ModerationServiceError(

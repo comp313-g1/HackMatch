@@ -4,8 +4,8 @@ This manual explains how to use the current HackMatch web application. It is wri
 
 | Item | Current manual scope |
 |---|---|
-| Version | 5.0 — Issue #420 update for completed user stories through US-032 |
-| Covers | Registration, email verification, sign-in, email OTP, password recovery, profiles, hackathon history and experience badges, Looking for Team, team discovery, candidate directory search, recruitment, requests, roster locking, notifications, private team workspace, team manifest export, abuse reporting, forums chat, private team chat, direct messages, and ADMIN screens (moderation, accounts, audit log) |
+| Version | 5.1 — Issue #425 update for completed user stories through US-033 |
+| Covers | Registration, email verification, sign-in, email OTP, password recovery, profiles, hackathon history and experience badges, Looking for Team, team discovery, candidate directory search, recruitment, requests, roster locking, notifications, private team workspace, team manifest export, abuse reporting, forums chat, private team chat, direct messages, chat moderation, and ADMIN screens (moderation, accounts, audit log) |
 | Does not cover | Removed hackathon-directory workflows (US-008–US-010), authenticator-app 2FA (US-029, future), starting a brand-new direct message from a profile or card (not available yet), blocking and unblocking controls, or other unimplemented features |
 | Sources checked | Current React components, Express routes and access middleware, tests, User Stories, requirements, and real application captures |
 
@@ -55,7 +55,7 @@ The current application supports:
 - self-reported hackathon history with an experience badge;
 - a candidate directory search for Team Leads;
 - a private workspace and an exportable roster manifest for locked teams;
-- reporting of abusive profiles, team listings, and suspicious links;
+- reporting of abusive profiles, team listings, and suspicious links, plus server-side intake for visible forum/team-chat messages;
 - participant presence, shared forums, and text messages;
 - a private team chat for the confirmed members of a team;
 - one-to-one direct messages between Participants; and
@@ -491,7 +491,7 @@ The checksum is an integrity check only. It does not prove when the team formed 
 
 ## 19. Report abusive content
 
-**Purpose:** Tell Administrators about an abusive profile, a team listing, or a suspicious link.
+**Purpose:** Tell Administrators about abusive content that you are permitted to view.
 
 **Prerequisite:** Signed in as a verified active `PART`.
 
@@ -502,6 +502,21 @@ The checksum is an integrity check only. It does not prove when the team formed 
 5. Select **Submit Report**. A **Receipt ID** confirms that Administrators will see it.
 
 You can send at most **5 reports per hour**. If you reach the limit, wait and try again; the message tells you when. Other Participants cannot see your report. If validation fails, correct the highlighted fields and your text is kept.
+
+### Chat-message reports (US-033)
+
+The protected reporting service also accepts a report for a visible forum or team-chat message. The same four categories apply, and the explanation remains optional with a 1,000-character limit. A successful submission enters the existing safety queue and returns a receipt; repeated reports for the same message can link to the same open moderation case.
+
+Normal chat access remains authoritative:
+
+- a public-forum message is reportable only by an eligible signed-in Participant;
+- a private team-chat message is reportable only while the reporter is a current confirmed member of that message's team;
+- a missing message or one the reporter cannot view produces the same unavailable result, so reporting cannot be used to discover private content; and
+- US-032 direct messages use a separate message model and are **not** supported by the current `chat_message` report target.
+
+**Current interface limitation:** the server-side chat-message reporting path is implemented, but the current React forum, team-chat, and direct-message rows do not show a **Report message** button, and the existing report window is still wired only to team/profile/event/URL targets. Therefore there is no clickable chat-message reporting workflow in the current UI. Do not use a copied message identifier to try to bypass this limitation.
+
+A report never gives the reporter access to another Participant's reports, Administrator notes, moderation evidence, action records, internal moderation metadata, or unrelated chat history. Participant report-list and report-detail requests are denied.
 
 ![Placeholder: Report abusive content modal](../assets/wireframes/US-025-report-abuse-modal.png)
 
@@ -600,13 +615,14 @@ Only an active `ADMIN` with OTP complete sees **Admin ▾**. Participants and Vi
 1. Open **Admin ▾ → Moderation**.
 2. Review the newest cases in **Safety queue**.
 3. Select a case to open **Case view** and safe action records.
-4. If needed, use the open-case form to create a case for a supported target.
-5. Choose an enforcement action: **Dismiss**, **Redact text**, **Warn**, **Hide listing**, or **Disable unsafe URL**.
-6. Enter the required **Decision reason** and submit.
+4. If needed, use the open-case form to create a case for a supported target, including **Chat channel** or **Chat message**. Enter the target UUID and the required case reason.
+5. For a chat case, review only the safe channel/message evidence shown in **Case view**. If the original target no longer exists, the case remains available and the target is labelled unavailable.
+6. Chat targets currently offer **Dismiss** only. Other target types may offer **Redact text**, **Warn**, **Hide listing**, or **Disable unsafe URL** where supported.
+7. Enter the required **Decision reason** and submit.
 
 Closed cases cannot receive another decision. Failed validation preserves the reason draft.
 
-Cases can also appear in the queue because a Participant reported content (see [§19](#19-report-abusive-content)). Each report creates a moderation case, and the reporter receives a receipt.
+Cases can also appear in the queue because a Participant reported content (see [§19](#19-report-abusive-content)). A report links to an existing open case for that target or creates one, and the reporter receives a receipt without ADMIN-only evidence or action history.
 
 ### Accounts
 
@@ -691,7 +707,7 @@ Both need a **locked** team and a confirmed membership. Ask your Team Lead to lo
 
 ### Why was my report rejected?
 
-You may have reached the limit of 5 reports per hour, left the category empty, or entered a link that does not start with `https://`.
+You may have reached the limit of 5 reports per hour, left the category empty, entered a link that does not start with `https://`, or selected content that is no longer available. A team-chat message also becomes ineligible when you are no longer a confirmed member of its team. Direct messages are not accepted by the current chat-message report target. The current chat UI does not yet expose a report button.
 
 ### Why was my note not saved in the workspace?
 
@@ -737,4 +753,4 @@ Additional real captures for empty, locked, recommendation, application-list, mo
 
 ---
 
-HackMatch · COMP 313 · Team 1 · User Manual · Issue #420
+HackMatch · COMP 313 · Team 1 · User Manual · Issue #425

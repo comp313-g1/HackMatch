@@ -81,4 +81,27 @@ describe('OpenModerationCaseForm (US-026 / #241)', () => {
     expect(screen.getByTestId('open-case-form-error')).toHaveTextContent(/kept/);
     expect(screen.getByTestId('moderation-reason')).toHaveValue('kept draft');
   });
+
+  it('submits a chat-message case using the existing reason-gated flow', () => {
+    const onSubmit = vi.fn();
+    render(<OpenModerationCaseForm onSubmit={onSubmit} />);
+
+    fireEvent.change(screen.getByTestId('moderation-target-type'), {
+      target: { value: 'chat_message' },
+    });
+    fireEvent.change(screen.getByTestId('moderation-target-id'), {
+      target: { value: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' },
+    });
+    fireEvent.change(screen.getByTestId('moderation-reason'), {
+      target: { value: 'Reported abusive message' },
+    });
+    fireEvent.click(screen.getByTestId('open-case-submit'));
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      targetType: 'chat_message',
+      targetId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      reason: 'Reported abusive message',
+      flaggedUrl: null,
+    });
+  });
 });

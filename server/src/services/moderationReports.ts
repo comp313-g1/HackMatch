@@ -7,6 +7,7 @@
 import { getSupabaseClient } from '../db/client.js';
 import { moderationRepository } from '../db/moderation.repository.js';
 import { moderationReportsRepository } from '../db/moderationReports.repository.js';
+import { chatRepository } from '../db/chat.repository.js';
 import { participantsRepository } from '../db/participants.repository.js';
 import { profileRepository } from '../db/profile.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
@@ -15,7 +16,12 @@ import type {
   ModerationReportTargetType,
 } from '../db/types.js';
 import type { ValidatedModerationReportInput } from '../validators/moderationReport.validator.js';
+import { isPublicChatChannel } from '../db/chatModel.js';
 import { assertReportRateLimit } from './reportRateLimiter.js';
+import {
+  authorizeConfirmedTeamChatMember,
+  TeamChatAuthorizationError,
+} from './teamChatAuthorization.js';
 
 export type ReportServiceErrorCode =
   | 'TARGET_NOT_FOUND'
@@ -58,6 +64,54 @@ export interface ReportSubmissionReceipt {
   };
 }
 
+function unavailableChatMessage(targetId: string): never {
+  throw new ReportServiceError(
+    404,
+    'TARGET_NOT_FOUND',
+    'The specified chat message is not available for reporting.',
+    { targetType: 'chat_message', targetId }
+  );
+}
+
+/**
+ * Reuses the normal US-030/US-031 read boundaries before a chat message may enter US-025.
+ * The lookup resolves message -> persisted channel; client-supplied channel/team identifiers
+ * are never trusted. Every missing or private denial has the same 404 shape so message UUIDs
+ * cannot be used to probe private team channels.
+ *
+ * US-032 direct messages use `direct_messages`, while #392/#394 currently map the canonical
+ * `chat_message` moderation target only to `chat_messages`. A direct-message UUID therefore
+ * follows this same unavailable path until that target/evidence contract is explicitly extended.
+ */
+async function verifyReportableChatMessage(
+  reporterId: string,
+  targetId: string
+): Promise<void> {
+  const message = await chatRepository.findMessageById(targetId);
+  if (!message) unavailableChatMessage(targetId);
+
+  const channel = await chatRepository.findChannelById(message.channel_id);
+  if (!channel) unavailableChatMessage(targetId);
+
+  if (isPublicChatChannel(channel)) return;
+
+  if (channel.channel_type !== 'team' || !channel.team_id) {
+    unavailableChatMessage(targetId);
+  }
+
+  try {
+    await authorizeConfirmedTeamChatMember({
+      actorParticipantId: reporterId,
+      channelId: channel.id,
+    });
+  } catch (error) {
+    if (error instanceof TeamChatAuthorizationError) {
+      unavailableChatMessage(targetId);
+    }
+    throw error;
+  }
+}
+
 /**
  * Validates that the report target is visible and permitted for participant reporting (US-025 AC 1).
  * Executes prior to rate-limit evaluation so invalid targets do not burn hourly quota.
@@ -66,6 +120,11 @@ export async function verifyReportableTarget(
   reporterId: string,
   input: ValidatedModerationReportInput
 ): Promise<void> {
+  if (input.targetType === 'chat_message') {
+    await verifyReportableChatMessage(reporterId, input.targetId);
+    return;
+  }
+
   if (input.targetType === 'team') {
     const team = await teamsRepository.findTeamById(input.targetId);
     if (

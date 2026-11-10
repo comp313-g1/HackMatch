@@ -26,7 +26,13 @@ describe('moderationReportModel (US-025 / #231 / #237)', () => {
       'Phishing Link',
       'Fake Account',
     ]);
-    expect(REPORT_TARGET_TYPES).toEqual(['team', 'profile', 'event', 'url']);
+    expect(REPORT_TARGET_TYPES).toEqual([
+      'team',
+      'profile',
+      'event',
+      'url',
+      'chat_message',
+    ]);
     expect(MAX_REPORT_EXPLANATION_LENGTH).toBe(1000);
     expect(MAX_REPORT_FLAGGED_URL_LENGTH).toBe(2048);
   });
@@ -53,6 +59,7 @@ describe('moderationReportModel (US-025 / #231 / #237)', () => {
       expect(isValidReportTargetType('profile')).toBe(true);
       expect(isValidReportTargetType('event')).toBe(true);
       expect(isValidReportTargetType('url')).toBe(true);
+      expect(isValidReportTargetType('chat_message')).toBe(true);
       expect(isValidReportTargetType('other')).toBe(false);
     });
 
@@ -114,6 +121,21 @@ describe('moderationReportModel (US-025 / #231 / #237)', () => {
 
       expect(record.target_type).toBe('url');
       expect(record.flagged_url).toBe('https://phishing.site/account');
+    });
+
+    it('builds a valid record for a chat-message target without chat content', () => {
+      const record = buildModerationReportRecord({
+        reporterId: validUuid1,
+        targetType: 'chat_message',
+        targetId: validUuid2,
+        category: 'Harassment',
+        explanation: 'Targeted message violates the rules.',
+      });
+
+      expect(record.target_type).toBe('chat_message');
+      expect(record.target_id).toBe(validUuid2);
+      expect(record.flagged_url).toBeNull();
+      expect(JSON.stringify(record)).not.toMatch(/message body|email|token|otp/i);
     });
 
     it('throws SELF_REPORT_FORBIDDEN when participant reports own profile', () => {

@@ -3,6 +3,7 @@ import type {
   ModerationCaseStatus,
   ModerationDecisionAction,
   ModerationFieldErrors,
+  ModerationTargetType,
 } from './moderationTypes';
 
 const ACTIONS: Array<{ value: ModerationDecisionAction; label: string; help: string }> = [
@@ -20,6 +21,7 @@ const ACTIONS: Array<{ value: ModerationDecisionAction; label: string; help: str
 export interface ModerationActionPanelProps {
   caseId: string | null;
   caseStatus: ModerationCaseStatus | null;
+  targetType?: ModerationTargetType | null;
   submitting?: boolean;
   fieldErrors?: ModerationFieldErrors;
   formError?: string | null;
@@ -34,6 +36,7 @@ export interface ModerationActionPanelProps {
 export function ModerationActionPanel({
   caseId,
   caseStatus,
+  targetType = null,
   submitting = false,
   fieldErrors = {},
   formError = null,
@@ -45,6 +48,8 @@ export function ModerationActionPanel({
   const [localErrors, setLocalErrors] = useState<ModerationFieldErrors>({});
 
   const errors = { ...localErrors, ...fieldErrors };
+  const chatTarget = targetType === 'chat_channel' || targetType === 'chat_message';
+  const availableActions = chatTarget ? ACTIONS.filter((item) => item.value === 'dismiss') : ACTIONS;
   const closed = caseStatus != null && caseStatus !== 'Open';
   const disabled = !caseId || closed || submitting;
 
@@ -60,13 +65,13 @@ export function ModerationActionPanel({
     setReason('');
     setLocalErrors({});
     setAction('dismiss');
-  }, [caseId]);
+  }, [caseId, targetType]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (disabled) return;
     const next: ModerationFieldErrors = {};
-    if (!ACTIONS.some((a) => a.value === action)) {
+    if (!availableActions.some((a) => a.value === action)) {
       next.action = 'Choose a moderation action.';
     }
     const trimmed = reason.trim();
@@ -90,7 +95,7 @@ export function ModerationActionPanel({
     );
   }
 
-  const selectedHelp = ACTIONS.find((a) => a.value === action)?.help;
+  const selectedHelp = availableActions.find((a) => a.value === action)?.help;
 
   return (
     <form
@@ -104,6 +109,17 @@ export function ModerationActionPanel({
         A reason is required. Each decision creates a safe action record (no credentials or private
         contacts).
       </p>
+
+      {chatTarget ? (
+        <div
+          role="note"
+          className="p-2 text-xs text-ink bg-cream-50 border border-cream-200 rounded"
+          data-testid="moderation-chat-actions-note"
+        >
+          Chat targets currently support case dismissal only. Content-changing actions are not
+          available for this target type.
+        </div>
+      ) : null}
 
       {closed ? (
         <div
@@ -138,7 +154,7 @@ export function ModerationActionPanel({
       <fieldset disabled={disabled} className="space-y-3">
         <legend className="sr-only">Choose action</legend>
         <div className="space-y-2" data-testid="moderation-action-options">
-          {ACTIONS.map((item) => {
+          {availableActions.map((item) => {
             const inputId = `moderation-action-${item.value}`;
             return (
               <div key={item.value} className="flex items-start gap-2 text-sm text-ink">

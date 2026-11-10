@@ -106,4 +106,27 @@ describe('ModerationQueueView (US-026 / #241)', () => {
     fireEvent.click(screen.getByTestId(`moderation-case-row-${newer.id}`));
     expect(onSelect).toHaveBeenCalledWith(newer.id);
   });
+
+  it('labels chat-target cases without exposing message content in the queue', () => {
+    const chatCase: ModerationCaseView = {
+      ...newer,
+      id: '33333333-3333-4333-8333-333333333333',
+      targetType: 'chat_message',
+      reason: 'Reported abusive message',
+    };
+
+    render(
+      <ModerationQueueView
+        cases={[chatCase]}
+        listState="success"
+        listError={null}
+        selectedCaseId={null}
+        onSelect={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/Chat message · bbbbbbbb…/i)).toBeInTheDocument();
+    expect(screen.queryByText(/private message body/i)).not.toBeInTheDocument();
+  });
 });

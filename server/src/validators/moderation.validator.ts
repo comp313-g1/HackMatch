@@ -6,7 +6,14 @@ import type {
   ModerationTargetType,
 } from '../db/types.js';
 
-export const MODERATION_TARGET_TYPES = ['team', 'profile', 'url'] as const;
+export const MODERATION_TARGET_TYPES = [
+  'team',
+  'profile',
+  'event',
+  'url',
+  'chat_channel',
+  'chat_message',
+] as const;
 export const MODERATION_CASE_STATUSES = ['Open', 'Dismissed', 'Resolved'] as const;
 export const MODERATION_DECISION_ACTIONS = [
   'dismiss',
@@ -81,9 +88,11 @@ export function validateCreateModerationCaseInput(raw: unknown): {
   const targetTypeRaw = record.targetType;
   let targetType: ModerationTargetType | null = null;
   if (typeof targetTypeRaw !== 'string' || !targetTypeRaw.trim()) {
-    errors.targetType = 'targetType must be team, profile, or url.';
+    errors.targetType =
+      'targetType must be team, profile, event, url, chat_channel, or chat_message.';
   } else if (!(MODERATION_TARGET_TYPES as readonly string[]).includes(targetTypeRaw.trim())) {
-    errors.targetType = 'targetType must be team, profile, or url.';
+    errors.targetType =
+      'targetType must be team, profile, event, url, chat_channel, or chat_message.';
   } else {
     targetType = targetTypeRaw.trim() as ModerationTargetType;
   }

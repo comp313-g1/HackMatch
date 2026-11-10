@@ -94,4 +94,46 @@ describe('ModerationActionPanel (US-026 / #242)', () => {
     expect(screen.getByTestId('moderation-action-closed')).toBeInTheDocument();
     expect(screen.getByTestId('moderation-action-submit')).toBeDisabled();
   });
+
+  it('offers only the backend-supported dismiss action for chat targets', () => {
+    render(
+      <ModerationActionPanel
+        caseId="11111111-1111-4111-8111-111111111111"
+        caseStatus="Open"
+        targetType="chat_message"
+        onSubmit={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('moderation-action-dismiss')).toBeInTheDocument();
+    expect(screen.queryByTestId('moderation-action-redact')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('moderation-action-warn')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('moderation-action-hide')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('moderation-action-disable_url')).not.toBeInTheDocument();
+    expect(screen.getByTestId('moderation-chat-actions-note')).toHaveTextContent(
+      /dismissal only/i
+    );
+  });
+
+  it('submits a reason-gated dismissal for a chat target', () => {
+    const onSubmit = vi.fn();
+    render(
+      <ModerationActionPanel
+        caseId="11111111-1111-4111-8111-111111111111"
+        caseStatus="Open"
+        targetType="chat_channel"
+        onSubmit={onSubmit}
+      />
+    );
+
+    fireEvent.change(screen.getByTestId('moderation-decision-reason'), {
+      target: { value: 'No policy violation found' },
+    });
+    fireEvent.click(screen.getByTestId('moderation-action-submit'));
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      action: 'dismiss',
+      reason: 'No policy violation found',
+    });
+  });
 });

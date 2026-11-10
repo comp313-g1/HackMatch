@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { ModerationSafetyPage } from './ModerationSafetyPage';
 import * as moderationApi from './moderationApi';
 
@@ -46,6 +46,33 @@ const newer = {
   flaggedUrl: null,
   createdAt: '2026-10-18T12:00:00.000Z',
   createdBy: 'admin',
+};
+
+const chatCase = {
+  ...newer,
+  id: '33333333-3333-4333-8333-333333333333',
+  targetType: 'chat_message' as const,
+  targetId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+  reason: 'Participant-reported chat message',
+  reportCount: 1,
+};
+
+const chatDetail = {
+  case: chatCase,
+  target: {
+    type: 'chat_message' as const,
+    chatMessage: {
+      id: chatCase.targetId,
+      availability: 'Available' as const,
+      authorHandle: 'safe-handle',
+      createdAt: '2026-11-10T15:30:00.000Z',
+      messageContext: {
+        text: 'Privacy-safe evidence excerpt',
+        redacted: false,
+        truncated: false,
+      },
+    },
+  },
 };
 
 describe('ModerationSafetyPage (US-026 / #241)', () => {
@@ -335,5 +362,128 @@ describe('ModerationSafetyPage (US-026 / #241)', () => {
     expect(screen.getByTestId('moderation-target-id')).toHaveValue(
       'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
     );
+  });
+
+  it('opens a participant-reported chat case and applies the supported dismissal', async () => {
+    probeMock.mockResolvedValue('granted');
+    fetchCasesMock.mockResolvedValue([chatCase]);
+    fetchDetailMock.mockResolvedValue(chatDetail);
+    decideMock.mockResolvedValue({
+      case: { ...chatCase, status: 'Dismissed', lastActionType: 'dismiss' },
+      action: 'dismiss',
+      outcome: 'case_dismissed',
+      safeStateSummary: { credentialsIncluded: false },
+    });
+
+    render(<ModerationSafetyPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId(`moderation-case-row-${chatCase.id}`)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId(`moderation-case-row-${chatCase.id}`));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('moderation-target-chat-message')).toHaveTextContent(
+        'Privacy-safe evidence excerpt'
+      );
+    });
+    expect(screen.getByTestId('moderation-chat-actions-note')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId('moderation-decision-reason'), {
+      target: { value: 'Report reviewed; no violation found' },
+    });
+    fireEvent.click(screen.getByTestId('moderation-action-submit'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('moderation-action-success')).toHaveTextContent(/case_dismissed/i);
+    });
+    expect(decideMock).toHaveBeenCalledWith(chatCase.id, {
+      action: 'dismiss',
+      reason: 'Report reviewed; no violation found',
+    });
+  });
+
+  it('keeps a chat decision draft when the action API fails', async () => {
+    probeMock.mockResolvedValue('granted');
+    fetchCasesMock.mockResolvedValue([chatCase]);
+    fetchDetailMock.mockResolvedValue(chatDetail);
+    decideMock.mockRejectedValue(
+      new moderationApi.ModerationApiError(
+        500,
+        'SERVER_ERROR',
+        undefined,
+        undefined,
+        'Could not apply the moderation decision.'
+      )
+    );
+
+    render(<ModerationSafetyPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId(`moderation-case-row-${chatCase.id}`)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId(`moderation-case-row-${chatCase.id}`));
+    await waitFor(() => {
+      expect(screen.getByTestId('moderation-target-chat-message')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId('moderation-decision-reason'), {
+      target: { value: 'Keep this reason after failure' },
+    });
+    fireEvent.click(screen.getByTestId('moderation-action-submit'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('moderation-action-form-error')).toHaveTextContent(
+        /Could not apply/i
+      );
+    });
+    expect(screen.getByTestId('moderation-decision-reason')).toHaveValue(
+      'Keep this reason after failure'
+    );
+  });
+
+  it('does not render late evidence from a previously selected case', async () => {
+    probeMock.mockResolvedValue('granted');
+    fetchCasesMock.mockResolvedValue([chatCase, newer]);
+    let resolveChatDetail!: (value: typeof chatDetail) => void;
+    const delayedChatDetail = new Promise<typeof chatDetail>((resolve) => {
+      resolveChatDetail = resolve;
+    });
+    fetchDetailMock.mockImplementation((caseId) => {
+      if (caseId === chatCase.id) return delayedChatDetail;
+      return Promise.resolve({
+        case: newer,
+        target: {
+          type: 'profile' as const,
+          profile: {
+            participantId: newer.targetId,
+            handle: 'current-profile',
+            primaryRole: null,
+            institution: null,
+            displayName: 'Current Profile',
+            skills: [],
+            portfolios: [],
+          },
+        },
+      });
+    });
+
+    render(<ModerationSafetyPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId(`moderation-case-row-${chatCase.id}`)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId(`moderation-case-row-${chatCase.id}`));
+    expect(screen.getByTestId('moderation-case-loading')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId(`moderation-case-row-${newer.id}`));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('moderation-target-profile')).toHaveTextContent('current-profile');
+    });
+    await act(async () => {
+      resolveChatDetail(chatDetail);
+      await delayedChatDetail;
+    });
+
+    expect(screen.getByTestId('moderation-target-profile')).toHaveTextContent('current-profile');
+    expect(screen.queryByText('Privacy-safe evidence excerpt')).not.toBeInTheDocument();
   });
 });

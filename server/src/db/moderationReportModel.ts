@@ -1,7 +1,8 @@
 /**
  * US-025 / #231 moderation-report PostgreSQL model contract and target reference rules.
  *
- * Source of truth: migration 0048_create_moderation_reports.sql (FR-073 / FR-074).
+ * Source of truth: migration 0048_create_moderation_reports.sql plus the
+ * 0057 chat-message target extension (FR-073 / FR-074 / FR-092).
  */
 
 import crypto from 'node:crypto';
@@ -23,6 +24,7 @@ export const REPORT_TARGET_TYPES: readonly ModerationReportTargetType[] = [
   'profile',
   'event',
   'url',
+  'chat_message',
 ] as const;
 
 export const MAX_REPORT_EXPLANATION_LENGTH = 1000;
@@ -128,7 +130,7 @@ export function buildModerationReportRecord(
   }
 
   if (!isValidReportTargetType(input.targetType)) {
-    throw new Error('targetType must be team, profile, event, or url.');
+    throw new Error('targetType must be team, profile, event, url, or chat_message.');
   }
 
   if (!isValidReportUuid(input.targetId)) {

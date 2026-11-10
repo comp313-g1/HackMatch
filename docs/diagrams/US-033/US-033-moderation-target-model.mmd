@@ -1,0 +1,92 @@
+---
+title: "HackMatch — US-033: Chat Moderation Target Model"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","fontFamily":"Arial, sans-serif"},"class":{"useMaxWidth":true}}}%%
+classDiagram
+    direction TB
+
+    class participants {
+        UUID id PK
+        VARCHAR role
+        BOOLEAN is_verified
+        BOOLEAN is_suspended
+        BOOLEAN is_deactivated
+    }
+
+    class moderation_cases {
+        UUID id PK
+        VARCHAR target_type
+        UUID target_id NO_TARGET_FK
+        TEXT reason
+        VARCHAR status
+        INTEGER report_count
+        UUID created_by FK
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    class moderation_reports {
+        UUID id PK
+        UUID reporter_id FK
+        VARCHAR target_type
+        UUID target_id NO_TARGET_FK
+        VARCHAR category
+        TEXT explanation
+        UUID case_id FK
+        TIMESTAMPTZ created_at
+    }
+
+    class event_action_records {
+        UUID id PK
+        UUID actor_id FK
+        VARCHAR target_type
+        UUID target_id
+        VARCHAR action_type
+        TEXT reason
+        VARCHAR outcome
+        JSONB safe_state_summary
+        TIMESTAMPTZ created_at
+    }
+
+    class chat_channels {
+        UUID id PK
+        UUID created_by FK
+        VARCHAR channel_type
+        UUID team_id
+        VARCHAR title
+        VARCHAR description
+        TIMESTAMPTZ created_at
+    }
+
+    class chat_messages {
+        UUID id PK
+        UUID channel_id FK
+        UUID author_id FK
+        TEXT body
+        TIMESTAMPTZ created_at
+    }
+
+    participants "1" --> "*" moderation_cases : created_by FK
+    participants "1" --> "*" moderation_reports : reporter_id FK
+    participants "1" --> "*" event_action_records : actor_id FK
+    participants "1" --> "*" chat_channels : created_by FK
+    participants "1" --> "*" chat_messages : author_id FK
+    moderation_cases "1" --> "*" moderation_reports : case_id FK
+    chat_channels "1" --> "*" chat_messages : channel_id FK
+
+    moderation_cases ..> chat_channels : chat_channel logical target — NO FK
+    moderation_cases ..> chat_messages : chat_message logical target — NO FK
+    moderation_reports ..> chat_messages : visible chat_message — NO FK
+    event_action_records ..> moderation_cases : safe_state_summary.caseId — NO FK
+
+    note for moderation_cases "target_type + target_id are application-resolved. Supported chat case types are chat_channel and chat_message."
+    note for moderation_reports "Participant chat reports target chat_message only and require public visibility or current Confirmed team membership."
+    note for event_action_records "Append-only audit row. Chat decisions currently record dismissal; case linkage is in safe_state_summary, not a physical FK."
+
+    style participants fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px
+    style moderation_cases fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px
+    style moderation_reports fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px
+    style chat_channels fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px
+    style chat_messages fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px
+    style event_action_records fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px
+

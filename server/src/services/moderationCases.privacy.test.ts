@@ -4,6 +4,7 @@ import { moderationRepository } from '../db/moderation.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import { profileRepository } from '../db/profile.repository.js';
 import { participantsRepository } from '../db/participants.repository.js';
+import { moderationTargetRepository } from '../db/moderationTarget.repository.js';
 import { MODERATION_PRIVACY_NOTICE } from './moderationPrivacy.js';
 import type { ModerationCase, Participant, Team } from '../db/types.js';
 
@@ -122,6 +123,64 @@ describe('moderation case privacy boundaries (US-026 / #245)', () => {
     await expect(getModerationCaseDetail(openCase.id)).rejects.toMatchObject({
       code: 'CASE_NOT_FOUND',
       status: 404,
+    });
+  });
+
+  it('integrates privacy-safe evidence into chat-message case detail', async () => {
+    const chatCase: ModerationCase = {
+      ...openCase,
+      target_type: 'chat_message',
+      target_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    };
+    vi.spyOn(moderationRepository, 'findById').mockResolvedValue(chatCase);
+    vi.spyOn(moderationTargetRepository, 'findChatMessageEvidence').mockResolvedValue({
+      id: chatCase.target_id,
+      author_id: part.id,
+      body: 'Report this message, not neighbour@example.test or OTP 123456',
+      created_at: '2026-11-10T09:00:00-05:00',
+    });
+    vi.spyOn(profileRepository, 'findProfileByParticipantId').mockResolvedValue({
+      participant_id: part.id,
+      handle: 'ada',
+      primary_role: 'Frontend',
+      institution: null,
+      shared_contact_handle: 'private-contact',
+      created_at: part.created_at,
+      updated_at: part.updated_at,
+    });
+
+    const detail = await getModerationCaseDetail(chatCase.id);
+
+    expect(detail.case.targetType).toBe('chat_message');
+    expect(detail.target).toMatchObject({
+      type: 'chat_message',
+      chatMessage: {
+        id: chatCase.target_id,
+        availability: 'Available',
+        authorHandle: 'ada',
+        createdAt: '2026-11-10T14:00:00.000Z',
+      },
+    });
+    expect(JSON.stringify(detail)).not.toMatch(
+      /neighbour@example|123456|private-contact|part@example|fb-part-1/i
+    );
+  });
+
+  it('preserves a moderation case when its chat target has gone stale', async () => {
+    const staleCase: ModerationCase = {
+      ...openCase,
+      target_type: 'chat_channel',
+      target_id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+    };
+    vi.spyOn(moderationRepository, 'findById').mockResolvedValue(staleCase);
+    vi.spyOn(moderationTargetRepository, 'findChatChannelEvidence').mockResolvedValue(null);
+
+    const detail = await getModerationCaseDetail(staleCase.id);
+
+    expect(detail.case.id).toBe(staleCase.id);
+    expect(detail.target).toEqual({
+      type: 'chat_channel',
+      chatChannel: { id: staleCase.target_id, availability: 'Unavailable' },
     });
   });
 });

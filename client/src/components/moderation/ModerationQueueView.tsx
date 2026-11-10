@@ -20,7 +20,15 @@ function formatWhen(iso: string): string {
 }
 
 function targetLabel(c: ModerationCaseView): string {
-  const kind = c.targetType === 'url' ? 'URL' : c.targetType === 'team' ? 'Team' : 'Profile';
+  const labels: Record<ModerationCaseView['targetType'], string> = {
+    team: 'Team',
+    profile: 'Profile',
+    event: 'Event',
+    url: 'URL',
+    chat_channel: 'Chat channel',
+    chat_message: 'Chat message',
+  };
+  const kind = labels[c.targetType];
   return `${kind} · ${c.targetId.slice(0, 8)}…`;
 }
 

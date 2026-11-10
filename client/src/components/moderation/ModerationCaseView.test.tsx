@@ -111,4 +111,115 @@ describe('ModerationCaseView (US-026 / #241)', () => {
       /credentials|private contact/i
     );
   });
+
+  it('renders only privacy-safe chat-message evidence with an explicit UTC timestamp', () => {
+    const chatDetail = {
+      case: {
+        ...detail.case,
+        targetType: 'chat_message' as const,
+        targetId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      },
+      target: {
+        type: 'chat_message' as const,
+        chatMessage: {
+          id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          availability: 'Available' as const,
+          authorHandle: 'safe-handle',
+          createdAt: '2026-11-10T15:30:00.000Z',
+          messageContext: {
+            text: 'Scoped evidence with [redacted email]',
+            redacted: true,
+            truncated: false,
+          },
+          email: 'private@example.test',
+          token: 'secret-token',
+          unrelatedMessages: ['private conversation'],
+        },
+      },
+    } as unknown as ModerationCaseDetail;
+
+    render(
+      <ModerationCaseView
+        detail={chatDetail}
+        detailState="success"
+        detailError={null}
+        onRetry={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('moderation-target-chat-message')).toHaveTextContent('safe-handle');
+    expect(screen.getByTestId('moderation-target-chat-message')).toHaveTextContent(
+      '2026-11-10T15:30:00.000Z'
+    );
+    expect(screen.getByText('Scoped evidence with [redacted email]')).toBeInTheDocument();
+    expect(screen.getByTestId('moderation-chat-content-limited')).toHaveTextContent(/redacted/i);
+    expect(screen.queryByText('private@example.test')).not.toBeInTheDocument();
+    expect(screen.queryByText('secret-token')).not.toBeInTheDocument();
+    expect(screen.queryByText('private conversation')).not.toBeInTheDocument();
+  });
+
+  it('renders privacy-safe chat-channel context', () => {
+    render(
+      <ModerationCaseView
+        detail={{
+          case: {
+            ...detail.case,
+            targetType: 'chat_channel',
+          },
+          target: {
+            type: 'chat_channel',
+            chatChannel: {
+              id: detail.case.targetId,
+              availability: 'Available',
+              channelType: 'team',
+              title: 'Civic Signal private channel',
+              description: 'Team coordination channel',
+              creatorHandle: 'avery',
+              createdAt: '2026-11-10T14:00:00.000Z',
+              contentRedacted: false,
+            },
+          },
+        }}
+        detailState="success"
+        detailError={null}
+        onRetry={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('moderation-target-chat-channel')).toHaveTextContent(
+      'Civic Signal private channel'
+    );
+    expect(screen.getByTestId('moderation-target-chat-channel')).toHaveTextContent(
+      'Private team channel'
+    );
+    expect(screen.getByTestId('moderation-target-chat-channel')).toHaveTextContent('avery');
+  });
+
+  it('keeps the moderation case usable when its chat target is stale', () => {
+    render(
+      <ModerationCaseView
+        detail={{
+          case: {
+            ...detail.case,
+            targetType: 'chat_message',
+          },
+          target: {
+            type: 'chat_message',
+            chatMessage: {
+              id: detail.case.targetId,
+              availability: 'Unavailable',
+            },
+          },
+        }}
+        detailState="success"
+        detailError={null}
+        onRetry={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('moderation-case-detail')).toBeInTheDocument();
+    expect(screen.getByTestId('moderation-chat-target-unavailable')).toHaveTextContent(
+      /message unavailable/i
+    );
+  });
 });
