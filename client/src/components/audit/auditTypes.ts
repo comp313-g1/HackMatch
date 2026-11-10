@@ -63,7 +63,9 @@ export const KNOWN_AUDIT_ACTION_TYPES = [
   'account_delete',
 ] as const;
 
-export const AUDIT_PAGE_SIZE = 25;
+/** Page sizes offered in the UI; all are within the server's 1-100 limit. */
+export const AUDIT_PAGE_SIZES = [25, 50, 100] as const;
+export const AUDIT_PAGE_SIZE: number = AUDIT_PAGE_SIZES[0];
 
 export const AUDIT_CATEGORY_LABELS: Record<AuditCategory, string> = {
   event: 'Event',

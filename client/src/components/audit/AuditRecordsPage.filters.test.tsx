@@ -375,7 +375,7 @@ describe('AuditRecordsPage filters (US-028 / #260)', () => {
     expect(screen.queryByTestId('audit-filter-actor-error')).not.toBeInTheDocument();
   });
 
-  it('Load older records keeps using the applied filters (not unapplied typing)', async () => {
+  it('Next page keeps using the applied filters (not unapplied typing)', async () => {
     await renderLoaded();
     vi.mocked(fetchAuditRecords).mockResolvedValueOnce(page([rec('p1')], true, 'cursor-1'));
     type('audit-filter-actionType', 'moderation_warn');
@@ -384,7 +384,7 @@ describe('AuditRecordsPage filters (US-028 / #260)', () => {
 
     type('audit-filter-actionType', 'something_else_unapplied');
     vi.mocked(fetchAuditRecords).mockResolvedValueOnce(page([rec('p2')]));
-    fireEvent.click(screen.getByTestId('audit-load-more'));
+    fireEvent.click(screen.getByTestId('audit-page-next'));
 
     expect(await screen.findByTestId('audit-row-p2')).toBeInTheDocument();
     expect(lastCall()).toEqual({ limit: 25, actionType: 'moderation_warn', cursor: 'cursor-1' });
@@ -403,14 +403,21 @@ describe('AuditRecordsPage filters (US-028 / #260)', () => {
     expect(lastCall()).toEqual({ limit: 25, category: 'account' });
   });
 
-  it('replaces the list (and drops the old cursor) when filters change', async () => {
+  it('replaces the list and returns to page 1 when filters change', async () => {
     await renderLoaded(page([rec('old')], true, 'old-cursor'));
+    vi.mocked(fetchAuditRecords).mockResolvedValueOnce(page([rec('old2')]));
+    fireEvent.click(screen.getByTestId('audit-page-next'));
+    await screen.findByTestId('audit-row-old2');
+    expect(screen.getByTestId('audit-page-indicator')).toHaveTextContent('Page 2');
+
     vi.mocked(fetchAuditRecords).mockResolvedValueOnce(page([rec('new')], false, null));
     type('audit-filter-actionType', 'moderation_warn');
     apply();
+
     await screen.findByTestId('audit-row-new');
-    expect(screen.queryByTestId('audit-row-old')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('audit-load-more')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('audit-row-old2')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('audit-pagination')).not.toBeInTheDocument();
+    expect(lastCall()).toEqual({ limit: 25, actionType: 'moderation_warn' }); // no leftover cursor
   });
 
   it('disables Apply while a filter request is in flight so requests never overlap', async () => {

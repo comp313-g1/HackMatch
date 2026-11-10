@@ -6,15 +6,17 @@ import {
   normalizeAuditFilters,
   validateAuditFilters,
 } from './auditFilterValidation';
+import { AuditPagination } from './AuditPagination';
 import { AuditTable } from './AuditTable';
 import {
   AUDIT_CATEGORY_LABELS,
   AUDIT_PAGE_SIZE,
+  AUDIT_PAGE_SIZES,
   EMPTY_AUDIT_FILTERS,
   type AuditFilterErrors,
   type AuditFilters as AuditFilterValues,
+  type AuditPage,
   type AuditQueryParams,
-  type AuditRecord,
 } from './auditTypes';
 
 export interface AuditRecordsPageProps {
@@ -50,8 +52,12 @@ function describeError(err: unknown, fallback: string): { message: string; denie
 }
 
 /** Only non-empty filters are sent, so an unfiltered request stays { limit }. */
-function toParams(filters: AuditFilterValues, extra: AuditQueryParams = {}): AuditQueryParams {
-  const params: AuditQueryParams = { limit: AUDIT_PAGE_SIZE, ...extra };
+function toParams(
+  filters: AuditFilterValues,
+  limit: number,
+  extra: AuditQueryParams = {}
+): AuditQueryParams {
+  const params: AuditQueryParams = { limit, ...extra };
   for (const key of FILTER_KEYS) {
     if (filters[key]) (params as Record<string, string>)[key] = filters[key];
   }
@@ -69,18 +75,22 @@ function describeFilters(filters: AuditFilterValues): string[] {
 }
 
 /**
- * ADMIN audit-record review with actor, action-type and date filters
- * (US-028 / #259, #260). Typed filter values are never discarded on an error, and the
- * rows already shown stay visible if applying a filter, refreshing or paging fails.
+ * ADMIN audit-record review with filters and page navigation (US-028 / #259-#261).
+ *
+ * Pages are fetched with the server's cursor and cached as you move, so "Previous" shows
+ * exactly what you saw before and never re-fetches. Filters, refresh and a page-size change
+ * all return to the newest page. Typed filter values are never discarded on an error, and the
+ * page already on screen stays if any navigation, filter or refresh request fails.
  */
 export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): React.JSX.Element {
   const [pageState, setPageState] = useState<PageState>('loading');
-  const [records, setRecords] = useState<AuditRecord[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
+  /** Pages fetched so far for the current filters and page size; index 0 is the newest. */
+  const [pages, setPages] = useState<AuditPage[]>([]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [pageSize, setPageSize] = useState<number>(AUDIT_PAGE_SIZE);
   const [message, setMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [navigating, setNavigating] = useState(false);
   const [inlineError, setInlineError] = useState<string | null>(null);
 
   /** What the user has typed (may differ from what the table currently shows). */
@@ -91,6 +101,9 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
 
   const seq = useRef(0);
   const mounted = useRef(true);
+  const resultsHeading = useRef<HTMLHeadingElement>(null);
+  const focusResults = useRef(false);
+
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -98,21 +111,36 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
     };
   }, []);
 
+  // After a page change, move focus to the results heading so keyboard and screen-reader
+  // users land on the new records instead of being left on a button that just moved.
+  useEffect(() => {
+    if (focusResults.current) {
+      focusResults.current = false;
+      resultsHeading.current?.focus();
+    }
+  }, [pageIndex, pages]);
+
+  const current: AuditPage | undefined = pages[pageIndex];
+  const records = current?.records ?? [];
+  const hasMore = Boolean(current?.hasMore && current.nextCursor);
+  const busy = refreshing || navigating;
+
   /**
-   * Loads the newest page for `filters`. On failure the previous rows and the previously
-   * applied filters stay in place, so the table and its filter summary never disagree.
+   * Loads the newest page for `filters` and `size`. On failure the page on screen, the
+   * previously applied filters and the previous page size stay in place, so what is shown and
+   * what the controls say never disagree.
    */
-  const load = useCallback(async (filters: AuditFilterValues, initial: boolean) => {
+  const load = useCallback(async (filters: AuditFilterValues, size: number, initial: boolean) => {
     const mine = ++seq.current;
     if (initial) setPageState('loading');
     else setRefreshing(true);
     setInlineError(null);
     try {
-      const page = await fetchAuditRecords(toParams(filters));
+      const page = await fetchAuditRecords(toParams(filters, size));
       if (!mounted.current || mine !== seq.current) return;
-      setRecords(page.records);
-      setNextCursor(page.nextCursor);
-      setHasMore(page.hasMore);
+      setPages([page]);
+      setPageIndex(0);
+      setPageSize(size);
       setApplied(filters);
       setMessage(null);
       setPageState('ready');
@@ -120,7 +148,7 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
       if (!mounted.current || mine !== seq.current) return;
       const { message: text, denied } = describeError(err, 'Could not load audit records.');
       if (denied) {
-        setRecords([]);
+        setPages([]);
         setMessage(text);
         setPageState('denied');
       } else if (initial) {
@@ -148,7 +176,7 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
   }, []);
 
   useEffect(() => {
-    void load(EMPTY_AUDIT_FILTERS, true);
+    void load(EMPTY_AUDIT_FILTERS, AUDIT_PAGE_SIZE, true);
   }, [load]);
 
   const applyFilters = (incompleteDates: { from: boolean; to: boolean } = { from: false, to: false }) => {
@@ -165,13 +193,13 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
     }
     setFieldErrors({});
     setDraft(result.filters);
-    void load(result.filters, false);
+    void load(result.filters, pageSize, false);
   };
 
   const clearFilters = () => {
     setDraft(EMPTY_AUDIT_FILTERS);
     setFieldErrors({});
-    if (hasActiveAuditFilters(applied)) void load(EMPTY_AUDIT_FILTERS, false);
+    if (hasActiveAuditFilters(applied)) void load(EMPTY_AUDIT_FILTERS, pageSize, false);
   };
 
   const changeDraft = (next: Partial<AuditFilterValues>) => {
@@ -184,32 +212,62 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
     });
   };
 
-  const loadMore = async () => {
-    if (!nextCursor || loadingMore) return;
-    setLoadingMore(true);
+  const changePageSize = (size: number) => {
+    if (busy || size === pageSize || !(AUDIT_PAGE_SIZES as readonly number[]).includes(size)) return;
+    focusResults.current = true;
+    void load(applied, size, false);
+  };
+
+  const goToPrevious = () => {
+    if (busy || pageIndex === 0) return;
     setInlineError(null);
+    focusResults.current = true;
+    setPageIndex(pageIndex - 1); // always cached: Previous never re-fetches
+  };
+
+  const goToNext = async () => {
+    if (busy || !current || !hasMore) return;
+    setInlineError(null);
+
+    const cached = pages[pageIndex + 1];
+    if (cached) {
+      focusResults.current = true;
+      setPageIndex(pageIndex + 1);
+      return;
+    }
+
+    setNavigating(true);
     try {
-      // Always page with the filters the visible rows were fetched with, not unapplied typing.
-      const page = await fetchAuditRecords(toParams(applied, { cursor: nextCursor }));
+      // Page with the filters the visible rows were fetched with, not unapplied typing.
+      const page = await fetchAuditRecords(
+        toParams(applied, pageSize, { cursor: current.nextCursor })
+      );
       if (!mounted.current) return;
-      setRecords((prev) => {
-        const seen = new Set(prev.map((r) => r.id));
-        return [...prev, ...page.records.filter((r) => !seen.has(r.id))];
-      });
-      setNextCursor(page.nextCursor);
-      setHasMore(page.hasMore);
+      if (page.records.length === 0) {
+        // Nothing further (e.g. the boundary landed exactly on the last record): stop offering Next.
+        setPages((prev) =>
+          prev.map((p, i) => (i === pageIndex ? { ...p, hasMore: false, nextCursor: null } : p))
+        );
+        setInlineError('There are no more records.');
+        return;
+      }
+      focusResults.current = true;
+      setPages((prev) => [...prev.slice(0, pageIndex + 1), page]);
+      setPageIndex(pageIndex + 1);
     } catch (err: unknown) {
       if (!mounted.current) return;
-      const { message: text, denied } = describeError(err, 'Could not load more records.');
+      const { message: text, denied } = describeError(err, 'Could not load the next page.');
       if (denied) {
-        setRecords([]);
+        setPages([]);
         setMessage(text);
         setPageState('denied');
+      } else if (err instanceof AuditApiError && err.fieldErrors?.cursor) {
+        setInlineError('That page is no longer available. Use Refresh to start again from the newest records.');
       } else {
-        setInlineError(`${text} The records already loaded are still shown.`);
+        setInlineError(`${text} You are still on page ${pageIndex + 1}.`);
       }
     } finally {
-      if (mounted.current) setLoadingMore(false);
+      if (mounted.current) setNavigating(false);
     }
   };
 
@@ -258,7 +316,7 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
         </div>
         <button
           type="button"
-          onClick={() => void load(EMPTY_AUDIT_FILTERS, true)}
+          onClick={() => void load(EMPTY_AUDIT_FILTERS, AUDIT_PAGE_SIZE, true)}
           className="px-3 py-1.5 text-xs font-medium border border-red-200 rounded bg-white hover:bg-red-50"
         >
           Retry
@@ -271,6 +329,13 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
   const appliedSummary = describeFilters(applied);
   const draftIsDirty =
     JSON.stringify(normalizeAuditFilters(draft)) !== JSON.stringify(applied) && hasActiveAuditFilters(draft);
+
+  const firstShown = pageIndex * pageSize + 1;
+  const lastShown = pageIndex * pageSize + records.length;
+  const singlePage = pageIndex === 0 && !hasMore;
+  const countText = singlePage
+    ? `Showing ${records.length} record${records.length === 1 ? '' : 's'}`
+    : `Showing records ${firstShown}–${lastShown}`;
 
   return (
     <div className="max-w-6xl mx-auto space-y-4" data-testid="audit-page">
@@ -285,8 +350,8 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
         </div>
         <button
           type="button"
-          onClick={() => void load(applied, false)}
-          disabled={refreshing}
+          onClick={() => void load(applied, pageSize, false)}
+          disabled={busy}
           className="px-3 py-1.5 text-xs font-medium border border-cream-300 rounded bg-white hover:bg-cream-50 disabled:opacity-50"
           data-testid="audit-refresh"
         >
@@ -350,24 +415,30 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
         </div>
       ) : (
         <>
+          <h3
+            ref={resultsHeading}
+            tabIndex={-1}
+            className="sr-only"
+            data-testid="audit-results-heading"
+          >
+            Audit records, page {pageIndex + 1}
+          </h3>
           <p className="text-xs text-ink-muted" data-testid="audit-count" aria-live="polite">
-            Showing {records.length} record{records.length === 1 ? '' : 's'}
+            {countText}
             {filtersActive ? ' matching your filters' : ''}
             {hasMore ? ' — more available' : ''}.
           </p>
           <AuditTable records={records} />
-          {hasMore && nextCursor ? (
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={() => void loadMore()}
-                disabled={loadingMore}
-                className="px-3 py-1.5 text-sm font-medium border border-cream-300 rounded bg-white hover:bg-cream-50 disabled:opacity-50"
-                data-testid="audit-load-more"
-              >
-                {loadingMore ? 'Loading…' : 'Load older records'}
-              </button>
-            </div>
+          {pageIndex > 0 || hasMore ? (
+            <AuditPagination
+              pageIndex={pageIndex}
+              pageSize={pageSize}
+              hasMore={hasMore}
+              busy={busy}
+              onPrevious={goToPrevious}
+              onNext={() => void goToNext()}
+              onPageSizeChange={changePageSize}
+            />
           ) : null}
         </>
       )}

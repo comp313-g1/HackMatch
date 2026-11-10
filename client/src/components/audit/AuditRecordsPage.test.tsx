@@ -67,13 +67,13 @@ describe('AuditRecordsPage (US-028 / #259)', () => {
 
     expect(await screen.findByTestId('audit-page')).toBeInTheDocument();
     expect(fetchAuditRecords).toHaveBeenCalledWith({ limit: 25 });
-    expect(screen.getByRole('heading', { name: /audit records/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: /audit records/i })).toBeInTheDocument();
     expect(screen.getByTestId('audit-row-r2')).toBeInTheDocument();
     expect(screen.getByTestId('audit-count')).toHaveTextContent('Showing 2 records.');
     expect(screen.getByText(/append-only/i)).toBeInTheDocument();
     // Stated in the page description and in the table caption (screen readers).
     expect(screen.getAllByText(/times are in utc/i)).toHaveLength(2);
-    expect(screen.queryByTestId('audit-load-more')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('audit-pagination')).not.toBeInTheDocument(); // one short page: nothing to page
   });
 
   it('uses the singular for exactly one record (boundary)', async () => {
@@ -163,69 +163,6 @@ describe('AuditRecordsPage (US-028 / #259)', () => {
   });
 
   // ---------------------------------------------------------------- load more
-  it('loads older records with the server cursor and appends without duplicates', async () => {
-    vi.mocked(fetchAuditRecords)
-      .mockResolvedValueOnce(page([rec('r3'), rec('r2')], true, 'cursor-1'))
-      .mockResolvedValueOnce(page([rec('r2'), rec('r1')], false, null));
-    renderPage();
-    await screen.findByTestId('audit-row-r3');
-    expect(screen.getByTestId('audit-count')).toHaveTextContent(/more available/i);
-
-    fireEvent.click(screen.getByTestId('audit-load-more'));
-
-    expect(await screen.findByTestId('audit-row-r1')).toBeInTheDocument();
-    expect(fetchAuditRecords).toHaveBeenLastCalledWith({ limit: 25, cursor: 'cursor-1' });
-    expect(screen.getAllByTestId(/^audit-row-/)).toHaveLength(3);
-    expect(screen.queryByTestId('audit-load-more')).not.toBeInTheDocument();
-    expect(screen.getByTestId('audit-count')).toHaveTextContent('Showing 3 records.');
-  });
-
-  it('disables the button while loading more and ignores double clicks', async () => {
-    let resolve!: (p: AuditPage) => void;
-    vi.mocked(fetchAuditRecords)
-      .mockResolvedValueOnce(page([rec('a')], true, 'c1'))
-      .mockReturnValueOnce(new Promise((r) => (resolve = r)));
-    renderPage();
-    await screen.findByTestId('audit-row-a');
-
-    const button = screen.getByTestId('audit-load-more');
-    fireEvent.click(button);
-    fireEvent.click(button);
-    expect(button).toBeDisabled();
-    expect(button).toHaveTextContent(/loading/i);
-    expect(fetchAuditRecords).toHaveBeenCalledTimes(2);
-
-    await act(async () => resolve(page([rec('b')])));
-    expect(await screen.findByTestId('audit-row-b')).toBeInTheDocument();
-  });
-
-  it('keeps the loaded records and offers another try when loading more fails', async () => {
-    vi.mocked(fetchAuditRecords)
-      .mockResolvedValueOnce(page([rec('a')], true, 'c1'))
-      .mockRejectedValueOnce(new AuditApiError(500, 'X', 'Server hiccup'))
-      .mockResolvedValueOnce(page([rec('b')]));
-    renderPage();
-    await screen.findByTestId('audit-row-a');
-
-    fireEvent.click(screen.getByTestId('audit-load-more'));
-
-    expect(await screen.findByTestId('audit-inline-error')).toHaveTextContent(/server hiccup/i);
-    expect(screen.getByTestId('audit-row-a')).toBeInTheDocument();
-    expect(screen.getByTestId('audit-load-more')).toBeEnabled();
-
-    fireEvent.click(screen.getByTestId('audit-load-more'));
-    expect(await screen.findByTestId('audit-row-b')).toBeInTheDocument();
-    expect(screen.queryByTestId('audit-inline-error')).not.toBeInTheDocument();
-  });
-
-  it('hides "load older" when the server says there is no more, even with a cursor', async () => {
-    vi.mocked(fetchAuditRecords).mockResolvedValue(page([rec('a')], false, 'stale-cursor'));
-    renderPage();
-    await screen.findByTestId('audit-row-a');
-    expect(screen.queryByTestId('audit-load-more')).not.toBeInTheDocument();
-  });
-
-  // ------------------------------------------------------------------ refresh
   it('refreshes to the newest page and replaces the list', async () => {
     vi.mocked(fetchAuditRecords)
       .mockResolvedValueOnce(page([rec('old')]))
@@ -297,7 +234,12 @@ describe('AuditRecordsPage (US-028 / #259)', () => {
     expect(forms).toHaveLength(1);
     expect(forms[0]).toHaveAttribute('role', 'search');
     const inputs = Array.from(document.querySelectorAll('input, textarea, select'));
-    expect(inputs.every((el) => (el as HTMLElement).id.startsWith('audit-filter-'))).toBe(true);
+    expect(
+      inputs.every((el) => {
+        const id = (el as HTMLElement).id;
+        return id.startsWith('audit-filter-') || id === 'audit-page-size';
+      })
+    ).toBe(true);
     expect(screen.getByRole('table').querySelector('input, textarea, select, form, button')).toBeNull();
   });
 
@@ -305,7 +247,7 @@ describe('AuditRecordsPage (US-028 / #259)', () => {
     vi.mocked(fetchAuditRecords).mockResolvedValue(page([rec('a')], true, 'c'));
     renderPage();
     await screen.findByTestId('audit-row-a');
-    fireEvent.click(screen.getByTestId('audit-load-more'));
+    fireEvent.click(screen.getByTestId('audit-page-next'));
     fireEvent.click(screen.getByTestId('audit-refresh'));
     for (const call of vi.mocked(fetchAuditRecords).mock.calls) {
       expect(Object.keys(call[0] ?? {}).sort().every((k) => ['limit', 'cursor'].includes(k))).toBe(true);
