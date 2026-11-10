@@ -1,0 +1,51 @@
+---
+title: "HackMatch — US-016: Recommended Teams for Participants — Use Case"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":38,"rankSpacing":50,"padding":14}}}%%
+flowchart LR
+    PART([Verified Active PART]):::identity
+    RESTRICTED([Visitor, unverified PART<br/>or suspended account]):::denied
+    OWNER([Team owner]):::identity
+
+    subgraph POOL["Existing platform-wide pool (US-013 / US-015 assets)"]
+        OPEN["Open teams with Open vacancies"]:::pool
+        SCORER["FR-043-045 scorer<br/>skills, role, goal, hours"]:::reuse
+        FILTER["filterOpenTeams<br/>moderation, lifecycle, open slot"]:::reuse
+    end
+
+    subgraph US016["US-016 participant-side recommendations"]
+        VIEW(["View teams recommended<br/>for my profile"]):::usecase
+        RANK(["See match percentage and<br/>matched skill tags"]):::success
+        DEGRADE(["See unranked teams when<br/>scoring is unavailable"]):::internal
+        EMPTY(["See an empty state with<br/>guidance when nothing is open"]):::internal
+        APPLY(["Apply to a recommended team"]):::usecase
+        SELFONLY(["Only ever see my own ranking"]):::success
+    end
+
+    subgraph EXISTING["Reused downstream flows"]
+        PANEL["US-018 ApplicationFormPanel"]:::reuse
+        APP["Application record and<br/>owner review queue"]:::persistence
+    end
+
+    OPEN --> FILTER --> VIEW
+    PART --> VIEW
+    VIEW --> RANK
+    VIEW --> DEGRADE
+    VIEW --> EMPTY
+    VIEW --> SELFONLY
+    RANK --> APPLY
+    APPLY --> PANEL --> APP
+
+    SCORER -. "Scores every open vacancy<br/>against my declared profile" .-> RANK
+    PART -. "Never selects another<br/>participant's profile" .-> SELFONLY
+    RESTRICTED -->|"401 or 403<br/>no recommendations"| VIEW
+    OWNER -. "Owned teams are<br/>excluded (US-015 covers<br/>the owner view)" .-> VIEW
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef pool fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef reuse fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+    classDef usecase fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef persistence fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;

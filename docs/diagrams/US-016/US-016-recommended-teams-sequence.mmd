@@ -1,0 +1,53 @@
+---
+title: "HackMatch — US-016: Recommended Teams for Participants — Sequence"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#f3f4f6","noteBorderColor":"#6b7280","noteTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":24,"diagramMarginY":14,"actorMargin":26,"width":150,"height":56,"boxMargin":8,"messageMargin":18,"noteMargin":8}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-016: Recommended Teams for Participants — Sequence Diagram
+    actor PART as Verified PART
+    participant UI as RecommendedTeamsPage
+    participant API as Express API + scoringAuthGuard
+    participant SVC as recommendedTeams service
+    participant REPO as teams / profile repositories
+    participant SCORE as compatibilityScoring (US-015)
+    participant DB as PostgreSQL / Supabase
+
+    PART->>UI: Open "Recommended" from the primary nav
+    UI->>API: GET /api/scoring/teams/recommendations
+    Note over UI,API: No userId, teamId or eventId parameter is sent
+    API->>API: requireFirebaseAuth, requireMfa,<br/>requireActiveAccount, requireParticipantRole,<br/>requireVerifiedParticipant
+    API->>SVC: getRecommendedTeamsForParticipant(req.participant.id)
+
+    SVC->>REPO: findById,<br/>findProfileByParticipantId,<br/>findSkillsByParticipantId,<br/>findByParticipantId
+    REPO->>DB: Read the actor profile, skills and platform availability
+    DB-->>REPO: primaryRole, skills, commitmentHours, goal
+
+    SVC->>REPO: findOpenTeamRecords({ withMemberIdentities: false })
+    REPO->>DB: Open teams with Open vacancies and Confirmed members
+    DB-->>REPO: OpenTeamRecord[]
+    SVC->>SVC: filterOpenTeams(records, unset query, now)<br/>moderation, lifecycle and open-slot eligibility
+
+    SVC->>REPO: findConfirmedTeamIdsForParticipant(actorId)
+    REPO-->>SVC: Team ids to exclude
+    SVC->>SVC: Drop the actor's own teams and joined teams
+
+    alt At least one eligible (team, vacancy) pair
+        SVC->>SCORE: computeCompatibilityScore(slot, candidate)
+        SCORE-->>SVC: score, displayScore, matchedSkills,<br/>roleMatched, components
+        SVC->>SVC: sortWithCompatibilityRanks<br/>score, then team name, then teamId:vacancyId
+        SVC->>SVC: buildPublicScoreExplanation,<br/>assertPublicExplanationSafe,<br/>omitInternalIdentifierFields
+        SVC->>SVC: Keep the top 10 ranked teams<br/>(RECOMMENDED_TEAMS_CAP)
+        SVC-->>API: status ok, ranked teams, notice
+    else Scoring unavailable (NR-016)
+        SVC-->>API: status degraded, unranked teams,<br/>degradedNotice, no rank or score
+    else No eligible team
+        SVC-->>API: status ok, empty true,<br/>user-visible message, notice
+    end
+
+    API->>API: Cache-Control: no-store
+    API-->>UI: 200 RecommendedTeamsResponse
+    UI-->>PART: Match percentage, matched skill tags,<br/>role match, Apply per card
+    PART->>UI: Apply to a recommended team
+    UI->>UI: onApply({ teamId, vacancyId, role, teamName })
+    UI-->>PART: Existing US-018 ApplicationFormPanel opens
