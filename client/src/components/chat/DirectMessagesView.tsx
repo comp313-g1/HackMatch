@@ -4,8 +4,13 @@ import {
   ChatApiError,
   getDirectMessageThread,
   listDirectMessageThreads,
+  openDirectMessageThread,
   sendDirectMessage,
 } from './chatApi';
+import {
+  friendlyOpenConversationError,
+  type DirectMessageOpenRequest,
+} from './directMessageLauncher';
 import type {
   ChatFieldErrors,
   DirectMessageThreadView,
@@ -52,7 +57,17 @@ function sortMessages(messages: DirectMessageView[]): DirectMessageView[] {
  * Private thread contents are cleared before each authorization-sensitive load. Drafts are
  * retained per thread and are removed only after the server confirms a successful send.
  */
-export function DirectMessagesView(): React.JSX.Element {
+export interface DirectMessagesViewProps {
+  /** #432 — open (or continue) the conversation with this participant when the request arrives. */
+  openRequest?: DirectMessageOpenRequest | null;
+  /** Called once the request has been taken, so the app does not replay it on a later visit. */
+  onOpenRequestHandled?: () => void;
+}
+
+export function DirectMessagesView({
+  openRequest = null,
+  onOpenRequestHandled,
+}: DirectMessagesViewProps = {}): React.JSX.Element {
   const unread = useChatUnread();
   const unreadEnabled = unread.enabled;
   const markRead = unread.markRead;
@@ -76,9 +91,14 @@ export function DirectMessagesView(): React.JSX.Element {
   const [sending, setSending] = useState(false);
   const [readStateError, setReadStateError] = useState<string | null>(null);
 
+  const [openingConversation, setOpeningConversation] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
+
   const inboxRequestId = useRef(0);
   const threadRequestId = useRef(0);
   const sendRequestId = useRef(0);
+  const openRequestRun = useRef(0);
+  const handledOpenRequestId = useRef<number | null>(null);
 
   const draft = selectedThreadId ? drafts[selectedThreadId] ?? '' : '';
 
@@ -167,6 +187,36 @@ export function DirectMessagesView(): React.JSX.Element {
     }
   }, [unreadEnabled, markRead, refreshUnread]);
 
+  /**
+   * #432 — a "Message" click: create or reuse the conversation, refresh the inbox so a new
+   * conversation is listed, then show the conversation. Each request runs once (React may run
+   * effects twice in development), and a newer request makes an older one stop updating the screen.
+   */
+  useEffect(() => {
+    if (!openRequest || handledOpenRequestId.current === openRequest.requestId) return;
+    handledOpenRequestId.current = openRequest.requestId;
+    const run = ++openRequestRun.current;
+    const isCurrent = (): boolean => run === openRequestRun.current;
+
+    setOpeningConversation(true);
+    setOpenError(null);
+    onOpenRequestHandled?.();
+
+    void (async () => {
+      try {
+        const thread = await openDirectMessageThread(openRequest.participantId);
+        if (!isCurrent()) return;
+        await loadInbox();
+        if (!isCurrent()) return;
+        await loadThread(thread.id);
+      } catch (error: unknown) {
+        if (isCurrent()) setOpenError(friendlyOpenConversationError(error));
+      } finally {
+        if (isCurrent()) setOpeningConversation(false);
+      }
+    })();
+  }, [openRequest, onOpenRequestHandled, loadInbox, loadThread]);
+
   const updateDraft = (value: string): void => {
     if (!selectedThreadId) return;
     setDrafts((current) => ({ ...current, [selectedThreadId]: value }));
@@ -242,6 +292,32 @@ export function DirectMessagesView(): React.JSX.Element {
 
   return (
     <section aria-labelledby="direct-messages-heading" data-testid="direct-messages-view">
+      {openingConversation && (
+        <div
+          role="status"
+          aria-busy="true"
+          data-testid="dm-opening"
+          className="mb-4 rounded-md border border-cream-200 bg-cream-50 px-4 py-3 text-sm text-ink-muted"
+        >
+          Opening conversation…
+        </div>
+      )}
+      {openError && (
+        <div
+          role="alert"
+          data-testid="dm-open-error"
+          className="mb-4 flex items-start justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          <p>{openError}</p>
+          <button
+            type="button"
+            onClick={() => setOpenError(null)}
+            className="rounded-md border border-amber-300 px-2 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <div className="space-y-4 lg:col-span-2">
           <div className="rounded-xl border border-cream-200 bg-white p-4 shadow-sm">

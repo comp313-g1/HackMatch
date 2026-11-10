@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getIdTokenResult, onIdTokenChanged, type User } from 'firebase/auth';
 import { auth } from './config/firebase';
 import { logout } from './components/auth/logout';
@@ -25,6 +25,11 @@ import { AuditRecordsPage } from './components/audit/AuditRecordsPage';
 import { ChatPage } from './components/chat/ChatPage';
 import { ChatUnreadProvider } from './components/chat/ChatUnreadContext';
 import { ChatNavigationButton } from './components/chat/ChatUnreadBadge';
+import {
+  DirectMessageLauncherProvider,
+  type DirectMessageLauncher,
+  type DirectMessageOpenRequest,
+} from './components/chat/directMessageLauncher';
 import { NotificationBell } from './components/notifications/NotificationBell';
 import type { NotificationTarget } from './components/notifications/notificationTarget';
 import type { OpenTeamApplyTarget } from './components/teams/openTeamsApi';
@@ -144,6 +149,8 @@ export function App(): React.JSX.Element {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [otpChallenge, setOtpChallenge] = useState<OtpChallenge | null>(null);
   const [requestsTab, setRequestsTab] = useState<RequestsTab>(getInitialRequestsTab);
+  const [directMessageRequest, setDirectMessageRequest] = useState<DirectMessageOpenRequest | null>(null);
+  const directMessageRequestCounter = useRef(0);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
@@ -288,8 +295,25 @@ export function App(): React.JSX.Element {
   const goToChat = () => {
     setStatusNotice(null);
     closeMenus();
+    setDirectMessageRequest(null);
     setCurrentView('chat');
   };
+
+  /** #432 — a "Message" button anywhere in the app: open chat on the Direct messages tab. */
+  const directMessageLauncher = useMemo<DirectMessageLauncher>(
+    () => ({
+      openDirectMessage: (participantId: string) => {
+        setStatusNotice(null);
+        closeMenus();
+        directMessageRequestCounter.current += 1;
+        setDirectMessageRequest({ participantId, requestId: directMessageRequestCounter.current });
+        setCurrentView('chat');
+      },
+    }),
+    // closeMenus only resets local menu state, so the launcher can stay stable across renders.
+    []
+  );
+  const handleDirectMessageRequestHandled = useCallback(() => setDirectMessageRequest(null), []);
 
   /** US-021 AC 3 — route a clicked notification to its action view. */
   const handleNotificationNavigate = (target: NotificationTarget) => {
@@ -337,6 +361,7 @@ export function App(): React.JSX.Element {
       sessionKey={sessionReady ? currentUser?.uid ?? null : null}
       enabled={sessionReady && authRole === 'PART'}
     >
+      <DirectMessageLauncherProvider value={directMessageLauncher}>
       <div className="flex flex-col min-h-screen bg-cream text-ink font-sans">
       {/* Skip to Content Link for WCAG 2.1 AA Compliance per NR-018 */}
       <a
@@ -843,6 +868,8 @@ export function App(): React.JSX.Element {
                     setCurrentView('login');
                   }}
                   onNavigateAway={goToLanding}
+                  directMessageRequest={directMessageRequest}
+                  onDirectMessageRequestHandled={handleDirectMessageRequestHandled}
                 />
               )}
             </MfaGate>
@@ -1137,6 +1164,7 @@ export function App(): React.JSX.Element {
         />
       )}
       </div>
+      </DirectMessageLauncherProvider>
     </ChatUnreadProvider>
   );
 }

@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { TeamRosterPanel } from './TeamRosterPanel';
+import { DirectMessageLauncherProvider } from '../chat/directMessageLauncher';
 import * as teamApi from './teamApi';
 import type { TeamView, TeamMemberView } from './teamTypes';
 
@@ -159,6 +160,50 @@ describe('TeamRosterPanel component tests (US-012 / Task 8 / #125)', () => {
     await waitFor(() => {
       expect(teamApi.disbandTeam).toHaveBeenCalledWith('t-123');
       expect(onDisbanded).toHaveBeenCalled();
+    });
+  });
+
+  describe('Message button (#432)', () => {
+    function renderRoster(openDirectMessage?: ReturnType<typeof vi.fn>) {
+      const panel = (
+        <TeamRosterPanel
+          teamId="t-123"
+          members={mockMembers}
+          disabled={false}
+          onChanged={vi.fn()}
+          onDisbanded={vi.fn()}
+        />
+      );
+      render(
+        openDirectMessage ? (
+          <DirectMessageLauncherProvider value={{ openDirectMessage }}>{panel}</DirectMessageLauncherProvider>
+        ) : (
+          panel
+        )
+      );
+    }
+
+    it('lets the owner message a teammate, but not themselves', () => {
+      const open = vi.fn();
+      renderRoster(open);
+
+      expect(screen.queryByTestId('message-member-p-owner')).not.toBeInTheDocument();
+      const button = screen.getByTestId('message-member-p-member');
+      expect(button).toHaveAccessibleName(/send a direct message to alan turing/i);
+      fireEvent.click(button);
+
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(open).toHaveBeenCalledWith('p-member');
+    });
+
+    it('keeps the Remove button next to it', () => {
+      renderRoster(vi.fn());
+      expect(screen.getAllByRole('button', { name: /^remove$/i })).toHaveLength(1);
+    });
+
+    it('shows no Message button where messaging is not available', () => {
+      renderRoster();
+      expect(screen.queryByTestId('message-member-p-member')).not.toBeInTheDocument();
     });
   });
 });

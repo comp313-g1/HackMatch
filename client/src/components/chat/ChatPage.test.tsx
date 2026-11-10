@@ -20,6 +20,7 @@ vi.mock('./chatApi', async () => {
     sendDirectMessage: vi.fn(),
     fetchChatUnreadSummary: vi.fn(),
     markChatConversationRead: vi.fn(),
+    openDirectMessageThread: vi.fn(),
   };
 });
 
@@ -306,5 +307,59 @@ describe('ChatPage (US-030 / #346)', () => {
     expect(
       screen.getByRole('status', { name: /general: 2 unread messages/i })
     ).toBeInTheDocument();
+  });
+
+  describe('opening a direct message from a Message click (#432)', () => {
+    const THREAD = {
+      id: '11111111-1111-4111-8111-111111111111',
+      peer: { id: '22222222-2222-4222-8222-222222222222', handle: 'blake' },
+      createdAt: '2026-11-10T20:00:00.000Z',
+      updatedAt: '2026-11-10T20:00:00.000Z',
+      lastMessage: null,
+      lastMessageAt: null,
+    };
+
+    beforeEach(() => {
+      vi.mocked(chatApi.openDirectMessageThread).mockResolvedValue(THREAD);
+      vi.mocked(chatApi.getDirectMessageThread).mockResolvedValue({ thread: THREAD, messages: [], isEmpty: true });
+    });
+
+    it('starts on the Direct messages tab and opens that conversation when the page is opened by a request', async () => {
+      render(<ChatPage directMessageRequest={{ participantId: THREAD.peer.id, requestId: 1 }} />);
+
+      expect(screen.getByRole('button', { name: /^direct messages$/i })).toHaveAttribute('aria-pressed', 'true');
+      expect(await screen.findByTestId('dm-thread-empty')).toBeInTheDocument();
+      expect(chatApi.openDirectMessageThread).toHaveBeenCalledWith(THREAD.peer.id);
+      expect(screen.queryByTestId('forums-empty')).not.toBeInTheDocument();
+    });
+
+    it('switches from Forums to Direct messages when a request arrives while the page is already open', async () => {
+      const { rerender } = render(<ChatPage />);
+      await waitFor(() => expect(screen.getByTestId('forums-empty')).toBeInTheDocument());
+      expect(screen.getByRole('button', { name: /^forums$/i })).toHaveAttribute('aria-pressed', 'true');
+
+      rerender(<ChatPage directMessageRequest={{ participantId: THREAD.peer.id, requestId: 1 }} />);
+
+      expect(await screen.findByTestId('dm-thread-empty')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^direct messages$/i })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('passes the "request taken" signal up so the app can clear it', async () => {
+      const handled = vi.fn();
+      render(
+        <ChatPage
+          directMessageRequest={{ participantId: THREAD.peer.id, requestId: 1 }}
+          onDirectMessageRequestHandled={handled}
+        />
+      );
+      await screen.findByTestId('dm-thread-empty');
+      expect(handled).toHaveBeenCalledTimes(1);
+    });
+
+    it('opens on Forums as before when there is no request', async () => {
+      render(<ChatPage />);
+      await waitFor(() => expect(screen.getByTestId('forums-empty')).toBeInTheDocument());
+      expect(chatApi.openDirectMessageThread).not.toHaveBeenCalled();
+    });
   });
 });

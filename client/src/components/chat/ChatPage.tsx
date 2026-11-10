@@ -19,10 +19,14 @@ import {
 import { DirectMessagesView } from './DirectMessagesView';
 import { ChatActivityBadge, ChatUnreadStatus } from './ChatUnreadBadge';
 import { useChatUnread } from './ChatUnreadContext';
+import type { DirectMessageOpenRequest } from './directMessageLauncher';
 
 export interface ChatPageProps {
   onNavigateToSignIn?: () => void;
   onNavigateAway?: () => void;
+  /** #432 — a "Message" click: open the Direct messages tab and that conversation. */
+  directMessageRequest?: DirectMessageOpenRequest | null;
+  onDirectMessageRequestHandled?: () => void;
 }
 
 const inputClass =
@@ -66,12 +70,22 @@ function latestMessage<T extends { id: string; createdAt: string }>(rows: T[]): 
 export function ChatPage({
   onNavigateToSignIn,
   onNavigateAway,
+  directMessageRequest = null,
+  onDirectMessageRequestHandled,
 }: ChatPageProps): React.JSX.Element {
   const unread = useChatUnread();
   const unreadEnabled = unread.enabled;
   const markRead = unread.markRead;
   const refreshUnread = unread.refresh;
-  const [chatSection, setChatSection] = useState<'forums' | 'direct'>('forums');
+  const [chatSection, setChatSection] = useState<'forums' | 'direct'>(
+    directMessageRequest ? 'direct' : 'forums'
+  );
+
+  // A request that arrives while the chat panel is already open switches to the Direct messages tab.
+  useEffect(() => {
+    if (directMessageRequest) setChatSection('direct');
+  }, [directMessageRequest]);
+
   const [presenceStatus, setPresenceStatus] = useState<PresenceStatus>('Invisible');
   const [presenceSaving, setPresenceSaving] = useState(false);
   const [presenceNotice, setPresenceNotice] = useState<string | null>(null);
@@ -482,7 +496,10 @@ export function ChatPage({
       )}
 
       {chatSection === 'direct' ? (
-        <DirectMessagesView />
+        <DirectMessagesView
+          openRequest={directMessageRequest}
+          onOpenRequestHandled={onDirectMessageRequestHandled}
+        />
       ) : (
         <>
           {pageError && (
