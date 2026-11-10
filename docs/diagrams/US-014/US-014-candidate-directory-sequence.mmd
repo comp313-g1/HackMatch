@@ -1,0 +1,46 @@
+---
+title: "HackMatch — US-014: Advanced Candidate Directory — Search Sequence"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f1e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"diagramMarginX":30,"diagramMarginY":20,"actorMargin":42,"width":180,"height":65,"boxMargin":10,"messageMargin":28,"noteMargin":12}}}%%
+sequenceDiagram
+    autonumber
+    actor Lead as Active PART Team Lead
+    participant UI as CandidateDirectoryPanel
+    participant API as Express team route
+    participant Svc as Candidate directory service
+    participant Team as Team repositories
+    participant Profile as Profile and availability repositories
+
+    Lead->>UI: Set skills, mode, role, hours, badge, or text filters
+    UI->>UI: Validate filter values
+    alt Invalid client input
+        UI-->>Lead: Validation message, preserving filters and results
+    else Valid search
+        UI->>API: GET /api/teams/:teamId/candidates?...filters
+        API->>API: Require authenticated, MFA-complete, active, verified PART
+        API->>API: Validate team ID, query, and team ownership
+        alt Authentication, role, ownership, or query fails
+            API-->>UI: Normal 400, 401, or 403 response
+            UI-->>Lead: Safe error, preserving prior results
+        else Authorized owner
+            API->>Svc: searchCandidateDirectory(actorId, teamId, filters)
+            Svc->>Team: Load team, lifecycle, confirmed team IDs
+            Note over Svc,Team: event_id is retained as internal compatibility state,<br/>not a user-selected event workflow
+            Svc->>Team: Load event-scoped confirmed IDs
+            Svc->>Profile: Load active looking-for-team candidates and profiles
+            Svc->>Svc: Exclude owner, confirmed, unavailable,<br/>hidden, inactive, and incomplete profiles
+            Svc->>Svc: Apply AND/OR skills and remaining filters
+            Svc->>Svc: Apply privacy projection and deterministic sort
+            Svc-->>API: Safe candidate cards plus empty-state metadata
+            API-->>UI: 200 no-store response
+            UI-->>Lead: Results or clear empty state
+        end
+    end
+
+    opt Invite a displayed candidate
+        Lead->>UI: Select an open vacancy and send invitation
+        UI->>API: Existing US-017 invitation request
+        API-->>UI: Success or safe validation/error response
+        UI-->>Lead: Preserve directory results and invitation draft on failure
+    end
+

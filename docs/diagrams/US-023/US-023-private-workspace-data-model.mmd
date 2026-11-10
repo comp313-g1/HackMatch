@@ -1,0 +1,84 @@
+---
+title: "HackMatch — US-023: Team Private Coordination Workspace — Focused Data Model"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","tertiaryColor":"#f1e8ff","fontFamily":"Arial, sans-serif"},"er":{"useMaxWidth":true,"diagramPadding":24,"layoutDirection":"LR","minEntityWidth":255,"minEntityHeight":75,"entityPadding":14,"stroke":"#4b5563","fill":"#ffffff","fontSize":14}}}%%
+erDiagram
+    direction LR
+
+    PARTICIPANTS ||--o{ TEAM_MEMBERSHIPS : holds
+    TEAMS ||--o{ TEAM_MEMBERSHIPS : confirms
+    TEAMS ||--o| TEAM_WORKSPACES : owns
+    TEAMS ||--o{ TEAM_WORKSPACE_LINKS : contains
+    TEAMS ||--o| TEAM_WORKSPACE_NOTES : publishes
+    TEAMS ||--o{ TEAM_WORKSPACE_NOTE_REVISIONS : versions
+    PARTICIPANTS o|--o{ TEAM_WORKSPACE_LINKS : updates
+    PARTICIPANTS o|--o{ TEAM_WORKSPACE_NOTES : updates
+    PARTICIPANTS o|--o{ TEAM_WORKSPACE_NOTE_REVISIONS : authors
+
+    PARTICIPANTS["participants"] {
+        uuid id PK
+        string role "PART / ADMIN"
+        boolean is_verified
+        boolean is_suspended
+        boolean is_deactivated
+    }
+
+    TEAMS["teams"] {
+        uuid id PK
+        uuid owner_participant_id FK
+        string recruitment_status "Must be Locked"
+        datetime locked_at
+    }
+
+    TEAM_MEMBERSHIPS["team_memberships"] {
+        uuid id PK
+        uuid team_id FK
+        uuid participant_id FK
+        string role "Owner or Member"
+        string status "Confirmed required"
+    }
+
+    TEAM_WORKSPACES["team_workspaces"] {
+        uuid team_id PK, FK
+        datetime created_at
+        datetime updated_at
+    }
+
+    TEAM_WORKSPACE_LINKS["team_workspace_links"] {
+        uuid id PK
+        uuid team_id FK
+        string label "1 to 80 characters"
+        string url "HTTPS; max 2048"
+        int display_order "0 to 9"
+        uuid updated_by FK "Nullable; SET NULL"
+        datetime updated_at
+    }
+
+    TEAM_WORKSPACE_NOTES["team_workspace_notes"] {
+        uuid team_id PK, FK
+        text content "Max 10000"
+        int version "Optimistic cursor"
+        uuid updated_by FK "Nullable; SET NULL"
+        string author_display_name
+        datetime author_pseudonymized_at
+        datetime updated_at
+    }
+
+    TEAM_WORKSPACE_NOTE_REVISIONS["team_workspace_note_revisions"] {
+        uuid id PK
+        uuid team_id FK
+        int version "Unique per team"
+        text content "Nonblank; max 10000"
+        uuid author_id FK "Nullable; SET NULL"
+        string author_display_name
+        datetime author_pseudonymized_at
+        datetime created_at
+    }
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef team fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64
+    classDef persistence fill:#e8f7ed,stroke:#3a9b5f,color:#123d24
+    class PARTICIPANTS identity
+    class TEAMS,TEAM_MEMBERSHIPS team
+    class TEAM_WORKSPACES,TEAM_WORKSPACE_LINKS,TEAM_WORKSPACE_NOTES,TEAM_WORKSPACE_NOTE_REVISIONS persistence
+

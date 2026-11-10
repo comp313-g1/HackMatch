@@ -1,0 +1,55 @@
+---
+title: "HackMatch — US-021: Notification Center — Persistence, Delivery, and Read Sequence"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f1e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"diagramMarginX":25,"diagramMarginY":18,"actorMargin":34,"width":160,"height":60,"boxMargin":8,"messageMargin":24,"noteMargin":10}}}%%
+sequenceDiagram
+    autonumber
+    actor Part as Active verified PART
+    participant UI as NotificationBell
+    participant API as Notification API and SSE route
+    participant Hub as Realtime bridge and participant hub
+    participant DB as PostgreSQL
+    participant Producer as Recruitment or verification producer
+
+    alt SQL recruitment lifecycle producer
+        Producer->>DB: Commit domain change and notification row atomically
+    else Node verification producer
+        Producer->>DB: Validate and persist notification row
+    end
+    DB-->>Hub: Supabase Realtime INSERT event
+    Hub->>Hub: Deduplicate notification ID and route by participant
+    opt Recipient has an authorized SSE stream
+        Hub-->>API: Publish participant-scoped event
+        API-->>UI: SSE notification and fresh unread count
+        UI-->>Part: Update bell and feed
+    end
+    Note over DB,UI: Persistence is authoritative.<br/>Failed or offline push does not remove the stored notification
+
+    Part->>UI: Open notification center
+    UI->>API: GET /api/notifications with cursor/filter
+    API->>API: Require Firebase, MFA, active verified PART
+    API->>DB: Query caller-owned feed and unread count
+    DB-->>API: Newest-first page and count
+    API-->>UI: Safe no-store response
+    UI-->>Part: Loading, feed, empty, or retry state
+
+    alt Mark one read
+        Part->>UI: Select or mark notification
+        UI->>API: PATCH /api/notifications/:id/read
+        API->>DB: Owner-scoped idempotent read RPC
+        DB-->>API: Notification, alreadyRead, unreadCount
+    else Mark all read
+        Part->>UI: Mark all read
+        UI->>API: POST /api/notifications/read-all
+        API->>DB: Atomic caller-scoped read-all RPC
+        DB-->>API: markedCount and unreadCount
+    end
+    API-->>UI: Server-confirmed read state
+    UI-->>Part: Update badge, then deep link re-authorizes target view
+
+    opt SSE unavailable
+        UI->>API: Visible-page fallback refresh every 30 seconds
+        API->>DB: Reload caller-owned feed and count
+        DB-->>UI: Reconciled persisted state
+    end
+

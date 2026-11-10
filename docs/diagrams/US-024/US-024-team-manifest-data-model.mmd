@@ -1,0 +1,75 @@
+---
+title: "HackMatch — US-024: Team Manifest Persistence Model"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","tertiaryColor":"#f1e8ff","fontFamily":"Arial, sans-serif"},"er":{"useMaxWidth":true,"diagramPadding":24,"layoutDirection":"LR","minEntityWidth":245,"minEntityHeight":75,"entityPadding":14,"stroke":"#4b5563","fill":"#ffffff","fontSize":14}}}%%
+erDiagram
+    direction LR
+
+    EVENTS ||--o{ TEAMS : contextualizes
+    TEAMS ||--o{ TEAM_MEMBERSHIPS : contains
+    PARTICIPANTS ||--o{ TEAM_MEMBERSHIPS : joins
+    TEAMS ||--o| TEAM_ROSTER_MANIFESTS : has_latest
+    EVENTS ||--o{ TEAM_ROSTER_MANIFESTS : recorded_for
+    PARTICIPANTS o|--o{ TEAM_ROSTER_MANIFESTS : last_exported_by
+    TEAMS ||--o{ TEAM_ROSTER_MANIFEST_SNAPSHOTS : has_history
+    PARTICIPANTS o|--o{ TEAM_ROSTER_MANIFEST_SNAPSHOTS : recorded_by
+
+    PARTICIPANTS["participants"] {
+        uuid id PK
+        string role "PART / ADMIN"
+        boolean is_verified
+        boolean is_suspended
+        boolean is_deactivated
+    }
+
+    EVENTS["events"] {
+        uuid id PK
+        string title
+    }
+
+    TEAMS["teams"] {
+        uuid id PK
+        uuid event_id FK
+        string recruitment_status "Locked required"
+        datetime locked_at
+    }
+
+    TEAM_MEMBERSHIPS["team_memberships"] {
+        uuid team_id FK
+        uuid participant_id FK
+        string status "Confirmed required"
+        string team_role
+    }
+
+    TEAM_ROSTER_MANIFESTS["team_roster_manifests"] {
+        uuid team_id PK, FK
+        uuid event_id FK
+        string schema_version "1.0"
+        datetime locked_at
+        int member_count
+        json snapshot_json "Privacy-projected"
+        text canonical_json
+        string checksum "sha256"
+        uuid last_exported_by FK "Nullable"
+        datetime updated_at
+    }
+
+    TEAM_ROSTER_MANIFEST_SNAPSHOTS["team_roster_manifest_snapshots"] {
+        uuid id PK
+        uuid team_id FK
+        datetime locked_at
+        int member_count
+        json snapshot_json "Privacy-projected"
+        text canonical_json
+        string checksum "Unique per team"
+        uuid recorded_by FK "Nullable"
+        datetime created_at
+    }
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef domain fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64
+    classDef persistence fill:#e8f7ed,stroke:#3a9b5f,color:#123d24
+    class PARTICIPANTS identity
+    class EVENTS,TEAMS,TEAM_MEMBERSHIPS domain
+    class TEAM_ROSTER_MANIFESTS,TEAM_ROSTER_MANIFEST_SNAPSHOTS persistence
+

@@ -1,0 +1,38 @@
+---
+title: "HackMatch — US-034: Atomic Monotonic Mark-Read Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f1e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"curve":"basis","nodeSpacing":38,"rankSpacing":54,"diagramPadding":22}}}%%
+flowchart LR
+    Start([POST /api/chat/read]) --> Guard{Valid request and authorized PART?}
+    Guard -->|No| Denied[Return safe validation or access error]
+    Guard -->|Yes| Position{Message belongs to authorized conversation?}
+    Position -->|No| Missing[Return safe position unavailable]
+    Position -->|Yes| Upsert[Atomic insert or conflict update]
+    Upsert --> Compare[Advance only for a newer tuple]
+    Compare --> Result{Row changed?}
+    Result -->|Yes| Advanced[advanced true]
+    Result -->|No| Stable[Keep current cursor, advanced false]
+    Advanced --> Counts[Derive unread and mention counts]
+    Stable --> Counts
+    Counts --> Still{Conversation still authorized?}
+    Still -->|No| Rollback[Raise access-changed and roll back]
+    Still -->|Yes| Return[Return cursor and count-only result]
+    Return --> Finish([Badges reconcile from server state])
+
+    Tuple[Row lock plus created_at and message id comparison] -.-> Compare
+    Constraint[Composite participant and conversation PK] -.-> Upsert
+    History[Mention rows are preserved, not deleted] -.-> Counts
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef domain fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4b3b00
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#5f1228
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#374151
+    class Start identity
+    class Guard,Position,Result,Still decision
+    class Upsert,Compare,Counts domain
+    class Advanced,Stable,Return,Finish success
+    class Denied,Missing,Rollback denied
+    class Tuple,Constraint,History internal
+

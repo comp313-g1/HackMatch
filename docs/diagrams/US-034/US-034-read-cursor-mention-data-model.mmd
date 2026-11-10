@@ -1,0 +1,92 @@
+---
+title: "HackMatch — US-034: Read Cursor and Mention Persistence Model"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","tertiaryColor":"#f1e8ff","fontFamily":"Arial, sans-serif"},"er":{"useMaxWidth":true,"diagramPadding":24,"layoutDirection":"LR","minEntityWidth":245,"minEntityHeight":75,"entityPadding":14,"stroke":"#4b5563","fill":"#ffffff","fontSize":14}}}%%
+erDiagram
+    direction LR
+
+    PARTICIPANTS ||--o{ CHAT_MESSAGES : authors
+    CHAT_CHANNELS ||--o{ CHAT_MESSAGES : contains
+    PARTICIPANTS ||--o{ CHAT_CHANNEL_READ_CURSORS : owns
+    CHAT_CHANNELS ||--o{ CHAT_CHANNEL_READ_CURSORS : tracks
+    CHAT_MESSAGES ||--o{ CHAT_MESSAGE_MENTIONS : produces
+    PARTICIPANTS ||--o{ CHAT_MESSAGE_MENTIONS : receives
+
+    PARTICIPANTS ||--o{ DIRECT_MESSAGES : authors
+    DIRECT_MESSAGE_THREADS ||--o{ DIRECT_MESSAGES : contains
+    PARTICIPANTS ||--o{ DIRECT_MESSAGE_READ_CURSORS : owns
+    DIRECT_MESSAGE_THREADS ||--o{ DIRECT_MESSAGE_READ_CURSORS : tracks
+    DIRECT_MESSAGES ||--o{ DIRECT_MESSAGE_MENTIONS : produces
+    PARTICIPANTS ||--o{ DIRECT_MESSAGE_MENTIONS : receives
+
+    PARTICIPANTS["participants"] {
+        uuid id PK
+        string role "PART required"
+        boolean is_verified
+        boolean is_suspended
+        boolean is_deactivated
+    }
+
+    CHAT_CHANNELS["chat_channels"] {
+        uuid id PK
+        string channel_type "public or team"
+        uuid team_id FK "Nullable"
+    }
+
+    CHAT_MESSAGES["chat_messages"] {
+        uuid id PK
+        uuid channel_id FK
+        uuid author_id FK
+        text body
+        datetime created_at "Ordered with id"
+    }
+
+    CHAT_CHANNEL_READ_CURSORS["chat_channel_read_cursors"] {
+        uuid participant_id PK, FK
+        uuid channel_id PK, FK
+        uuid last_read_message_id "Validated, no physical FK"
+        datetime last_read_message_created_at "Database-derived"
+        datetime updated_at
+    }
+
+    CHAT_MESSAGE_MENTIONS["chat_message_mentions"] {
+        uuid message_id PK, FK
+        uuid mentioned_participant_id PK, FK
+        datetime created_at
+    }
+
+    DIRECT_MESSAGE_THREADS["direct_message_threads"] {
+        uuid id PK
+        uuid participant_low_id FK
+        uuid participant_high_id FK
+    }
+
+    DIRECT_MESSAGES["direct_messages"] {
+        uuid id PK
+        uuid thread_id FK
+        uuid author_id FK
+        text body
+        datetime created_at "Ordered with id"
+    }
+
+    DIRECT_MESSAGE_READ_CURSORS["direct_message_read_cursors"] {
+        uuid participant_id PK, FK
+        uuid thread_id PK, FK
+        uuid last_read_message_id "Validated, no physical FK"
+        datetime last_read_message_created_at "Database-derived"
+        datetime updated_at
+    }
+
+    DIRECT_MESSAGE_MENTIONS["direct_message_mentions"] {
+        uuid message_id PK, FK
+        uuid mentioned_participant_id PK, FK
+        datetime created_at
+    }
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef domain fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64
+    classDef persistence fill:#e8f7ed,stroke:#3a9b5f,color:#123d24
+    class PARTICIPANTS identity
+    class CHAT_CHANNELS,CHAT_MESSAGES,DIRECT_MESSAGE_THREADS,DIRECT_MESSAGES domain
+    class CHAT_CHANNEL_READ_CURSORS,CHAT_MESSAGE_MENTIONS,DIRECT_MESSAGE_READ_CURSORS,DIRECT_MESSAGE_MENTIONS persistence
+
