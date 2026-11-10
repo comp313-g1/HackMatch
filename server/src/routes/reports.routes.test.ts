@@ -2,11 +2,18 @@ import type { DecodedIdToken } from 'firebase-admin/auth';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../app.js';
+import { chatRepository } from '../db/chat.repository.js';
 import { moderationRepository } from '../db/moderation.repository.js';
 import { clearModerationReportsStore } from '../db/moderationReports.repository.js';
 import { participantsRepository } from '../db/participants.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
-import type { ModerationCase, Participant, Team } from '../db/types.js';
+import type {
+  ChatChannel,
+  ChatMessage,
+  ModerationCase,
+  Participant,
+  Team,
+} from '../db/types.js';
 import { MFA_CLAIM } from '../utils/mfaClaim.js';
 
 const mockVerifyIdToken = vi.fn();
@@ -93,6 +100,27 @@ const sampleTeam: Team = {
 };
 
 const authHeader = 'Bearer valid-part-token';
+const chatMessageId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+const chatChannelId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+
+const publicChannel: ChatChannel = {
+  id: chatChannelId,
+  title: 'General',
+  description: 'Public participant forum',
+  created_by: partParticipant.id,
+  channel_type: 'public',
+  team_id: null,
+  created_at: '2026-11-10T10:00:00.000Z',
+  updated_at: '2026-11-10T10:00:00.000Z',
+};
+
+const visibleMessage: ChatMessage = {
+  id: chatMessageId,
+  channel_id: chatChannelId,
+  author_id: '99999999-9999-4999-8999-999999999999',
+  body: 'Private message body must not appear in a report receipt.',
+  created_at: '2026-11-10T11:00:00.000Z',
+};
 
 describe('/api/reports routes (US-025 / #236 / #237)', () => {
   beforeEach(() => {
@@ -158,6 +186,48 @@ describe('/api/reports routes (US-025 / #236 / #237)', () => {
       expect(res.status).toBe(403);
       expect(res.body.code).toBe('EMAIL_NOT_VERIFIED');
     });
+
+    it('returns 403 ACCOUNT_SUSPENDED before resolving a chat target', async () => {
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue({
+        ...partParticipant,
+        is_suspended: true,
+      });
+      const messageLookup = vi.spyOn(chatRepository, 'findMessageById');
+
+      const res = await request(app)
+        .post('/api/reports')
+        .set('Authorization', authHeader)
+        .send({
+          targetType: 'chat_message',
+          targetId: chatMessageId,
+          category: 'Harassment',
+        });
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('ACCOUNT_SUSPENDED');
+      expect(messageLookup).not.toHaveBeenCalled();
+    });
+
+    it('uses the current 403 ACCOUNT_SUSPENDED convention for a deactivated account', async () => {
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue({
+        ...partParticipant,
+        is_deactivated: true,
+      });
+      const messageLookup = vi.spyOn(chatRepository, 'findMessageById');
+
+      const res = await request(app)
+        .post('/api/reports')
+        .set('Authorization', authHeader)
+        .send({
+          targetType: 'chat_message',
+          targetId: chatMessageId,
+          category: 'Harassment',
+        });
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('ACCOUNT_SUSPENDED');
+      expect(messageLookup).not.toHaveBeenCalled();
+    });
   });
 
   describe('confidentiality protection (US-025 AC 2 / FR-073)', () => {
@@ -182,6 +252,106 @@ describe('/api/reports routes (US-025 / #236 / #237)', () => {
   });
 
   describe('POST /api/reports submission lifecycle', () => {
+    it('reports a visible public message and returns only the existing safe receipt DTO', async () => {
+      vi.spyOn(chatRepository, 'findMessageById').mockResolvedValue(visibleMessage);
+      vi.spyOn(chatRepository, 'findChannelById').mockResolvedValue(publicChannel);
+      vi.spyOn(moderationRepository, 'findOpenCaseByTarget').mockResolvedValue(null);
+      const createdCase: ModerationCase = {
+        id: '12121212-1212-4121-8121-121212121212',
+        target_type: 'chat_message',
+        target_id: chatMessageId,
+        reason: '[Harassment] Abusive message',
+        status: 'Open',
+        created_by: partParticipant.id,
+        report_count: 1,
+        flagged_url: null,
+        created_at: '2026-11-10T12:00:00.000Z',
+        updated_at: '2026-11-10T12:00:00.000Z',
+      };
+      vi.spyOn(moderationRepository, 'createCase').mockResolvedValue(createdCase);
+
+      const res = await request(app)
+        .post('/api/reports')
+        .set('Authorization', authHeader)
+        .send({
+          targetType: 'chat_message',
+          targetId: chatMessageId,
+          category: 'Harassment',
+          explanation: 'Abusive message',
+        });
+
+      expect(res.status).toBe(201);
+      expect(Object.keys(res.body.data).sort()).toEqual(
+        [
+          'caseId',
+          'category',
+          'confirmationMessage',
+          'rateLimit',
+          'reportId',
+          'status',
+          'submittedAt',
+          'targetId',
+          'targetType',
+        ].sort()
+      );
+      expect(res.body.data).toMatchObject({
+        targetType: 'chat_message',
+        targetId: chatMessageId,
+        category: 'Harassment',
+        status: 'Received',
+      });
+      expect(JSON.stringify(res.body)).not.toMatch(
+        /Private message body|admin.?note|action.?record|other.?report|email|password|otp|token/i
+      );
+    });
+
+    it('conceals a private team message from an unrelated participant', async () => {
+      vi.spyOn(chatRepository, 'findMessageById').mockResolvedValue(visibleMessage);
+      vi.spyOn(chatRepository, 'findChannelById').mockResolvedValue({
+        ...publicChannel,
+        channel_type: 'team',
+        team_id: sampleTeam.id,
+      });
+      vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([]);
+      const caseLookup = vi.spyOn(moderationRepository, 'findOpenCaseByTarget');
+
+      const res = await request(app)
+        .post('/api/reports')
+        .set('Authorization', authHeader)
+        .send({
+          targetType: 'chat_message',
+          targetId: chatMessageId,
+          category: 'Harassment',
+        });
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe('TARGET_NOT_FOUND');
+      expect(JSON.stringify(res.body)).not.toMatch(/Private message body|team|member|channel/i);
+      expect(caseLookup).not.toHaveBeenCalled();
+    });
+
+    it('returns the same concealed response for stale and unsupported direct-message IDs', async () => {
+      vi.spyOn(chatRepository, 'findMessageById').mockResolvedValue(null);
+      const caseLookup = vi.spyOn(moderationRepository, 'findOpenCaseByTarget');
+
+      const res = await request(app)
+        .post('/api/reports')
+        .set('Authorization', authHeader)
+        .send({
+          targetType: 'chat_message',
+          targetId: chatMessageId,
+          category: 'Harassment',
+        });
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe('TARGET_NOT_FOUND');
+      expect(res.body.error.message).toBe(
+        'The specified chat message is not available for reporting.'
+      );
+      expect(JSON.stringify(res.body)).not.toMatch(/direct_messages|thread|body|author/i);
+      expect(caseLookup).not.toHaveBeenCalled();
+    });
+
     it('returns 400 VALIDATION_ERROR and echoes submitted body on malformed input (NR-010)', async () => {
       const invalidPayload = {
         targetType: 'team',

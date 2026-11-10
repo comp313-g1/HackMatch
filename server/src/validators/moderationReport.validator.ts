@@ -48,8 +48,9 @@ export interface ModerationReportValidationResult {
 
 /**
  * Pure validator for participant report submissions (US-025 AC 2 / #233 / FR-073 / NR-017).
- * Validates targetType, targetId, category ('Harassment', 'Spam', 'Phishing Link', 'Fake Account'),
- * optional explanation (trimmed, <= 1000 chars), and optional/required https:// flaggedUrl.
+ * Validates targetType (including #395 chat_message), targetId, category
+ * ('Harassment', 'Spam', 'Phishing Link', 'Fake Account'), optional explanation
+ * (trimmed, <= 1000 chars), and optional/required https:// flaggedUrl.
  */
 export function validateModerationReportPayload(
   body: unknown
@@ -80,7 +81,7 @@ export function validateModerationReportPayload(
   let targetType: ModerationReportTargetType | null = null;
   if (typeof rawTargetType !== 'string' || !isValidReportTargetType(rawTargetType)) {
     fieldErrors.targetType =
-      'Please select a valid report target (team, profile, event, or url).';
+      'Please select a valid report target (team, profile, event, url, or chat_message).';
   } else {
     targetType = rawTargetType.trim() as ModerationReportTargetType;
   }

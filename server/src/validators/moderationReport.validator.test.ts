@@ -41,6 +41,24 @@ describe('moderationReport.validator (US-025 / #233 / #237)', () => {
       );
     });
 
+    it('validates the canonical chat_message report target', () => {
+      const result = validateModerationReportPayload({
+        targetType: 'chat_message',
+        targetId: validTargetId,
+        category: 'Harassment',
+        explanation: 'Abusive message',
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.normalized).toEqual({
+        targetType: 'chat_message',
+        targetId: validTargetId,
+        category: 'Harassment',
+        explanation: 'Abusive message',
+        flaggedUrl: null,
+      });
+    });
+
     it('rejects non-object bodies', () => {
       expect(validateModerationReportPayload(null).valid).toBe(false);
       expect(validateModerationReportPayload('string').valid).toBe(false);

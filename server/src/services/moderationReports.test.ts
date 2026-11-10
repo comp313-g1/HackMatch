@@ -1,13 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSupabaseClient } from '../db/client.js';
 import { moderationRepository } from '../db/moderation.repository.js';
+import { chatRepository } from '../db/chat.repository.js';
 import {
   clearModerationReportsStore,
   moderationReportsRepository,
 } from '../db/moderationReports.repository.js';
 import { participantsRepository } from '../db/participants.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
-import type { ModerationCase, Participant, Team } from '../db/types.js';
+import type {
+  ChatChannel,
+  ChatMessage,
+  ModerationCase,
+  Participant,
+  Team,
+} from '../db/types.js';
 import {
   ReportServiceError,
   submitParticipantReport,
@@ -22,6 +29,27 @@ describe('moderationReports service (US-025 / #235 / #237)', () => {
   const reporterId = '11111111-1111-4111-8111-111111111111';
   const targetId = '22222222-2222-4222-8222-222222222222';
   const testNow = new Date('2026-11-06T12:00:00.000Z');
+  const channelId = '33333333-3333-4333-8333-333333333333';
+  const teamId = '44444444-4444-4444-8444-444444444444';
+
+  const publicChannel: ChatChannel = {
+    id: channelId,
+    title: 'General',
+    description: 'Public participant forum',
+    created_by: reporterId,
+    channel_type: 'public',
+    team_id: null,
+    created_at: '2026-11-06T10:00:00.000Z',
+    updated_at: '2026-11-06T10:00:00.000Z',
+  };
+
+  const targetMessage: ChatMessage = {
+    id: targetId,
+    channel_id: channelId,
+    author_id: '99999999-9999-4999-8999-999999999999',
+    body: 'Visible message content',
+    created_at: '2026-11-06T11:00:00.000Z',
+  };
 
   const mockTeam: Team = {
     id: targetId,
@@ -62,6 +90,91 @@ describe('moderationReports service (US-025 / #235 / #237)', () => {
   });
 
   describe('verifyReportableTarget', () => {
+    it('allows a public-forum message after resolving its persisted channel', async () => {
+      vi.spyOn(chatRepository, 'findMessageById').mockResolvedValue(targetMessage);
+      vi.spyOn(chatRepository, 'findChannelById').mockResolvedValue(publicChannel);
+
+      await expect(
+        verifyReportableTarget(reporterId, {
+          targetType: 'chat_message',
+          targetId,
+          category: 'Harassment',
+          explanation: 'Abusive public message',
+          flaggedUrl: null,
+        })
+      ).resolves.toBeUndefined();
+    });
+
+    it('allows a private team message only for a current confirmed team member', async () => {
+      const teamChannel: ChatChannel = {
+        ...publicChannel,
+        channel_type: 'team',
+        team_id: teamId,
+      };
+      vi.spyOn(chatRepository, 'findMessageById').mockResolvedValue(targetMessage);
+      vi.spyOn(chatRepository, 'findChannelById').mockResolvedValue(teamChannel);
+      vi.spyOn(participantsRepository, 'findById').mockResolvedValue({
+        ...mockTargetParticipant,
+        id: reporterId,
+      });
+      vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([
+        reporterId,
+      ]);
+
+      await expect(
+        verifyReportableTarget(reporterId, {
+          targetType: 'chat_message',
+          targetId,
+          category: 'Harassment',
+          explanation: null,
+          flaggedUrl: null,
+        })
+      ).resolves.toBeUndefined();
+    });
+
+    it('conceals a private team message from an unrelated participant', async () => {
+      const teamChannel: ChatChannel = {
+        ...publicChannel,
+        channel_type: 'team',
+        team_id: teamId,
+      };
+      vi.spyOn(chatRepository, 'findMessageById').mockResolvedValue(targetMessage);
+      vi.spyOn(chatRepository, 'findChannelById').mockResolvedValue(teamChannel);
+      vi.spyOn(participantsRepository, 'findById').mockResolvedValue({
+        ...mockTargetParticipant,
+        id: reporterId,
+      });
+      vi.spyOn(teamsRepository, 'listConfirmedParticipantIdsForTeam').mockResolvedValue([]);
+
+      await expect(
+        verifyReportableTarget(reporterId, {
+          targetType: 'chat_message',
+          targetId,
+          category: 'Harassment',
+          explanation: null,
+          flaggedUrl: null,
+        })
+      ).rejects.toMatchObject({ status: 404, code: 'TARGET_NOT_FOUND' });
+    });
+
+    it('uses the same unavailable response for stale IDs and unsupported direct-message IDs', async () => {
+      vi.spyOn(chatRepository, 'findMessageById').mockResolvedValue(null);
+
+      await expect(
+        verifyReportableTarget(reporterId, {
+          targetType: 'chat_message',
+          targetId,
+          category: 'Harassment',
+          explanation: null,
+          flaggedUrl: null,
+        })
+      ).rejects.toMatchObject({
+        status: 404,
+        code: 'TARGET_NOT_FOUND',
+        message: 'The specified chat message is not available for reporting.',
+      });
+    });
+
     it('allows a visible team listing', async () => {
       vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(mockTeam);
 
@@ -199,6 +312,64 @@ describe('moderationReports service (US-025 / #235 / #237)', () => {
   });
 
   describe('submitParticipantReport', () => {
+    it('connects an eligible message report to the existing moderation pipeline', async () => {
+      vi.spyOn(chatRepository, 'findMessageById').mockResolvedValue(targetMessage);
+      vi.spyOn(chatRepository, 'findChannelById').mockResolvedValue(publicChannel);
+      vi.spyOn(moderationRepository, 'findOpenCaseByTarget').mockResolvedValue(null);
+      const createdCase: ModerationCase = {
+        id: '55555555-5555-4555-8555-555555555555',
+        target_type: 'chat_message',
+        target_id: targetId,
+        reason: '[Harassment] Abusive visible message',
+        status: 'Open',
+        created_by: reporterId,
+        report_count: 1,
+        flagged_url: null,
+        created_at: testNow.toISOString(),
+        updated_at: testNow.toISOString(),
+      };
+      const createCase = vi
+        .spyOn(moderationRepository, 'createCase')
+        .mockResolvedValue(createdCase);
+
+      const receipt = await submitParticipantReport(
+        reporterId,
+        {
+          targetType: 'chat_message',
+          targetId,
+          category: 'Harassment',
+          explanation: 'Abusive visible message',
+          flaggedUrl: null,
+        },
+        { now: () => testNow }
+      );
+
+      expect(createCase).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target_type: 'chat_message',
+          target_id: targetId,
+          report_count: 1,
+        })
+      );
+      expect(receipt).toMatchObject({
+        caseId: createdCase.id,
+        targetType: 'chat_message',
+        targetId,
+        category: 'Harassment',
+        status: 'Received',
+      });
+      const reports = await moderationReportsRepository.findReportsByReporterSince(
+        reporterId,
+        new Date(testNow.getTime() - 1000)
+      );
+      expect(reports).toHaveLength(1);
+      expect(reports[0]).toMatchObject({
+        target_type: 'chat_message',
+        target_id: targetId,
+        case_id: createdCase.id,
+      });
+    });
+
     it('creates a new US-026 moderation case and returns a receipt confirmation when no case exists', async () => {
       vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(mockTeam);
       vi.spyOn(moderationRepository, 'findOpenCaseByTarget').mockResolvedValue(

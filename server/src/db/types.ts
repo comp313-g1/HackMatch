@@ -485,7 +485,12 @@ export type ModerationTargetType =
   | 'chat_channel'
   | 'chat_message';
 
-export type ModerationReportTargetType = 'team' | 'profile' | 'event' | 'url';
+export type ModerationReportTargetType =
+  | 'team'
+  | 'profile'
+  | 'event'
+  | 'url'
+  | 'chat_message';
 
 export type ModerationReportCategory =
   | 'Harassment'
