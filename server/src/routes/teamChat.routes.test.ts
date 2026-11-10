@@ -207,6 +207,25 @@ describe('Member-gated team channel endpoints (US-031 / #381 / FR-090)', () => {
       });
     });
 
+    it.each([
+      ['TEAM_CHANNEL_READ_ONLY', 'TEAM_CHANNEL_READ_ONLY'],
+      ['TEAM_CHANNEL_NOT_A_MEMBER', 'FORBIDDEN_NOT_TEAM_MEMBER'],
+      ['TEAM_CHANNEL_ACCOUNT_SUSPENDED', 'ACCOUNT_SUSPENDED'],
+    ])('turns the database lifecycle guard %s into a 403 (%s) when state changes after the gate', async (dbCode, apiCode) => {
+      vi.mocked(chatRepository.createMessage).mockRejectedValue(new Error(dbCode));
+      const res = await request(app).post(`${BASE}/messages`).set(auth).send({ body: 'late' });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe(apiCode);
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(JSON.stringify(res.body)).not.toContain('late');
+    });
+
+    it('does not hide unrelated storage failures as 403', async () => {
+      vi.mocked(chatRepository.createMessage).mockRejectedValue(new Error('connection reset'));
+      const res = await request(app).post(`${BASE}/messages`).set(auth).send({ body: 'x' });
+      expect(res.status).toBeGreaterThanOrEqual(500);
+    });
+
     it('rejects an empty body with 400 and echoes the draft; nothing is stored', async () => {
       const res = await request(app).post(`${BASE}/messages`).set(auth).send({ body: '   ' });
       expect(res.status).toBe(400);

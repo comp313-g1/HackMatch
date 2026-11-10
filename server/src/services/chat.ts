@@ -91,6 +91,76 @@ async function resolveAuthorHandles(
   return new Map(entries);
 }
 
+/** US-031 / #381: safe private team channel payload (adds the owning team id). */
+export interface TeamChatChannelView extends ChatChannelView {
+  teamId: string;
+}
+
+async function findTeamChannelOrThrow(teamId: string): Promise<ChatChannel> {
+  const channel = await chatRepository.findChannelByTeamId(teamId);
+  // Fail closed: the row must really be this team's private channel.
+  if (!channel || channel.channel_type !== 'team' || channel.team_id !== teamId) {
+    throw new ChatServiceError(404, 'TEAM_CHANNEL_NOT_FOUND', 'Team channel not found.');
+  }
+  return channel;
+}
+
+/** Translates the lifecycle guards of migration 0052 into content-free 403 responses. */
+export function mapTeamChannelWriteError(err: unknown): ChatServiceError | null {
+  const text = String((err as { message?: unknown } | null)?.message ?? '');
+  if (text.includes('TEAM_CHANNEL_READ_ONLY')) {
+    return new ChatServiceError(403, 'TEAM_CHANNEL_READ_ONLY', 'This team channel is read-only.');
+  }
+  if (text.includes('TEAM_CHANNEL_NOT_A_MEMBER')) {
+    return new ChatServiceError(
+      403,
+      'FORBIDDEN_NOT_TEAM_MEMBER',
+      'Only confirmed team members can use this team channel.'
+    );
+  }
+  if (text.includes('TEAM_CHANNEL_ACCOUNT_SUSPENDED')) {
+    return new ChatServiceError(403, 'ACCOUNT_SUSPENDED', 'This account cannot write to the team channel.');
+  }
+  return null;
+}
+
+/** Caller must already be authorized as a confirmed member (requireConfirmedTeamMember). */
+export async function openTeamChannel(teamId: string): Promise<TeamChatChannelView> {
+  const channel = await findTeamChannelOrThrow(teamId);
+  return scrubPrivateChatFields({ ...toChannelView(channel), teamId });
+}
+
+export async function listTeamChannelMessages(teamId: string): Promise<ChatMessageView[]> {
+  const channel = await findTeamChannelOrThrow(teamId);
+  const messages = await chatRepository.listMessagesByChannel(channel.id);
+  const handles = await resolveAuthorHandles(messages.map((m) => m.author_id));
+  return messages.map((message) =>
+    toMessageView(message, handles.get(message.author_id) ?? null)
+  );
+}
+
+export async function sendTeamChannelMessage(input: {
+  teamId: string;
+  authorId: string;
+  body: string;
+}): Promise<ChatMessageView> {
+  const channel = await findTeamChannelOrThrow(input.teamId);
+  let message: ChatMessage;
+  try {
+    message = await chatRepository.createMessage({
+      channel_id: channel.id,
+      author_id: input.authorId,
+      body: input.body,
+    });
+  } catch (err) {
+    // US-031 / #382: the database re-checks membership, team and account state at insert time,
+    // so a change that lands after the route's gate (a race) still cannot produce a write.
+    throw mapTeamChannelWriteError(err) ?? err;
+  }
+  const profile = await profileRepository.findProfileByParticipantId(input.authorId);
+  return toMessageView(message, profile?.handle ?? null);
+}
+
 export async function listChannels(): Promise<ChatChannelView[]> {
   const channels = await chatRepository.listChannelsNewestFirst();
   return channels.map(toChannelView);
