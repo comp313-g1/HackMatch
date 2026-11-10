@@ -2,9 +2,9 @@
 
 **Audience:** project administrators, maintainers, developers, and technical reviewers
 
-**Repository baseline:** current `US-030/participant-chat-forums-messaging` branch
+**Repository baseline:** `US-031/team-channel-linkage-indexes` branch (migrations through `0052`, Issue #419 update)
 
-**Last reviewed:** October 23, 2026
+**Last reviewed:** November 9, 2026
 
 This manual describes how the current HackMatch implementation is configured, operated, secured, tested, and maintained. It complements the end-user [User Manual](./user_manual.md), the [engineering diagram index](../diagrams/README.md), and the detailed [demo seed guide](../../db-seed/README.md).
 
@@ -34,7 +34,7 @@ This manual describes how the current HackMatch implementation is configured, op
 
 ## 1. System overview
 
-HackMatch is a web application for participant profiles, platform-wide teammate discovery, team recruitment, invitations, applications, roster management, administration, and participant chat.
+HackMatch is a web application for participant profiles, platform-wide teammate discovery, team recruitment, invitations, applications, roster management, notifications, a private team workspace and manifest export, abuse reporting, administration (moderation, account enforcement, audit review), and participant chat with a server-side private team channel.
 
 The current user-facing architecture is **Event-Free**:
 
@@ -113,6 +113,7 @@ Start from `client/.env.example` and `server/.env.example`. Keep real environmen
 | `VITE_FIREBASE_AUTH_DOMAIN` | Firebase browser authentication domain |
 | `VITE_FIREBASE_PROJECT_ID` | Firebase project selected by the client |
 | `VITE_FIREBASE_APP_ID` | Firebase web application identifier retained in the example configuration |
+| `VITE_AUDIT_RETENTION_DAYS` | Optional whole number of days (1–3650). Empty means no retention period is approved yet; records older than the value are labelled "Past retention" in the audit log (display only, nothing is deleted) |
 
 Variables prefixed with `VITE_` are compiled into browser code. They must not contain private keys, service-role keys, passwords, SMTP credentials, or server session secrets.
 
@@ -299,11 +300,13 @@ Review migration diffs and the selected Supabase target before applying any chan
 | Area | Tables |
 |---|---|
 | Accounts/authentication | `participants`, `provider_identities`, `mfa_challenges`, `mfa_attempts` |
-| Profiles | `participant_profiles`, `participant_skills`, `participant_portfolios` |
+| Profiles | `participant_profiles`, `participant_skills`, `participant_portfolios`, `participant_hackathon_history` (0043) |
 | Team compatibility/availability | `events`, `event_availability` |
-| Recruitment | `teams`, `team_memberships`, `team_vacancies`, `team_requests`, `participant_notifications` |
-| Administration | `moderation_cases`, `event_action_records`, `account_deletion_requests` |
-| Chat | `chat_channels`, `chat_messages`; presence is stored on `participants` |
+| Recruitment | `teams`, `team_memberships`, `team_vacancies`, `team_requests` |
+| Notifications | `participant_notifications` (extended in 0044; published to Supabase Realtime in 0045) |
+| Team workspace and manifest | workspace links, shared note and revision tables (0046); roster manifest snapshots (0047) |
+| Administration | `moderation_cases`, `moderation_reports` (0048), `event_action_records` (the append-only audit records; query model 0049, least privilege 0050), `account_deletion_requests` |
+| Chat | `chat_channels` (public forums and, since 0051, private team channels via `channel_type` and `team_id`), `chat_messages`; presence is stored on `participants` |
 | Legacy compatibility | `pending_event_submissions` and event-oriented columns retained by the physical schema |
 
 `moderation_cases.target_id` and `event_action_records.target_id` are polymorphic identifiers interpreted with their target type; they are not physical foreign keys to every possible target table.
@@ -326,6 +329,14 @@ The React workflow is platform-wide and does not ask the user to select an event
 - **Placement:** invitation acceptance and application approval revalidate the target team, vacancy, membership, and capacity before creating membership and filling a slot.
 - **Roster lock:** the owner may lock an eligible active roster. Locking freezes ordinary membership and vacancy mutation and cancels remaining recruitment requests.
 
+### Related participant features (US-007, US-014, US-021, US-023, US-024)
+
+- **Hackathon history (US-007):** `participant_hackathon_history` stores self-reported records (event name, date, team role, project title, HTTPS URL). Routes live under `/api/profiles/me/history` (create, update, delete) and `/api/profiles/:participantId/history` (permitted read). The Beginner (0), Competitor (1–3), and Veteran (4+) badge is computed from the record count and labelled self-reported; it is not verified.
+- **Candidate directory (US-014):** the team owner of an active unlocked team can query `GET /api/teams/:teamId/candidates` with skill AND/OR matching, primary role, commitment hours, and experience tier filters. Confirmed members are excluded and cards use the same privacy projection as profiles.
+- **Notifications (US-021):** `GET /api/notifications` (newest first, unread count, cursor paging), `GET /api/notifications/stream` (live stream using fetch streaming because `EventSource` cannot send the Firebase bearer token), `POST /api/notifications/read-all`, and `PATCH /api/notifications/:id/read`. A foreign or unknown id returns `404 NOTIFICATION_NOT_FOUND`, so existence is not revealed. The React bell polls every 30 seconds (`NOTIFICATION_POLL_MS`) and also uses the live stream when available.
+- **Private workspace (US-023):** only confirmed members of a **locked** team can call `GET /api/teams/:teamId/workspace`; the owner alone can `PUT .../workspace/links` (HTTPS only); any member can `PUT .../workspace/note` and `GET .../workspace/revisions`. Notes use revision versions, so a stale save is rejected rather than overwriting a newer edit. Visitors, unrelated participants, and ADMIN without membership are denied. Account email is never exposed.
+- **Manifest export (US-024):** `GET /api/teams/:teamId/manifest` (HTML, PDF, or JSON) and `POST /api/teams/:teamId/manifest/verify` are limited to confirmed members of a locked team. The export is built from a stored roster snapshot (0047) and a documented canonical serialization with a SHA-256 checksum. Account emails and private contact handles are excluded. The checksum is an integrity check, not proof of time or organizer approval.
+
 The product default capacity is four. The physical model currently derives several boundaries from the team's shadow event, and current validators also retain a configurable `maxTeamSize` range. Treat the shadow-event relation as compatibility plumbing, not a public workflow.
 
 ## 12. ADMIN content moderation
@@ -343,6 +354,10 @@ The current module supports:
 Cases use `Open`, `Dismissed`, and `Resolved` states. Reasons are validated, URL targets require HTTPS, and stale or missing targets fail safely. Target resolution is application logic over the polymorphic `target_type`/`target_id` pair.
 
 Depending on target and action, the service can redact a team pitch or profile handle, record a warning and notification, hide a team/profile, or disable a communication URL. It does not delete team memberships as a side effect of content hiding. Action records retain safe actor, target, outcome, and timestamp metadata; credentials and authentication artifacts are excluded.
+
+### Participant reports (US-025)
+
+Participants submit reports with `POST /api/reports` (verified active `PART` only). A report captures the target (team listing, profile, event listing, or URL), a category (Harassment, Spam, Phishing Link, Fake Account), and an optional explanation of up to 1,000 characters. URL targets must be HTTPS. Each account may submit at most **5 reports per rolling hour**; further attempts return a rate-limit response. A successful report is stored in `moderation_reports`, creates a linked moderation case, and returns a receipt id to the reporter. `GET /api/reports` and `GET /api/reports/:reportId` always refuse participants, so reports stay confidential to administrators.
 
 An empty safety queue is valid. The current seeded `recruitment-v1` scenario intentionally creates no moderation cases.
 
@@ -362,6 +377,23 @@ The current implementation provides:
 - deletion-request processing with ownership safeguards.
 
 Suspension updates PostgreSQL state, cancels relevant pending requests, hides open teams owned by the participant, hides the profile, revokes Firebase refresh tokens, and disables Firebase sign-in. Protected endpoints also check PostgreSQL suspension/deactivation, so a stale token does not grant normal application access.
+
+### Audit review (US-028)
+
+`GET /api/admin/audit-records` is the only audit endpoint. It requires authentication, current MFA, an active account, and the server-confirmed `ADMIN` role; participants and visitors never reach validation or the database.
+
+| Aspect | Behavior |
+|---|---|
+| Query parameters | `actor`, `actionType`, `category` (`event`, `moderation`, `account`), `from`, `to`, `limit` (maximum 100; the UI offers 25, 50, 100), `cursor`. Unknown keys and malformed values are rejected |
+| Response | `records`, `count`, `hasMore`, `nextCursor`, and the echoed `filters`, newest first, with `Cache-Control: no-store` |
+| Fields shown | record id, actor id, action type, target, safe state summary, reason/outcome, UTC time |
+| Read-only | Any method other than `GET`, `HEAD`, or `OPTIONS` returns `405 AUDIT_RECORDS_READ_ONLY` |
+| Database | Migration `0006` blocks UPDATE/DELETE/TRUNCATE by trigger; `0049` revokes those privileges; `0050` leaves `service_role` with only SELECT and INSERT and removes TRIGGER/REFERENCES and direct anon/authenticated access, so a role cannot attach a trigger that rewrites future records |
+| Retention and privacy | The team has not approved a retention period (NR-023). Set `VITE_AUDIT_RETENTION_DAYS` once approved to label older records "Past retention" in the UI. Nothing is deleted or edited from this feature. Display applies the pseudonymization rules for retained personal data |
+
+The React page is **Admin ▾ → Audit log**. Append-only means ordinary application actors cannot alter records; it does not make the underlying storage tamper-proof against someone with database-owner access.
+
+![Placeholder: ADMIN audit log](../assets/wireframes/US-028-admin-audit-log.png)
 
 There is no current unsuspend/reactivate endpoint in the ADMIN API. Do not promise reactivation through the UI.
 
@@ -389,9 +421,42 @@ Presence values are `Online`, `Idle`, `Do Not Disturb`, and `Invisible`; selecti
 
 Channel titles and descriptions are required and validated. Message bodies must be nonblank and are bounded by the database/API limit. The React UI retains channel-form and composer drafts on validation or request failure. Message responses resolve the author handle and UTC timestamp while excluding email, password, OTP, Firebase UID, private contact, and credential fields.
 
-The MVP has no channel-membership persistence or join/leave mechanism: every verified active `PART` passes the same global-channel access gate. There is also no implemented peer-presence directory; `Invisible` is filtered by helper logic, but broader peer visibility policy remains undefined.
+Public forums have no channel-membership persistence or join/leave mechanism: every verified active `PART` passes the same global-channel access gate. Private team channels (below) are gated by team membership instead. There is also no implemented peer-presence directory; `Invisible` is filtered by helper logic, but broader peer visibility policy remains undefined.
 
-Team-specific channels, direct messages, reactions, typing indicators, attachments, voice/video, unread/mention tracking, and moderation/report integration are deferred.
+Direct messages, reactions, typing indicators, attachments, voice/video, unread/mention tracking, and moderation/report integration are deferred.
+
+### Private team channels (US-031) — server side only
+
+US-031 adds a private channel per team. The back end is implemented and tested; **there is no React screen yet** (task #383) and nothing creates a channel automatically yet, so the endpoints return `404 TEAM_CHANNEL_NOT_FOUND` until a channel is provisioned.
+
+| Task | What exists |
+|---|---|
+| #378 data model (migration `0051`) | `chat_channels.channel_type` (`public` default or `team`) and `team_id` (unique, `ON DELETE RESTRICT`, immutable once set); a `team` channel must have a team and a `public` channel must not; existing US-030 channels become `public` unchanged |
+| #379 provisioning | `provisionOrLinkTeamChannel` creates or links a team's channel idempotently and refuses to create one for a disbanded team. It is a service function and is not yet called from team creation |
+| #380 authorization | Confirmed-member authorization helpers in `teamChatAuthorization` |
+| #381 endpoints | `GET /api/teams/:teamId/chat` (open channel), `GET /api/teams/:teamId/chat/messages`, `POST /api/teams/:teamId/chat/messages` |
+| #382 lifecycle (migration `0052`) | Database-enforced lifecycle rules, below |
+
+Endpoint behavior:
+
+- The route chain is authentication, MFA, active account, `PART` role, verified participant, team-id UUID check, then the **confirmed-member gate**, then body validation.
+- A non-member, a removed or released member, someone on a different team, or a non-existent team all receive the **same** `403 FORBIDDEN_NOT_TEAM_MEMBER` body with `Cache-Control: no-store`; no channel or message content is read. Visitors get 401. An ADMIN has no membership and is refused; there is no admin bypass.
+- Message authors are shown by handle only. A client cannot choose the author or channel: extra body fields are rejected. An empty or over-4,000-character body returns 400 and echoes the draft.
+- The public `/api/chat` endpoints treat team channels as missing (`404 CHANNEL_NOT_FOUND`), so they can neither list nor read them.
+
+Lifecycle rules (migration `0052`, enforced by triggers so a race cannot bypass them):
+
+| Situation | Result |
+|---|---|
+| Confirmed member of an Open or Locked team | May write |
+| Removed, Released, or departed member | Cannot write (`TEAM_CHANNEL_NOT_A_MEMBER`, API 403); earlier messages remain |
+| Disbanded team | Channel is read-only history (`TEAM_CHANNEL_READ_ONLY`, API 403) |
+| Suspended account | Cannot write (`TEAM_CHANNEL_ACCOUNT_SUSPENDED`, API 403 `ACCOUNT_SUSPENDED`) |
+| Delete or edit a team message | Refused (`TEAM_CHANNEL_HISTORY_IMMUTABLE`) |
+| Delete a team channel | Refused, so history cannot cascade away |
+| Delete membership rows of a team that has a channel | Refused (`TEAM_MEMBERSHIP_HISTORY_IMMUTABLE`); leaving, removal, and disband only change `status` |
+
+Run the story's tests with `npm run test:us031 --prefix server`. Operators who need to remove a team's data entirely must plan it deliberately, because these protections block ordinary deletes.
 
 ![Participant chat thread](../assets/wireframes/US-030-chat-message-thread.png)
 
@@ -458,9 +523,17 @@ The seed never bypasses MFA. Seeded accounts are verified in Firebase/PostgreSQL
 
 GitHub Actions uses Node 22 and runs dependency installation, commit-message validation for pull requests, lint, type-check, build, and coverage tests.
 
-### Current branch validation baseline
+### Story-focused commands
 
-The following results were observed while preparing this manual. They are existing branch conditions; no application or test files were changed to alter them.
+| Purpose | Command |
+|---|---|
+| US-031 team channel (model, repository, services, routes, real-SQL lifecycle) | `npm run test:us031 --prefix server` |
+
+The real-SQL tests run migrations on an in-process PostgreSQL (PGlite, a server dev dependency), so they need no external database.
+
+### Earlier branch validation baseline (October 23, 2026)
+
+The following results were observed when this section was last measured, before the US-021 to US-031 work. Re-run the commands above for current figures; do not rely on these numbers. They are existing branch conditions; no application or test files were changed to alter them.
 
 | Check | Result |
 |---|---|
@@ -540,6 +613,11 @@ Operational rules:
 | Seed reset is blocked by foreign keys | Non-manifest data references an owned deterministic record | Investigate the reference; the reset correctly fails rather than deleting unrelated data |
 | Team/recruitment behavior mentions an event internally | Compatibility `event_id`, event-bound constraint, or RPC is still active | Treat it as backend implementation; do not add user-facing event selection |
 | Chat access returns 403 | User is not a verified active `PART`, MFA is missing, or account is suspended | Correct the account state and complete authentication; ADMIN is not treated as a normal chat participant |
+| Team chat endpoint returns 404 `TEAM_CHANNEL_NOT_FOUND` for a member | No channel has been provisioned for the team yet (provisioning is not wired into team creation) | Expected until the provisioning hook ships; do not create rows by hand |
+| Team chat endpoint returns 403 `FORBIDDEN_NOT_TEAM_MEMBER` | Caller is not a Confirmed member of that team (or the team does not exist) | Check `team_memberships.status` for the participant and team |
+| Deleting a team, channel, message, or membership fails with a `TEAM_*_IMMUTABLE` error | Lifecycle protections from migration `0052` | Intended; change `status` instead of deleting |
+| Audit log shows no "Past retention" labels | `VITE_AUDIT_RETENTION_DAYS` is empty (no approved retention period) or invalid | Set a whole number of days from 1 to 3650 once the period is approved |
+| Notification bell does not update live | Live stream unavailable | The client falls back to polling every 30 seconds; check `/api/notifications/stream` and the server logs |
 | Build/type-check currently fails | Known server TypeScript errors in tests and parameter parsing remain on this branch | Use the validation baseline above and address under a separate application/test issue |
 
 ## 20. Known implementation constraints
@@ -549,10 +627,12 @@ Operational rules:
 - Team capacity defaults to four in the current product design, while physical event bounds and current validators can permit configured sizes outside that default.
 - New MFA challenge creation and some ADMIN moderation/account-enforcement workflows consist of sequential cross-service or multi-write operations rather than a single distributed transaction. Retry only after inspecting resulting state.
 - ADMIN account enforcement supports suspension and deletion processing, but not unsuspension/reactivation through the current API.
-- Chat is global to verified active participants. Channel membership, peer presence discovery policy, team channels, direct messages, rich media, reactions, typing, and moderation hooks are not implemented.
+- Public chat is global to verified active participants. Peer presence discovery policy, direct messages, rich media, reactions, typing, and moderation hooks are not implemented. Private team channels have a back end (US-031 #378–#382) but no React screen (#383), no automatic provisioning on team creation, and no end-to-end test of the full flow (#384).
+- The audit retention period is not yet approved, so no record is marked "Past retention" by default.
+- US-029 (authenticator-app two-factor authentication) is future scope; every sign-in uses email OTP.
 - The diagram index was produced through repository audits and may lag very recent implementation changes; current source, migrations, and tests govern operations when a status label differs.
 - The development database and deterministic demo identities are shared resources. Coordinate seed, reset, migration, and destructive account operations.
-- Current branch quality checks have known failures listed in [Testing and continuous integration](#16-testing-and-continuous-integration).
+- The older branch quality baseline in [Testing and continuous integration](#16-testing-and-continuous-integration) predates recent work; re-measure before quoting it.
 
 ## 21. Technical references
 
