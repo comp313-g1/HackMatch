@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as chatApi from './chatApi';
 import { DirectMessagesView } from './DirectMessagesView';
+import { ChatUnreadProvider } from './ChatUnreadContext';
 import type {
   DirectMessageThreadDetail,
   DirectMessageThreadView,
@@ -16,6 +17,8 @@ vi.mock('./chatApi', async () => {
     listDirectMessageThreads: vi.fn(),
     getDirectMessageThread: vi.fn(),
     sendDirectMessage: vi.fn(),
+    fetchChatUnreadSummary: vi.fn(),
+    markChatConversationRead: vi.fn(),
   };
 });
 
@@ -60,6 +63,11 @@ describe('DirectMessagesView (US-032 / #389)', () => {
     vi.mocked(chatApi.listDirectMessageThreads).mockResolvedValue([thread]);
     vi.mocked(chatApi.getDirectMessageThread).mockResolvedValue(emptyDetail);
     vi.mocked(chatApi.sendDirectMessage).mockResolvedValue(message);
+    vi.mocked(chatApi.fetchChatUnreadSummary).mockResolvedValue({
+      counts: [],
+      totalUnreadCount: 0,
+      totalUnreadMentionCount: 0,
+    });
   });
 
   it('shows an explicit inbox loading state', () => {
@@ -215,5 +223,60 @@ describe('DirectMessagesView (US-032 / #389)', () => {
       /network unavailable/i
     );
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it('shows an authorized DM badge and clears it only after confirmed mark-read', async () => {
+    vi.mocked(chatApi.getDirectMessageThread).mockResolvedValue({
+      thread,
+      messages: [message],
+      isEmpty: false,
+    });
+    vi.mocked(chatApi.fetchChatUnreadSummary)
+      .mockResolvedValueOnce({
+        counts: [
+          {
+            conversationType: 'directMessage',
+            conversationId: THREAD_ID,
+            unreadCount: 4,
+            unreadMentionCount: 1,
+          },
+        ],
+        totalUnreadCount: 4,
+        totalUnreadMentionCount: 1,
+      })
+      .mockResolvedValue({
+        counts: [],
+        totalUnreadCount: 0,
+        totalUnreadMentionCount: 0,
+      });
+    vi.mocked(chatApi.markChatConversationRead).mockResolvedValue({
+      conversationType: 'directMessage',
+      conversationId: THREAD_ID,
+      readCursor: { messageId: message.id, createdAt: message.createdAt },
+      advanced: true,
+      unreadCount: 0,
+      unreadMentionCount: 0,
+    });
+
+    render(
+      <ChatUnreadProvider enabled sessionKey="participant-a">
+        <DirectMessagesView />
+      </ChatUnreadProvider>
+    );
+    expect(
+      await screen.findByRole('status', {
+        name: /direct messages with blake: 4 unread messages, 1 unread mention/i,
+      })
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /blake/i }));
+
+    await waitFor(() => {
+      expect(chatApi.markChatConversationRead).toHaveBeenCalledWith({
+        conversationType: 'directMessage',
+        conversationId: THREAD_ID,
+        messageId: message.id,
+      });
+      expect(screen.queryByTestId('chat-activity-badge')).not.toBeInTheDocument();
+    });
   });
 });

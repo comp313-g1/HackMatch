@@ -23,6 +23,8 @@ import { ModerationSafetyPage } from './components/moderation/ModerationSafetyPa
 import { AccountEnforcementPage } from './components/accounts/AccountEnforcementPage';
 import { AuditRecordsPage } from './components/audit/AuditRecordsPage';
 import { ChatPage } from './components/chat/ChatPage';
+import { ChatUnreadProvider } from './components/chat/ChatUnreadContext';
+import { ChatNavigationButton } from './components/chat/ChatUnreadBadge';
 import { NotificationBell } from './components/notifications/NotificationBell';
 import type { NotificationTarget } from './components/notifications/notificationTarget';
 import type { OpenTeamApplyTarget } from './components/teams/openTeamsApi';
@@ -331,7 +333,11 @@ export function App(): React.JSX.Element {
   }, [verificationPending, currentView]);
 
   return (
-    <div className="flex flex-col min-h-screen bg-cream text-ink font-sans">
+    <ChatUnreadProvider
+      sessionKey={sessionReady ? currentUser?.uid ?? null : null}
+      enabled={sessionReady && authRole === 'PART'}
+    >
+      <div className="flex flex-col min-h-screen bg-cream text-ink font-sans">
       {/* Skip to Content Link for WCAG 2.1 AA Compliance per NR-018 */}
       <a
         href="#main-content"
@@ -1125,33 +1131,13 @@ export function App(): React.JSX.Element {
 
       {/* #358 — Chat as floating action (not in primary navbar) */}
       {sessionReady && (
-        <button
-          type="button"
+        <ChatNavigationButton
           onClick={goToChat}
-          aria-label="Open chat"
-          aria-current={currentView === 'chat' ? 'page' : undefined}
-          className={`fixed bottom-5 left-5 z-50 inline-flex h-14 w-14 items-center justify-center rounded-full shadow-lg focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 ${
-            currentView === 'chat'
-              ? 'bg-forest-800 text-white'
-              : 'bg-forest text-white hover:bg-forest-800'
-          }`}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-6 w-6"
-            aria-hidden="true"
-          >
-            <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
-          </svg>
-        </button>
+          active={currentView === 'chat'}
+        />
       )}
-    </div>
+      </div>
+    </ChatUnreadProvider>
   );
 }
 
