@@ -6,6 +6,7 @@ import { participantsRepository } from '../db/participants.repository.js';
 import { directMessageRepository } from '../db/directMessage.repository.js';
 import { participantBlockRepository } from '../db/participantBlock.repository.js';
 import { profileRepository } from '../db/profile.repository.js';
+import { directMessagePayloadHasPrivateKey } from '../services/directMessagePrivacy.js';
 import { MFA_CLAIM } from '../utils/mfaClaim.js';
 import { publicPayloadHasPrivateChatKey } from '../services/chatPrivacy.js';
 import type { DirectMessage } from '../db/directMessage.repository.js';
@@ -92,6 +93,7 @@ describe('POST /api/direct-messages/threads (US-032 / #386 / FR-091)', () => {
     directory = { [caller.id]: caller, [peer.id]: peer };
     vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(caller);
     vi.spyOn(participantsRepository, 'findById').mockImplementation(async (id: string) => directory[id] ?? null);
+    vi.spyOn(participantBlockRepository, 'findBlockState').mockResolvedValue({ blockedByMe: false, blockedByThem: false });
     vi.spyOn(directMessageRepository, 'findOrCreateThread').mockResolvedValue({ thread, created: true });
     vi.spyOn(profileRepository, 'findProfileByParticipantId').mockResolvedValue({ handle: 'pat', email: 'leak@example.com' } as never);
   });
@@ -128,10 +130,31 @@ describe('POST /api/direct-messages/threads (US-032 / #386 / FR-091)', () => {
       expect(res.body.thread).toEqual({
         id: THREAD_ID,
         peer: { id: peer.id, handle: 'pat' },
+        lastMessageAt: thread.last_message_at,
         createdAt: thread.created_at,
         updatedAt: thread.updated_at,
       });
       expect(JSON.stringify(res.body)).not.toMatch(/leak@example\.com|caller@example\.com|peer@example\.com|Peer Person|firebase_uid|fb-peer/);
+    });
+
+    it('carries the direct-message privacy flags and no private key anywhere in the response (#390)', async () => {
+      vi.mocked(profileRepository.findProfileByParticipantId).mockResolvedValue({
+        handle: 'pat',
+        email: 'leak@example.com',
+        presence_status: 'Invisible',
+        shared_contact_handle: '@secret',
+        institution: 'Secret U',
+      } as never);
+      const res = await open();
+      expect(res.body.privacy).toMatchObject({
+        credentialsIncluded: false,
+        otpsIncluded: false,
+        emailsIncluded: false,
+        presenceIncluded: false,
+        contactDetailsIncluded: false,
+      });
+      expect(directMessagePayloadHasPrivateKey({ ...res.body, privacy: undefined })).toBe(false);
+      expect(JSON.stringify(res.body)).not.toMatch(/leak@example\.com|Invisible|@secret|Secret U|participant_low_id|participant_high_id/);
     });
 
     it('returns the existing thread (200) on a repeat call, same thread id', async () => {
@@ -187,6 +210,21 @@ describe('POST /api/direct-messages/threads (US-032 / #386 / FR-091)', () => {
       expect(directMessageRepository.findOrCreateThread).not.toHaveBeenCalled();
     });
 
+    it.each([
+      ['the caller has blocked the peer', { blockedByMe: true, blockedByThem: false }],
+      ['the peer has blocked the caller', { blockedByMe: false, blockedByThem: true }],
+      ['both have blocked each other', { blockedByMe: true, blockedByThem: true }],
+    ])('answers a block (%s) with the SAME 404 as any unavailable peer and creates nothing', async (_label, state) => {
+      vi.mocked(participantBlockRepository.findBlockState).mockResolvedValue(state);
+      const res = await open();
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({
+        error: 'That participant is not available for direct messages.',
+        code: 'PEER_NOT_AVAILABLE',
+      });
+      expect(directMessageRepository.findOrCreateThread).not.toHaveBeenCalled();
+    });
+
     it('does not tell an existing-thread peer from a never-messaged peer beyond the caller\'s own thread', async () => {
       // The only lookup key contains the caller, so a third party can never be probed.
       await open();
@@ -199,7 +237,7 @@ describe('POST /api/direct-messages/threads (US-032 / #386 / FR-091)', () => {
       // person is not consulted at all, so the response is identical in shape.
       const res = await open();
       expect(Object.keys(res.body).sort()).toEqual(['privacy', 'status', 'thread']);
-      expect(Object.keys(res.body.thread).sort()).toEqual(['createdAt', 'id', 'peer', 'updatedAt']);
+      expect(Object.keys(res.body.thread).sort()).toEqual(['createdAt', 'id', 'lastMessageAt', 'peer', 'updatedAt']);
     });
   });
 
@@ -224,6 +262,13 @@ describe('POST /api/direct-messages/threads (US-032 / #386 / FR-091)', () => {
       expect(res.body.code).toBe('VALIDATION_ERROR');
       expect(res.body.errors).toBeDefined();
       expect(directMessageRepository.findOrCreateThread).not.toHaveBeenCalled();
+    });
+
+    it('echoes the rejected draft with private keys redacted, never in the clear', async () => {
+      const res = await open({ participantId: 'nope', email: 'me@example.com', password: 'pw', presence_status: 'Online' });
+      expect(res.status).toBe(400);
+      expect(res.body.submitted).toEqual({ participantId: 'nope', email: '[redacted]', password: '[redacted]', presence_status: '[redacted]' });
+      expect(JSON.stringify(res.body)).not.toMatch(/me@example\.com|"pw"|Online/);
     });
 
     it('400 when the body is not a JSON object', async () => {
@@ -280,7 +325,9 @@ describe('DM inbox, thread, and send-message endpoints (US-032 / #387 / FR-089, 
       expect(res.body.threads[0].lastMessage).toMatchObject({
         id: message.id,
         body: 'Hello direct message',
-        authorHandle: 'peer_handle',
+        // The caller wrote this message, so it carries the CALLER's handle and fromMe (not the peer's).
+        authorHandle: 'caller_handle',
+        fromMe: true,
       });
       expect(publicPayloadHasPrivateChatKey(res.body)).toBe(false);
     });
@@ -432,6 +479,87 @@ describe('DM inbox, thread, and send-message endpoints (US-032 / #387 / FR-089, 
       expect(res.status).toBe(403);
       expect(res.body.code).toBe('DM_BLOCKED_BY_YOU');
       expect(directMessageRepository.createMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('privacy projections on every DM response (US-032 / #390 / FR-089, FR-091)', () => {
+    const SENSITIVE = /caller@example\.com|peer@example\.com|firebase_uid|fb-|participant_low_id|participant_high_id|presence|Invisible/i;
+
+    beforeEach(() => {
+      vi.mocked(profileRepository.findProfileByParticipantId).mockImplementation(
+        async (id: string) =>
+          ({
+            handle: id === caller.id ? 'caller_handle' : 'peer_handle',
+            email: id === caller.id ? 'caller@example.com' : 'peer@example.com',
+            presence_status: 'Invisible',
+            shared_contact_handle: '@secret',
+            institution: 'Secret U',
+          }) as never
+      );
+    });
+
+    const contract = (body: unknown) => {
+      // The privacy flags legitimately name "presence"; check everything else.
+      const text = JSON.stringify({ ...(body as object), privacy: undefined });
+      expect(text).not.toMatch(SENSITIVE);
+      expect(text).not.toMatch(/@secret|Secret U/);
+      expect(directMessagePayloadHasPrivateKey({ ...(body as object), privacy: undefined })).toBe(false);
+      expect((body as { privacy: Record<string, unknown> }).privacy).toMatchObject({
+        credentialsIncluded: false,
+        otpsIncluded: false,
+        emailsIncluded: false,
+        presenceIncluded: false,
+        contactDetailsIncluded: false,
+      });
+    };
+
+    it('inbox: no private keys, no account ids of authors, privacy flags present', async () => {
+      const res = await request(app).get('/api/direct-messages/threads').set(auth);
+      contract(res.body);
+      expect(res.body.threads[0].lastMessage).not.toHaveProperty('authorId');
+    });
+
+    it('thread detail: messages show handle and fromMe, never the author account id', async () => {
+      const res = await request(app).get(`/api/direct-messages/threads/${THREAD_ID}`).set(auth);
+      expect(res.status).toBe(200);
+      contract(res.body);
+      expect(Object.keys(res.body.messages[0]).sort()).toEqual(['authorHandle', 'body', 'createdAt', 'fromMe', 'id', 'threadId']);
+      expect(JSON.stringify(res.body.messages)).not.toContain(caller.id);
+    });
+
+    it('messages list: same projection', async () => {
+      const res = await request(app).get(`/api/direct-messages/threads/${THREAD_ID}/messages`).set(auth);
+      expect(res.status).toBe(200);
+      contract(res.body);
+      expect(res.body.messages[0]).toMatchObject({ fromMe: true, authorHandle: 'caller_handle' });
+    });
+
+    it('send: the created message is projected the same way', async () => {
+      const res = await request(app)
+        .post(`/api/direct-messages/threads/${THREAD_ID}/messages`)
+        .set(auth)
+        .send({ body: 'Hello direct message' });
+      expect(res.status).toBe(201);
+      contract(res.body);
+      expect(res.body.message).toMatchObject({ fromMe: true, authorHandle: 'caller_handle', body: 'Hello direct message' });
+      expect(res.body.message).not.toHaveProperty('authorId');
+    });
+
+    it('seen from the other participant, the same message is fromMe:false with the author handle', async () => {
+      mockVerifyIdToken.mockResolvedValue({ ...token, uid: 'fb-peer' });
+      vi.mocked(participantsRepository.findByFirebaseUid).mockResolvedValue(peer);
+      const res = await request(app).get(`/api/direct-messages/threads/${THREAD_ID}/messages`).set(auth);
+      expect(res.status).toBe(200);
+      expect(res.body.messages[0]).toMatchObject({ fromMe: false, authorHandle: 'caller_handle' });
+    });
+
+    it('a rejected message draft is echoed with private keys redacted', async () => {
+      const res = await request(app)
+        .post(`/api/direct-messages/threads/${THREAD_ID}/messages`)
+        .set(auth)
+        .send({ body: '   ', email: 'me@example.com', presence_status: 'Online' });
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body)).not.toMatch(/me@example\.com|Online/);
     });
   });
 });

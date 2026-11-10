@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
-import { sanitizeSubmittedChatDraft } from '../services/chatPrivacy.js';
+import { sanitizeSubmittedDirectMessageDraft } from '../services/directMessagePrivacy.js';
 import { UUID_REGEX } from './team.validator.js';
 import {
   CHAT_MESSAGE_BODY_MAX_LENGTH,
@@ -53,7 +53,7 @@ export const validateOpenThreadBody: RequestHandler = (
       code: 'VALIDATION_ERROR',
       errors: result.errors,
       fieldErrors: result.errors,
-      submitted: sanitizeSubmittedChatDraft(result.submitted),
+      submitted: sanitizeSubmittedDirectMessageDraft(result.submitted),
     });
     return;
   }
@@ -150,7 +150,7 @@ export const validateSendMessageBody: RequestHandler = (
       code: 'VALIDATION_ERROR',
       errors: result.errors,
       fieldErrors: result.errors,
-      submitted: sanitizeSubmittedChatDraft(result.submitted),
+      submitted: sanitizeSubmittedDirectMessageDraft(result.submitted),
     });
     return;
   }

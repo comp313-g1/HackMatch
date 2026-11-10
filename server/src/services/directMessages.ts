@@ -22,7 +22,16 @@ import {
 } from '../db/profile.repository.js';
 import type { Participant } from '../db/types.js';
 import { ChatServiceError } from './chat.js';
-import { scrubPrivateChatFields } from './chatPrivacy.js';
+import {
+  toDirectInboxItemView,
+  toDirectMessageView,
+  toDirectThreadView,
+  toUtcIsoTimestamp,
+  type DirectInboxItemView,
+  type DirectMessageView,
+  type DirectThreadView,
+} from './directMessagePrivacy.js';
+import { hasBlockBetween, isEligibleDirectMessageParticipant } from './directMessageAccess.js';
 
 export const DM_THREAD_ACCESS_DENIED_MESSAGE =
   'You do not have permission to access this direct message thread.';
@@ -34,40 +43,14 @@ export class DirectMessageServiceError extends ChatServiceError {
   }
 }
 
-/**
- * Safe message payload (US-032 / #387 / FR-089, FR-091).
- * Displays author handle and UTC timestamp only — never email, credentials, OTPs, or firebase_uid.
- */
-export interface DmMessageView {
-  id: string;
-  threadId: string;
-  authorId: string;
-  authorHandle: string | null;
-  body: string;
-  createdAt: string;
-}
-
-/**
- * Safe thread payload (US-032 / #386 / #387 / FR-091, FR-089 bar).
- * The peer appears by id and handle only: never email, name, credentials, or firebase_uid.
- */
-export interface DirectThreadView {
-  id: string;
-  peer: { id: string; handle: string | null };
-  createdAt: string;
-  updatedAt: string;
-  lastMessage?: DmMessageView | null;
-  lastMessageAt?: string | null;
-}
-
 export interface DmInboxResult {
-  threads: DirectThreadView[];
+  threads: DirectInboxItemView[];
   isEmpty: boolean;
 }
 
 export interface DmThreadDetailResult {
-  thread: DirectThreadView;
-  messages: DmMessageView[];
+  thread: DirectInboxItemView;
+  messages: DirectMessageView[];
   isEmpty: boolean;
 }
 
@@ -84,71 +67,12 @@ const PEER_NOT_AVAILABLE = {
   message: 'That participant is not available for direct messages.',
 } as const;
 
-/** Eligible = a verified, active PART account. */
-export function isEligibleDirectMessagePeer(
-  participant: Participant | null
-): participant is Participant {
-  return (
-    !!participant &&
-    participant.role === 'PART' &&
-    participant.is_verified === true &&
-    !participant.is_suspended &&
-    !participant.is_deactivated
-  );
-}
+/** Eligible = a verified, active PART account (single definition lives in directMessageAccess). */
+export const isEligibleDirectMessagePeer = isEligibleDirectMessageParticipant;
 
-/**
- * Converts a Date or timestamp string into a canonical ISO-8601 UTC string (`...Z`).
- */
-export function toUtcIsoTimestamp(value: string | Date): string {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    throw new TypeError(`Invalid timestamp value: ${String(value)}`);
-  }
-  return date.toISOString();
-}
-
-export function toDmMessageView(
-  message: DirectMessage,
-  authorHandle: string | null
-): DmMessageView {
-  return scrubPrivateChatFields({
-    id: message.id,
-    threadId: message.thread_id,
-    authorId: message.author_id,
-    authorHandle,
-    body: message.body,
-    createdAt: toUtcIsoTimestamp(message.created_at),
-  });
-}
-
-export function toDirectThreadView(
-  thread: DirectMessageThread,
-  callerId: string,
-  peerHandle: string | null,
-  lastMessage?: DirectMessage | null
-): DirectThreadView {
-  const peerId =
-    getPeerParticipantId(thread, callerId) ??
-    (thread.participant_low_id.toLowerCase() === callerId.toLowerCase()
-      ? thread.participant_high_id
-      : thread.participant_low_id);
-
-  const out: DirectThreadView = {
-    id: thread.id,
-    peer: { id: peerId, handle: peerHandle },
-    createdAt: toUtcIsoTimestamp(thread.created_at),
-    updatedAt: toUtcIsoTimestamp(thread.updated_at),
-  };
-
-  if (lastMessage !== undefined) {
-    out.lastMessage = lastMessage ? toDmMessageView(lastMessage, peerHandle) : null;
-    const rawLastMessageAt = lastMessage?.created_at ?? thread.last_message_at ?? null;
-    out.lastMessageAt = rawLastMessageAt ? toUtcIsoTimestamp(rawLastMessageAt) : null;
-  }
-
-  return scrubPrivateChatFields(out);
-}
+/** Re-exported so callers keep one import for the DM payload shapes (defined in directMessagePrivacy). */
+export { toDirectThreadView, toDirectMessageView, toUtcIsoTimestamp };
+export type { DirectThreadView, DirectMessageView, DirectInboxItemView };
 
 function getDeps(deps: DirectMessageServiceDeps = {}) {
   return {
@@ -304,7 +228,8 @@ export async function openOrContinueDirectThread(
 
   const { dmRepo, participantsRepo, profileRepo } = getDeps(deps);
   const peer = await participantsRepo.findById(peerId);
-  if (!isEligibleDirectMessagePeer(peer)) {
+  // A block in either direction looks exactly like a missing or ineligible peer.
+  if (!isEligibleDirectMessagePeer(peer) || (await hasBlockBetween(callerId, peerId))) {
     throw new ChatServiceError(
       PEER_NOT_AVAILABLE.status,
       PEER_NOT_AVAILABLE.code,
@@ -360,28 +285,24 @@ export async function listDmInbox(
     authorizedThreads.map((t) => t.id)
   );
 
-  const peerIds = authorizedThreads.map(
-    (t) =>
-      getPeerParticipantId(t, trimmedParticipantId) ??
-      (t.participant_low_id.toLowerCase() === trimmedParticipantId.toLowerCase()
-        ? t.participant_high_id
-        : t.participant_low_id)
+  const callerKey = trimmedParticipantId.toLowerCase();
+  const peerIdOf = (t: DirectMessageThread): string =>
+    getPeerParticipantId(t, trimmedParticipantId) ??
+    (t.participant_low_id.toLowerCase() === callerKey ? t.participant_high_id : t.participant_low_id);
+  // The caller's own handle is needed too: the latest message may have been written by them.
+  const handles = await resolveParticipantHandles(
+    [trimmedParticipantId, ...authorizedThreads.map(peerIdOf)],
+    profileRepo
   );
-  const handles = await resolveParticipantHandles(peerIds, profileRepo);
+  const handleOf = (id: string): string | null => handles.get(id) ?? handles.get(id.toLowerCase()) ?? null;
 
   const views = authorizedThreads.map((thread) => {
-    const peerId =
-      getPeerParticipantId(thread, trimmedParticipantId) ??
-      (thread.participant_low_id.toLowerCase() === trimmedParticipantId.toLowerCase()
-        ? thread.participant_high_id
-        : thread.participant_low_id);
-    const peerHandle = handles.get(peerId) ?? null;
     const latest = latestMessages.get(thread.id) ?? null;
-    return toDirectThreadView(
+    return toDirectInboxItemView(
       thread,
       trimmedParticipantId,
-      peerHandle,
-      latest
+      handleOf(peerIdOf(thread)),
+      latest ? { message: latest, authorHandle: handleOf(latest.author_id) } : null
     );
   });
 
@@ -435,8 +356,9 @@ export async function getDmThread(
   ];
   const handles = await resolveParticipantHandles(idsToResolve, profileRepo);
 
+  const callerId = input.participantId.trim();
   const messages = sortedMessages.map((message) =>
-    toDmMessageView(message, handles.get(message.author_id) ?? null)
+    toDirectMessageView(message, callerId, handles.get(message.author_id) ?? null)
   );
 
   const latestMessage =
@@ -444,11 +366,13 @@ export async function getDmThread(
       ? sortedMessages[sortedMessages.length - 1]
       : null;
 
-  const threadView = toDirectThreadView(
+  const threadView = toDirectInboxItemView(
     thread,
-    input.participantId.trim(),
+    callerId,
     handles.get(peerId) ?? null,
     latestMessage
+      ? { message: latestMessage, authorHandle: handles.get(latestMessage.author_id) ?? null }
+      : null
   );
 
   return {
@@ -478,7 +402,7 @@ export async function sendDmMessage(
     body: string;
   },
   deps: DirectMessageServiceDeps = {}
-): Promise<DmMessageView> {
+): Promise<DirectMessageView> {
   const normalizedBody = normalizeChatMessageBody(input.body);
   if (normalizedBody == null) {
     throw new DirectMessageServiceError(
@@ -554,5 +478,5 @@ export async function sendDmMessage(
   const authorProfile = await profileRepo.findProfileByParticipantId(
     input.authorId.trim()
   );
-  return toDmMessageView(createdMessage, authorProfile?.handle ?? null);
+  return toDirectMessageView(createdMessage, input.authorId.trim(), authorProfile?.handle ?? null);
 }

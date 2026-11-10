@@ -22,7 +22,7 @@ import {
   openOrContinueDirectThread,
   sendDmMessage,
 } from '../services/directMessages.js';
-import { buildChatSuccessPayload } from '../services/chatPrivacy.js';
+import { buildDirectMessageSuccessPayload } from '../services/directMessagePrivacy.js';
 
 export const directMessageRouter = Router();
 
@@ -62,7 +62,7 @@ async function handleListInbox(
   try {
     const result = await listDmInbox(req.participant!.id);
     res.status(200).json(
-      buildChatSuccessPayload({
+      buildDirectMessageSuccessPayload({
         status: 'ok',
         threads: result.threads,
         isEmpty: result.isEmpty,
@@ -94,7 +94,7 @@ directMessageRouter.post(
         caller: req.participant!,
         peerId: req.body.participantId,
       });
-      res.status(created ? 201 : 200).json(buildChatSuccessPayload({ status: 'ok', thread }));
+      res.status(created ? 201 : 200).json(buildDirectMessageSuccessPayload({ status: 'ok', thread }));
     } catch (err) {
       handleDmError(err, res, next);
     }
@@ -117,7 +117,7 @@ directMessageRouter.get(
         participantId: req.participant!.id,
       });
       res.status(200).json(
-        buildChatSuccessPayload({
+        buildDirectMessageSuccessPayload({
           status: 'ok',
           thread: result.thread,
           messages: result.messages,
@@ -146,7 +146,7 @@ directMessageRouter.get(
         participantId: req.participant!.id,
       });
       res.status(200).json(
-        buildChatSuccessPayload({
+        buildDirectMessageSuccessPayload({
           status: 'ok',
           thread: result.thread,
           messages: result.messages,
@@ -177,7 +177,7 @@ directMessageRouter.post(
         authorId: req.participant!.id,
         body: req.body.body,
       });
-      res.status(201).json(buildChatSuccessPayload({ status: 'ok', message }));
+      res.status(201).json(buildDirectMessageSuccessPayload({ status: 'ok', message }));
     } catch (err) {
       handleDmError(err, res, next);
     }
