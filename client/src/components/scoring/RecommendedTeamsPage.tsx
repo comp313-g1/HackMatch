@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import type { OpenTeamApplyTarget } from '../teams/openTeamsApi';
 import {
   AuthRequiredError,
   RecommendedTeamsApiError,
@@ -8,11 +9,23 @@ import {
 } from './recommendedTeamsApi';
 
 export interface RecommendedTeamsPageProps {
+  /** Opens the existing US-018 application panel for the chosen vacancy (AC-3). */
+  onApply: (target: OpenTeamApplyTarget) => void;
   /** Where to send a signed-out visitor. */
   onNavigateToSignIn?: () => void;
 }
 
 type LoadState = 'loading' | 'success' | 'error';
+
+/** Maps a recommendation row onto the existing application panel target. */
+function toApplyTarget(team: RecommendedTeam): OpenTeamApplyTarget {
+  return {
+    teamId: team.teamId,
+    vacancyId: team.vacancyId,
+    role: team.role,
+    teamName: team.teamName,
+  };
+}
 
 function ScoreBadge({ team }: { team: RecommendedTeam }): React.JSX.Element | null {
   if (!team.displayScore) return null;
@@ -27,7 +40,13 @@ function ScoreBadge({ team }: { team: RecommendedTeam }): React.JSX.Element | nu
   );
 }
 
-function TeamCard({ team }: { team: RecommendedTeam }): React.JSX.Element {
+function TeamCard({
+  team,
+  onApply,
+}: {
+  team: RecommendedTeam;
+  onApply: (target: OpenTeamApplyTarget) => void;
+}): React.JSX.Element {
   const matchedSkills = team.matchedSkills ?? [];
 
   return (
@@ -69,6 +88,15 @@ function TeamCard({ team }: { team: RecommendedTeam }): React.JSX.Element {
           Your primary role matches this slot.
         </p>
       ) : null}
+
+      <button
+        type="button"
+        onClick={() => onApply(toApplyTarget(team))}
+        className="px-3 py-1.5 text-xs font-semibold text-white bg-forest rounded hover:bg-forest-800 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream"
+        data-testid="recommended-team-apply"
+      >
+        Apply to {team.teamName}
+      </button>
     </li>
   );
 }
@@ -80,6 +108,7 @@ function TeamCard({ team }: { team: RecommendedTeam }): React.JSX.Element {
  * was already loaded (NR-017) instead of blanking the list on a retryable failure.
  */
 export function RecommendedTeamsPage({
+  onApply,
   onNavigateToSignIn,
 }: RecommendedTeamsPageProps): React.JSX.Element {
   const [loadState, setLoadState] = useState<LoadState>('loading');
@@ -200,7 +229,7 @@ export function RecommendedTeamsPage({
 
           <ul className="space-y-3" data-testid="recommended-teams-list">
             {result!.teams.map((team) => (
-              <TeamCard key={`${team.teamId}:${team.vacancyId}`} team={team} />
+              <TeamCard key={`${team.teamId}:${team.vacancyId}`} team={team} onApply={onApply} />
             ))}
           </ul>
 

@@ -18,6 +18,7 @@ import { CreateTeamPage } from './components/teams/CreateTeamPage';
 import { LookingForTeamPage } from './components/LookingForTeamPage';
 import { OpenTeamsBoard } from './components/teams/OpenTeamsBoard';
 import { ApplicationFormPanel } from './components/teams/ApplicationFormPanel';
+import { RecommendedTeamsPage } from './components/scoring/RecommendedTeamsPage';
 import { RequestsPage, type RequestsTab } from './components/RequestsPage';
 import { ModerationSafetyPage } from './components/moderation/ModerationSafetyPage';
 import { AccountEnforcementPage } from './components/accounts/AccountEnforcementPage';
@@ -41,6 +42,7 @@ type View =
   | 'create-team'
   | 'looking'
   | 'browse-teams'
+  | 'recommended-teams'
   | 'requests'
   | 'moderation'
   | 'accounts'
@@ -89,6 +91,9 @@ const getInitialView = (): View => {
   }
   if (view === 'browse-teams' || view === 'open-teams') {
     return 'browse-teams';
+  }
+  if (view === 'recommended-teams' || view === 'recommendations') {
+    return 'recommended-teams';
   }
   if (
     view === 'requests' ||
@@ -255,6 +260,12 @@ export function App(): React.JSX.Element {
     setCurrentView('browse-teams');
   };
 
+  const goToRecommendedTeams = () => {
+    setStatusNotice(null);
+    closeMenus();
+    setCurrentView('recommended-teams');
+  };
+
   const goToRequests = (tab: RequestsTab = 'applications') => {
     setStatusNotice(null);
     setApplyTarget(null);
@@ -382,6 +393,14 @@ export function App(): React.JSX.Element {
                   className={navLinkClass(currentView === 'looking')}
                 >
                   Find teammates
+                </button>
+                <button
+                  type="button"
+                  onClick={goToRecommendedTeams}
+                  aria-current={currentView === 'recommended-teams' ? 'page' : undefined}
+                  className={navLinkClass(currentView === 'recommended-teams')}
+                >
+                  Recommended
                 </button>
                 <button
                   type="button"
@@ -856,6 +875,21 @@ export function App(): React.JSX.Element {
                 setIsMobileMenuOpen(false);
                 setCurrentView('mfa');
               }}
+              onApply={(target) => {
+                setStatusNotice(null);
+                setApplyTarget(target);
+              }}
+            />
+          </>
+        ) : currentView === 'recommended-teams' ? (
+          <>
+            <ApplicationFormPanel
+              target={applyTarget}
+              onClose={() => setApplyTarget(null)}
+              onSuccess={(notice) => setStatusNotice(notice)}
+            />
+            <RecommendedTeamsPage
+              onNavigateToSignIn={goToLogin}
               onApply={(target) => {
                 setStatusNotice(null);
                 setApplyTarget(target);
