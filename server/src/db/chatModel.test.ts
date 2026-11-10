@@ -4,6 +4,8 @@ import {
   isChatChannelType,
   isPublicChatChannel,
   validateChatChannelLinkage,
+  buildTeamChannelDescription,
+  buildTeamChannelTitle,
   CHAT_CHANNEL_DESCRIPTION_MAX_LENGTH,
   CHAT_CHANNEL_TITLE_MAX_LENGTH,
   CHAT_MESSAGE_BODY_MAX_LENGTH,
@@ -107,6 +109,46 @@ describe('chat channel linkage (US-031 / #378)', () => {
 
     it('is false for a row that has no channel_type at all', () => {
       expect(isPublicChatChannel({})).toBe(false);
+    });
+  });
+
+  describe('buildTeamChannelTitle and buildTeamChannelDescription (US-031 / #378 / T2)', () => {
+    it('builds a deterministic prefixed channel title', () => {
+      expect(buildTeamChannelTitle('Code Ninjas')).toBe('Team: Code Ninjas');
+      expect(buildTeamChannelTitle('  Cyber Tigers  ')).toBe('Team: Cyber Tigers');
+    });
+
+    it.each([null, undefined, '', '   ', '\t\n'])(
+      'falls back to "Team Channel" for missing or blank team name (%j)',
+      (input) => {
+        expect(buildTeamChannelTitle(input)).toBe('Team Channel');
+      }
+    );
+
+    it('caps the title at CHAT_CHANNEL_TITLE_MAX_LENGTH (120 characters)', () => {
+      const longName = 'A'.repeat(200);
+      const title = buildTeamChannelTitle(longName);
+      expect(title.length).toBeLessThanOrEqual(CHAT_CHANNEL_TITLE_MAX_LENGTH);
+      expect(title).toBe(`Team: ${'A'.repeat(114)}`);
+    });
+
+    it('builds a deterministic channel description', () => {
+      const desc = buildTeamChannelDescription(TEAM, 'Code Ninjas');
+      expect(desc).toBe(`Private team coordination channel for "Code Ninjas" (${TEAM}).`);
+    });
+
+    it.each([null, undefined, '', '   '])(
+      'falls back to "team" in description when team name is missing (%j)',
+      (input) => {
+        const desc = buildTeamChannelDescription(TEAM, input);
+        expect(desc).toBe(`Private team coordination channel for team (${TEAM}).`);
+      }
+    );
+
+    it('caps description at CHAT_CHANNEL_DESCRIPTION_MAX_LENGTH (2000 characters)', () => {
+      const longName = 'Z'.repeat(3000);
+      const desc = buildTeamChannelDescription(TEAM, longName);
+      expect(desc.length).toBeLessThanOrEqual(CHAT_CHANNEL_DESCRIPTION_MAX_LENGTH);
     });
   });
 });

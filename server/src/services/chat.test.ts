@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { chatRepository } from '../db/chat.repository.js';
 import { profileRepository } from '../db/profile.repository.js';
+import { teamsRepository } from '../db/teams.repository.js';
 import {
   ChatServiceError,
   createChannel,
   listChannelMessages,
   listChannels,
+  provisionOrLinkTeamChannel,
   sendChannelMessage,
   toChannelView,
 } from './chat.js';
@@ -174,6 +176,140 @@ describe('chat service (US-030 / #344)', () => {
       const list = vi.spyOn(chatRepository, 'listChannelsNewestFirst').mockResolvedValue([]);
       await listChannels();
       expect(list).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('provisionOrLinkTeamChannel (US-031 / #378 / T2)', () => {
+    const TEAM_ID = '123e4567-e89b-42d3-a456-426614174000';
+    const OWNER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const ACTOR_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+    const mockTeam = (overrides: Record<string, unknown> = {}) => ({
+      id: TEAM_ID,
+      event_id: '22222222-2222-4222-8222-222222222222',
+      owner_participant_id: OWNER_ID,
+      name: 'Alpha Squad',
+      pitch: 'Pitch',
+      goal: 'Project' as const,
+      commitment_hours: 10,
+      communication_link: null,
+      recruitment_status: 'Open' as const,
+      locked_at: null,
+      disbanded_at: null,
+      ...overrides,
+    });
+
+    const mockChannel = (overrides: Record<string, unknown> = {}) => ({
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      title: 'Team: Alpha Squad',
+      description: `Private team coordination channel for "Alpha Squad" (${TEAM_ID}).`,
+      created_by: OWNER_ID,
+      channel_type: 'team' as const,
+      team_id: TEAM_ID,
+      created_at: '2026-11-09T20:00:00.000Z',
+      updated_at: '2026-11-09T20:00:00.000Z',
+      ...overrides,
+    });
+
+    it('rejects with 400 VALIDATION_ERROR when teamId is empty or whitespace', async () => {
+      await expect(provisionOrLinkTeamChannel({ teamId: '' })).rejects.toMatchObject({
+        status: 400,
+        code: 'VALIDATION_ERROR',
+      });
+      await expect(provisionOrLinkTeamChannel({ teamId: '   ' })).rejects.toMatchObject({
+        status: 400,
+        code: 'VALIDATION_ERROR',
+      });
+    });
+
+    it('rejects with 404 TEAM_NOT_FOUND when team does not exist', async () => {
+      vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(null);
+
+      await expect(provisionOrLinkTeamChannel({ teamId: TEAM_ID })).rejects.toMatchObject({
+        status: 404,
+        code: 'TEAM_NOT_FOUND',
+      });
+    });
+
+    it('returns existing channel with created: false when already provisioned', async () => {
+      vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(mockTeam() as never);
+      vi.spyOn(chatRepository, 'findChannelByTeamId').mockResolvedValue(mockChannel());
+      const provisionSpy = vi.spyOn(chatRepository, 'provisionOrLinkTeamChannel');
+
+      const result = await provisionOrLinkTeamChannel({ teamId: TEAM_ID });
+
+      expect(provisionSpy).not.toHaveBeenCalled();
+      expect(result.created).toBe(false);
+      expect(result.teamId).toBe(TEAM_ID);
+      expect(result.channel.title).toBe('Team: Alpha Squad');
+      expect(result.channel.channelType).toBe('team');
+      expect(result.channel.teamId).toBe(TEAM_ID);
+    });
+
+    it('preserves historical linkage for a disbanded team if channel already exists', async () => {
+      vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(
+        mockTeam({ recruitment_status: 'Disbanded', disbanded_at: '2026-11-09T18:00:00.000Z' }) as never
+      );
+      vi.spyOn(chatRepository, 'findChannelByTeamId').mockResolvedValue(mockChannel());
+
+      const result = await provisionOrLinkTeamChannel({ teamId: TEAM_ID });
+
+      expect(result.created).toBe(false);
+      expect(result.teamId).toBe(TEAM_ID);
+      expect(result.channel.id).toBe('cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+    });
+
+    it('rejects with 403 TEAM_CHAT_TEAM_DISBANDED when attempting to provision for a disbanded team without an existing channel', async () => {
+      vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(
+        mockTeam({ recruitment_status: 'Disbanded', disbanded_at: '2026-11-09T18:00:00.000Z' }) as never
+      );
+      vi.spyOn(chatRepository, 'findChannelByTeamId').mockResolvedValue(null);
+
+      await expect(provisionOrLinkTeamChannel({ teamId: TEAM_ID })).rejects.toMatchObject({
+        status: 403,
+        code: 'TEAM_CHAT_TEAM_DISBANDED',
+      });
+    });
+
+    it('provisions a new team channel with default owner creator when actorId is not provided', async () => {
+      vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(mockTeam() as never);
+      vi.spyOn(chatRepository, 'findChannelByTeamId').mockResolvedValue(null);
+      vi.spyOn(chatRepository, 'provisionOrLinkTeamChannel').mockResolvedValue({
+        channel: mockChannel(),
+        created: true,
+      });
+
+      const result = await provisionOrLinkTeamChannel({ teamId: TEAM_ID });
+
+      expect(chatRepository.provisionOrLinkTeamChannel).toHaveBeenCalledWith({
+        team_id: TEAM_ID,
+        title: 'Team: Alpha Squad',
+        description: `Private team coordination channel for "Alpha Squad" (${TEAM_ID}).`,
+        created_by: OWNER_ID,
+      });
+      expect(result.created).toBe(true);
+      expect(result.teamId).toBe(TEAM_ID);
+      expect(result.channel.channelType).toBe('team');
+    });
+
+    it('provisions a new team channel using actorId when provided', async () => {
+      vi.spyOn(teamsRepository, 'findTeamById').mockResolvedValue(mockTeam() as never);
+      vi.spyOn(chatRepository, 'findChannelByTeamId').mockResolvedValue(null);
+      vi.spyOn(chatRepository, 'provisionOrLinkTeamChannel').mockResolvedValue({
+        channel: mockChannel({ created_by: ACTOR_ID }),
+        created: true,
+      });
+
+      const result = await provisionOrLinkTeamChannel({ teamId: TEAM_ID, actorId: ACTOR_ID });
+
+      expect(chatRepository.provisionOrLinkTeamChannel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          team_id: TEAM_ID,
+          created_by: ACTOR_ID,
+        })
+      );
+      expect(result.created).toBe(true);
+      expect(result.channel.createdBy).toBe(ACTOR_ID);
     });
   });
 });

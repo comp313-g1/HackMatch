@@ -1,6 +1,12 @@
 import { chatRepository } from '../db/chat.repository.js';
-import { isPublicChatChannel } from '../db/chatModel.js';
+import {
+  buildTeamChannelDescription,
+  buildTeamChannelTitle,
+  isPublicChatChannel,
+  type ChatChannelType,
+} from '../db/chatModel.js';
 import { profileRepository } from '../db/profile.repository.js';
+import { teamsRepository } from '../db/teams.repository.js';
 import type { ChatChannel, ChatMessage } from '../db/types.js';
 import { scrubPrivateChatFields } from './chatPrivacy.js';
 
@@ -13,6 +19,8 @@ export interface ChatChannelView {
   title: string;
   description: string;
   createdBy: string;
+  channelType?: ChatChannelType;
+  teamId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -49,6 +57,8 @@ export function toChannelView(channel: ChatChannel): ChatChannelView {
     title: channel.title,
     description: channel.description,
     createdBy: channel.created_by,
+    ...(channel.channel_type !== undefined ? { channelType: channel.channel_type } : {}),
+    ...(channel.team_id !== undefined ? { teamId: channel.team_id } : {}),
     createdAt: channel.created_at,
     updatedAt: channel.updated_at,
   });
@@ -134,4 +144,70 @@ export async function sendChannelMessage(input: {
 
   const profile = await profileRepository.findProfileByParticipantId(input.authorId);
   return toMessageView(message, profile?.handle ?? null);
+}
+
+export interface ProvisionedTeamChannelResult {
+  channel: ChatChannelView;
+  created: boolean;
+  teamId: string;
+}
+
+/**
+ * US-031 / #378 / T2: Provision or link a team's private chat channel idempotently.
+ * - If channel exists, returns it with created: false (preserving historical linkage even for disbanded teams).
+ * - If team is disbanded and has no channel, refuses with 403 TEAM_CHAT_TEAM_DISBANDED.
+ * - Otherwise provisions channel via chatRepository.provisionOrLinkTeamChannel.
+ */
+export async function provisionOrLinkTeamChannel(input: {
+  teamId: string;
+  actorId?: string;
+}): Promise<ProvisionedTeamChannelResult> {
+  const trimmedTeamId = input.teamId?.trim();
+  if (!trimmedTeamId) {
+    throw new ChatServiceError(400, 'VALIDATION_ERROR', 'teamId is required.');
+  }
+
+  const team = await teamsRepository.findTeamById(trimmedTeamId);
+  if (!team) {
+    throw new ChatServiceError(404, 'TEAM_NOT_FOUND', 'Team not found.');
+  }
+
+  // Preserve historical linkage first if channel already exists for this team (even if Locked or Disbanded)
+  const existing = await chatRepository.findChannelByTeamId(team.id);
+  if (existing) {
+    return {
+      channel: toChannelView({
+        ...existing,
+        team_id: existing.team_id ?? team.id,
+        channel_type: existing.channel_type ?? 'team',
+      }),
+      created: false,
+      teamId: team.id,
+    };
+  }
+
+  if (team.recruitment_status === 'Disbanded' || team.disbanded_at != null) {
+    throw new ChatServiceError(
+      403,
+      'TEAM_CHAT_TEAM_DISBANDED',
+      'Cannot provision a new private chat channel for a disbanded team.'
+    );
+  }
+
+  const title = buildTeamChannelTitle(team.name);
+  const description = buildTeamChannelDescription(team.id, team.name);
+  const createdBy = input.actorId ?? team.owner_participant_id;
+
+  const { channel, created } = await chatRepository.provisionOrLinkTeamChannel({
+    team_id: team.id,
+    title,
+    description,
+    created_by: createdBy,
+  });
+
+  return {
+    channel: toChannelView(channel),
+    created,
+    teamId: team.id,
+  };
 }

@@ -560,6 +560,16 @@ export interface CreateChatChannelDTO {
   title: string;
   description: string;
   created_by: string;
+  channel_type?: ChatChannelType;
+  team_id?: string | null;
+}
+
+/** US-031 / #378 / T2 idempotent team channel provisioning DTO. */
+export interface ProvisionTeamChannelDTO {
+  team_id: string;
+  title: string;
+  description: string;
+  created_by: string;
 }
 
 /** US-030 / #342 chat text message (FR-088). */

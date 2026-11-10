@@ -197,6 +197,30 @@ describe('chat_channels team linkage on real SQL (US-031 / #378)', () => {
       expect((await rows<{ c: number }>('SELECT count(*)::int c FROM chat_channels WHERE team_id=$1', [team]))[0].c).toBe(1);
     });
 
+    it('idempotent provisioning retry resolves to the existing channel under simulated concurrency (US-031 / #378 / T2)', async () => {
+      const team = await newTeam('concurrent');
+      const initial = (await newTeamChannel(team, 'First Provision'))[0];
+
+      // Simulated concurrent insert retry:
+      const attempt = async () => {
+        try {
+          return (await db.query(
+            "INSERT INTO chat_channels (title,description,created_by,channel_type,team_id) VALUES ('Retry','d',$1,'team',$2) RETURNING id",
+            [ids.owner, team]
+          )).rows[0] as { id: string };
+        } catch (err: unknown) {
+          if (/uq_chat_channels_team_id|duplicate key/i.test((err as Error).message)) {
+            return (await rows<{ id: string }>('SELECT id FROM chat_channels WHERE team_id=$1', [team]))[0];
+          }
+          throw err;
+        }
+      };
+
+      const resolved = await attempt();
+      expect(resolved.id).toBe(initial.id);
+      expect((await rows<{ c: number }>('SELECT count(*)::int c FROM chat_channels WHERE team_id=$1', [team]))[0].c).toBe(1);
+    });
+
     it('different teams each get their own channel', async () => {
       const [a, b] = [await newTeam('t-a'), await newTeam('t-b')];
       const [ca, cb] = [(await newTeamChannel(a))[0].id, (await newTeamChannel(b))[0].id];

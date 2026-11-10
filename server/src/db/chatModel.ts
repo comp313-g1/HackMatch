@@ -111,3 +111,34 @@ export function validateChatChannelLinkage(input: {
 export function isPublicChatChannel(channel: { channel_type?: unknown }): boolean {
   return channel.channel_type === 'public';
 }
+
+/**
+ * US-031 / #378 / T2: Generates a deterministic title for a team channel.
+ * Trims teamName, prefixes 'Team: ', and caps at CHAT_CHANNEL_TITLE_MAX_LENGTH (120).
+ * Defaults to 'Team Channel' if teamName is blank or missing.
+ */
+export function buildTeamChannelTitle(teamName: string | null | undefined): string {
+  const normalized = normalizeChatTitle(teamName);
+  if (!normalized) return 'Team Channel';
+  const prefixed = `Team: ${normalized}`;
+  return prefixed.length > CHAT_CHANNEL_TITLE_MAX_LENGTH
+    ? prefixed.slice(0, CHAT_CHANNEL_TITLE_MAX_LENGTH).trimEnd()
+    : prefixed;
+}
+
+/**
+ * US-031 / #378 / T2: Generates a deterministic description for a team channel.
+ * Caps at CHAT_CHANNEL_DESCRIPTION_MAX_LENGTH (2000).
+ */
+export function buildTeamChannelDescription(
+  teamId: string,
+  teamName: string | null | undefined
+): string {
+  const normalizedName = normalizeChatTitle(teamName);
+  const safeName = normalizedName ? `"${normalizedName}"` : 'team';
+  const safeTeamId = teamId.trim();
+  const raw = `Private team coordination channel for ${safeName} (${safeTeamId}).`;
+  return raw.length > CHAT_CHANNEL_DESCRIPTION_MAX_LENGTH
+    ? raw.slice(0, CHAT_CHANNEL_DESCRIPTION_MAX_LENGTH).trimEnd()
+    : raw;
+}

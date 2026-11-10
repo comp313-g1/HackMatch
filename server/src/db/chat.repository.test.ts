@@ -113,6 +113,86 @@ describe('chatRepository (US-030 / #342)', () => {
     });
   });
 
+  describe('provisionOrLinkTeamChannel (US-031 / #378 / T2)', () => {
+    const TEAM = '123e4567-e89b-42d3-a456-426614174000';
+    const DTO = {
+      team_id: TEAM,
+      title: 'Team: Alpha',
+      description: 'Private team coordination channel',
+      created_by: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    };
+
+    it('returns existing channel without inserting when one is already provisioned', async () => {
+      const existing = { id: 'c1', channel_type: 'team' as const, ...DTO };
+      const findSpy = vi.spyOn(chatRepository, 'findChannelByTeamId').mockResolvedValue(existing as never);
+      const insert = vi.fn();
+      vi.mocked(getSupabaseClient).mockReturnValue({
+        from: vi.fn(() => ({ insert })),
+      } as never);
+
+      const result = await chatRepository.provisionOrLinkTeamChannel(DTO);
+
+      expect(findSpy).toHaveBeenCalledWith(TEAM);
+      expect(insert).not.toHaveBeenCalled();
+      expect(result).toEqual({ channel: existing, created: false });
+    });
+
+    it('inserts a new team channel when none exists yet', async () => {
+      vi.spyOn(chatRepository, 'findChannelByTeamId').mockResolvedValue(null);
+      const createdRow = { id: 'c2', channel_type: 'team', ...DTO };
+      const single = vi.fn().mockResolvedValue({ data: createdRow, error: null });
+      const select = vi.fn(() => ({ single }));
+      const insert = vi.fn(() => ({ select }));
+      const from = vi.fn(() => ({ insert }));
+      vi.mocked(getSupabaseClient).mockReturnValue({ from } as never);
+
+      const result = await chatRepository.provisionOrLinkTeamChannel(DTO);
+
+      expect(from).toHaveBeenCalledWith('chat_channels');
+      expect(insert).toHaveBeenCalledWith({
+        channel_type: 'team',
+        team_id: DTO.team_id,
+        title: DTO.title,
+        description: DTO.description,
+        created_by: DTO.created_by,
+      });
+      expect(result).toEqual({ channel: createdRow, created: true });
+    });
+
+    it('recovers from concurrent race 23505 unique violation by returning existing channel', async () => {
+      const winnerRow = { id: 'c3', channel_type: 'team', ...DTO };
+      // First call (check) -> null; Second call (after race conflict) -> winnerRow
+      vi.spyOn(chatRepository, 'findChannelByTeamId')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(winnerRow as never);
+
+      const conflictError = { code: '23505', message: 'duplicate key value violates unique constraint "uq_chat_channels_team_id"' };
+      const single = vi.fn().mockResolvedValue({ data: null, error: conflictError });
+      const select = vi.fn(() => ({ single }));
+      const insert = vi.fn(() => ({ select }));
+      vi.mocked(getSupabaseClient).mockReturnValue({
+        from: vi.fn(() => ({ insert })),
+      } as never);
+
+      const result = await chatRepository.provisionOrLinkTeamChannel(DTO);
+
+      expect(result).toEqual({ channel: winnerRow, created: false });
+    });
+
+    it('throws unexpected database error during insert', async () => {
+      vi.spyOn(chatRepository, 'findChannelByTeamId').mockResolvedValue(null);
+      const fatalError = { code: '42P01', message: 'relation does not exist' };
+      const single = vi.fn().mockResolvedValue({ data: null, error: fatalError });
+      const select = vi.fn(() => ({ single }));
+      const insert = vi.fn(() => ({ select }));
+      vi.mocked(getSupabaseClient).mockReturnValue({
+        from: vi.fn(() => ({ insert })),
+      } as never);
+
+      await expect(chatRepository.provisionOrLinkTeamChannel(DTO)).rejects.toBe(fatalError);
+    });
+  });
+
   it('creates a message with channel_id, author_id, and body', async () => {
     const inserted = {
       id: '22222222-2222-4222-8222-222222222222',
