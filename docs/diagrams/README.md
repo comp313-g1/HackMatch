@@ -14,11 +14,11 @@ This is the single documentation and navigation source for HackMatch engineering
 
 | Item | Count |
 |---|---:|
-| Diagrammed User Stories | 20 |
-| Mermaid sources | 49 |
-| Matching rendered diagram PNGs | 49 |
+| Diagrammed User Stories | 21 |
+| Mermaid sources | 53 |
+| Matching rendered diagram PNGs | 53 |
 | Shared reference images | 1 |
-| Total PNG files | 50 |
+| Total PNG files | 54 |
 
 ## Diagram and visual conventions
 
@@ -67,6 +67,7 @@ Every link below resolves from this central README. “Source” opens the edita
 | **US-030 — Participant Chat Forums and Messaging** | Planned — specification-grounded | Chat Use Case ([PNG](US-030/US-030-chat-use-case.png), [source](US-030/US-030-chat-use-case.mmd))<br>Core Chat Sequence ([PNG](US-030/US-030-core-chat-sequence.png), [source](US-030/US-030-core-chat-sequence.mmd))<br>Chat Access and Presence Flow ([PNG](US-030/US-030-presence-access-flow.png), [source](US-030/US-030-presence-access-flow.mmd))<br>Planned Chat Data Model ([PNG](US-030/US-030-chat-data-model.png), [source](US-030/US-030-chat-data-model.mmd)) |
 | **US-031 — Private Team Chat Channel for Confirmed Team Members** | Implemented (repository-audited) | Private Team Chat Use Case ([PNG](US-031/US-031-private-team-chat-use-case.png), [source](US-031/US-031-private-team-chat-use-case.mmd))<br>Private Team Chat Sequence ([PNG](US-031/US-031-private-team-chat-sequence.png), [source](US-031/US-031-private-team-chat-sequence.mmd))<br>Authorization and Privacy Flow ([PNG](US-031/US-031-team-chat-authorization-flow.png), [source](US-031/US-031-team-chat-authorization-flow.mmd))<br>Focused Team Chat Data Model ([PNG](US-031/US-031-team-chat-data-model.png), [source](US-031/US-031-team-chat-data-model.mmd))<br>History and Lifecycle Flow ([PNG](US-031/US-031-team-chat-lifecycle-flow.png), [source](US-031/US-031-team-chat-lifecycle-flow.mmd)) |
 | **US-032 — Private Direct Messaging Between Participants** | Partial (repository-audited) | Focused Direct Message Data Model ([PNG](US-032/US-032-direct-message-data-model.png), [source](US-032/US-032-direct-message-data-model.mmd))<br>Direct Message Sequence ([PNG](US-032/US-032-direct-message-sequence.png), [source](US-032/US-032-direct-message-sequence.mmd))<br>Access and Privacy Flow ([PNG](US-032/US-032-direct-message-access-flow.png), [source](US-032/US-032-direct-message-access-flow.mmd)) |
+| **US-033 — Chat Moderation and Reporting Hooks** | Implemented (repository-audited) | Chat Moderation Use Case ([PNG](US-033/US-033-chat-moderation-use-case.png), [source](US-033/US-033-chat-moderation-use-case.mmd))<br>Report, Review, and Action Sequence ([PNG](US-033/US-033-chat-moderation-sequence.png), [source](US-033/US-033-chat-moderation-sequence.mmd))<br>Polymorphic Moderation Target Model ([PNG](US-033/US-033-moderation-target-model.png), [source](US-033/US-033-moderation-target-model.mmd))<br>Authorization and Privacy Flow ([PNG](US-033/US-033-moderation-privacy-flow.png), [source](US-033/US-033-moderation-privacy-flow.mmd)) |
 
 ### Stories without story-specific diagrams
 
@@ -101,6 +102,7 @@ These notes preserve the material gaps identified during the diagram audits with
 | US-027 | Suspension and verified deletion exist; unsuspension is not implemented, Firebase/PostgreSQL/audit steps are non-atomic, and moderation “Hidden” is reused for account state. |
 | US-031 | One immutable private channel is linked per team; only verified active PART users with current Confirmed membership receive access. Open and Locked teams remain writable, Disbanded channels are read-only history, former members lose access, unrelated ADMIN users have no bypass, and safe projections prevent private-field leakage. |
 | US-032 | Canonical low/high participant pairs, one thread per pair, participant-only reads, block/eligibility-aware sends, safe projections, and the React inbox/thread/composer are implemented. The broader #391 access/validation suite remains pending; the client message type still names legacy `authorId` while the #390 server projection returns `fromMe`, although the current UI renders neither field. |
+| US-033 | US-026 moderation now accepts polymorphic `chat_channel` and `chat_message` targets without physical chat foreign keys. Eligible PART users can report only visible `chat_messages`; direct-message rows are outside the current target contract. ADMIN detail uses bounded, redacted evidence projections, stale targets remain safely reviewable, and chat cases currently support dismissal only with a safe append-only action record. |
 
 Focused audits for US-013, US-015, US-017–US-022, US-026, and US-027 could not validate live Supabase transactions in the audit environment; several integration suites use mocks. Treat their diagrams as explanations of inspected code and intended invariants, not proof of a deployed database state.
 

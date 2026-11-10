@@ -1,0 +1,49 @@
+---
+title: "HackMatch — US-033: Chat Moderation Cases and Reporting — Use Case"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":38,"rankSpacing":50,"padding":14}}}%%
+flowchart LR
+    PART([Verified Active PART]):::identity
+    ADMIN([Authenticated Active ADMIN]):::identity
+    RESTRICTED([Visitor or ordinary PART<br/>on ADMIN routes]):::denied
+
+    subgraph CHAT["Existing chat visibility boundaries"]
+        PUBLIC["US-030 public forum message"]:::chat
+        TEAM["US-031 private team message<br/>Confirmed member only"]:::chat
+        DM["US-032 direct message<br/>Not a current US-033 target"]:::internal
+    end
+
+    subgraph MOD["US-026 moderation framework extended by US-033"]
+        REPORT(["Report a visible chat message"]):::usecase
+        LINK(["Link report to an Open case<br/>or create one"]):::persistence
+        OPEN(["Open a case for chat_channel<br/>or chat_message"]):::usecase
+        QUEUE(["Review chat case in<br/>the existing safety queue"]):::usecase
+        EVIDENCE(["View allowlisted evidence<br/>handle, UTC time, redacted context"]):::success
+        DISMISS(["Dismiss an Open chat case<br/>with mandatory reason"]):::usecase
+        AUDIT(["Persist append-only<br/>safe action record"]):::persistence
+        STALE(["Show target unavailable<br/>without unrelated data"]):::internal
+    end
+
+    PART --> REPORT
+    PUBLIC --> REPORT
+    TEAM -->|"Only when normally visible"| REPORT
+    DM -. "Unsupported by current chat_message target" .-> REPORT
+    REPORT --> LINK
+
+    ADMIN --> OPEN
+    ADMIN --> QUEUE
+    QUEUE --> EVIDENCE
+    QUEUE --> STALE
+    EVIDENCE --> DISMISS --> AUDIT
+
+    RESTRICTED -->|"401 or 403<br/>no evidence"| QUEUE
+    PART -. "Cannot read other reports,<br/>ADMIN notes, evidence, or actions" .-> EVIDENCE
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef chat fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef usecase fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef persistence fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+

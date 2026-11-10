@@ -1,0 +1,75 @@
+---
+title: "HackMatch — US-033: Moderation Authorization and Privacy — Activity Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":40,"rankSpacing":52,"padding":14}}}%%
+flowchart TB
+    START(["Chat moderation request"]):::identity
+    PATH{"Participant report<br/>or ADMIN workflow?"}:::decision
+
+    PARTAUTH{"Authenticated, MFA-complete,<br/>verified active PART?"}:::decision
+    TARGET{"ID resolves to chat_messages<br/>and its persisted channel?"}:::decision
+    CHANNEL{"Channel visibility?"}:::decision
+    TEAMMEM{"Current Confirmed member<br/>of persisted team?"}:::decision
+    REPORT["Create moderation_report<br/>Link Open case or create one"]:::persistence
+    RECEIPT["Return minimal Received receipt<br/>No other reports or ADMIN data"]:::success
+
+    ADMINAUTH{"Authenticated, MFA-complete,<br/>active stored ADMIN?"}:::decision
+    OP{"ADMIN operation?"}:::decision
+    CREATE{"Supported target, UUID, existing row,<br/>and nonblank reason?"}:::decision
+    CASE["Insert Open moderation case"]:::persistence
+    DETAIL["Resolve target by exact type<br/>through application service"]:::moderation
+    FOUND{"Target available?"}:::decision
+    PROJECT["Explicit safe projection<br/>Handle, UTC time, safe channel metadata,<br/>redacted message excerpt ≤ 500 chars"]:::success
+    STALE["Return Unavailable marker<br/>Case remains reviewable"]:::internal
+    ACTION{"Open case, dismiss action,<br/>and mandatory reason?"}:::decision
+    RECORD["Insert append-only safe action record<br/>Mark case Dismissed"]:::persistence
+
+    DENYAUTH["401 or 403<br/>No moderation evidence"]:::denied
+    NOTFOUND["Generic 404 unavailable<br/>No private-existence signal"]:::denied
+    INVALID["400 or 409 safe validation response<br/>No raw database details"]:::denied
+    EXCLUDE["Always excluded<br/>Emails, credentials, OTPs, tokens,<br/>membership details, unrelated messages"]:::internal
+    DM["US-032 direct_messages<br/>Not supported by current chat_message target"]:::internal
+
+    START --> PATH
+    PATH -->|"Participant report"| PARTAUTH
+    PATH -->|"ADMIN queue / case / action"| ADMINAUTH
+
+    PARTAUTH -->|"Yes"| TARGET
+    PARTAUTH -->|"No"| DENYAUTH
+    TARGET -->|"Yes"| CHANNEL
+    TARGET -->|"No"| NOTFOUND
+    CHANNEL -->|"US-030 public"| REPORT
+    CHANNEL -->|"US-031 team"| TEAMMEM
+    CHANNEL -. "US-032 DM uses another table" .-> DM
+    TEAMMEM -->|"Yes"| REPORT
+    TEAMMEM -->|"No"| NOTFOUND
+    REPORT --> RECEIPT
+
+    ADMINAUTH -->|"Yes"| OP
+    ADMINAUTH -->|"No / PART / visitor"| DENYAUTH
+    OP -->|"Create case"| CREATE
+    OP -->|"View detail"| DETAIL
+    OP -->|"Decide"| ACTION
+    CREATE -->|"Yes"| CASE
+    CREATE -->|"No"| INVALID
+    DETAIL --> FOUND
+    FOUND -->|"Yes"| PROJECT
+    FOUND -->|"No / stale"| STALE
+    ACTION -->|"Yes"| RECORD
+    ACTION -->|"No"| INVALID
+
+    PROJECT --> EXCLUDE
+    STALE --> EXCLUDE
+    RECEIPT --> EXCLUDE
+    DENYAUTH --> EXCLUDE
+    NOTFOUND --> EXCLUDE
+    INVALID --> EXCLUDE
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef moderation fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef persistence fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+

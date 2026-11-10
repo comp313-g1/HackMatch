@@ -1,0 +1,58 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#f3f4f6","noteBorderColor":"#6b7280","noteTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":24,"diagramMarginY":14,"actorMargin":26,"width":150,"height":56,"boxMargin":8,"messageMargin":18,"noteMargin":8}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-033: Chat Report, Review, and Action — Sequence Diagram
+    actor PART as Eligible PART
+    actor ADMIN as Platform ADMIN
+    participant UI as React UI
+    participant API as Express API + Guards
+    participant MOD as Moderation Services
+    participant DB as PostgreSQL / Supabase
+
+    PART->>UI: Report a message already visible in chat
+    UI->>API: POST /api/reports with chat_message, id, category, explanation
+    API->>API: Require Firebase auth, MFA, active verified PART
+    API->>MOD: Validate report input and message visibility
+    MOD->>DB: Resolve chat_messages row and persisted channel
+    alt Public channel or Confirmed member of linked team
+        MOD->>DB: Create moderation_report and link existing Open case or create one
+        DB-->>MOD: report_id, case_id, UTC created_at
+        MOD-->>UI: Minimal Received receipt
+        UI-->>PART: Confirmation only
+    else Missing, private, unrelated, or direct-message identifier
+        MOD-->>UI: Generic unavailable response without message content
+        UI-->>PART: Safe error
+    end
+    Note over PART,MOD: Reporting grants no additional read access and never returns other reports, ADMIN notes, or action records.
+
+    ADMIN->>UI: Open existing moderation safety queue
+    UI->>API: GET moderation cases / selected case
+    API->>API: Require Firebase auth, MFA, active stored ADMIN role
+    API->>MOD: Load case and resolve polymorphic target
+    MOD->>DB: Resolve target_type + target_id against matching chat table
+    alt Target is available
+        DB-->>MOD: Narrow channel or targeted-message evidence row
+        MOD->>MOD: Project handle, UTC time, and redacted bounded context
+        MOD-->>UI: Case plus privacy-safe evidence
+        UI-->>ADMIN: Render safe chat context
+    else Target is stale or missing
+        DB-->>MOD: No target row
+        MOD-->>UI: Case plus Unavailable target marker
+        UI-->>ADMIN: Render stale-target state
+    end
+
+    ADMIN->>UI: Dismiss Open chat case with reason
+    UI->>API: POST case decision
+    API->>MOD: Recheck ADMIN, Open status, action, and reason
+    alt Invalid, closed, or unsupported content-changing action
+        MOD-->>UI: Safe validation or conflict response
+        UI-->>ADMIN: Keep reason and show error
+    else Valid dismissal
+        MOD->>DB: Insert append-only event_action_records row
+        MOD->>DB: Mark case Dismissed with UTC resolution time
+        DB-->>MOD: Updated case and action history
+        MOD-->>UI: Scrubbed outcome and safe state summary
+        UI-->>ADMIN: Success notice and refreshed case
+    end
+    Note over API,DB: No endpoint returns credentials, OTPs, emails, tokens, or unrelated conversation history.
+
