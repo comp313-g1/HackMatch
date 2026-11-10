@@ -4,8 +4,8 @@ This manual explains how to use the current HackMatch web application. It is wri
 
 | Item | Current manual scope |
 |---|---|
-| Version | 5.1 — Issue #425 update for completed user stories through US-033 |
-| Covers | Registration, email verification, sign-in, email OTP, password recovery, profiles, hackathon history and experience badges, Looking for Team, team discovery, candidate directory search, recruitment, requests, roster locking, notifications, private team workspace, team manifest export, abuse reporting, forums chat, private team chat, direct messages, chat moderation, and ADMIN screens (moderation, accounts, audit log) |
+| Version | 5.2 — Issue #152 update for completed user stories through US-016 |
+| Covers | Registration, email verification, sign-in, email OTP, password recovery, profiles, hackathon history and experience badges, Looking for Team, team discovery, participant team recommendations, candidate directory search, recruitment, requests, roster locking, notifications, private team workspace, team manifest export, abuse reporting, forums chat, private team chat, direct messages, chat moderation, and ADMIN screens (moderation, accounts, audit log) |
 | Does not cover | Removed hackathon-directory workflows (US-008–US-010), authenticator-app 2FA (US-029, future), starting a brand-new direct message from a profile or card (not available yet), blocking and unblocking controls, or other unimplemented features |
 | Sources checked | Current React components, Express routes and access middleware, tests, User Stories, requirements, and real application captures |
 
@@ -47,6 +47,7 @@ HackMatch helps Participants find collaborators, publish team recruitment listin
 The current application supports:
 
 - platform-wide open-team discovery;
+- personal team recommendations ranked against your own declared profile;
 - technical profiles and Looking-for-Team cards;
 - team creation, vacancy management, recommendations, applications, and invitations;
 - accepting, declining, withdrawing, and reviewing recruitment requests;
@@ -259,6 +260,33 @@ Rules shown by the current UI:
 - A validation or request failure keeps the application message for correction or retry.
 
 **Expected result:** A successful application appears as **Pending Review** in **Requests → Applications**.
+
+### See teams recommended for you (US-016)
+
+**Purpose:** Get a short, ranked list of open teams whose vacancies fit your own declared profile, instead of scanning the whole board.
+
+**Prerequisite:** Signed in as a verified active `PART`. Recommendations use the role, skills, goal, and weekly hours you declared in your profile and Looking-for-Team settings, so keep those current.
+
+1. Select **Recommended** in the main navigation. The list loads automatically.
+2. Each card shows the team name, the vacancy role, the team goal, the requested weekly hours, and a **match** percentage.
+3. Below the percentage, the tags that matched the vacancy requirements are listed under **Matched skills**. When your primary role equals the vacancy role, the card also says so.
+4. Select **Refresh** to re-rank after you change your profile or availability.
+
+What the list contains:
+
+- only teams that are currently recruiting, unlocked, not hidden by moderation, and have at least one open vacancy;
+- teams on the whole platform, not a single hackathon;
+- never a team you already belong to or a team you own.
+
+**Matching percentage:** the score compares your declared skills, role, goal, and hours with the vacancy requirements. It is a recommendation aid based on self-declared data, not a prediction of team success. The first row is the closest match.
+
+**Empty state:** if no team is recruiting right now, the page says so and shows no cards. Try again later or use **Open teams** with filters.
+
+**If scoring is unavailable:** the page still lists the recruiting teams, states that scores are temporarily unavailable, and hides the percentages and ranks. You can still apply from those cards.
+
+**Apply from a recommendation:** select **Apply to <team name>** on a card. The usual application window opens with that team and vacancy already selected; the optional 250-character message and the submission rules are unchanged. See [Apply to an open vacancy](#apply-to-an-open-vacancy).
+
+**Privacy:** the page only ever ranks teams against your own profile. There is no screen where you can view another Participant's recommendations.
 
 ## 10. Manage applications and invitations
 

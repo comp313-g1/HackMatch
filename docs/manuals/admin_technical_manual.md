@@ -2,7 +2,7 @@
 
 **Audience:** project administrators, maintainers, developers, and technical reviewers
 
-**Repository baseline:** `US-033/chat-moderation-targets` branch (migrations through `0057`, Issue #425 update)
+**Repository baseline:** `US-016/recommended-teams` branch (migrations through `0057`; US-016 adds no migration, Issue #152 update)
 
 **Last reviewed:** November 10, 2026
 
@@ -339,6 +339,33 @@ The React workflow is platform-wide and does not ask the user to select an event
 - **Manifest export (US-024):** `GET /api/teams/:teamId/manifest` (HTML, PDF, or JSON) and `POST /api/teams/:teamId/manifest/verify` are limited to confirmed members of a locked team. The export is built from a stored roster snapshot (0047) and a documented canonical serialization with a SHA-256 checksum. Account emails and private contact handles are excluded. The checksum is an integrity check, not proof of time or organizer approval.
 
 The product default capacity is four. The physical model currently derives several boundaries from the team's shadow event, and current validators also retain a configurable `maxTeamSize` range. Treat the shadow-event relation as compatibility plumbing, not a public workflow.
+
+### Participant-side recommendations (US-016)
+
+The reverse of the owner-only recommendation flow: instead of ranking candidates for one owned vacancy, it ranks every open vacancy on the platform against the signed-in Participant's declared profile. It is a pure read-time computation — **no new tables, no migration, no new error codes**.
+
+**Endpoint:** `GET /api/scoring/teams/recommendations`, mounted on the existing `scoringRouter` (`/api/scoring`). `app.ts` is unchanged.
+
+**Authorization chain:** the existing `scoringAuthGuard` — `requireFirebaseAuth` → `requireMfa` → `requireActiveAccount` → `requireParticipantRole` → `requireVerifiedParticipant`. The endpoint takes **no** query, path, or body parameters: the actor is `req.participant.id` from the verified token, so a Participant can only ever see their own ranking and there is no identifier to tamper with.
+
+**Reused assets (nothing rewritten):**
+
+- `teamsRepository.findOpenTeamRecords({ withMemberIdentities: false })` supplies the platform-wide recruiting pool with its open vacancies. `listOpenTeams` is deliberately **not** used, because its `OPEN_TEAMS_RESPONSE_CAP = 50` would truncate the pool before scoring.
+- `filterOpenTeams` (US-013) applies moderation hiding, lifecycle mutability and the open-vacancy requirement, called with an unset query (`minSlots: 1` only).
+- `computeCompatibilityScore` and `sortWithCompatibilityRanks` (US-015) produce the FR-043–045 score, the one-decimal display score, matched skill tags and the component breakdown.
+- `teamsRepository.findConfirmedTeamIdsForParticipant` excludes teams the Participant already joined; teams they own are excluded separately.
+
+The whole eligible pool is scored, then capped at `RECOMMENDED_TEAMS_CAP = 10`. Ranking ties are broken by team name and then by the composed `teamId:vacancyId` entry id.
+
+**Response:** `{ status, teams, empty, message, notice, degradedNotice? }`. Each row carries `teamId`, `teamName`, `vacancyId`, `role`, `teamGoal`, `commitmentHours` and, when scored, `rank`, `displayScore`, `score`, `components`, `matchedSkills`, `roleMatched` and `explanation`. `Cache-Control: no-store` matches the US-015 behaviour.
+
+**FR-047 privacy:** the ranking-only entry id is composed in memory and never serialized. `omitInternalIdentifierFields` strips internal identifier keys and `assertPublicExplanationSafe` proves the explanation copy contains none; both run before the response is written, and tests assert the serialized body contains no `internalId` and no composed entry id.
+
+**NR-016 degradation:** a scoring failure returns `status: 'degraded'` with the eligible teams unranked and `degradedNotice`, never a `500`. Failures while *fetching* profile or team data are not disguised as degraded: they map through `toTeamServiceError` when they are domain errors, otherwise they fall through to the central error handler.
+
+**Client:** `RecommendedTeamsPage` renders five states (loading, success, empty, error, degraded) and keeps already-loaded teams when a refresh fails. **Apply** maps the row onto the existing `OpenTeamApplyTarget` and reuses `ApplicationFormPanel` (US-018) unchanged.
+
+**Tests:** `server/src/services/recommendedTeams.test.ts` (service), `server/src/routes/recommendedTeams.routes.test.ts` (guards, zero-parameter contract, error mapping), `server/src/routes/recommendedTeams.integration.test.ts` (real Express + real SQL on PGlite against the shipped migrations) and `client/src/components/scoring/RecommendedTeamsPage.test.tsx` (five states plus the Apply payload). All offline: Firebase is mocked and no Supabase project is contacted.
 
 ## 12. ADMIN content moderation
 
