@@ -2210,3 +2210,46 @@ describe('0049_create_admin_audit_record_query.sql (US-028 / #258)', () => {
     expect(sql).toMatch(/r\.created_at\s*<=\s*p_to/i);
   });
 });
+
+describe('0050_enforce_audit_records_least_privilege.sql (US-028 / #262)', () => {
+  const sql = fs.readFileSync(
+    path.resolve(__dirname, '../../../supabase/migrations/0050_enforce_audit_records_least_privilege.sql'),
+    'utf-8'
+  );
+  const code = sql.replace(/--.*$/gm, '');
+
+  it('removes every privilege from every application and public role first', () => {
+    expect(code).toMatch(
+      /REVOKE\s+ALL\s+ON\s+TABLE\s+event_action_records\s+FROM\s+PUBLIC,\s*anon,\s*authenticated,\s*service_role/i
+    );
+  });
+
+  it('then grants service_role only SELECT and INSERT (append and read)', () => {
+    const grants = [...code.matchAll(/GRANT\s+([^;]*?)\s+ON\s+TABLE\s+event_action_records\s+TO\s+([^;]*);/gi)];
+    expect(grants).toHaveLength(1);
+    expect(grants[0][1].replace(/\s+/g, ' ')).toBe('SELECT, INSERT');
+    expect(grants[0][2].trim()).toBe('service_role');
+  });
+
+  it('does not grant UPDATE, DELETE, TRUNCATE, TRIGGER or REFERENCES to anyone', () => {
+    expect(code).not.toMatch(/GRANT[^;]*\b(UPDATE|DELETE|TRUNCATE|TRIGGER|REFERENCES|ALL)\b[^;]*TO/i);
+  });
+
+  it('is additive: no table, trigger, policy or data changes', () => {
+    // Look at statements only; the table comment legitimately mentions UPDATE/DELETE/TRUNCATE.
+    const statementsOnly = code.replace(/'[^']*'/g, "''");
+    expect(statementsOnly).not.toMatch(
+      /CREATE\s+TABLE|DROP\s+TABLE|ALTER\s+TABLE|DROP\s+TRIGGER|CREATE\s+POLICY|INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|TRUNCATE/i
+    );
+  });
+
+  it('documents the model on the table', () => {
+    expect(code).toMatch(/COMMENT\s+ON\s+TABLE\s+event_action_records\s+IS/i);
+  });
+
+  it('keeps the migration number unique and in sequence after 0049', () => {
+    expect(fs.existsSync(path.resolve(__dirname, '../../../supabase/migrations/0049_create_admin_audit_record_query.sql'))).toBe(true);
+    const files = fs.readdirSync(path.resolve(__dirname, '../../../supabase/migrations'));
+    expect(files.filter((f) => f.startsWith('0050_'))).toHaveLength(1);
+  });
+});

@@ -7,6 +7,8 @@
  * migration.test.ts and auditRecords.db.integration.test.ts.
  */
 import { describe, it, expect, vi, beforeEach, type MockInstance } from 'vitest';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { app } from '../app.js';
@@ -200,6 +202,66 @@ describe('Audit records endpoint (US-028 / #258)', () => {
     it('answers 404 (not 405) for unknown GET sub-paths', async () => {
       const res = await request(app).get(`${URL}/${RECORD_ID}`).set('Authorization', AUTH);
       expect(res.status).toBe(404);
+    });
+
+    it('a method-override header cannot turn a write into a read (or the reverse)', async () => {
+      for (const header of ['X-HTTP-Method-Override', 'X-Method-Override', 'X-HTTP-Method']) {
+        const res = await request(app).post(URL).set('Authorization', AUTH).set(header, 'GET');
+        expect(res.status, header).toBe(405);
+      }
+      const del = await request(app).get(URL).set('Authorization', AUTH).set('X-HTTP-Method-Override', 'DELETE');
+      expect(del.status).toBe(200); // still just a read: the header is ignored
+      expect(query).toHaveBeenCalledTimes(1);
+    });
+
+    it('a request body cannot smuggle a change into the read endpoint', async () => {
+      const res = await request(app)
+        .get(URL)
+        .set('Authorization', AUTH)
+        .send({ action: 'delete', id: RECORD_ID, reason: 'tamper' });
+      expect(res.status).toBe(200);
+      // Only the validated query parameters ever reach the database call.
+      expect(Object.keys(query.mock.calls[0][1]).sort()).toEqual(
+        ['actionType', 'actorId', 'category', 'cursor', 'from', 'limit', 'to']
+      );
+    });
+
+    it('refuses unusual HTTP verbs for an ADMIN, and asks non-admins for credentials first', async () => {
+      const server = app.listen(0);
+      const { port } = server.address() as AddressInfo;
+      const call = (method: string, auth?: string) =>
+        new Promise<{ status: number; allow?: string }>((resolve, reject) => {
+          const req = http.request(
+            { port, path: URL, method, headers: auth ? { Authorization: auth } : {} },
+            (res) => {
+              res.resume();
+              res.on('end', () => resolve({ status: res.statusCode ?? 0, allow: res.headers.allow as string | undefined }));
+            }
+          );
+          req.on('error', reject);
+          req.end();
+        });
+      try {
+        for (const method of ['PROPFIND', 'PURGE', 'MKCOL', 'MOVE', 'COPY', 'LOCK']) {
+          const asAdmin = await call(method, AUTH);
+          expect(asAdmin.status, method).toBe(405);
+          expect(asAdmin.allow).toMatch(/GET/);
+          expect((await call(method)).status, `${method} without credentials`).toBe(401);
+        }
+        expect(query).not.toHaveBeenCalled();
+      } finally {
+        server.closeAllConnections?.();
+        await new Promise((r) => server.close(r));
+      }
+    });
+
+    it('HEAD and OPTIONS stay harmless: they never read records and are never treated as writes', async () => {
+      const head = await request(app).head(URL).set('Authorization', AUTH);
+      expect(head.status).toBe(200);
+      expect(head.text ?? '').toBe('');
+      const options = await request(app).options(URL).set('Authorization', AUTH);
+      expect(options.status).not.toBe(405);
+      expect(options.status).toBeLessThan(500);
     });
   });
 

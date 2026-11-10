@@ -189,4 +189,52 @@ describe.skipIf(isGated)('US-028 audit-record query + append-only (#258)', () =>
       message: expect.stringMatching(/ADMIN/),
     });
   });
+
+  // ---- US-028 / #262: least-privilege model (migration 0050)
+
+  it('refuses an upsert that would rewrite an existing record (INSERT ... ON CONFLICT DO UPDATE)', async () => {
+    const { data } = await supabase.from('event_action_records').select('*').eq('actor_id', admin).limit(1);
+    const existing = data![0];
+
+    const res = await supabase
+      .from('event_action_records')
+      .upsert({ ...existing, reason: 'rewritten by upsert' }, { onConflict: 'id' });
+    expect(res.error?.message).toMatch(/permission denied/i);
+
+    const { data: after } = await supabase.from('event_action_records').select('reason').eq('id', existing.id).single();
+    expect(after?.reason).toBe(`reason ${RUN}`);
+  });
+
+  it('keeps the audit trail intact after a burst of tamper attempts', async () => {
+    const before = await supabase.from('event_action_records').select('id', { count: 'exact', head: true }).eq('actor_id', admin);
+    await supabase.from('event_action_records').update({ outcome: 'x' }).eq('actor_id', admin);
+    await supabase.from('event_action_records').delete().eq('actor_id', admin);
+    const after = await supabase.from('event_action_records').select('id', { count: 'exact', head: true }).eq('actor_id', admin);
+    expect(after.count).toBe(before.count);
+    expect((await query()).records.every((r) => r.outcome === 'Applied')).toBe(true);
+  });
+
+  // Needs the project's public (anon) key, which the service-role test client does not have.
+  it.skipIf(!process.env.SUPABASE_ANON_KEY)(
+    'gives the public (anon) key no access of any kind: an explicit error, not an empty list',
+    async () => {
+      const { createClient } = await import('@supabase/supabase-js');
+      const anon = createClient(process.env.SUPABASE_URL || config.supabase?.url || '', process.env.SUPABASE_ANON_KEY!);
+
+      const read = await anon.from('event_action_records').select('id').limit(1);
+      expect(read.error?.message).toMatch(/permission denied/i);
+      const write = await anon.from('event_action_records').insert({
+        actor_id: admin,
+        target_type: 'team',
+        target_id: TARGET,
+        action_type: 'moderation_warn',
+        reason: 'forged by anon',
+        outcome: 'Applied',
+        safe_state_summary: {},
+      });
+      expect(write.error?.message).toMatch(/permission denied/i);
+      const fn = await anon.rpc('query_admin_audit_records', { p_actor: admin });
+      expect(fn.error?.message).toMatch(/permission denied/i);
+    }
+  );
 });
