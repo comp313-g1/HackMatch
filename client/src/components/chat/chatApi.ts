@@ -8,6 +8,7 @@ import type {
   PresenceStatus,
   PresenceView,
   SendMessageInput,
+  TeamChatChannelView,
 } from './chatTypes';
 
 export { AuthRequiredError };
@@ -155,5 +156,71 @@ export async function sendChatMessage(
     },
     input
   );
+  return data.message;
+}
+
+/** Opens the persisted private channel for one confirmed team member (US-031 / #381). */
+export async function openTeamChat(teamId: string): Promise<TeamChatChannelView> {
+  const data = await requestJson<{ channel: TeamChatChannelView }>(
+    `/api/teams/${encodeURIComponent(teamId)}/chat`,
+    { method: 'GET' }
+  );
+  if (
+    !data.channel ||
+    data.channel.channelType !== 'team' ||
+    data.channel.teamId !== teamId
+  ) {
+    throw new ChatApiError(
+      502,
+      'INVALID_RESPONSE',
+      { _form: 'The server returned an invalid team chat response.' },
+      undefined,
+      'Could not load team chat. Please try again.'
+    );
+  }
+  return data.channel;
+}
+
+export async function listTeamChatMessages(
+  teamId: string
+): Promise<ChatMessageView[]> {
+  const data = await requestJson<{ messages: ChatMessageView[] }>(
+    `/api/teams/${encodeURIComponent(teamId)}/chat/messages`,
+    { method: 'GET' }
+  );
+  if (!Array.isArray(data.messages)) {
+    throw new ChatApiError(
+      502,
+      'INVALID_RESPONSE',
+      { _form: 'The server returned an invalid team message response.' },
+      undefined,
+      'Could not load team messages. Please try again.'
+    );
+  }
+  return data.messages;
+}
+
+export async function sendTeamChatMessage(
+  teamId: string,
+  input: SendMessageInput
+): Promise<ChatMessageView> {
+  const data = await requestJson<{ message: ChatMessageView }>(
+    `/api/teams/${encodeURIComponent(teamId)}/chat/messages`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+    input
+  );
+  if (!data.message || data.message.channelId.length === 0) {
+    throw new ChatApiError(
+      502,
+      'INVALID_RESPONSE',
+      { _form: 'The server returned an invalid sent-message response.' },
+      input,
+      'Could not send message. Your draft has been kept.'
+    );
+  }
   return data.message;
 }

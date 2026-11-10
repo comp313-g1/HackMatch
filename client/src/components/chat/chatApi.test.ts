@@ -5,7 +5,10 @@ import {
   createChatChannel,
   fetchMyPresence,
   listChatChannels,
+  listTeamChatMessages,
+  openTeamChat,
   sendChatMessage,
+  sendTeamChatMessage,
   updateMyPresence,
 } from './chatApi';
 
@@ -139,5 +142,76 @@ describe('chatApi (US-030 / #346)', () => {
     );
     expect(message.body).toBe('hi');
     expect(ChatApiError).toBeTruthy();
+  });
+
+  it('uses the member-gated team channel and message endpoints', async () => {
+    const teamId = '22222222-2222-4222-8222-222222222222';
+    const channel = {
+      id: '11111111-1111-4111-8111-111111111111',
+      title: 'Team channel',
+      description: 'Private',
+      createdBy: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      channelType: 'team' as const,
+      teamId,
+      createdAt: '2026-11-09T18:00:00.000Z',
+      updatedAt: '2026-11-09T18:00:00.000Z',
+    };
+    const message = {
+      id: '33333333-3333-4333-8333-333333333333',
+      channelId: channel.id,
+      authorId: channel.createdBy,
+      authorHandle: 'avery',
+      body: 'hello team',
+      createdAt: '2026-11-09T18:01:00.000Z',
+    };
+    vi.mocked(authFetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'ok', channel }), { status: 200 })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'ok', messages: [message] }), {
+          status: 200,
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'ok', message }), { status: 201 })
+      );
+
+    await expect(openTeamChat(teamId)).resolves.toEqual(channel);
+    await expect(listTeamChatMessages(teamId)).resolves.toEqual([message]);
+    await expect(sendTeamChatMessage(teamId, { body: 'hello team' })).resolves.toEqual(
+      message
+    );
+
+    expect(authFetch).toHaveBeenNthCalledWith(
+      1,
+      `/api/teams/${teamId}/chat`,
+      { method: 'GET' }
+    );
+    expect(authFetch).toHaveBeenNthCalledWith(
+      2,
+      `/api/teams/${teamId}/chat/messages`,
+      { method: 'GET' }
+    );
+    expect(authFetch).toHaveBeenNthCalledWith(
+      3,
+      `/api/teams/${teamId}/chat/messages`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ body: 'hello team' }),
+      })
+    );
+  });
+
+  it('rejects malformed private team-chat payloads safely', async () => {
+    const teamId = '22222222-2222-4222-8222-222222222222';
+    vi.mocked(authFetch).mockResolvedValue(
+      new Response(JSON.stringify({ status: 'ok', channel: null }), { status: 200 })
+    );
+
+    await expect(openTeamChat(teamId)).rejects.toMatchObject({
+      status: 502,
+      code: 'INVALID_RESPONSE',
+    });
   });
 });
