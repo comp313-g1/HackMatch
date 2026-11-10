@@ -129,6 +129,23 @@ describe('GET /api/chat/unread-counts (US-034 / #399)', () => {
     expect(chatUnreadRepository.listForParticipant).not.toHaveBeenCalled();
   });
 
+  it('denies an ADMIN without returning conversation identifiers or counts', async () => {
+    mockVerifyIdToken.mockResolvedValue({ ...decoded, role: 'ADMIN' });
+    vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue({
+      ...participant,
+      role: 'ADMIN',
+    });
+    const response = await request(app).get('/api/chat/unread-counts').set(auth);
+
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe('FORBIDDEN_ROLE');
+    expect(response.body).not.toHaveProperty('counts');
+    expect(JSON.stringify(response.body)).not.toMatch(
+      /20000000-0000-4000-8000-000000000002|30000000-0000-4000-8000-000000000003|reader@example/i
+    );
+    expect(chatUnreadRepository.listForParticipant).not.toHaveBeenCalled();
+  });
+
   it('propagates storage failures safely without returning partial counts', async () => {
     vi.mocked(chatUnreadRepository.listForParticipant).mockRejectedValue(
       new Error('private database detail')
