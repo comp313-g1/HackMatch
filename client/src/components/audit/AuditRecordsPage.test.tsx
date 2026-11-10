@@ -292,7 +292,13 @@ describe('AuditRecordsPage (US-028 / #259)', () => {
 
     const names = screen.getAllByRole('button').map((b) => b.textContent?.toLowerCase() ?? '');
     expect(names.some((n) => /edit|delete|remove|redact|undo|restore/.test(n))).toBe(false);
-    expect(document.querySelector('form, input, textarea, select')).toBeNull();
+    // The only form is the read-only filter/search form; the records themselves have no controls.
+    const forms = Array.from(document.querySelectorAll('form'));
+    expect(forms).toHaveLength(1);
+    expect(forms[0]).toHaveAttribute('role', 'search');
+    const inputs = Array.from(document.querySelectorAll('input, textarea, select'));
+    expect(inputs.every((el) => (el as HTMLElement).id.startsWith('audit-filter-'))).toBe(true);
+    expect(screen.getByRole('table').querySelector('input, textarea, select, form, button')).toBeNull();
   });
 
   it('issues only read requests', async () => {

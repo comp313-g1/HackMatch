@@ -24,10 +24,44 @@ export interface AuditPage {
   nextCursor: string | null;
 }
 
-export interface AuditQueryParams {
+/** Raw values of the filter form (strings, exactly as typed). */
+export interface AuditFilters {
+  /** Participant id of the administrator who took the action. */
+  actor: string;
+  /** Exact action type, e.g. account_suspend. */
+  actionType: string;
+  category: '' | AuditCategory;
+  /** YYYY-MM-DD, inclusive, UTC. */
+  from: string;
+  /** YYYY-MM-DD, inclusive, UTC. */
+  to: string;
+}
+
+export const EMPTY_AUDIT_FILTERS: AuditFilters = {
+  actor: '',
+  actionType: '',
+  category: '',
+  from: '',
+  to: '',
+};
+
+export type AuditFilterErrors = Partial<Record<keyof AuditFilters, string>>;
+
+export interface AuditQueryParams extends Partial<AuditFilters> {
   limit?: number;
   cursor?: string | null;
 }
+
+/** Suggestions for the action-type box; any lowercase action type is still accepted. */
+export const KNOWN_AUDIT_ACTION_TYPES = [
+  'moderation_dismiss',
+  'moderation_redact',
+  'moderation_warn',
+  'moderation_hide',
+  'moderation_disable_url',
+  'account_suspend',
+  'account_delete',
+] as const;
 
 export const AUDIT_PAGE_SIZE = 25;
 

@@ -1,13 +1,31 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AuditApiError, AuthRequiredError, fetchAuditRecords } from './auditApi';
+import { AuditFilters } from './AuditFilters';
+import {
+  hasActiveAuditFilters,
+  normalizeAuditFilters,
+  validateAuditFilters,
+} from './auditFilterValidation';
 import { AuditTable } from './AuditTable';
-import { AUDIT_PAGE_SIZE, type AuditRecord } from './auditTypes';
+import {
+  AUDIT_CATEGORY_LABELS,
+  AUDIT_PAGE_SIZE,
+  EMPTY_AUDIT_FILTERS,
+  type AuditFilterErrors,
+  type AuditFilters as AuditFilterValues,
+  type AuditQueryParams,
+  type AuditRecord,
+} from './auditTypes';
 
 export interface AuditRecordsPageProps {
   onNavigateAway?: () => void;
 }
 
 type PageState = 'loading' | 'ready' | 'denied' | 'error';
+
+const INCOMPLETE_DATE_MESSAGE = 'Enter a complete, real date (day, month and year).';
+
+const FILTER_KEYS: Array<keyof AuditFilterValues> = ['actor', 'actionType', 'category', 'from', 'to'];
 
 function describeError(err: unknown, fallback: string): { message: string; denied: boolean } {
   if (err instanceof AuthRequiredError) {
@@ -31,10 +49,29 @@ function describeError(err: unknown, fallback: string): { message: string; denie
   return { message: fallback, denied: false };
 }
 
+/** Only non-empty filters are sent, so an unfiltered request stays { limit }. */
+function toParams(filters: AuditFilterValues, extra: AuditQueryParams = {}): AuditQueryParams {
+  const params: AuditQueryParams = { limit: AUDIT_PAGE_SIZE, ...extra };
+  for (const key of FILTER_KEYS) {
+    if (filters[key]) (params as Record<string, string>)[key] = filters[key];
+  }
+  return params;
+}
+
+function describeFilters(filters: AuditFilterValues): string[] {
+  const parts: string[] = [];
+  if (filters.actor) parts.push(`Actor ${filters.actor}`);
+  if (filters.actionType) parts.push(`Action type ${filters.actionType}`);
+  if (filters.category) parts.push(`Category ${AUDIT_CATEGORY_LABELS[filters.category]}`);
+  if (filters.from) parts.push(`From ${filters.from} (UTC)`);
+  if (filters.to) parts.push(`To ${filters.to} (UTC)`);
+  return parts;
+}
+
 /**
- * ADMIN audit-record review (US-028 / #259). Read-only table of event, moderation and
- * account action records with loading, empty, error and access-denied states. Records
- * that were already loaded are kept when a later refresh or "load more" fails.
+ * ADMIN audit-record review with actor, action-type and date filters
+ * (US-028 / #259, #260). Typed filter values are never discarded on an error, and the
+ * rows already shown stay visible if applying a filter, refreshing or paging fails.
  */
 export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): React.JSX.Element {
   const [pageState, setPageState] = useState<PageState>('loading');
@@ -46,6 +83,12 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
   const [loadingMore, setLoadingMore] = useState(false);
   const [inlineError, setInlineError] = useState<string | null>(null);
 
+  /** What the user has typed (may differ from what the table currently shows). */
+  const [draft, setDraft] = useState<AuditFilterValues>(EMPTY_AUDIT_FILTERS);
+  /** The filters the visible rows were fetched with. */
+  const [applied, setApplied] = useState<AuditFilterValues>(EMPTY_AUDIT_FILTERS);
+  const [fieldErrors, setFieldErrors] = useState<AuditFilterErrors>({});
+
   const seq = useRef(0);
   const mounted = useRef(true);
   useEffect(() => {
@@ -55,18 +98,22 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
     };
   }, []);
 
-  /** (Re)loads the newest page. Existing rows stay visible if this fails. */
-  const load = useCallback(async (initial: boolean) => {
+  /**
+   * Loads the newest page for `filters`. On failure the previous rows and the previously
+   * applied filters stay in place, so the table and its filter summary never disagree.
+   */
+  const load = useCallback(async (filters: AuditFilterValues, initial: boolean) => {
     const mine = ++seq.current;
     if (initial) setPageState('loading');
     else setRefreshing(true);
     setInlineError(null);
     try {
-      const page = await fetchAuditRecords({ limit: AUDIT_PAGE_SIZE });
+      const page = await fetchAuditRecords(toParams(filters));
       if (!mounted.current || mine !== seq.current) return;
       setRecords(page.records);
       setNextCursor(page.nextCursor);
       setHasMore(page.hasMore);
+      setApplied(filters);
       setMessage(null);
       setPageState('ready');
     } catch (err: unknown) {
@@ -79,8 +126,21 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
       } else if (initial) {
         setMessage(text);
         setPageState('error');
+      } else if (err instanceof AuditApiError && err.status === 400 && err.fieldErrors) {
+        // The server rejected a filter; show its message beside the field, keep everything typed.
+        const mapped: AuditFilterErrors = {};
+        for (const key of FILTER_KEYS) {
+          if (err.fieldErrors[key]) mapped[key] = err.fieldErrors[key];
+        }
+        setFieldErrors(mapped);
+        setInlineError('Some filters were not accepted. Check the highlighted fields.');
       } else {
-        setInlineError(text);
+        setInlineError(
+          `${text} ${hasActiveAuditFilters(filters) ? 'Your filters are kept; ' : ''}the previous results are still shown.`.replace(
+            /\s+/g,
+            ' '
+          )
+        );
       }
     } finally {
       if (mounted.current && mine === seq.current) setRefreshing(false);
@@ -88,15 +148,49 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
   }, []);
 
   useEffect(() => {
-    void load(true);
+    void load(EMPTY_AUDIT_FILTERS, true);
   }, [load]);
+
+  const applyFilters = (incompleteDates: { from: boolean; to: boolean } = { from: false, to: false }) => {
+    const result = validateAuditFilters(draft);
+    const errors: AuditFilterErrors = { ...result.errors };
+    // A half-typed date reads as "" to the app; refuse it instead of silently ignoring it.
+    if (incompleteDates.from && !errors.from) errors.from = INCOMPLETE_DATE_MESSAGE;
+    if (incompleteDates.to && !errors.to) errors.to = INCOMPLETE_DATE_MESSAGE;
+    if (!result.filters || Object.keys(errors).length > 0) {
+      // Invalid input: no request, nothing typed is lost, nothing on screen changes.
+      setFieldErrors(errors);
+      setInlineError(null);
+      return;
+    }
+    setFieldErrors({});
+    setDraft(result.filters);
+    void load(result.filters, false);
+  };
+
+  const clearFilters = () => {
+    setDraft(EMPTY_AUDIT_FILTERS);
+    setFieldErrors({});
+    if (hasActiveAuditFilters(applied)) void load(EMPTY_AUDIT_FILTERS, false);
+  };
+
+  const changeDraft = (next: Partial<AuditFilterValues>) => {
+    setDraft((prev) => ({ ...prev, ...next }));
+    // Editing a field clears only that field's message.
+    setFieldErrors((prev) => {
+      const copy = { ...prev };
+      for (const key of Object.keys(next) as Array<keyof AuditFilterValues>) delete copy[key];
+      return copy;
+    });
+  };
 
   const loadMore = async () => {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
     setInlineError(null);
     try {
-      const page = await fetchAuditRecords({ limit: AUDIT_PAGE_SIZE, cursor: nextCursor });
+      // Always page with the filters the visible rows were fetched with, not unapplied typing.
+      const page = await fetchAuditRecords(toParams(applied, { cursor: nextCursor }));
       if (!mounted.current) return;
       setRecords((prev) => {
         const seen = new Set(prev.map((r) => r.id));
@@ -112,7 +206,7 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
         setMessage(text);
         setPageState('denied');
       } else {
-        setInlineError(text);
+        setInlineError(`${text} The records already loaded are still shown.`);
       }
     } finally {
       if (mounted.current) setLoadingMore(false);
@@ -164,7 +258,7 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
         </div>
         <button
           type="button"
-          onClick={() => void load(true)}
+          onClick={() => void load(EMPTY_AUDIT_FILTERS, true)}
           className="px-3 py-1.5 text-xs font-medium border border-red-200 rounded bg-white hover:bg-red-50"
         >
           Retry
@@ -172,6 +266,11 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
       </div>
     );
   }
+
+  const filtersActive = hasActiveAuditFilters(applied);
+  const appliedSummary = describeFilters(applied);
+  const draftIsDirty =
+    JSON.stringify(normalizeAuditFilters(draft)) !== JSON.stringify(applied) && hasActiveAuditFilters(draft);
 
   return (
     <div className="max-w-6xl mx-auto space-y-4" data-testid="audit-page">
@@ -186,7 +285,7 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
         </div>
         <button
           type="button"
-          onClick={() => void load(false)}
+          onClick={() => void load(applied, false)}
           disabled={refreshing}
           className="px-3 py-1.5 text-xs font-medium border border-cream-300 rounded bg-white hover:bg-cream-50 disabled:opacity-50"
           data-testid="audit-refresh"
@@ -195,29 +294,65 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
         </button>
       </header>
 
+      <AuditFilters
+        values={draft}
+        errors={fieldErrors}
+        busy={refreshing}
+        canClear={hasActiveAuditFilters(draft) || filtersActive}
+        onChange={changeDraft}
+        onApply={applyFilters}
+        onClear={clearFilters}
+      />
+
+      {filtersActive ? (
+        <p className="text-sm text-ink" data-testid="audit-active-filters">
+          <span className="font-medium">Showing records where:</span> {appliedSummary.join(' · ')}
+          {draftIsDirty ? (
+            <span className="text-ink-muted"> (you have unapplied changes)</span>
+          ) : null}
+        </p>
+      ) : null}
+
       {inlineError ? (
         <div
           role="alert"
           className="p-3 text-sm text-red-800 bg-red-50 border border-red-200 rounded-md"
           data-testid="audit-inline-error"
         >
-          {inlineError} The records already loaded are still shown.
+          {inlineError}
         </div>
       ) : null}
 
       {records.length === 0 ? (
-        <p
+        <div
           role="status"
-          className="p-4 text-sm text-ink-muted border border-dashed border-cream-300 rounded-md"
+          className="p-4 text-sm text-ink-muted border border-dashed border-cream-300 rounded-md space-y-2"
           data-testid="audit-empty"
         >
-          No administrative action records yet. Moderation, account and event actions will appear
-          here once an administrator takes one.
-        </p>
+          {filtersActive ? (
+            <>
+              <p data-testid="audit-empty-filtered">No records match these filters.</p>
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-sm font-medium text-forest-800 hover:underline"
+                data-testid="audit-empty-clear"
+              >
+                Clear filters
+              </button>
+            </>
+          ) : (
+            <p>
+              No administrative action records yet. Moderation, account and event actions will appear
+              here once an administrator takes one.
+            </p>
+          )}
+        </div>
       ) : (
         <>
           <p className="text-xs text-ink-muted" data-testid="audit-count" aria-live="polite">
             Showing {records.length} record{records.length === 1 ? '' : 's'}
+            {filtersActive ? ' matching your filters' : ''}
             {hasMore ? ' — more available' : ''}.
           </p>
           <AuditTable records={records} />

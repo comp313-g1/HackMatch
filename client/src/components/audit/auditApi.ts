@@ -20,6 +20,11 @@ export async function fetchAuditRecords(params: AuditQueryParams = {}): Promise<
   const query = new URLSearchParams();
   if (params.limit !== undefined) query.set('limit', String(params.limit));
   if (params.cursor) query.set('cursor', params.cursor);
+  // Empty filters are simply left out; the server treats a missing filter as "no filter".
+  for (const key of ['actor', 'actionType', 'category', 'from', 'to'] as const) {
+    const value = params[key]?.trim();
+    if (value) query.set(key, value);
+  }
   const qs = query.toString();
 
   let res: Response;

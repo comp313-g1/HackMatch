@@ -79,4 +79,41 @@ describe('fetchAuditRecords (US-028 / #259)', () => {
       expect((call[1] as RequestInit).method).toBe('GET');
     }
   });
+  describe('filters (US-028 / #260)', () => {
+    it('sends actor, action type, category and date filters as query parameters', async () => {
+      vi.mocked(authFetch).mockImplementation(async () => json({ records: [] }));
+      await fetchAuditRecords({
+        limit: 25,
+        actor: '123e4567-e89b-42d3-a456-426614174000',
+        actionType: 'account_suspend',
+        category: 'account',
+        from: '2026-11-01',
+        to: '2026-11-03',
+      });
+      const url = new URL(String(vi.mocked(authFetch).mock.calls[0][0]), 'http://x');
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        limit: '25',
+        actor: '123e4567-e89b-42d3-a456-426614174000',
+        actionType: 'account_suspend',
+        category: 'account',
+        from: '2026-11-01',
+        to: '2026-11-03',
+      });
+    });
+
+    it('leaves empty and whitespace-only filters out entirely', async () => {
+      vi.mocked(authFetch).mockImplementation(async () => json({ records: [] }));
+      await fetchAuditRecords({ limit: 25, actor: '', actionType: '   ', category: '', from: '', to: '' });
+      expect(vi.mocked(authFetch).mock.calls[0][0]).toBe('/api/admin/audit-records?limit=25');
+    });
+
+    it('combines filters with a paging cursor and encodes special characters', async () => {
+      vi.mocked(authFetch).mockImplementation(async () => json({ records: [] }));
+      await fetchAuditRecords({ cursor: 'a+b/c=', actionType: 'x&y=z' });
+      const url = new URL(String(vi.mocked(authFetch).mock.calls[0][0]), 'http://x');
+      expect(url.searchParams.get('cursor')).toBe('a+b/c=');
+      expect(url.searchParams.get('actionType')).toBe('x&y=z');
+      expect([...url.searchParams.keys()].sort()).toEqual(['actionType', 'cursor']);
+    });
+  });
 });
