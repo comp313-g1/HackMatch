@@ -6,6 +6,7 @@ export interface StoredChatUnreadCount {
   conversation_type: StoredChatConversationType;
   conversation_id: string;
   unread_count: number;
+  unread_mention_count: number;
 }
 
 export interface IChatUnreadRepository {
@@ -26,13 +27,18 @@ function toStoredUnreadCount(value: unknown): StoredChatUnreadCount {
   const count = typeof row.unread_count === 'number'
     ? row.unread_count
     : Number(row.unread_count);
+  const mentionCount = typeof row.unread_mention_count === 'number'
+    ? row.unread_mention_count
+    : Number(row.unread_mention_count);
 
   if (
     (type !== 'channel' && type !== 'direct_message') ||
     typeof id !== 'string' ||
     !UUID_PATTERN.test(id) ||
     !Number.isSafeInteger(count) ||
-    count < 0
+    count < 0 ||
+    !Number.isSafeInteger(mentionCount) ||
+    mentionCount < 0
   ) {
     throw new Error('Invalid chat unread-count row.');
   }
@@ -42,13 +48,14 @@ function toStoredUnreadCount(value: unknown): StoredChatUnreadCount {
     conversation_type: type,
     conversation_id: id,
     unread_count: count,
+    unread_mention_count: mentionCount,
   };
 }
 
 export const chatUnreadRepository: IChatUnreadRepository = {
   async listForParticipant(participantId: string): Promise<StoredChatUnreadCount[]> {
     const client = getSupabaseClient();
-    const { data, error } = await client.rpc('get_participant_chat_unread_counts', {
+    const { data, error } = await client.rpc('get_participant_chat_activity_counts', {
       p_participant: participantId,
     });
 

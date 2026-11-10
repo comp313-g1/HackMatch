@@ -22,6 +22,7 @@ describe('chatUnreadRepository (US-034 / #399)', () => {
           conversation_type: 'channel',
           conversation_id: CHANNEL_ID,
           unread_count: '7',
+          unread_mention_count: '2',
         },
       ],
       error: null,
@@ -32,9 +33,10 @@ describe('chatUnreadRepository (US-034 / #399)', () => {
         conversation_type: 'channel',
         conversation_id: CHANNEL_ID,
         unread_count: 7,
+        unread_mention_count: 2,
       },
     ]);
-    expect(rpc).toHaveBeenCalledWith('get_participant_chat_unread_counts', {
+    expect(rpc).toHaveBeenCalledWith('get_participant_chat_activity_counts', {
       p_participant: PARTICIPANT_ID,
     });
   });
@@ -46,6 +48,7 @@ describe('chatUnreadRepository (US-034 / #399)', () => {
           conversation_type: 'channel',
           conversation_id: CHANNEL_ID,
           unread_count: 2,
+          unread_mention_count: 1,
           body: 'must not escape',
           email: 'private@example.test',
           token: 'secret',
@@ -60,6 +63,7 @@ describe('chatUnreadRepository (US-034 / #399)', () => {
         conversation_type: 'channel',
         conversation_id: CHANNEL_ID,
         unread_count: 2,
+        unread_mention_count: 1,
       },
     ]);
     expect(JSON.stringify(result)).not.toMatch(/must not escape|private@example|secret/i);
@@ -71,7 +75,12 @@ describe('chatUnreadRepository (US-034 / #399)', () => {
     await expect(chatUnreadRepository.listForParticipant(PARTICIPANT_ID)).rejects.toBe(failure);
 
     rpc.mockResolvedValueOnce({
-      data: [{ conversation_type: 'unknown', conversation_id: 'not-a-uuid', unread_count: -1 }],
+      data: [{
+        conversation_type: 'unknown',
+        conversation_id: 'not-a-uuid',
+        unread_count: -1,
+        unread_mention_count: -1,
+      }],
       error: null,
     });
     await expect(chatUnreadRepository.listForParticipant(PARTICIPANT_ID)).rejects.toThrow(

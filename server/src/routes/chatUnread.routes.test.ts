@@ -54,11 +54,13 @@ describe('GET /api/chat/unread-counts (US-034 / #399)', () => {
         conversation_type: 'channel',
         conversation_id: '20000000-0000-4000-8000-000000000002',
         unread_count: 3,
+        unread_mention_count: 2,
       },
       {
         conversation_type: 'direct_message',
         conversation_id: '30000000-0000-4000-8000-000000000003',
         unread_count: 1,
+        unread_mention_count: 1,
       },
     ]);
   });
@@ -75,14 +77,17 @@ describe('GET /api/chat/unread-counts (US-034 / #399)', () => {
           conversationType: 'channel',
           conversationId: '20000000-0000-4000-8000-000000000002',
           unreadCount: 3,
+          unreadMentionCount: 2,
         },
         {
           conversationType: 'directMessage',
           conversationId: '30000000-0000-4000-8000-000000000003',
           unreadCount: 1,
+          unreadMentionCount: 1,
         },
       ],
       totalUnreadCount: 4,
+      totalUnreadMentionCount: 3,
       privacy: {
         credentialsIncluded: false,
         otpsIncluded: false,
@@ -99,7 +104,11 @@ describe('GET /api/chat/unread-counts (US-034 / #399)', () => {
     vi.mocked(chatUnreadRepository.listForParticipant).mockResolvedValue([]);
     const response = await request(app).get('/api/chat/unread-counts').set(auth);
     expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({ counts: [], totalUnreadCount: 0 });
+    expect(response.body).toMatchObject({
+      counts: [],
+      totalUnreadCount: 0,
+      totalUnreadMentionCount: 0,
+    });
   });
 
   it('denies a visitor before querying unread state', async () => {

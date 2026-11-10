@@ -23,11 +23,13 @@ function repository(): IChatUnreadRepository {
         conversation_type: 'channel',
         conversation_id: '20000000-0000-4000-8000-000000000002',
         unread_count: 3,
+        unread_mention_count: 2,
       },
       {
         conversation_type: 'direct_message',
         conversation_id: '30000000-0000-4000-8000-000000000003',
         unread_count: 2,
+        unread_mention_count: 1,
       },
     ]),
   };
@@ -44,14 +46,17 @@ describe('getParticipantChatUnreadSummary (US-034 / #399)', () => {
           conversationType: 'channel',
           conversationId: '20000000-0000-4000-8000-000000000002',
           unreadCount: 3,
+          unreadMentionCount: 2,
         },
         {
           conversationType: 'directMessage',
           conversationId: '30000000-0000-4000-8000-000000000003',
           unreadCount: 2,
+          unreadMentionCount: 1,
         },
       ],
       totalUnreadCount: 5,
+      totalUnreadMentionCount: 3,
     });
     expect(repo.listForParticipant).toHaveBeenCalledWith(participant.id);
     expect(JSON.stringify(result)).not.toMatch(/email|body|password|otp|token|firebase/i);
@@ -64,6 +69,7 @@ describe('getParticipantChatUnreadSummary (US-034 / #399)', () => {
           conversation_type: 'channel',
           conversation_id: '20000000-0000-4000-8000-000000000002',
           unread_count: 0,
+          unread_mention_count: 0,
         },
       ]),
     };
@@ -75,15 +81,21 @@ describe('getParticipantChatUnreadSummary (US-034 / #399)', () => {
           conversationType: 'channel',
           conversationId: '20000000-0000-4000-8000-000000000002',
           unreadCount: 0,
+          unreadMentionCount: 0,
         },
       ],
       totalUnreadCount: 0,
+      totalUnreadMentionCount: 0,
     });
 
     zeroRepo.listForParticipant = vi.fn().mockResolvedValue([]);
     await expect(
       getParticipantChatUnreadSummary(participant, { repository: zeroRepo })
-    ).resolves.toEqual({ counts: [], totalUnreadCount: 0 });
+    ).resolves.toEqual({
+      counts: [],
+      totalUnreadCount: 0,
+      totalUnreadMentionCount: 0,
+    });
   });
 
   it.each([

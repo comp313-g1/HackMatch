@@ -13,11 +13,13 @@ export interface ChatUnreadCountView {
   conversationType: ChatUnreadConversationType;
   conversationId: string;
   unreadCount: number;
+  unreadMentionCount: number;
 }
 
 export interface ParticipantChatUnreadSummary {
   counts: ChatUnreadCountView[];
   totalUnreadCount: number;
+  totalUnreadMentionCount: number;
 }
 
 export interface ChatUnreadServiceDeps {
@@ -29,6 +31,7 @@ function toUnreadCountView(row: StoredChatUnreadCount): ChatUnreadCountView {
     conversationType: row.conversation_type === 'channel' ? 'channel' : 'directMessage',
     conversationId: row.conversation_id,
     unreadCount: row.unread_count,
+    unreadMentionCount: row.unread_mention_count,
   };
 }
 
@@ -53,10 +56,17 @@ export async function getParticipantChatUnreadSummary(
   const stored = await repository.listForParticipant(participant.id);
   const counts = stored.map(toUnreadCountView);
   const totalUnreadCount = counts.reduce((total, item) => total + item.unreadCount, 0);
+  const totalUnreadMentionCount = counts.reduce(
+    (total, item) => total + item.unreadMentionCount,
+    0
+  );
 
-  if (!Number.isSafeInteger(totalUnreadCount)) {
+  if (
+    !Number.isSafeInteger(totalUnreadCount) ||
+    !Number.isSafeInteger(totalUnreadMentionCount)
+  ) {
     throw new Error('Chat unread total exceeds the supported range.');
   }
 
-  return { counts, totalUnreadCount };
+  return { counts, totalUnreadCount, totalUnreadMentionCount };
 }

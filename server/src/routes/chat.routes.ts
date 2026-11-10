@@ -8,6 +8,7 @@ import { requireJsonObjectBody } from '../validators/team.validator.js';
 import {
   validateChatChannelIdParam,
   validateCreateChannelBody,
+  validateMarkConversationReadBody,
   validateSendMessageBody,
 } from '../validators/chat.validator.js';
 import {
@@ -19,6 +20,7 @@ import {
 } from '../services/chat.js';
 import { buildChatSuccessPayload } from '../services/chatPrivacy.js';
 import { getParticipantChatUnreadSummary } from '../services/chatUnread.js';
+import { markChatConversationRead } from '../services/chatRead.js';
 
 export const chatRouter = Router();
 
@@ -62,6 +64,32 @@ chatRouter.get(
         buildChatSuccessPayload({
           status: 'ok',
           ...summary,
+        })
+      );
+    } catch (err) {
+      handleChatError(err, res, next);
+    }
+  }
+);
+
+/**
+ * POST /api/chat/read
+ * Atomically advances one authorized channel/team/DM cursor to a concrete
+ * message position. Repeated or older positions are safe no-ops.
+ */
+chatRouter.post(
+  '/read',
+  ...chatAuthGuard,
+  requireJsonObjectBody,
+  validateMarkConversationReadBody,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const result = await markChatConversationRead(req.participant!, req.body);
+      res.status(200).json(
+        buildChatSuccessPayload({
+          status: 'ok',
+          ...result,
         })
       );
     } catch (err) {
