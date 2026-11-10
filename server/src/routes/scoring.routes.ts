@@ -7,6 +7,7 @@ import { requireVerifiedParticipant } from '../middleware/requireVerifiedPartici
 import { requireJsonObjectBody } from '../validators/team.validator.js';
 import { validateCompatibilityScorePayload } from '../validators/compatibilityScore.validator.js';
 import { previewCompatibilityScore } from '../controllers/compatibilityScore.controller.js';
+import { getRecommendedTeamsHandler } from '../controllers/recommendedTeams.controller.js';
 
 export const scoringRouter = Router();
 
@@ -29,3 +30,10 @@ scoringRouter.post(
   validateCompatibilityScorePayload,
   previewCompatibilityScore
 );
+
+/**
+ * GET /api/scoring/teams/recommendations
+ * Participant-facing reverse recommendations (US-016 / FR-043–045 / FR-047 / NR-016).
+ * Takes no parameters: the actor comes from the verified token, never from the request.
+ */
+scoringRouter.get('/teams/recommendations', ...scoringAuthGuard, getRecommendedTeamsHandler);
