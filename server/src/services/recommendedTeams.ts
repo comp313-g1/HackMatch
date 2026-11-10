@@ -50,14 +50,22 @@ import {
 } from '../repositories/availability.repository.js';
 import type { OpenTeamsQuery } from '../validators/openTeams.validator.js';
 import {
+  boundCompatibilityScore,
   computeCompatibilityScore,
+  sortWithCompatibilityRanks,
   type CandidateScoringInput,
   type CompatibilityScoreResult,
+  type RankableCompatibilityResult,
   type SlotScoringInput,
 } from './compatibilityScoring.js';
 import { SELF_DECLARED_RECOMMENDATION_NOTICE } from './recommendations.js';
 import { filterOpenTeams } from './openTeams.js';
-import type { PublicScoreExplanation } from './scoreExplanation.js';
+import {
+  assertPublicExplanationSafe,
+  buildPublicScoreExplanation,
+  omitInternalIdentifierFields,
+  type PublicScoreExplanation,
+} from './scoreExplanation.js';
 import { TeamServiceError } from './teamErrors.js';
 
 /** Maximum number of ranked teams returned to one participant (AC-1). */
@@ -279,7 +287,36 @@ function toUnrankedTeam(pair: RecommendationPair): RecommendedTeam {
 }
 
 /**
- * Recommends open team vacancies to the signed-in participant (AC-1 / AC-6).
+ * Scored DTO projection (AC-2).
+ *
+ * FR-047: the ranking-only entry id is dropped twice — `omitInternalIdentifierFields`
+ * strips the key and `assertPublicExplanationSafe` proves the explanation copy carries no
+ * internal identifier. Both are mandatory; neither is decoration.
+ */
+function toRankedTeam(
+  pair: RecommendationPair,
+  ranked: RankableCompatibilityResult & { rank: number }
+): RecommendedTeam {
+  const score = boundCompatibilityScore(ranked.score);
+  const explanation = buildPublicScoreExplanation(ranked, {
+    notice: RECOMMENDED_TEAMS_NOTICE,
+  });
+  assertPublicExplanationSafe(explanation);
+
+  return omitInternalIdentifierFields({
+    ...toUnrankedTeam(pair),
+    rank: ranked.rank,
+    displayScore: ranked.displayScore,
+    score,
+    components: ranked.components,
+    matchedSkills: explanation.matchedSkills,
+    roleMatched: explanation.roleMatched,
+    explanation,
+  });
+}
+
+/**
+ * Recommends open team vacancies to the signed-in participant (AC-1 / AC-2 / AC-6).
  *
  * Platform-wide, zero-argument by design: the actor is the token subject, never a query
  * parameter, so a participant can only ever see their own ranking.
@@ -291,21 +328,15 @@ export async function getRecommendedTeamsForParticipant(
   const deps = resolveDeps(partialDeps);
   const now = deps.now ? deps.now() : new Date();
 
-  // Fails fast for an authenticated-but-missing participant; the declared inputs are
-  // consumed by the scoring projection.
-  await loadParticipantScoringProfile(actorId, deps);
+  const actorProfile = await loadParticipantScoringProfile(actorId, deps);
 
   const [records, confirmedTeamIds] = await Promise.all([
     deps.teamsRepo.findOpenTeamRecords({ withMemberIdentities: false }),
     deps.teamsRepo.findConfirmedTeamIdsForParticipant(actorId),
   ]);
 
-  const pairs = selectEligiblePairs(
-    records,
-    new Set(confirmedTeamIds),
-    actorId,
-    now
-  ).slice(0, RECOMMENDED_TEAMS_CAP);
+  // Score the whole eligible pool, then cap: capping first would rank the wrong ten.
+  const pairs = selectEligiblePairs(records, new Set(confirmedTeamIds), actorId, now);
 
   if (pairs.length === 0) {
     return {
@@ -317,11 +348,43 @@ export async function getRecommendedTeamsForParticipant(
     };
   }
 
-  return {
-    status: 'ok',
-    teams: pairs.map(toUnrankedTeam),
-    empty: false,
-    message: null,
-    notice: RECOMMENDED_TEAMS_NOTICE,
-  };
+  try {
+    const scored = pairs.map((pair) => {
+      const result = deps.computeScore(
+        toSlotScoringInput(pair.record.team, pair.vacancy),
+        toCandidateScoringInput(actorProfile, pair.record.team, pair.vacancy.id)
+      );
+      const ranked: RankableCompatibilityResult = {
+        ...result,
+        score: boundCompatibilityScore(result.score),
+        displayHandle: pair.record.team.name,
+        internalId: toRankingEntryId(pair.record.team.id, pair.vacancy.id),
+      };
+      return { pair, ranked };
+    });
+
+    const pairsByEntryId = new Map(scored.map((entry) => [entry.ranked.internalId, entry.pair]));
+
+    const teams = sortWithCompatibilityRanks(scored.map((entry) => entry.ranked))
+      .slice(0, RECOMMENDED_TEAMS_CAP)
+      .map((ranked) => toRankedTeam(pairsByEntryId.get(ranked.internalId)!, ranked));
+
+    return {
+      status: 'ok',
+      teams,
+      empty: false,
+      message: null,
+      notice: RECOMMENDED_TEAMS_NOTICE,
+    };
+  } catch {
+    // NR-016: scoring failures degrade to an unranked but still usable list, never a 500.
+    return {
+      status: 'degraded',
+      teams: pairs.slice(0, RECOMMENDED_TEAMS_CAP).map(toUnrankedTeam),
+      empty: false,
+      message: null,
+      notice: RECOMMENDED_TEAMS_NOTICE,
+      degradedNotice: RECOMMENDED_TEAMS_DEGRADED_NOTICE,
+    };
+  }
 }

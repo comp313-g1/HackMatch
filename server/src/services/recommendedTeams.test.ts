@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   EMPTY_RECOMMENDED_TEAMS_MESSAGE,
   RECOMMENDED_TEAMS_CAP,
+  RECOMMENDED_TEAMS_DEGRADED_NOTICE,
   getRecommendedTeamsForParticipant,
+  toRankingEntryId,
   type RecommendedTeamsServiceDeps,
 } from './recommendedTeams.js';
 import { TeamServiceError } from './teamErrors.js';
@@ -97,6 +99,7 @@ function buildDeps(options: {
   confirmedTeamIds?: string[];
   availabilityRecord?: PlatformAvailabilityRecord | null;
   profileRecord?: ParticipantProfile | null;
+  computeScore?: RecommendedTeamsServiceDeps['computeScore'];
 }): RecommendedTeamsServiceDeps {
   return {
     participantsRepo: {
@@ -115,35 +118,99 @@ function buildDeps(options: {
       findConfirmedTeamIdsForParticipant: async () => options.confirmedTeamIds ?? [],
     },
     now: () => now,
+    ...(options.computeScore ? { computeScore: options.computeScore } : {}),
   };
 }
 
-describe('getRecommendedTeamsForParticipant (US-016)', () => {
-  it('returns open teams in deterministic order (newest first, id ascending)', async () => {
-    const older = openRecord({
-      team: {
-        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-        name: 'Older Team',
-        created_at: '2026-10-01T00:00:00.000Z',
+/** Perfect match for the fixture profile: Frontend + React/TypeScript + 20h + same goal. */
+function perfectTeam(overrides: Partial<Team> = {}): OpenTeamRecord {
+  return openRecord({
+    team: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', name: 'Perfect Fit', ...overrides },
+    vacancies: [
+      {
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa-v1',
+        role: 'Frontend',
+        skills: ['React', 'TypeScript'],
       },
-    });
-    const newer = openRecord({
-      team: {
-        id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-        name: 'Newer Team',
-        created_at: '2026-11-05T00:00:00.000Z',
-      },
-    });
+    ],
+  });
+}
 
+/** Nothing overlaps: wrong role, wrong skill, distant goal, very different hours. */
+function misalignedTeam(overrides: Partial<Team> = {}): OpenTeamRecord {
+  return openRecord({
+    team: {
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      name: 'Weak Fit',
+      goal: 'Learning',
+      commitment_hours: 45,
+      ...overrides,
+    },
+    vacancies: [
+      { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb-v1', role: 'Backend', skills: ['Rust'] },
+    ],
+  });
+}
+
+describe('getRecommendedTeamsForParticipant (US-016)', () => {
+  it('ranks open teams by compatibility score, 1-based, best first', async () => {
     const result = await getRecommendedTeamsForParticipant(
       actorId,
-      buildDeps({ records: [older, newer] })
+      buildDeps({ records: [misalignedTeam(), perfectTeam()] })
     );
 
     expect(result.status).toBe('ok');
     expect(result.empty).toBe(false);
     expect(result.message).toBeNull();
-    expect(result.teams.map((t) => t.teamName)).toEqual(['Newer Team', 'Older Team']);
+    expect(result.teams.map((t) => t.teamName)).toEqual(['Perfect Fit', 'Weak Fit']);
+    expect(result.teams.map((t) => t.rank)).toEqual([1, 2]);
+    expect(result.teams[0].displayScore).toBe('100.0');
+    expect(result.teams[0].score).toBeGreaterThan(result.teams[1].score!);
+  });
+
+  it('exposes matched skills, role match and the FR-047 explanation', async () => {
+    const result = await getRecommendedTeamsForParticipant(
+      actorId,
+      buildDeps({ records: [perfectTeam()] })
+    );
+
+    const [team] = result.teams;
+    // The scorer normalizes matched tags to lowercase (FR-044); the UI renders them as-is.
+    expect(team.matchedSkills).toEqual(expect.arrayContaining(['react', 'typescript']));
+    expect(team.roleMatched).toBe(true);
+    expect(team.components).toBeDefined();
+    expect(team.explanation?.notice).toBe(result.notice);
+  });
+
+  it('never serializes the ranking-only entry id', async () => {
+    const record = perfectTeam();
+    const result = await getRecommendedTeamsForParticipant(
+      actorId,
+      buildDeps({ records: [record] })
+    );
+
+    const serialized = JSON.stringify(result);
+    const entryId = toRankingEntryId(record.team.id, record.openVacancies[0].id);
+    expect(serialized).not.toContain('internalId');
+    expect(serialized).not.toContain(entryId);
+  });
+
+  it('degrades to an unranked list instead of failing when scoring throws (NR-016)', async () => {
+    const result = await getRecommendedTeamsForParticipant(
+      actorId,
+      buildDeps({
+        records: [perfectTeam()],
+        computeScore: () => {
+          throw new Error('scorer unavailable');
+        },
+      })
+    );
+
+    expect(result.status).toBe('degraded');
+    expect(result.degradedNotice).toBe(RECOMMENDED_TEAMS_DEGRADED_NOTICE);
+    expect(result.teams).toHaveLength(1);
+    expect(result.teams[0].rank).toBeUndefined();
+    expect(result.teams[0].displayScore).toBeUndefined();
   });
 
   it('returns the empty state with a user-visible message when nothing is open', async () => {
@@ -247,5 +314,6 @@ describe('getRecommendedTeamsForParticipant (US-016)', () => {
 
     expect(result.empty).toBe(false);
     expect(result.teams).toHaveLength(1);
+    expect(result.teams[0].score).toBeGreaterThanOrEqual(0);
   });
 });
