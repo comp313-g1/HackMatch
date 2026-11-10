@@ -1,0 +1,68 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":24,"diagramMarginY":12,"actorMargin":30,"width":168,"height":58,"boxMargin":8,"messageMargin":17,"noteMargin":8}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-031: Private Team Chat — Sequence Diagram
+    actor PART as Confirmed PART
+    participant UI as React TeamChatView
+    participant GUARD as Auth + Membership Guards
+    participant API as Express Team Chat API
+    participant SERVICE as Chat Service / Privacy Projection
+    participant DB as PostgreSQL / Supabase
+
+    PART->>UI: Open team chat
+    UI->>UI: Show loading and clear stale team content
+    par Open linked channel
+        UI->>GUARD: GET /api/teams/:teamId/chat
+    and Load message history
+        UI->>GUARD: GET /api/teams/:teamId/chat/messages
+    end
+    GUARD->>GUARD: Verify Firebase auth, MFA, active verified PART
+    GUARD->>DB: Query Confirmed memberships for participant
+    alt Visitor, restricted account, ADMIN, or non-member
+        DB-->>GUARD: No eligible Confirmed membership
+        GUARD-->>UI: 401 or generic 403 with no-store response
+        UI->>UI: Clear channel/messages and show access denied
+    else Confirmed member of route team
+        DB-->>GUARD: Target team membership confirmed
+        GUARD->>API: Continue protected request
+        API->>SERVICE: Open channel or list messages by team
+        SERVICE->>DB: Resolve persisted channel by team_id
+        DB-->>SERVICE: channel_type=team and matching team_id
+        opt Message-list request
+            SERVICE->>DB: Query chronological channel messages
+            DB-->>SERVICE: Messages or empty array
+        end
+        SERVICE->>SERVICE: Resolve handles and scrub private fields
+        SERVICE-->>UI: Safe channel/messages response
+        UI-->>PART: Show channel, empty state, or message thread
+    end
+
+    PART->>UI: Submit message draft
+    UI->>UI: Validate nonblank body and 4,000-character limit
+    alt Client validation fails
+        UI-->>PART: Show field error and keep exact draft
+    else Client validation passes
+        UI->>GUARD: POST /api/teams/:teamId/chat/messages
+        GUARD->>DB: Recheck current Confirmed membership
+        alt Authorization no longer valid
+            GUARD-->>UI: Generic 401/403 without private content
+            UI->>UI: Clear private content and keep unsent draft
+        else Authorized
+            GUARD->>API: Continue with validated request body
+            API->>SERVICE: Send message for persisted team channel
+            SERVICE->>DB: Insert chat_messages row
+            DB->>DB: Trigger rechecks team lifecycle, membership, suspension
+            alt Invalid body, read-only team, or storage failure
+                DB-->>SERVICE: Safe validation/lifecycle failure
+                SERVICE-->>UI: Error response
+                UI-->>PART: Show error and keep exact draft
+            else Message persisted
+                DB-->>SERVICE: Created message
+                SERVICE->>SERVICE: Return handle, timestamp, and body only
+                SERVICE-->>UI: 201 safe message response
+                UI->>UI: Append message and clear draft
+                UI-->>PART: Show Message sent
+            end
+        end
+    end
+

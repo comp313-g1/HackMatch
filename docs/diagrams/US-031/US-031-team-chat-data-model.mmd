@@ -1,0 +1,74 @@
+---
+title: "HackMatch — US-031: Private Team Chat — Focused Data Model"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","tertiaryColor":"#f1e8ff","fontFamily":"Arial, sans-serif"},"er":{"useMaxWidth":true,"diagramPadding":24,"layoutDirection":"LR","minEntityWidth":255,"minEntityHeight":75,"entityPadding":14,"stroke":"#4b5563","fill":"#ffffff","fontSize":14}}}%%
+erDiagram
+    direction LR
+
+    PARTICIPANTS ||--o| PARTICIPANT_PROFILES : has
+    PARTICIPANTS ||--o{ TEAMS : owns
+    PARTICIPANTS ||--o{ TEAM_MEMBERSHIPS : holds
+    TEAMS ||--o{ TEAM_MEMBERSHIPS : confirms
+    TEAMS ||--o| CHAT_CHANNELS : "has private channel"
+    PARTICIPANTS ||--o{ CHAT_CHANNELS : creates
+    CHAT_CHANNELS ||--o{ CHAT_MESSAGES : contains
+    PARTICIPANTS ||--o{ CHAT_MESSAGES : authors
+
+    PARTICIPANTS["participants"] {
+        uuid id PK
+        string role "PART or ADMIN"
+        boolean is_verified
+        boolean is_suspended
+        boolean is_deactivated
+    }
+
+    PARTICIPANT_PROFILES["participant_profiles"] {
+        uuid participant_id PK, FK
+        string handle "Safe chat display identity"
+    }
+
+    TEAMS["teams"] {
+        uuid id PK
+        uuid owner_participant_id FK
+        string name
+        string recruitment_status "Open, Locked, Disbanded"
+        datetime locked_at
+        datetime disbanded_at
+    }
+
+    TEAM_MEMBERSHIPS["team_memberships"] {
+        uuid id PK
+        uuid team_id FK
+        uuid participant_id FK
+        string role "Owner or Member"
+        string status "Confirmed, Removed, Released"
+        datetime joined_at
+        datetime ended_at
+    }
+
+    CHAT_CHANNELS["chat_channels"] {
+        uuid id PK
+        string title
+        string description
+        uuid created_by FK
+        string channel_type "public or team"
+        uuid team_id FK "Unique when present"
+        datetime created_at
+        datetime updated_at
+    }
+
+    CHAT_MESSAGES["chat_messages"] {
+        uuid id PK
+        uuid channel_id FK
+        uuid author_id FK
+        text body "Nonblank, at most 4000"
+        datetime created_at
+    }
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef team fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64
+    classDef persistence fill:#e8f7ed,stroke:#3a9b5f,color:#123d24
+    class PARTICIPANTS,PARTICIPANT_PROFILES identity
+    class TEAMS,TEAM_MEMBERSHIPS team
+    class CHAT_CHANNELS,CHAT_MESSAGES persistence
+

@@ -1,0 +1,46 @@
+---
+title: "HackMatch — US-031: Team Chat Authorization and Privacy — Activity Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":42,"rankSpacing":54,"padding":14}}}%%
+flowchart TB
+    PUBLIC["US-030 public forum routes<br/>Separate public-channel authorization"]:::internal
+    START(["Request private team chat resource"]):::identity
+    AUTH{"Authenticated Firebase session<br/>with current MFA?"}:::decision
+    ACCOUNT{"Verified active PART?<br/>Not suspended or deactivated"}:::decision
+    MEMBER{"Valid team UUID and current<br/>Confirmed membership of target team?"}:::decision
+    CHANNEL["Resolve persisted chat channel<br/>using target team_id"]:::chat
+    LINK{"channel_type = team and<br/>persisted team_id matches?"}:::decision
+    ALLOW["Allow open, read, or send<br/>Query private content only now"]:::success
+    SAFE["Return safe projection<br/>Handle, UTC timestamp, body"]:::success
+
+    DENY_401["401 Authentication required<br/>No private data"]:::denied
+    DENY_ACCOUNT["403 Account or role denial<br/>Unrelated ADMIN has no bypass"]:::denied
+    DENY_MEMBER["403 Generic membership denial<br/>No channel lookup or message query"]:::denied
+    NOT_FOUND["404 Team channel not found<br/>No message data"]:::denied
+    NO_STORE["All failures use no-store<br/>Content-free error payload"]:::internal
+
+    PUBLIC -. "Distinct route boundary" .-> START
+    START --> AUTH
+    AUTH -->|"Yes"| ACCOUNT
+    AUTH -->|"No / VISITOR"| DENY_401
+    ACCOUNT -->|"Yes"| MEMBER
+    ACCOUNT -->|"No / ADMIN / restricted PART"| DENY_ACCOUNT
+    MEMBER -->|"Yes"| CHANNEL
+    MEMBER -->|"No / Removed / Released / other team"| DENY_MEMBER
+    CHANNEL --> LINK
+    LINK -->|"Yes"| ALLOW
+    LINK -->|"No"| NOT_FOUND
+    ALLOW --> SAFE
+
+    DENY_401 --> NO_STORE
+    DENY_ACCOUNT --> NO_STORE
+    DENY_MEMBER --> NO_STORE
+    NOT_FOUND --> NO_STORE
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef chat fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+
