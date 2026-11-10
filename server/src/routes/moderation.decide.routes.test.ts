@@ -163,6 +163,76 @@ describe('POST /api/admin/moderation/cases/:caseId/decide (US-026 / #242)', () =
     expect(res.body.safeStateSummary.credentialsIncluded).toBe(false);
   });
 
+  it('allows ADMIN to dismiss a chat case and writes safe audit metadata (#397)', async () => {
+    const chatCase: ModerationCase = {
+      ...openCase,
+      target_type: 'chat_message',
+      target_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      reason: '[Harassment] Participant report',
+      report_count: 1,
+    };
+    vi.spyOn(moderationRepository, 'findById').mockResolvedValue(chatCase);
+    const insertSpy = vi.spyOn(moderationRepository, 'insertActionRecord').mockResolvedValue({
+      id: 'rec-chat-dismiss',
+      actor_id: adminParticipant.id,
+      target_type: 'moderation_chat_message',
+      target_id: chatCase.target_id,
+      action_type: 'moderation_dismiss',
+      reason: 'Reviewed; no actionable violation',
+      outcome: 'case_dismissed',
+      safe_state_summary: {},
+      created_at: '2026-11-10T13:00:00.000Z',
+    });
+    vi.spyOn(moderationRepository, 'resolveCase').mockImplementation(
+      async (_caseId, input) => ({
+        ...chatCase,
+        status: input.status,
+        last_action_type: input.lastActionType,
+        resolved_at: input.resolvedAt,
+      })
+    );
+
+    const res = await request(app)
+      .post(`/api/admin/moderation/cases/${CASE_ID}/decide`)
+      .set('Authorization', AUTH)
+      .send({ action: 'dismiss', reason: 'Reviewed; no actionable violation' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      action: 'dismiss',
+      outcome: 'case_dismissed',
+      case: {
+        id: chatCase.id,
+        targetType: 'chat_message',
+        targetId: chatCase.target_id,
+        status: 'Dismissed',
+      },
+      safeStateSummary: {
+        caseId: chatCase.id,
+        action: 'dismiss',
+        outcome: 'case_dismissed',
+        targetType: 'chat_message',
+        targetId: chatCase.target_id,
+        credentialsIncluded: false,
+        privateContactsIncluded: false,
+        privateWorkspaceAccessGranted: false,
+      },
+    });
+    expect(insertSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor_id: adminParticipant.id,
+        target_type: 'moderation_chat_message',
+        target_id: chatCase.target_id,
+        action_type: 'moderation_dismiss',
+        reason: 'Reviewed; no actionable violation',
+        outcome: 'case_dismissed',
+      })
+    );
+    expect(JSON.stringify(res.body)).not.toMatch(
+      /"(?:body|messageBody|participantEmail|email|password|otp|otp_hash|token|refresh_token|firebase_uid)"/i
+    );
+  });
+
   it('returns 403 for PART callers', async () => {
     mockVerifyIdToken.mockResolvedValue({
       uid: 'fb-part-1',

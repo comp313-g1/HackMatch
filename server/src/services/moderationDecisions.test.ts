@@ -337,4 +337,99 @@ describe('decideModerationCase (US-026 / #242)', () => {
     expect(actionRecordSpy).not.toHaveBeenCalled();
     expect(resolveSpy).not.toHaveBeenCalled();
   });
+
+  it('dismisses a chat case with complete privacy-safe action metadata (#397)', async () => {
+    mockClient({});
+    const chatCase: ModerationCase = {
+      ...openCase,
+      target_type: 'chat_message',
+      target_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      reason: '[Harassment] Participant report',
+      report_count: 1,
+    };
+    vi.spyOn(moderationRepository, 'findById').mockResolvedValue(chatCase);
+    const insertSpy = vi.spyOn(moderationRepository, 'insertActionRecord').mockResolvedValue({
+      id: 'rec-chat-dismiss',
+      actor_id: openCase.created_by,
+      target_type: 'moderation_chat_message',
+      target_id: chatCase.target_id,
+      action_type: 'moderation_dismiss',
+      reason: 'Reviewed; no actionable violation',
+      outcome: 'case_dismissed',
+      safe_state_summary: {},
+      created_at: '2026-11-10T13:00:00.000Z',
+    });
+    const resolveSpy = vi.spyOn(moderationRepository, 'resolveCase').mockImplementation(
+      async (_caseId, input) => ({
+        ...chatCase,
+        status: input.status,
+        last_action_type: input.lastActionType,
+        resolved_at: input.resolvedAt,
+      })
+    );
+
+    const result = await decideModerationCase({
+      actorParticipantId: openCase.created_by,
+      actorRole: 'ADMIN',
+      caseId: chatCase.id,
+      action: 'dismiss',
+      reason: 'Reviewed; no actionable violation',
+    });
+
+    expect(result).toMatchObject({
+      action: 'dismiss',
+      outcome: 'case_dismissed',
+      case: { status: 'Dismissed', targetType: 'chat_message', targetId: chatCase.target_id },
+    });
+    expect(insertSpy).toHaveBeenCalledWith({
+      actor_id: openCase.created_by,
+      target_type: 'moderation_chat_message',
+      target_id: chatCase.target_id,
+      action_type: 'moderation_dismiss',
+      reason: 'Reviewed; no actionable violation',
+      outcome: 'case_dismissed',
+      safe_state_summary: expect.objectContaining({
+        caseId: chatCase.id,
+        action: 'dismiss',
+        outcome: 'case_dismissed',
+        targetType: 'chat_message',
+        targetId: chatCase.target_id,
+        credentialsIncluded: false,
+        privateContactsIncluded: false,
+        privateWorkspaceAccessGranted: false,
+        effects: {
+          caseId: chatCase.id,
+          targetType: 'chat_message',
+          targetId: chatCase.target_id,
+          status: 'Dismissed',
+        },
+      }),
+    });
+    expect(resolveSpy).toHaveBeenCalledWith(chatCase.id, {
+      status: 'Dismissed',
+      lastActionType: 'dismiss',
+      resolvedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*Z$/),
+    });
+    expect(JSON.stringify(result.safeStateSummary)).not.toMatch(
+      /"(?:body|messageBody|participantEmail|email|password|otp|otp_hash|token|refresh_token|firebase_uid)"/i
+    );
+  });
+
+  it('rejects a PART decision before loading the chat case (#397)', async () => {
+    const lookupSpy = vi.spyOn(moderationRepository, 'findById');
+    const actionRecordSpy = vi.spyOn(moderationRepository, 'insertActionRecord');
+
+    await expect(
+      decideModerationCase({
+        actorParticipantId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        actorRole: 'PART',
+        caseId: openCase.id,
+        action: 'dismiss',
+        reason: 'Unauthorized attempt',
+      })
+    ).rejects.toMatchObject({ status: 403, code: 'FORBIDDEN_ROLE' });
+
+    expect(lookupSpy).not.toHaveBeenCalled();
+    expect(actionRecordSpy).not.toHaveBeenCalled();
+  });
 });

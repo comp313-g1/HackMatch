@@ -268,7 +268,9 @@ describe('/api/reports routes (US-025 / #236 / #237)', () => {
         created_at: '2026-11-10T12:00:00.000Z',
         updated_at: '2026-11-10T12:00:00.000Z',
       };
-      vi.spyOn(moderationRepository, 'createCase').mockResolvedValue(createdCase);
+      const createCaseSpy = vi
+        .spyOn(moderationRepository, 'createCase')
+        .mockResolvedValue(createdCase);
 
       const res = await request(app)
         .post('/api/reports')
@@ -295,13 +297,45 @@ describe('/api/reports routes (US-025 / #236 / #237)', () => {
         ].sort()
       );
       expect(res.body.data).toMatchObject({
+        caseId: createdCase.id,
         targetType: 'chat_message',
         targetId: chatMessageId,
         category: 'Harassment',
         status: 'Received',
       });
+      expect(createCaseSpy).toHaveBeenCalledWith({
+        target_type: 'chat_message',
+        target_id: chatMessageId,
+        reason: '[Harassment] Abusive message',
+        created_by: partParticipant.id,
+        flagged_url: null,
+        report_count: 1,
+      });
       expect(JSON.stringify(res.body)).not.toMatch(
         /Private message body|admin.?note|action.?record|other.?report|email|password|otp|token/i
+      );
+
+      // The linked case enters the same ADMIN queue without exposing the report store to PART.
+      mockVerifyIdToken.mockResolvedValue(adminToken);
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(adminParticipant);
+      vi.spyOn(moderationRepository, 'listNewestFirst').mockResolvedValue([createdCase]);
+
+      const queueRes = await request(app)
+        .get('/api/admin/moderation/cases')
+        .set('Authorization', 'Bearer valid-admin-token');
+
+      expect(queueRes.status).toBe(200);
+      expect(queueRes.body.cases).toEqual([
+        expect.objectContaining({
+          id: createdCase.id,
+          targetType: 'chat_message',
+          targetId: chatMessageId,
+          reason: '[Harassment] Abusive message',
+          reportCount: 1,
+        }),
+      ]);
+      expect(JSON.stringify(queueRes.body)).not.toMatch(
+        /Private message body|part@example|firebase_uid|password|otp|token/i
       );
     });
 

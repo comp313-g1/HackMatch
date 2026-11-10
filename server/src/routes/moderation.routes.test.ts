@@ -380,6 +380,39 @@ describe('ADMIN moderation queue + target detail (US-026 / #239)', () => {
       );
     });
 
+    it('preserves the case and returns a safe unavailable marker for a stale chat target (#397)', async () => {
+      const chatCase: ModerationCase = {
+        ...olderCase,
+        target_type: 'chat_message',
+        target_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      };
+      vi.spyOn(moderationRepository, 'findById').mockResolvedValue(chatCase);
+      vi.spyOn(moderationTargetRepository, 'findChatMessageEvidence').mockResolvedValue(null);
+      const profileLookup = vi.spyOn(profileRepository, 'findProfileByParticipantId');
+
+      const res = await request(app)
+        .get(`/api/admin/moderation/cases/${chatCase.id}`)
+        .set('Authorization', authHeader);
+
+      expect(res.status).toBe(200);
+      expect(res.body.case).toMatchObject({
+        id: chatCase.id,
+        targetType: 'chat_message',
+        targetId: chatCase.target_id,
+      });
+      expect(res.body.target).toEqual({
+        type: 'chat_message',
+        chatMessage: {
+          id: chatCase.target_id,
+          availability: 'Unavailable',
+        },
+      });
+      expect(profileLookup).not.toHaveBeenCalled();
+      expect(JSON.stringify(res.body)).not.toMatch(
+        /"(?:body|authorHandle|participantEmail|email|channelId|threadId|token|otp|firebase_uid)"/i
+      );
+    });
+
     it('denies a PART before resolving any chat evidence', async () => {
       mockVerifyIdToken.mockResolvedValue(partToken);
       vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(partParticipant);
