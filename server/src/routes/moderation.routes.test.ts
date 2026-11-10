@@ -294,6 +294,119 @@ describe('ADMIN moderation queue + target detail (US-026 / #239)', () => {
       ]);
       expect(JSON.stringify(res.body)).not.toMatch(/private@im|part@example\.com|fb-part-1/i);
     });
+
+    it('returns privacy-safe chat evidence to ADMIN and no unrelated conversation data', async () => {
+      const chatCase: ModerationCase = {
+        ...olderCase,
+        target_type: 'chat_message',
+        target_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      };
+      vi.spyOn(moderationRepository, 'findById').mockResolvedValue(chatCase);
+      vi.spyOn(moderationTargetRepository, 'findChatMessageEvidence').mockResolvedValue({
+        id: chatCase.target_id,
+        author_id: partParticipant.id,
+        body: 'Target body; email=private@example.test; OTP=123456',
+        created_at: '2026-11-10T12:00:00.000Z',
+      });
+      vi.spyOn(profileRepository, 'findProfileByParticipantId').mockResolvedValue({
+        participant_id: partParticipant.id,
+        handle: 'ada',
+        primary_role: null,
+        institution: 'UNRELATED_PROFILE_DATA',
+        shared_contact_handle: 'hidden-contact',
+        created_at: partParticipant.created_at,
+        updated_at: partParticipant.updated_at,
+      });
+
+      const res = await request(app)
+        .get(`/api/admin/moderation/cases/${chatCase.id}`)
+        .set('Authorization', authHeader);
+
+      expect(res.status).toBe(200);
+      expect(res.headers['cache-control']).toMatch(/no-store/i);
+      expect(res.body.target.chatMessage).toMatchObject({
+        id: chatCase.target_id,
+        availability: 'Available',
+        authorHandle: 'ada',
+        createdAt: '2026-11-10T12:00:00.000Z',
+      });
+      expect(JSON.stringify(res.body)).not.toMatch(
+        /private@example|123456|UNRELATED_PROFILE_DATA|hidden-contact|part@example|firebase_uid/i
+      );
+    });
+
+    it('returns only safe channel metadata to ADMIN without team membership or message history', async () => {
+      const chatCase: ModerationCase = {
+        ...olderCase,
+        target_type: 'chat_channel',
+        target_id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+      };
+      vi.spyOn(moderationRepository, 'findById').mockResolvedValue(chatCase);
+      vi.spyOn(moderationTargetRepository, 'findChatChannelEvidence').mockResolvedValue({
+        id: chatCase.target_id,
+        title: 'Private team channel',
+        description: 'Contact owner@example.test with token=private-token',
+        created_by: partParticipant.id,
+        channel_type: 'team',
+        created_at: '2026-11-10T07:00:00-05:00',
+      });
+      vi.spyOn(profileRepository, 'findProfileByParticipantId').mockResolvedValue({
+        participant_id: partParticipant.id,
+        handle: 'ada',
+        primary_role: null,
+        institution: null,
+        shared_contact_handle: 'hidden-contact',
+        created_at: partParticipant.created_at,
+        updated_at: partParticipant.updated_at,
+      });
+
+      const res = await request(app)
+        .get(`/api/admin/moderation/cases/${chatCase.id}`)
+        .set('Authorization', authHeader);
+
+      expect(res.status).toBe(200);
+      expect(res.body.target.chatChannel).toEqual({
+        id: chatCase.target_id,
+        availability: 'Available',
+        channelType: 'team',
+        title: 'Private team channel',
+        description: 'Contact [redacted email] with token: [redacted]',
+        creatorHandle: 'ada',
+        createdAt: '2026-11-10T12:00:00.000Z',
+        contentRedacted: true,
+      });
+      expect(JSON.stringify(res.body)).not.toMatch(
+        /owner@example|private-token|hidden-contact|team_id|membership|messages/i
+      );
+    });
+
+    it('denies a PART before resolving any chat evidence', async () => {
+      mockVerifyIdToken.mockResolvedValue(partToken);
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(partParticipant);
+      const caseLookup = vi.spyOn(moderationRepository, 'findById');
+      const evidenceLookup = vi.spyOn(moderationTargetRepository, 'findChatMessageEvidence');
+
+      const res = await request(app)
+        .get(`/api/admin/moderation/cases/${olderCase.id}`)
+        .set('Authorization', authHeader);
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('FORBIDDEN_ROLE');
+      expect(caseLookup).not.toHaveBeenCalled();
+      expect(evidenceLookup).not.toHaveBeenCalled();
+    });
+
+    it('denies an unauthenticated visitor before resolving any chat evidence', async () => {
+      const caseLookup = vi.spyOn(moderationRepository, 'findById');
+      const evidenceLookup = vi.spyOn(moderationTargetRepository, 'findChatChannelEvidence');
+
+      const res = await request(app).get(`/api/admin/moderation/cases/${olderCase.id}`);
+
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe('UNAUTHORIZED');
+      expect(caseLookup).not.toHaveBeenCalled();
+      expect(evidenceLookup).not.toHaveBeenCalled();
+    });
   });
 
   describe('POST /api/admin/moderation/cases (open case)', () => {

@@ -14,6 +14,12 @@ import {
   scrubPrivateModerationFields,
   type ModerationPrivacyFlags,
 } from './moderationPrivacy.js';
+import {
+  loadChatChannelEvidence,
+  loadChatMessageEvidence,
+  type SanitizedChatChannelTarget,
+  type SanitizedChatMessageTarget,
+} from './moderationChatEvidence.js';
 
 export type ModerationServiceErrorCode =
   | 'TARGET_NOT_FOUND'
@@ -118,24 +124,6 @@ export interface SanitizedEventTarget {
     endDate: string;
     location: string | null;
     officialUrl: string;
-  };
-}
-
-/**
- * Identity-only chat target references for US-033 / #392.
- * Privacy-safe channel/message evidence is intentionally deferred to #394.
- */
-export interface SanitizedChatChannelTarget {
-  type: 'chat_channel';
-  chatChannel: {
-    id: string;
-  };
-}
-
-export interface SanitizedChatMessageTarget {
-  type: 'chat_message';
-  chatMessage: {
-    id: string;
   };
 }
 
@@ -349,17 +337,9 @@ export async function loadSanitizedTarget(
   } else if (targetType === 'event') {
     target = await loadSanitizedEventTarget(targetId);
   } else if (targetType === 'chat_channel') {
-    await assertTargetExists(targetType, targetId);
-    target = {
-      type: 'chat_channel',
-      chatChannel: { id: targetId },
-    };
+    target = await loadChatChannelEvidence(targetId);
   } else if (targetType === 'chat_message') {
-    await assertTargetExists(targetType, targetId);
-    target = {
-      type: 'chat_message',
-      chatMessage: { id: targetId },
-    };
+    target = await loadChatMessageEvidence(targetId);
   } else {
     if (!flaggedUrl) {
       throw new ModerationServiceError(

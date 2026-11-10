@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { moderationRepository } from '../db/moderation.repository.js';
 import { moderationTargetRepository } from '../db/moderationTarget.repository.js';
+import { profileRepository } from '../db/profile.repository.js';
 import type { ModerationCase, ModerationTargetType } from '../db/types.js';
 import {
   createModerationCase,
@@ -79,15 +80,27 @@ describe('chat moderation target validation (US-033 / #392)', () => {
     expect(createSpy).not.toHaveBeenCalled();
   });
 
-  it('returns only an identity reference until privacy-safe evidence ships in #394', async () => {
-    vi.spyOn(moderationTargetRepository, 'chatMessageExists').mockResolvedValue(true);
+  it('returns the #394 privacy-safe message projection without unrelated chat data', async () => {
+    vi.spyOn(moderationTargetRepository, 'findChatMessageEvidence').mockResolvedValue({
+      id: messageId,
+      author_id: adminId,
+      body: 'Abusive content from private@example.test',
+      created_at: '2026-11-10T00:00:00.000Z',
+    });
+    vi.spyOn(profileRepository, 'findProfileByParticipantId').mockResolvedValue(null);
 
     const target = await loadSanitizedTarget('chat_message', messageId, null);
 
-    expect(target).toEqual({
+    expect(target).toMatchObject({
       type: 'chat_message',
-      chatMessage: { id: messageId },
+      chatMessage: {
+        id: messageId,
+        availability: 'Available',
+        authorHandle: null,
+        createdAt: '2026-11-10T00:00:00.000Z',
+        messageContext: { text: 'Abusive content from [redacted email]', redacted: true },
+      },
     });
-    expect(JSON.stringify(target)).not.toMatch(/body|email|author|credential|token|otp/i);
+    expect(JSON.stringify(target)).not.toMatch(/private@example|author_id|credential|token|otp/i);
   });
 });
