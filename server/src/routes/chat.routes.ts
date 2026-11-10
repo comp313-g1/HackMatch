@@ -18,6 +18,7 @@ import {
   sendChannelMessage,
 } from '../services/chat.js';
 import { buildChatSuccessPayload } from '../services/chatPrivacy.js';
+import { getParticipantChatUnreadSummary } from '../services/chatUnread.js';
 
 export const chatRouter = Router();
 
@@ -45,6 +46,29 @@ function handleChatError(err: unknown, res: Response, next: NextFunction): void 
   }
   next(err);
 }
+
+/**
+ * GET /api/chat/unread-counts
+ * Counts only for public/team channels and DM threads the caller may currently read.
+ */
+chatRouter.get(
+  '/unread-counts',
+  ...chatAuthGuard,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const summary = await getParticipantChatUnreadSummary(req.participant!);
+      res.status(200).json(
+        buildChatSuccessPayload({
+          status: 'ok',
+          ...summary,
+        })
+      );
+    } catch (err) {
+      handleChatError(err, res, next);
+    }
+  }
+);
 
 /**
  * GET /api/chat/channels
