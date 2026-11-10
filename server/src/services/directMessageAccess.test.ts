@@ -7,6 +7,7 @@ import {
   DM_DENIALS,
   assertCanSendInDirectThread,
   authorizeDirectThreadAccess,
+  hasBlockBetween,
   isEligibleDirectMessageParticipant,
 } from './directMessageAccess.js';
 
@@ -145,5 +146,34 @@ describe('assertCanSendInDirectThread (US-032 / #388)', () => {
       expect(d.message.length).toBeGreaterThan(10);
       expect(d.message).not.toMatch(/@|[0-9a-f]{8}-[0-9a-f]{4}/i);
     }
+  });
+});
+
+describe('hasBlockBetween (US-032 / #388 / #391)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns false when neither participant has blocked the other and lowercases IDs', async () => {
+    vi.spyOn(participantBlockRepository, 'findBlockState').mockResolvedValue({
+      blockedByMe: false,
+      blockedByThem: false,
+    });
+    expect(await hasBlockBetween(A.toUpperCase(), B.toUpperCase())).toBe(false);
+    expect(participantBlockRepository.findBlockState).toHaveBeenCalledWith(A, B);
+  });
+
+  it('returns true when blockedByMe or blockedByThem is true', async () => {
+    vi.spyOn(participantBlockRepository, 'findBlockState').mockResolvedValueOnce({
+      blockedByMe: true,
+      blockedByThem: false,
+    });
+    expect(await hasBlockBetween(A, B)).toBe(true);
+
+    vi.spyOn(participantBlockRepository, 'findBlockState').mockResolvedValueOnce({
+      blockedByMe: false,
+      blockedByThem: true,
+    });
+    expect(await hasBlockBetween(A, B)).toBe(true);
   });
 });
