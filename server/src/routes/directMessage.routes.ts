@@ -4,10 +4,24 @@ import { requireMfa } from '../middleware/requireMfa.js';
 import { requireActiveAccount } from '../middleware/requireActiveAccount.js';
 import { requireParticipantRole } from '../middleware/requireRole.js';
 import { requireVerifiedParticipant } from '../middleware/requireVerifiedParticipant.js';
+import {
+  requireDirectThreadParticipant,
+  requireDirectThreadSendAccess,
+} from '../middleware/requireDirectThreadParticipant.js';
 import { requireJsonObjectBody } from '../validators/team.validator.js';
-import { validateOpenThreadBody } from '../validators/directMessage.validator.js';
+import {
+  validateOpenThreadBody,
+  validateSendMessageBody,
+} from '../validators/directMessage.validator.js';
 import { ChatServiceError } from '../services/chat.js';
-import { openOrContinueDirectThread } from '../services/directMessages.js';
+import {
+  DirectMessageServiceError,
+  getDmThread,
+  listDmInbox,
+  listDmThreadMessages,
+  openOrContinueDirectThread,
+  sendDmMessage,
+} from '../services/directMessages.js';
 import { buildChatSuccessPayload } from '../services/chatPrivacy.js';
 
 export const directMessageRouter = Router();
@@ -20,6 +34,48 @@ const directMessageAuthGuard = [
   requireParticipantRole,
   requireVerifiedParticipant,
 ];
+
+function threadIdOf(req: Request): string {
+  const raw = req.params.threadId;
+  return (Array.isArray(raw) ? raw[0] : raw).trim();
+}
+
+function handleDmError(err: unknown, res: Response, next: NextFunction): void {
+  if (err instanceof DirectMessageServiceError || err instanceof ChatServiceError) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(err.status).json({ error: err.message, code: err.code });
+    return;
+  }
+  next(err);
+}
+
+/**
+ * GET /api/direct-messages/threads (and /api/direct-messages, /api/direct-messages/inbox)
+ * US-032 / #387: Lists the caller's DM inbox threads ordered by most recent activity (UTC).
+ */
+async function handleListInbox(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const result = await listDmInbox(req.participant!.id);
+    res.status(200).json(
+      buildChatSuccessPayload({
+        status: 'ok',
+        threads: result.threads,
+        isEmpty: result.isEmpty,
+      })
+    );
+  } catch (err) {
+    handleDmError(err, res, next);
+  }
+}
+
+directMessageRouter.get('/', ...directMessageAuthGuard, handleListInbox);
+directMessageRouter.get('/threads', ...directMessageAuthGuard, handleListInbox);
+directMessageRouter.get('/inbox', ...directMessageAuthGuard, handleListInbox);
 
 /**
  * POST /api/direct-messages/threads   body: { participantId }
@@ -40,11 +96,90 @@ directMessageRouter.post(
       });
       res.status(created ? 201 : 200).json(buildChatSuccessPayload({ status: 'ok', thread }));
     } catch (err) {
-      if (err instanceof ChatServiceError) {
-        res.status(err.status).json({ error: err.message, code: err.code });
-        return;
-      }
-      next(err);
+      handleDmError(err, res, next);
+    }
+  }
+);
+
+/**
+ * GET /api/direct-messages/threads/:threadId
+ * US-032 / #387: Opens a DM thread and returns its metadata, safe peer handle, and chronological messages.
+ */
+directMessageRouter.get(
+  '/threads/:threadId',
+  ...directMessageAuthGuard,
+  requireDirectThreadParticipant,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const result = await getDmThread({
+        threadId: threadIdOf(req),
+        participantId: req.participant!.id,
+      });
+      res.status(200).json(
+        buildChatSuccessPayload({
+          status: 'ok',
+          thread: result.thread,
+          messages: result.messages,
+          isEmpty: result.isEmpty,
+        })
+      );
+    } catch (err) {
+      handleDmError(err, res, next);
+    }
+  }
+);
+
+/**
+ * GET /api/direct-messages/threads/:threadId/messages
+ * US-032 / #387: Chronological messages in a DM thread (oldest-first in UTC; empty array when none).
+ */
+directMessageRouter.get(
+  '/threads/:threadId/messages',
+  ...directMessageAuthGuard,
+  requireDirectThreadParticipant,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const result = await listDmThreadMessages({
+        threadId: threadIdOf(req),
+        participantId: req.participant!.id,
+      });
+      res.status(200).json(
+        buildChatSuccessPayload({
+          status: 'ok',
+          thread: result.thread,
+          messages: result.messages,
+          isEmpty: result.isEmpty,
+        })
+      );
+    } catch (err) {
+      handleDmError(err, res, next);
+    }
+  }
+);
+
+/**
+ * POST /api/direct-messages/threads/:threadId/messages
+ * US-032 / #387: Sends a validated text message in a DM thread. Echoes submitted draft on 400.
+ */
+directMessageRouter.post(
+  '/threads/:threadId/messages',
+  ...directMessageAuthGuard,
+  requireDirectThreadSendAccess,
+  requireJsonObjectBody,
+  validateSendMessageBody,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const message = await sendDmMessage({
+        threadId: threadIdOf(req),
+        authorId: req.participant!.id,
+        body: req.body.body,
+      });
+      res.status(201).json(buildChatSuccessPayload({ status: 'ok', message }));
+    } catch (err) {
+      handleDmError(err, res, next);
     }
   }
 );

@@ -24,7 +24,7 @@ const person = (id: string, over: Partial<Participant> = {}): Participant => ({
   updated_at: 'u',
   ...over,
 });
-const thread = { id: THREAD_ID, participant_low_id: A, participant_high_id: B, created_at: 'c', updated_at: 'u' };
+const thread = { id: THREAD_ID, participant_low_id: A, participant_high_id: B, last_message_at: 'c', created_at: 'c', updated_at: 'u' };
 
 let current: Participant | undefined;
 function makeApp() {

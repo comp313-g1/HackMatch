@@ -27,7 +27,7 @@ const person = (id: string, over: Partial<Participant> = {}): Participant => ({
   updated_at: 'u',
   ...over,
 });
-const thread = { id: THREAD_ID, participant_low_id: A, participant_high_id: B, created_at: 'c', updated_at: 'u' };
+const thread = { id: THREAD_ID, participant_low_id: A, participant_high_id: B, last_message_at: 'c', created_at: 'c', updated_at: 'u' };
 
 const denial = (d: (typeof DM_DENIALS)[keyof typeof DM_DENIALS]) =>
   expect.objectContaining({ status: d.status, code: d.code, message: d.message });
