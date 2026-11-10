@@ -2,7 +2,7 @@
 
 **Audience:** project administrators, maintainers, developers, and technical reviewers
 
-**Repository baseline:** `US-031/team-channel-linkage-indexes` branch (migrations through `0052`, Issue #419 update)
+**Repository baseline:** `US-032/dm-open-or-continue-thread` branch (migrations through `0055`, Issue #420 update)
 
 **Last reviewed:** November 9, 2026
 
@@ -34,7 +34,7 @@ This manual describes how the current HackMatch implementation is configured, op
 
 ## 1. System overview
 
-HackMatch is a web application for participant profiles, platform-wide teammate discovery, team recruitment, invitations, applications, roster management, notifications, a private team workspace and manifest export, abuse reporting, administration (moderation, account enforcement, audit review), and participant chat with a server-side private team channel.
+HackMatch is a web application for participant profiles, platform-wide teammate discovery, team recruitment, invitations, applications, roster management, notifications, a private team workspace and manifest export, abuse reporting, administration (moderation, account enforcement, audit review), participant forums chat, a private team chat, and one-to-one direct messages.
 
 The current user-facing architecture is **Event-Free**:
 
@@ -307,6 +307,7 @@ Review migration diffs and the selected Supabase target before applying any chan
 | Team workspace and manifest | workspace links, shared note and revision tables (0046); roster manifest snapshots (0047) |
 | Administration | `moderation_cases`, `moderation_reports` (0048), `event_action_records` (the append-only audit records; query model 0049, least privilege 0050), `account_deletion_requests` |
 | Chat | `chat_channels` (public forums and, since 0051, private team channels via `channel_type` and `team_id`), `chat_messages`; presence is stored on `participants` |
+| Direct messages | `direct_message_threads` (0053, activity column added in 0055), `direct_messages` (0055), `participant_blocks` (0054) |
 | Legacy compatibility | `pending_event_submissions` and event-oriented columns retained by the physical schema |
 
 `moderation_cases.target_id` and `event_action_records.target_id` are polymorphic identifiers interpreted with their target type; they are not physical foreign keys to every possible target table.
@@ -423,11 +424,11 @@ Channel titles and descriptions are required and validated. Message bodies must 
 
 Public forums have no channel-membership persistence or join/leave mechanism: every verified active `PART` passes the same global-channel access gate. Private team channels (below) are gated by team membership instead. There is also no implemented peer-presence directory; `Invisible` is filtered by helper logic, but broader peer visibility policy remains undefined.
 
-Direct messages, reactions, typing indicators, attachments, voice/video, unread/mention tracking, and moderation/report integration are deferred.
+Reactions, typing indicators, attachments, voice/video, unread/mention tracking, and moderation/report integration are deferred.
 
-### Private team channels (US-031) — server side only
+### Private team channels (US-031)
 
-US-031 adds a private channel per team. The back end is implemented and tested; **there is no React screen yet** (task #383) and nothing creates a channel automatically yet, so the endpoints return `404 TEAM_CHANNEL_NOT_FOUND` until a channel is provisioned.
+US-031 adds a private channel per team. The back end, the React **Team chat** panel on the team page (`TeamChatView`, shown to the team's members in the team workspace), and the tests are implemented. **Nothing creates a team's channel automatically yet**: `provisionOrLinkTeamChannel` exists but is not called from team creation, so until a channel is provisioned the endpoints return `404 TEAM_CHANNEL_NOT_FOUND` and the panel shows a load error with **Retry**.
 
 | Task | What exists |
 |---|---|
@@ -436,6 +437,9 @@ US-031 adds a private channel per team. The back end is implemented and tested; 
 | #380 authorization | Confirmed-member authorization helpers in `teamChatAuthorization` |
 | #381 endpoints | `GET /api/teams/:teamId/chat` (open channel), `GET /api/teams/:teamId/chat/messages`, `POST /api/teams/:teamId/chat/messages` |
 | #382 lifecycle (migration `0052`) | Database-enforced lifecycle rules, below |
+| #383 React view | `TeamChatView`: open channel, messages, composer with kept drafts, access-denied and error states |
+| #384 tests | Vitest and route tests for member access and denial |
+| #418 diagrams | Use-case, sequence, authorization, data-model, and lifecycle diagrams under `docs/diagrams/US-031/` |
 
 Endpoint behavior:
 
@@ -456,7 +460,40 @@ Lifecycle rules (migration `0052`, enforced by triggers so a race cannot bypass 
 | Delete a team channel | Refused, so history cannot cascade away |
 | Delete membership rows of a team that has a channel | Refused (`TEAM_MEMBERSHIP_HISTORY_IMMUTABLE`); leaving, removal, and disband only change `status` |
 
-Run the story's tests with `npm run test:us031 --prefix server`. Operators who need to remove a team's data entirely must plan it deliberately, because these protections block ordinary deletes.
+Run the story's tests with `npm run test:us031 --prefix server`. Operators who need to remove a team's data entirely must plan it deliberately, because these protections block ordinary deletes. See the [US-031 diagrams](../diagrams/US-031/US-031-team-chat-authorization-flow.png) for the authorization and lifecycle flows.
+
+### Direct messages (US-032)
+
+One-to-one private threads between two verified active participants (FR-091). All routes are under `/api/direct-messages` and require Firebase authentication, current MFA, an active account, stored `PART` role, and verified participant status. Visitors get 401; unverified or suspended callers and `ADMIN` accounts get 403.
+
+| Task | What exists |
+|---|---|
+| #385 data model (migrations `0053`, `0055`) | `direct_message_threads`: one row per unordered pair stored in canonical order (`participant_low_id < participant_high_id`), unique per pair, no self-thread, participants immutable and protected from deletion; `last_message_at` for inbox ordering. `direct_messages`: body 1–4,000 characters, a trigger that only lets a participant of the thread author a message, and a trigger that updates the thread's activity time |
+| #386 open or continue | `POST /api/direct-messages/threads` with `{ "participantId": "<uuid>" }` creates the thread (201) or returns the existing one (200); concurrent requests resolve to the same row |
+| #387 inbox, thread, send | `GET /api/direct-messages/threads` (inbox, most recent activity first, with an explicit empty state), `GET /api/direct-messages/threads/:threadId`, `GET .../messages`, `POST .../messages` |
+| #388 access rules (migration `0054`) | Thread-participant and send-access guards, block model, denial codes below |
+| #389 React views | `DirectMessagesView` (inbox, conversation, composer with kept drafts) under the **Direct messages** tab of the chat panel |
+| #390 privacy projections | Allowlist projections and a safety scrub, below |
+
+Access and denial behavior:
+
+- **Read** needs the caller to be one of the two participants. A missing thread and a thread between other people give the **same** `403 FORBIDDEN_NOT_THREAD_PARTICIPANT`, so thread existence cannot be probed.
+- **Send** additionally needs the other participant to be a verified active `PART` and no block in either direction.
+- Opening a thread with a missing, suspended, deactivated, unverified, `ADMIN`, or blocking/blocked person all return the same `404 PEER_NOT_AVAILABLE`, so accounts and blocks cannot be enumerated. Opening a thread with yourself returns `400 CANNOT_MESSAGE_SELF`.
+- Sending denials: `403 DM_PEER_UNAVAILABLE` (the peer is suspended, deactivated, unverified, or has blocked the caller; the message does not say which), `403 DM_BLOCKED_BY_YOU` (only the person who set a block is told), and `403 DM_ACCOUNT_NOT_ELIGIBLE` (the caller's own account). Reading an existing conversation stays possible when the peer is blocked or suspended.
+- A client cannot choose the caller, author, or thread: unknown body fields are rejected, and `participantId` and `threadId` must be UUIDs. An empty or over-4,000-character body returns 400 and echoes the draft.
+
+Privacy projection (US-032 #390, `directMessagePrivacy`):
+
+- Responses are built from an explicit allowlist: thread id, the other participant's id and handle, last-message time, created/updated times, and for messages the id, thread id, `fromMe`, author handle, body, and time. The author is shown by handle and `fromMe`, not by account id.
+- A second scrub removes credentials, OTPs, tokens, account email, full name, institution, Firebase UID, the raw `participant_low_id` and `participant_high_id` columns, presence status, shared contact handles, role, verification and suspension state, and any block state. Rejected drafts are echoed with those keys shown as `[redacted]`.
+- Every response carries privacy flags (credentials, OTPs, emails, presence, contact details: all `false`) and `Cache-Control: no-store`.
+
+Operational notes:
+
+- `participant_blocks` is enforced but **no endpoint or screen creates a block yet**, so blocks can only be added directly in the database by an authorized operator. Plan a block/unblock feature before relying on this rule.
+- There is no screen or button that starts a new conversation (the `openDirectMessageThread` client helper exists but no UI calls it), and no unread or mention tracking.
+- Run the story's tests with `npm run test:us032 --prefix server`.
 
 ![Participant chat thread](../assets/wireframes/US-030-chat-message-thread.png)
 
@@ -528,6 +565,7 @@ GitHub Actions uses Node 22 and runs dependency installation, commit-message val
 | Purpose | Command |
 |---|---|
 | US-031 team channel (model, repository, services, routes, real-SQL lifecycle) | `npm run test:us031 --prefix server` |
+| US-032 direct messages (threads, blocks, access, privacy, routes, real SQL) | `npm run test:us032 --prefix server` |
 
 The real-SQL tests run migrations on an in-process PostgreSQL (PGlite, a server dev dependency), so they need no external database.
 
@@ -615,6 +653,9 @@ Operational rules:
 | Chat access returns 403 | User is not a verified active `PART`, MFA is missing, or account is suspended | Correct the account state and complete authentication; ADMIN is not treated as a normal chat participant |
 | Team chat endpoint returns 404 `TEAM_CHANNEL_NOT_FOUND` for a member | No channel has been provisioned for the team yet (provisioning is not wired into team creation) | Expected until the provisioning hook ships; do not create rows by hand |
 | Team chat endpoint returns 403 `FORBIDDEN_NOT_TEAM_MEMBER` | Caller is not a Confirmed member of that team (or the team does not exist) | Check `team_memberships.status` for the participant and team |
+| Direct-message call returns 403 `FORBIDDEN_NOT_THREAD_PARTICIPANT` | The caller is not one of the two participants, or the thread does not exist (deliberately indistinguishable) | Check `direct_message_threads` for the pair and the caller's id |
+| Direct-message send returns 403 `DM_PEER_UNAVAILABLE` or `DM_BLOCKED_BY_YOU` | The peer is suspended, deactivated, unverified, or blocked the caller; or the caller blocked the peer | Check the peer's `participants` row and `participant_blocks` in both directions |
+| Opening a thread returns 404 `PEER_NOT_AVAILABLE` | The peer is missing, ineligible, an `ADMIN`, or a block exists in either direction | Same checks; the response is intentionally the same for all of them |
 | Deleting a team, channel, message, or membership fails with a `TEAM_*_IMMUTABLE` error | Lifecycle protections from migration `0052` | Intended; change `status` instead of deleting |
 | Audit log shows no "Past retention" labels | `VITE_AUDIT_RETENTION_DAYS` is empty (no approved retention period) or invalid | Set a whole number of days from 1 to 3650 once the period is approved |
 | Notification bell does not update live | Live stream unavailable | The client falls back to polling every 30 seconds; check `/api/notifications/stream` and the server logs |
@@ -627,7 +668,8 @@ Operational rules:
 - Team capacity defaults to four in the current product design, while physical event bounds and current validators can permit configured sizes outside that default.
 - New MFA challenge creation and some ADMIN moderation/account-enforcement workflows consist of sequential cross-service or multi-write operations rather than a single distributed transaction. Retry only after inspecting resulting state.
 - ADMIN account enforcement supports suspension and deletion processing, but not unsuspension/reactivation through the current API.
-- Public chat is global to verified active participants. Peer presence discovery policy, direct messages, rich media, reactions, typing, and moderation hooks are not implemented. Private team channels have a back end (US-031 #378–#382) but no React screen (#383), no automatic provisioning on team creation, and no end-to-end test of the full flow (#384).
+- Public chat is global to verified active participants. Peer presence discovery policy, direct messages, rich media, reactions, typing, and moderation hooks are not implemented. Private team channels (US-031) are implemented end to end except automatic provisioning: nothing creates a team's channel when the team is created, so a team has no chat until a channel is provisioned.
+- Direct messages (US-032) have a back end and inbox/conversation screens, but no UI to start a new conversation, no block/unblock endpoint or screen (the block rule is enforced against `participant_blocks` only), and no unread or mention tracking.
 - The audit retention period is not yet approved, so no record is marked "Past retention" by default.
 - US-029 (authenticator-app two-factor authentication) is future scope; every sign-in uses email OTP.
 - The diagram index was produced through repository audits and may lag very recent implementation changes; current source, migrations, and tests govern operations when a status label differs.

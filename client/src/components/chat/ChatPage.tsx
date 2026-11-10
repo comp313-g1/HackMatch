@@ -16,6 +16,7 @@ import {
   type ChatMessageView,
   type PresenceStatus,
 } from './chatTypes';
+import { DirectMessagesView } from './DirectMessagesView';
 
 export interface ChatPageProps {
   onNavigateToSignIn?: () => void;
@@ -54,6 +55,7 @@ export function ChatPage({
   onNavigateToSignIn,
   onNavigateAway,
 }: ChatPageProps): React.JSX.Element {
+  const [chatSection, setChatSection] = useState<'forums' | 'direct'>('forums');
   const [presenceStatus, setPresenceStatus] = useState<PresenceStatus>('Invisible');
   const [presenceSaving, setPresenceSaving] = useState(false);
   const [presenceNotice, setPresenceNotice] = useState<string | null>(null);
@@ -380,13 +382,44 @@ export function ChatPage({
         </div>
       </div>
 
-      {pageError && (
-        <div role="alert" className="p-3 text-sm text-red-800 bg-red-50 border border-red-100 rounded-md">
-          {pageError}
-        </div>
-      )}
+      <nav aria-label="Chat sections" className="flex gap-2 rounded-lg border border-cream-200 bg-white p-1 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setChatSection('forums')}
+          aria-pressed={chatSection === 'forums'}
+          className={`rounded-md px-4 py-2 text-sm font-semibold ${
+            chatSection === 'forums'
+              ? 'bg-forest text-white'
+              : 'text-forest-800 hover:bg-cream-50'
+          }`}
+        >
+          Forums
+        </button>
+        <button
+          type="button"
+          onClick={() => setChatSection('direct')}
+          aria-pressed={chatSection === 'direct'}
+          className={`rounded-md px-4 py-2 text-sm font-semibold ${
+            chatSection === 'direct'
+              ? 'bg-forest text-white'
+              : 'text-forest-800 hover:bg-cream-50'
+          }`}
+        >
+          Direct messages
+        </button>
+      </nav>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      {chatSection === 'direct' ? (
+        <DirectMessagesView />
+      ) : (
+        <>
+          {pageError && (
+            <div role="alert" className="p-3 text-sm text-red-800 bg-red-50 border border-red-100 rounded-md">
+              {pageError}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Forums column */}
         <section
           aria-labelledby="forums-heading"
@@ -627,7 +660,9 @@ export function ChatPage({
             </div>
           </div>
         </section>
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

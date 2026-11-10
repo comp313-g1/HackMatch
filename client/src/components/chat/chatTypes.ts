@@ -47,6 +47,35 @@ export interface SendMessageInput {
   body: string;
 }
 
+/** US-032 / #389 safe one-to-one message projection. */
+export interface DirectMessageView {
+  id: string;
+  threadId: string;
+  authorId: string;
+  authorHandle: string | null;
+  body: string;
+  createdAt: string;
+}
+
+/** US-032 / #389 safe inbox/thread projection. Participant IDs are never rendered by the UI. */
+export interface DirectMessageThreadView {
+  id: string;
+  peer: {
+    id: string;
+    handle: string | null;
+  };
+  createdAt: string;
+  updatedAt: string;
+  lastMessage?: DirectMessageView | null;
+  lastMessageAt?: string | null;
+}
+
+export interface DirectMessageThreadDetail {
+  thread: DirectMessageThreadView;
+  messages: DirectMessageView[];
+  isEmpty: boolean;
+}
+
 export interface ChatFieldErrors {
   title?: string;
   description?: string;

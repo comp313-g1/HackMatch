@@ -1,0 +1,67 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":24,"diagramMarginY":12,"actorMargin":26,"width":160,"height":56,"boxMargin":8,"messageMargin":16,"noteMargin":8}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-032: Private Direct Messaging — Sequence Diagram
+    actor PART as Verified Active PART
+    participant UI as React DM UI
+    participant API as Express API, Guards + Service
+    participant DB as PostgreSQL / Supabase
+
+    PART->>UI: Open Direct messages
+    UI->>API: Request inbox
+    API->>API: Require session, MFA, active verified PART
+    alt Caller is ineligible
+        API-->>UI: 401 or generic 403 without private content
+    else Caller is eligible
+        API->>DB: Find pair threads ordered by recent activity
+        DB-->>API: Threads and latest messages
+        API-->>UI: Safely projected inbox or empty list
+    end
+    UI-->>PART: Render inbox, empty, denied, or error state
+
+    opt Open or continue a conversation
+        PART->>UI: Choose an eligible participant
+        UI->>API: Submit participant identifier
+        API->>API: Reject self, ineligible peer, or either-direction block
+        API->>DB: Find or create sorted low/high participant pair
+        Note right of DB: Unique pair makes A–B and B–A one thread
+        DB-->>API: Existing or newly created thread
+        API-->>UI: Safe thread projection
+    end
+
+    PART->>UI: Select an inbox thread
+    UI->>UI: Clear stale messages and show loading
+    UI->>API: Request persisted thread and messages
+    API->>DB: Resolve thread and verify caller is in its pair
+    alt Missing thread or unrelated caller
+        DB-->>API: No authorized thread
+        API-->>UI: Generic 403 without querying messages
+    else Caller belongs to thread
+        API->>DB: Load messages oldest first
+        DB-->>API: Messages or empty list
+        API-->>UI: Allowlisted handle, fromMe, UTC time, and body
+    end
+    UI-->>PART: Render thread, empty, denied, or error state
+
+    PART->>UI: Submit message draft
+    UI->>UI: Validate nonblank body and 4,000-character limit
+    alt Validation fails
+        UI-->>PART: Show error and retain draft
+    else Validation passes
+        UI->>API: Submit message to selected thread
+        API->>DB: Recheck pair membership, peer eligibility, and blocks
+        alt Access changed or either participant blocked the other
+            DB-->>API: Denied
+            API-->>UI: Safe 403 without private-state details
+            UI-->>PART: Show denial and retain draft
+        else Send authorized
+            API->>DB: Insert message
+            Note right of DB: Trigger enforces author in pair and updates last_message_at
+            DB-->>API: Created message
+            API-->>UI: Safely projected created message
+            UI-->>PART: Append once and clear draft after success
+        end
+    end
+
+    Note over API,DB: US-030 public forums and US-031 team chat remain separate models and authorization paths.
+

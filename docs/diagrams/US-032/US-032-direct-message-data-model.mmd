@@ -1,0 +1,58 @@
+---
+title: "HackMatch — US-032: Private Direct Messaging — Focused Data Model"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","tertiaryColor":"#f1e8ff","fontFamily":"Arial, sans-serif"},"er":{"useMaxWidth":true,"diagramPadding":24,"layoutDirection":"LR","minEntityWidth":255,"minEntityHeight":75,"entityPadding":14,"stroke":"#4b5563","fill":"#ffffff","fontSize":14}}}%%
+erDiagram
+    direction LR
+
+    PARTICIPANTS ||--o| PARTICIPANT_PROFILES : has
+    PARTICIPANTS ||--o{ DIRECT_MESSAGE_THREADS : "is low participant"
+    PARTICIPANTS ||--o{ DIRECT_MESSAGE_THREADS : "is high participant"
+    DIRECT_MESSAGE_THREADS ||--o{ DIRECT_MESSAGES : contains
+    PARTICIPANTS ||--o{ DIRECT_MESSAGES : authors
+    PARTICIPANTS ||--o{ PARTICIPANT_BLOCKS : creates
+    PARTICIPANTS ||--o{ PARTICIPANT_BLOCKS : receives
+
+    PARTICIPANTS["participants"] {
+        uuid id PK
+        string role "PART or ADMIN"
+        boolean is_verified
+        boolean is_suspended
+        boolean is_deactivated
+    }
+
+    PARTICIPANT_PROFILES["participant_profiles"] {
+        uuid participant_id PK, FK
+        string handle "Safe display identity"
+    }
+
+    DIRECT_MESSAGE_THREADS["direct_message_threads"] {
+        uuid id PK
+        uuid participant_low_id FK "Canonical lower UUID"
+        uuid participant_high_id FK "low less than high; pair unique"
+        datetime last_message_at "Inbox activity cursor"
+        datetime created_at
+        datetime updated_at
+    }
+
+    DIRECT_MESSAGES["direct_messages"] {
+        uuid id PK
+        uuid thread_id FK
+        uuid author_id FK "Must belong to thread pair"
+        text body "Nonblank, at most 4000"
+        datetime created_at
+    }
+
+    PARTICIPANT_BLOCKS["participant_blocks"] {
+        uuid blocker_id PK, FK
+        uuid blocked_id PK, FK "Different participant"
+        datetime created_at
+    }
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef messaging fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64
+    classDef restriction fill:#fff7d6,stroke:#d4a72c,color:#4a3b00
+    class PARTICIPANTS,PARTICIPANT_PROFILES identity
+    class DIRECT_MESSAGE_THREADS,DIRECT_MESSAGES messaging
+    class PARTICIPANT_BLOCKS restriction
+

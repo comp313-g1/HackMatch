@@ -1,0 +1,87 @@
+---
+title: "HackMatch — US-032: Direct Message Access and Privacy — Activity Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":42,"rankSpacing":54,"padding":14}}}%%
+flowchart TB
+    PUBLIC["US-030 public forums<br/>Separate public-channel routes"]:::internal
+    TEAM["US-031 private team chat<br/>Confirmed-membership routes"]:::internal
+    START(["Request direct-message resource"]):::identity
+    AUTH{"Authenticated session<br/>with current MFA?"}:::decision
+    ACCOUNT{"Verified active PART?<br/>Not suspended or deactivated"}:::decision
+    OP{"Requested operation?"}:::decision
+
+    OPEN["Open or continue thread"]:::messaging
+    PEER{"Different eligible PART<br/>and no block either way?"}:::decision
+    PAIR["Canonicalize UUID pair<br/>participant_low_id less than participant_high_id"]:::persistence
+    UNIQUE["Find or create unique pair<br/>Concurrent retries return same thread"]:::persistence
+
+    INBOX["List only threads where caller<br/>is low or high participant"]:::messaging
+
+    READ["Read thread or messages"]:::messaging
+    MEMBER{"Caller is one of persisted<br/>thread participants?"}:::decision
+    QUERY["Query private messages only now"]:::persistence
+
+    SEND["Send message"]:::messaging
+    SEND_MEMBER{"Caller still belongs<br/>to persisted pair?"}:::decision
+    PEER_STATE{"Peer remains verified<br/>active PART?"}:::decision
+    BLOCK{"Block exists<br/>in either direction?"}:::decision
+    BODY{"Body nonblank<br/>at most 4,000 characters?"}:::decision
+    STORE["Insert message<br/>Author must belong to pair"]:::persistence
+
+    PROJECT["Allowlist and recursive privacy scrub<br/>Handle, fromMe, UTC time, body"]:::success
+    DENY_AUTH["401 Authentication required<br/>No private payload"]:::denied
+    DENY_ACCOUNT["403 Account or role denied<br/>Unrelated ADMIN has no bypass"]:::denied
+    DENY_OPEN["404 Peer unavailable<br/>Do not distinguish block or account state"]:::denied
+    DENY_THREAD["403 Conversation unavailable<br/>Same response for missing or unrelated thread"]:::denied
+    DENY_SEND["403 Send unavailable<br/>Do not reveal peer block or account state"]:::denied
+    VALIDATION["400 Validation error<br/>Return safe submitted draft"]:::denied
+    NO_STORE["Errors use no-store<br/>No messages, credentials, email, presence, or block state"]:::internal
+
+    PUBLIC -. "Distinct workflow" .-> START
+    TEAM -. "Distinct workflow" .-> START
+    START --> AUTH
+    AUTH -->|"Yes"| ACCOUNT
+    AUTH -->|"No"| DENY_AUTH
+    ACCOUNT -->|"Yes"| OP
+    ACCOUNT -->|"No / ADMIN"| DENY_ACCOUNT
+
+    OP -->|"Open"| OPEN
+    OP -->|"Inbox"| INBOX
+    OP -->|"Read"| READ
+    OP -->|"Send"| SEND
+
+    OPEN --> PEER
+    PEER -->|"Yes"| PAIR --> UNIQUE --> PROJECT
+    PEER -->|"No"| DENY_OPEN
+
+    INBOX --> PROJECT
+
+    READ --> MEMBER
+    MEMBER -->|"Yes"| QUERY --> PROJECT
+    MEMBER -->|"No"| DENY_THREAD
+
+    SEND --> SEND_MEMBER
+    SEND_MEMBER -->|"Yes"| PEER_STATE
+    SEND_MEMBER -->|"No"| DENY_THREAD
+    PEER_STATE -->|"Yes"| BLOCK
+    PEER_STATE -->|"No"| DENY_SEND
+    BLOCK -->|"No"| BODY
+    BLOCK -->|"Yes"| DENY_SEND
+    BODY -->|"Yes"| STORE --> PROJECT
+    BODY -->|"No"| VALIDATION
+
+    DENY_AUTH --> NO_STORE
+    DENY_ACCOUNT --> NO_STORE
+    DENY_OPEN --> NO_STORE
+    DENY_THREAD --> NO_STORE
+    DENY_SEND --> NO_STORE
+    VALIDATION --> NO_STORE
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef messaging fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef persistence fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+
