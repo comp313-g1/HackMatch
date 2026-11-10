@@ -5,6 +5,8 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_API_KEY?: string;
   readonly VITE_FIREBASE_AUTH_DOMAIN?: string;
   readonly VITE_FIREBASE_PROJECT_ID?: string;
+  /** US-028 / #263 approved audit-record retention in whole days; empty = not approved yet. */
+  readonly VITE_AUDIT_RETENTION_DAYS?: string;
 }
 
 interface ImportMeta {

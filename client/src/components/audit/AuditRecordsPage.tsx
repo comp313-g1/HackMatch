@@ -7,6 +7,7 @@ import {
   validateAuditFilters,
 } from './auditFilterValidation';
 import { AuditPagination } from './AuditPagination';
+import { describeRetention, readRetentionPolicy, type RetentionPolicy } from './auditRetention';
 import { AuditTable } from './AuditTable';
 import {
   AUDIT_CATEGORY_LABELS,
@@ -21,6 +22,10 @@ import {
 
 export interface AuditRecordsPageProps {
   onNavigateAway?: () => void;
+  /** Overrides the configured retention policy (tests); defaults to VITE_AUDIT_RETENTION_DAYS. */
+  retentionPolicy?: RetentionPolicy;
+  /** Overrides "now" when deciding what is past retention (tests). */
+  now?: number;
 }
 
 type PageState = 'loading' | 'ready' | 'denied' | 'error';
@@ -82,7 +87,15 @@ function describeFilters(filters: AuditFilterValues): string[] {
  * all return to the newest page. Typed filter values are never discarded on an error, and the
  * page already on screen stays if any navigation, filter or refresh request fails.
  */
-export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): React.JSX.Element {
+export function AuditRecordsPage({
+  onNavigateAway,
+  retentionPolicy,
+  now,
+}: AuditRecordsPageProps): React.JSX.Element {
+  // Read once: the approved retention period (if any) comes from configuration (US-028 / #263).
+  const [policy] = useState<RetentionPolicy>(
+    () => retentionPolicy ?? readRetentionPolicy(import.meta.env.VITE_AUDIT_RETENTION_DAYS)
+  );
   const [pageState, setPageState] = useState<PageState>('loading');
   /** Pages fetched so far for the current filters and page size; index 0 is the newest. */
   const [pages, setPages] = useState<AuditPage[]>([]);
@@ -359,6 +372,20 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
         </button>
       </header>
 
+      <p
+        role="note"
+        data-testid="audit-retention-note"
+        data-retention-status={policy.status}
+        className={`rounded-md border px-3 py-2 text-xs ${
+          policy.status === 'invalid'
+            ? 'border-red-200 bg-red-50 text-red-800'
+            : 'border-cream-200 bg-cream-50 text-ink-muted'
+        }`}
+      >
+        {describeRetention(policy)} Identities of erased accounts appear only as a pseudonym, and personal
+        contact details in free text are hidden.
+      </p>
+
       <AuditFilters
         values={draft}
         errors={fieldErrors}
@@ -428,7 +455,7 @@ export function AuditRecordsPage({ onNavigateAway }: AuditRecordsPageProps): Rea
             {filtersActive ? ' matching your filters' : ''}
             {hasMore ? ' — more available' : ''}.
           </p>
-          <AuditTable records={records} />
+          <AuditTable records={records} retention={policy} now={now} />
           {pageIndex > 0 || hasMore ? (
             <AuditPagination
               pageIndex={pageIndex}
