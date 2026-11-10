@@ -4,9 +4,9 @@ This manual explains how to use the current HackMatch web application. It is wri
 
 | Item | Current manual scope |
 |---|---|
-| Version | 4.0 — Issue #419 update for completed user stories through US-031 |
-| Covers | Registration, email verification, sign-in, email OTP, password recovery, profiles, hackathon history and experience badges, Looking for Team, team discovery, candidate directory search, recruitment, requests, roster locking, notifications, private team workspace, team manifest export, abuse reporting, chat, and ADMIN screens (moderation, accounts, audit log) |
-| Does not cover | Removed hackathon-directory workflows (US-008–US-010), authenticator-app 2FA (US-029, future), the on-screen private team chat (US-031, server side only so far), or other unimplemented features |
+| Version | 5.0 — Issue #420 update for completed user stories through US-032 |
+| Covers | Registration, email verification, sign-in, email OTP, password recovery, profiles, hackathon history and experience badges, Looking for Team, team discovery, candidate directory search, recruitment, requests, roster locking, notifications, private team workspace, team manifest export, abuse reporting, forums chat, private team chat, direct messages, and ADMIN screens (moderation, accounts, audit log) |
+| Does not cover | Removed hackathon-directory workflows (US-008–US-010), authenticator-app 2FA (US-029, future), starting a brand-new direct message from a profile or card (not available yet), blocking and unblocking controls, or other unimplemented features |
 | Sources checked | Current React components, Express routes and access middleware, tests, User Stories, requirements, and real application captures |
 
 > **Current-scope note:** Team formation is presented as a platform-wide workflow. Users do not choose a hackathon before creating, finding, or joining a team. A few current screens and older real captures still contain words such as “event” or “hackathon”; those are transitional interface or internal-compatibility terms, not a user-facing event-directory workflow.
@@ -32,11 +32,13 @@ This manual explains how to use the current HackMatch web application. It is wri
 17. [Use the private team workspace](#17-use-the-private-team-workspace)
 18. [Export the team manifest](#18-export-the-team-manifest)
 19. [Report abusive content](#19-report-abusive-content)
-20. [Use chat and messaging](#20-use-chat-and-messaging)
-21. [Administrator screens](#21-administrator-screens)
-22. [Profile menu, session, and sign out](#22-profile-menu-session-and-sign-out)
-23. [Troubleshooting and FAQ](#23-troubleshooting-and-faq)
-24. [Screenshot coverage](#24-screenshot-coverage)
+20. [Use chat and forums](#20-use-chat-and-forums)
+21. [Use the private team chat](#21-use-the-private-team-chat)
+22. [Use direct messages](#22-use-direct-messages)
+23. [Administrator screens](#23-administrator-screens)
+24. [Profile menu, session, and sign out](#24-profile-menu-session-and-sign-out)
+25. [Troubleshooting and FAQ](#25-troubleshooting-and-faq)
+26. [Screenshot coverage](#26-screenshot-coverage)
 
 ## 1. About HackMatch
 
@@ -54,10 +56,12 @@ The current application supports:
 - a candidate directory search for Team Leads;
 - a private workspace and an exportable roster manifest for locked teams;
 - reporting of abusive profiles, team listings, and suspicious links;
-- participant presence, forums, and text messages; and
+- participant presence, shared forums, and text messages;
+- a private team chat for the confirmed members of a team;
+- one-to-one direct messages between Participants; and
 - ADMIN-only content moderation, account enforcement, and a read-only audit log.
 
-The current application does **not** provide a public hackathon directory, hackathon submission, event approval workflow, direct messages, a team-only chat screen (the secure server side exists, but the screen is not yet released), attachments, voice/video, reactions, typing indicators, or authenticator-app two-factor sign-in.
+The current application does **not** provide a public hackathon directory, hackathon submission, event approval workflow, a "new message" button for starting a direct message from a profile, block or unblock controls, unread or mention badges, attachments, voice/video, reactions, typing indicators, or authenticator-app two-factor sign-in.
 
 ## 2. Roles and access
 
@@ -503,13 +507,13 @@ You can send at most **5 reports per hour**. If you reach the limit, wait and tr
 
 *Figure 16 — Placeholder: replace with a capture of the report window and the receipt confirmation.*
 
-## 20. Use chat and messaging
+## 20. Use chat and forums
 
-**Purpose:** Set presence, create topic forums, and exchange text messages.
+**Purpose:** Set presence, create shared topic forums, and exchange text messages with other Participants.
 
 **Prerequisite:** Signed in as a verified, active `PART` with OTP complete. Visitors, unverified Participants, suspended Participants, and ADMIN-only accounts are not normal chat users.
 
-1. Select the floating **Open chat** button at the lower-left corner.
+1. Select the floating **Open chat** button at the lower-left corner. The chat panel has two tabs: **Forums** (this section) and **Direct messages** ([§22](#22-use-direct-messages)).
 2. Under **Presence status**, choose **Online**, **Idle**, **Do Not Disturb**, or **Invisible**. Presence changes only when selected; no automatic idle timer is documented.
 3. To create a forum, enter a **Title** and **Description**, then select **Create forum**.
 4. Select a forum from the **Forums** list.
@@ -522,11 +526,72 @@ You can send at most **5 reports per hour**. If you reach the limit, wait and tr
 
 Current limits are 120 characters for a forum title, 2,000 for its description, and 4,000 for a message. Validation and request failures preserve drafts. Messages show the author handle, UTC-backed timestamp rendered for the viewer, and content; chat responses do not expose account email, passwords, OTPs, or OTP hashes.
 
-Current chat is a shared topic-forum experience. Direct messages, unread/mention badges, reactions, typing indicators, attachments, and voice/video are not available.
+Forums are shared: every verified active Participant can read and post in them. For a private conversation use your team's chat ([§21](#21-use-the-private-team-chat)) or a direct message ([§22](#22-use-direct-messages)). Unread/mention badges, reactions, typing indicators, attachments, and voice/video are not available.
 
-**Private team chat (coming).** The secure back end for a private chat limited to your confirmed teammates is in place, but the on-screen team chat is not released yet, so you will not see it in the app today. When it is released, only active confirmed team members will be able to open or send messages in it, anyone else (including an Administrator who is not on the team) will be refused without seeing any content, a removed member will lose the ability to write while earlier messages stay, and a disbanded team's chat becomes read-only history.
+## 21. Use the private team chat
 
-## 21. Administrator screens
+**Purpose:** Talk with your teammates in a channel that only the confirmed members of your team can open.
+
+**Prerequisite:** You are a confirmed member (or the owner) of the team, signed in as a verified active `PART` with OTP complete. The team can be open or locked.
+
+1. Open the team from **My teams**.
+2. Find the **Team chat** panel ("Private messages for confirmed ... team members").
+3. Select **Open team chat**. The channel name and the **Team messages** list appear.
+4. Read the messages, oldest first. Each shows the author's handle and the time.
+5. Type in **Write a private team message...** and select **Send message**. A short confirmation says **Message sent.**
+6. Select **Refresh messages** to load new messages, or **Close** to hide the chat.
+
+What you will see in other situations:
+
+| Situation | What you see |
+|---|---|
+| Nobody has written yet | **No team messages yet. Start the conversation below.** |
+| You are not (or are no longer) a confirmed member of this team | **Team chat access denied**, with no messages |
+| You were removed from the team or left it | You can no longer open or write in the chat. Messages written earlier stay for the team |
+| The team was disbanded | The chat is history only; nobody can write new messages |
+| The message is empty or too long (over 4,000 characters) | A message under the box; **your text stays in the box** |
+| The server could not be reached | **Could not send message.** or **Could not load team chat** with **Retry**; your text is kept |
+| Your account is suspended | You cannot write |
+
+Messages show handles only. Account emails, contact details, and presence are never shown.
+
+![Placeholder: Team chat panel on the team page](../assets/wireframes/US-031-team-chat.png)
+
+*Figure 19 — Placeholder: replace with a capture of the Team chat panel with a few messages.*
+
+## 22. Use direct messages
+
+**Purpose:** Exchange private one-to-one messages with another Participant.
+
+**Prerequisite:** Signed in as a verified active `PART` with OTP complete. Only the two people in a conversation can read or write in it.
+
+1. Select the floating **Open chat** button, then the **Direct messages** tab.
+2. The **Direct-message conversations** list shows each conversation with the other person's handle, the latest message, and its time, most recent first. Select **Refresh inbox** to reload it.
+3. Select a conversation to open it. Messages appear oldest first, each with the author's handle and the time.
+4. Type in **Write a direct message...** and select **Send message**.
+
+What you will see in other situations:
+
+| Situation | What you see |
+|---|---|
+| You have no conversations yet | **No direct-message conversations yet.** |
+| A conversation has no messages yet | **No messages yet. Start the conversation below.** |
+| You are not one of the two people in a conversation, or it does not exist | **Direct-message access denied. This private conversation is not available.** No messages are shown |
+| The other person is suspended, deactivated, or unverified | You can read the conversation but cannot send. A message says you cannot send messages in it |
+| You blocked the other person | You can read but not send; the message says **You have blocked this participant** |
+| The other person blocked you | You can read but not send. The message does not say why, so it looks the same as an unavailable person |
+| The message is empty or over 4,000 characters | **Message is required.** or a length message; your text stays in the box |
+| The server could not be reached | **Could not send message. Your draft has been kept.** |
+
+Direct messages show handles only. Account emails, full names, contact details, presence, and passwords are never included, and someone who is not part of a conversation cannot find out whether it exists.
+
+**Starting a new conversation.** A conversation appears in your inbox once it exists. The current screen has no "message this person" button on profiles or candidate cards yet, so you cannot start a brand-new conversation from the interface today. Existing conversations can be opened and continued as described above.
+
+![Placeholder: Direct messages inbox and conversation](../assets/wireframes/US-032-direct-messages.png)
+
+*Figure 20 — Placeholder: replace with a capture of the inbox and an open conversation.*
+
+## 23. Administrator screens
 
 Only an active `ADMIN` with OTP complete sees **Admin ▾**. Participants and Visitors are denied by the server even if they attempt a direct request.
 
@@ -574,7 +639,7 @@ Records older than the configured retention period are labelled **Past retention
 
 *Figure 18 — Placeholder: replace with a capture of the audit table, filters, and pagination.*
 
-## 22. Profile menu, session, and sign out
+## 24. Profile menu, session, and sign out
 
 The account-name menu contains **Profile** and **Sign out**; there is no separate general settings page in the current application.
 
@@ -586,7 +651,7 @@ To end the session:
 
 After sign-out, protected actions require a new primary sign-in and email OTP. Do not use a shared browser without signing out.
 
-## 23. Troubleshooting and FAQ
+## 25. Troubleshooting and FAQ
 
 ### Why can I browse teams but not apply?
 
@@ -614,7 +679,7 @@ Locked teams reject ordinary roster and vacancy changes. A Team Lead cannot leav
 
 ### Why can’t I open Chat?
 
-Chat requires a verified, active Participant session with OTP complete. It is not available to Visitors, unverified or suspended Participants, or as an ordinary ADMIN feature.
+Chat (forums, team chat, and direct messages) requires a verified, active Participant session with OTP complete. It is not available to Visitors, unverified or suspended Participants, or as an ordinary ADMIN feature.
 
 ### Why is my notification bell empty or showing an error?
 
@@ -632,9 +697,25 @@ You may have reached the limit of 5 reports per hour, left the category empty, o
 
 A teammate saved a newer version first. Open the latest revision, re-apply your change, and save again.
 
-### Where is the private team chat?
+### Why does the Team chat panel say it could not load?
 
-Its secure back end is built, but the on-screen team chat has not been released yet. Use the shared forums in the meantime.
+Private team chat needs a chat channel for your team. If your team does not have one yet, the panel shows an error such as **Could not load team chat** with **Retry**. Ask the project team to set up the channel; nothing is wrong with your account.
+
+### Why does the team chat say access denied?
+
+Only active confirmed members of that team can open it. Check that you were not removed from the team and that you are signed in with the right account.
+
+### Why can't I send a direct message?
+
+The other person may be suspended, deactivated, unverified, or may have blocked you, or you may have blocked them. You can still read the conversation. Messages must also be between 1 and 4,000 characters.
+
+### Why is there no button to message someone from their profile?
+
+Starting a brand-new direct message from a profile is not available yet. Conversations that already exist appear under **Direct messages** in the chat panel.
+
+### How do I stop messages from someone?
+
+Block and unblock controls are not available in the interface yet. If someone is sending abusive messages, use the report option described in [§19](#19-report-abusive-content) and contact the project team.
 
 ### What happens when a form fails?
 
@@ -644,16 +725,16 @@ The current forms are designed to keep valid entered values or drafts when valid
 
 The current user workflow is platform-wide and does not include a hackathon directory. Some visible copy and internal compatibility fields have not yet been renamed. Follow the current navigation in this manual: **Open teams**, **My teams**, **Find teammates**, and **Requests**.
 
-## 24. Screenshot coverage
+## 26. Screenshot coverage
 
-This manual embeds 10 genuine captures and 7 labelled placeholders from the current feature implementations under [`docs/assets/wireframes/`](../assets/wireframes/README.md). Demo account emails and authentication values are hidden. No screenshot contains passwords, OTP values, tokens, or environment secrets.
+This manual embeds 10 genuine captures and 9 labelled placeholders from the current feature implementations under [`docs/assets/wireframes/`](../assets/wireframes/README.md). Demo account emails and authentication values are hidden. No screenshot contains passwords, OTP values, tokens, or environment secrets.
 
 The browser-control helper was unavailable during this Issue #353 update, so no screenshot was fabricated or replaced. The embedded captures accurately show the documented workflow panels; some retain the previous header labels (**Browse Events**, **Browse Teams**, separate **Applications**/**Invitations**, or a top-level **Chat** link). The current code has consolidated those destinations into **Open teams**, **Requests**, and the floating **Open chat** button as described in §3.
 
-**Placeholders (Issue #419).** Figures 11–16 and 18 point to files that do not exist yet: `US-021-notification-bell-dropdown.png`, `US-007-hackathon-history.png`, `US-014-candidate-directory-search.png`, `US-023-private-coordination-workspace.png`, `US-024-team-manifest-export.png`, `US-025-report-abuse-modal.png`, and `US-028-admin-audit-log.png`. Capture each with demo accounts only (no real emails, OTPs, or tokens), save it in `docs/assets/wireframes/` under the same name, and the image will appear.
+**Placeholders (Issues #419 and #420).** Figures 11–16 and 18–20 point to files that do not exist yet: `US-021-notification-bell-dropdown.png`, `US-007-hackathon-history.png`, `US-014-candidate-directory-search.png`, `US-023-private-coordination-workspace.png`, `US-024-team-manifest-export.png`, `US-025-report-abuse-modal.png`, `US-028-admin-audit-log.png`, `US-031-team-chat.png`, and `US-032-direct-messages.png`. Capture each with demo accounts only (no real emails, OTPs, or tokens), save it in `docs/assets/wireframes/` under the same name, and the image will appear.
 
 Additional real captures for empty, locked, recommendation, application-list, moderation, and account-enforcement states remain available in the same wireframes folder.
 
 ---
 
-HackMatch · COMP 313 · Team 1 · User Manual · Issue #419
+HackMatch · COMP 313 · Team 1 · User Manual · Issue #420
