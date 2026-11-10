@@ -14,11 +14,11 @@ This is the single documentation and navigation source for HackMatch engineering
 
 | Item | Count |
 |---|---:|
-| Diagrammed User Stories | 19 |
-| Mermaid sources | 46 |
-| Matching rendered diagram PNGs | 46 |
+| Diagrammed User Stories | 20 |
+| Mermaid sources | 49 |
+| Matching rendered diagram PNGs | 49 |
 | Shared reference images | 1 |
-| Total PNG files | 47 |
+| Total PNG files | 50 |
 
 ## Diagram and visual conventions
 
@@ -66,6 +66,7 @@ Every link below resolves from this central README. “Source” opens the edita
 | **US-027 — Administrative Account Management and Enforcement** | Partial (repository-audited) | Account Suspension Sequence ([PNG](US-027/US-027-account-suspension-sequence.png), [source](US-027/US-027-account-suspension-sequence.mmd))<br>Verified Account Deletion Sequence ([PNG](US-027/US-027-account-deletion-sequence.png), [source](US-027/US-027-account-deletion-sequence.mmd)) |
 | **US-030 — Participant Chat Forums and Messaging** | Planned — specification-grounded | Chat Use Case ([PNG](US-030/US-030-chat-use-case.png), [source](US-030/US-030-chat-use-case.mmd))<br>Core Chat Sequence ([PNG](US-030/US-030-core-chat-sequence.png), [source](US-030/US-030-core-chat-sequence.mmd))<br>Chat Access and Presence Flow ([PNG](US-030/US-030-presence-access-flow.png), [source](US-030/US-030-presence-access-flow.mmd))<br>Planned Chat Data Model ([PNG](US-030/US-030-chat-data-model.png), [source](US-030/US-030-chat-data-model.mmd)) |
 | **US-031 — Private Team Chat Channel for Confirmed Team Members** | Implemented (repository-audited) | Private Team Chat Use Case ([PNG](US-031/US-031-private-team-chat-use-case.png), [source](US-031/US-031-private-team-chat-use-case.mmd))<br>Private Team Chat Sequence ([PNG](US-031/US-031-private-team-chat-sequence.png), [source](US-031/US-031-private-team-chat-sequence.mmd))<br>Authorization and Privacy Flow ([PNG](US-031/US-031-team-chat-authorization-flow.png), [source](US-031/US-031-team-chat-authorization-flow.mmd))<br>Focused Team Chat Data Model ([PNG](US-031/US-031-team-chat-data-model.png), [source](US-031/US-031-team-chat-data-model.mmd))<br>History and Lifecycle Flow ([PNG](US-031/US-031-team-chat-lifecycle-flow.png), [source](US-031/US-031-team-chat-lifecycle-flow.mmd)) |
+| **US-032 — Private Direct Messaging Between Participants** | Partial (repository-audited) | Focused Direct Message Data Model ([PNG](US-032/US-032-direct-message-data-model.png), [source](US-032/US-032-direct-message-data-model.mmd))<br>Direct Message Sequence ([PNG](US-032/US-032-direct-message-sequence.png), [source](US-032/US-032-direct-message-sequence.mmd))<br>Access and Privacy Flow ([PNG](US-032/US-032-direct-message-access-flow.png), [source](US-032/US-032-direct-message-access-flow.mmd)) |
 
 ### Stories without story-specific diagrams
 
@@ -99,6 +100,7 @@ These notes preserve the material gaps identified during the diagram audits with
 | US-026 | ADMIN moderation exists, but mutation and audit writes are sequential rather than atomic; URL disablement may touch a shadow event and action records lack a direct case relationship. |
 | US-027 | Suspension and verified deletion exist; unsuspension is not implemented, Firebase/PostgreSQL/audit steps are non-atomic, and moderation “Hidden” is reused for account state. |
 | US-031 | One immutable private channel is linked per team; only verified active PART users with current Confirmed membership receive access. Open and Locked teams remain writable, Disbanded channels are read-only history, former members lose access, unrelated ADMIN users have no bypass, and safe projections prevent private-field leakage. |
+| US-032 | Canonical low/high participant pairs, one thread per pair, participant-only reads, block/eligibility-aware sends, safe projections, and the React inbox/thread/composer are implemented. The broader #391 access/validation suite remains pending; the client message type still names legacy `authorId` while the #390 server projection returns `fromMe`, although the current UI renders neither field. |
 
 Focused audits for US-013, US-015, US-017–US-022, US-026, and US-027 could not validate live Supabase transactions in the audit environment; several integration suites use mocks. Treat their diagrams as explanations of inspected code and intended invariants, not proof of a deployed database state.
 
