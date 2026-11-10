@@ -14,6 +14,9 @@ vi.mock('./chatApi', async () => {
     createChatChannel: vi.fn(),
     listChatMessages: vi.fn(),
     sendChatMessage: vi.fn(),
+    listDirectMessageThreads: vi.fn(),
+    getDirectMessageThread: vi.fn(),
+    sendDirectMessage: vi.fn(),
   };
 });
 
@@ -26,6 +29,7 @@ describe('ChatPage (US-030 / #346)', () => {
     });
     vi.mocked(chatApi.listChatChannels).mockResolvedValue([]);
     vi.mocked(chatApi.listChatMessages).mockResolvedValue([]);
+    vi.mocked(chatApi.listDirectMessageThreads).mockResolvedValue([]);
   });
 
   it('shows loading then empty forums state', async () => {
@@ -162,5 +166,17 @@ describe('ChatPage (US-030 / #346)', () => {
       expect(screen.getByText(/Status set to Online/i)).toBeInTheDocument();
     });
     expect(chatApi.updateMyPresence).toHaveBeenCalledWith('Online');
+  });
+
+  it('opens the direct-message inbox without replacing public forums', async () => {
+    render(<ChatPage />);
+    await screen.findByTestId('forums-empty');
+
+    fireEvent.click(screen.getByRole('button', { name: /direct messages/i }));
+    expect(await screen.findByTestId('direct-messages-view')).toBeInTheDocument();
+    expect(screen.getByTestId('dm-inbox-empty')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^forums$/i }));
+    expect(screen.getByTestId('create-forum-form')).toBeInTheDocument();
   });
 });

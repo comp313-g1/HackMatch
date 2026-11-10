@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:us028": "vitest run src/components/audit src/App.test.tsx",
     "test:us021": "vitest run src/components/notifications src/App.test.tsx",
+    "test:us032": "vitest run src/components/chat/DirectMessagesView.test.tsx src/components/chat/chatApi.test.ts src/components/chat/ChatPage.test.tsx",
     "test:us003": "vitest run src/components/auth/LoginForm.test.tsx src/components/auth/login.integration.test.tsx src/components/auth/loginErrors.test.ts src/components/auth/accountStatus.test.ts src/components/auth/MfaGate.test.tsx src/components/auth/logout.test.ts src/config/authFetch.test.ts",
     "test:us012": "vitest run src/components/teams",
     "test:coverage": "vitest run --coverage"

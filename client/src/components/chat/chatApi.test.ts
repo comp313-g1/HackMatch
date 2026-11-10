@@ -4,10 +4,13 @@ import {
   ChatApiError,
   createChatChannel,
   fetchMyPresence,
+  getDirectMessageThread,
+  listDirectMessageThreads,
   listChatChannels,
   listTeamChatMessages,
   openTeamChat,
   sendChatMessage,
+  sendDirectMessage,
   sendTeamChatMessage,
   updateMyPresence,
 } from './chatApi';
@@ -213,5 +216,68 @@ describe('chatApi (US-030 / #346)', () => {
       status: 502,
       code: 'INVALID_RESPONSE',
     });
+  });
+
+  it('uses the DM inbox and thread-detail endpoints', async () => {
+    const threadId = '11111111-1111-4111-8111-111111111111';
+    const thread = {
+      id: threadId,
+      peer: { id: '22222222-2222-4222-8222-222222222222', handle: 'blake' },
+      createdAt: '2026-11-09T20:00:00.000Z',
+      updatedAt: '2026-11-09T20:00:00.000Z',
+    };
+    vi.mocked(authFetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'ok', threads: [thread], isEmpty: false }), {
+          status: 200,
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ status: 'ok', thread, messages: [], isEmpty: true }),
+          { status: 200 }
+        )
+      );
+
+    await expect(listDirectMessageThreads()).resolves.toEqual([thread]);
+    await expect(getDirectMessageThread(threadId)).resolves.toMatchObject({
+      thread,
+      messages: [],
+      isEmpty: true,
+    });
+    expect(authFetch).toHaveBeenNthCalledWith(1, '/api/direct-messages/threads', {
+      method: 'GET',
+    });
+    expect(authFetch).toHaveBeenNthCalledWith(
+      2,
+      `/api/direct-messages/threads/${threadId}`,
+      { method: 'GET' }
+    );
+  });
+
+  it('sends a DM using the exact draft and preserves it on validation error', async () => {
+    const threadId = '11111111-1111-4111-8111-111111111111';
+    const draft = { body: '  exact draft  ' };
+    vi.mocked(authFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: 'Validation failed.',
+          code: 'VALIDATION_ERROR',
+          errors: { body: 'body is required.' },
+          submitted: draft,
+        }),
+        { status: 400 }
+      )
+    );
+
+    await expect(sendDirectMessage(threadId, draft)).rejects.toMatchObject({
+      status: 400,
+      code: 'VALIDATION_ERROR',
+      submitted: draft,
+    });
+    expect(authFetch).toHaveBeenCalledWith(
+      `/api/direct-messages/threads/${threadId}/messages`,
+      expect.objectContaining({ method: 'POST', body: JSON.stringify(draft) })
+    );
   });
 });

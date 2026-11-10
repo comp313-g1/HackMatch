@@ -5,6 +5,9 @@ import type {
   ChatMessageView,
   ChatPrivacyFlags,
   CreateChannelInput,
+  DirectMessageThreadDetail,
+  DirectMessageThreadView,
+  DirectMessageView,
   PresenceStatus,
   PresenceView,
   SendMessageInput,
@@ -218,6 +221,96 @@ export async function sendTeamChatMessage(
       502,
       'INVALID_RESPONSE',
       { _form: 'The server returned an invalid sent-message response.' },
+      input,
+      'Could not send message. Your draft has been kept.'
+    );
+  }
+  return data.message;
+}
+
+/** Lists the authenticated participant's safe direct-message inbox (US-032 / #389). */
+export async function listDirectMessageThreads(): Promise<DirectMessageThreadView[]> {
+  const data = await requestJson<{
+    threads: DirectMessageThreadView[];
+    isEmpty: boolean;
+  }>('/api/direct-messages/threads', { method: 'GET' });
+  if (!Array.isArray(data.threads)) {
+    throw new ChatApiError(
+      502,
+      'INVALID_RESPONSE',
+      { _form: 'The server returned an invalid direct-message inbox.' },
+      undefined,
+      'Could not load direct messages. Please try again.'
+    );
+  }
+  return data.threads;
+}
+
+/** Opens or continues the canonical thread for an eligible participant. */
+export async function openDirectMessageThread(
+  participantId: string
+): Promise<DirectMessageThreadView> {
+  const payload = { participantId };
+  const data = await requestJson<{ thread: DirectMessageThreadView }>(
+    '/api/direct-messages/threads',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+    payload
+  );
+  if (!data.thread || !data.thread.id) {
+    throw new ChatApiError(
+      502,
+      'INVALID_RESPONSE',
+      { _form: 'The server returned an invalid direct-message thread.' },
+      payload,
+      'Could not open the direct-message conversation.'
+    );
+  }
+  return data.thread;
+}
+
+/** Loads one authorized thread and its chronologically ordered messages. */
+export async function getDirectMessageThread(
+  threadId: string
+): Promise<DirectMessageThreadDetail> {
+  const data = await requestJson<DirectMessageThreadDetail>(
+    `/api/direct-messages/threads/${encodeURIComponent(threadId)}`,
+    { method: 'GET' }
+  );
+  if (!data.thread || data.thread.id !== threadId || !Array.isArray(data.messages)) {
+    throw new ChatApiError(
+      502,
+      'INVALID_RESPONSE',
+      { _form: 'The server returned an invalid direct-message thread.' },
+      undefined,
+      'Could not load this conversation. Please try again.'
+    );
+  }
+  return data;
+}
+
+/** Sends a text message while retaining the submitted draft in any API error. */
+export async function sendDirectMessage(
+  threadId: string,
+  input: SendMessageInput
+): Promise<DirectMessageView> {
+  const data = await requestJson<{ message: DirectMessageView }>(
+    `/api/direct-messages/threads/${encodeURIComponent(threadId)}/messages`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+    input
+  );
+  if (!data.message || data.message.threadId !== threadId) {
+    throw new ChatApiError(
+      502,
+      'INVALID_RESPONSE',
+      { _form: 'The server returned an invalid direct message.' },
       input,
       'Could not send message. Your draft has been kept.'
     );
