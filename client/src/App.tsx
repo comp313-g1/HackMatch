@@ -21,6 +21,7 @@ import { ApplicationFormPanel } from './components/teams/ApplicationFormPanel';
 import { RequestsPage, type RequestsTab } from './components/RequestsPage';
 import { ModerationSafetyPage } from './components/moderation/ModerationSafetyPage';
 import { AccountEnforcementPage } from './components/accounts/AccountEnforcementPage';
+import { AuditRecordsPage } from './components/audit/AuditRecordsPage';
 import { ChatPage } from './components/chat/ChatPage';
 import { NotificationBell } from './components/notifications/NotificationBell';
 import type { NotificationTarget } from './components/notifications/notificationTarget';
@@ -43,6 +44,7 @@ type View =
   | 'requests'
   | 'moderation'
   | 'accounts'
+  | 'audit'
   | 'chat';
 
 const getInitialRequestsTab = (): RequestsTab => {
@@ -102,6 +104,9 @@ const getInitialView = (): View => {
   }
   if (view === 'accounts' || view === 'account-enforcement') {
     return 'accounts';
+  }
+  if (view === 'audit' || view === 'audit-records' || view === 'audit-log') {
+    return 'audit';
   }
   if (view === 'chat' || view === 'forums' || view === 'messaging') {
     return 'chat';
@@ -272,6 +277,12 @@ export function App(): React.JSX.Element {
     setCurrentView('accounts');
   };
 
+  const goToAudit = () => {
+    setStatusNotice(null);
+    closeMenus();
+    setCurrentView('audit');
+  };
+
   const goToChat = () => {
     setStatusNotice(null);
     closeMenus();
@@ -416,6 +427,14 @@ export function App(): React.JSX.Element {
                           className="block w-full text-left px-3 py-2 text-sm rounded-md hover:bg-cream-50"
                         >
                           Accounts
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={goToAudit}
+                          className="block w-full text-left px-3 py-2 text-sm rounded-md hover:bg-cream-50"
+                        >
+                          Audit log
                         </button>
                       </div>
                     )}
@@ -611,6 +630,13 @@ export function App(): React.JSX.Element {
                       className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
                     >
                       Accounts
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goToAudit}
+                      className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
+                    >
+                      Audit log
                     </button>
                   </>
                 )}
@@ -926,6 +952,29 @@ export function App(): React.JSX.Element {
             >
               {() => (
                 <AccountEnforcementPage
+                  onNavigateAway={() => {
+                    setStatusNotice(null);
+                    setCurrentView('landing');
+                  }}
+                />
+              )}
+            </MfaGate>
+          </section>
+        ) : currentView === 'audit' ? (
+          <section aria-labelledby="audit-heading">
+            <h2 id="audit-heading" className="sr-only">
+              Administrative Audit Records
+            </h2>
+            <MfaGate
+              initialChallenge={otpChallenge}
+              onNavigateToSignIn={() => {
+                setStatusNotice(null);
+                setOtpChallenge(null);
+                setCurrentView('login');
+              }}
+            >
+              {() => (
+                <AuditRecordsPage
                   onNavigateAway={() => {
                     setStatusNotice(null);
                     setCurrentView('landing');

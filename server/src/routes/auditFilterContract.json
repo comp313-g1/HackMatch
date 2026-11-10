@@ -1,0 +1,200 @@
+{
+  "_comment": "US-028 / #264 filter contract shared by the React app and the Express API. The client test (client/src/components/audit/auditFilterContract.test.ts) and the server test (server/src/routes/auditFilterContract.test.ts) both read this file, so the two independent validators cannot drift apart: change a rule on one side only and a test fails. `form` is what the user typed; `query` is exactly what the client must send; `serverParams` is what the API must pass to the database; `errorFields` is the set of fields BOTH sides must flag.",
+  "valid": [
+    {
+      "name": "no filters",
+      "form": { "actor": "", "actionType": "", "category": "", "from": "", "to": "" },
+      "limit": 25,
+      "query": "limit=25",
+      "serverParams": { "actorId": null, "actionType": null, "category": null, "from": null, "to": null, "limit": 25, "cursor": null }
+    },
+    {
+      "name": "actor only; typed in capitals with spaces, normalized to lowercase",
+      "form": { "actor": "  123E4567-E89B-42D3-A456-426614174000  ", "actionType": "", "category": "", "from": "", "to": "" },
+      "limit": 25,
+      "query": "limit=25&actor=123e4567-e89b-42d3-a456-426614174000",
+      "serverParams": { "actorId": "123e4567-e89b-42d3-a456-426614174000", "actionType": null, "category": null, "from": null, "to": null, "limit": 25, "cursor": null }
+    },
+    {
+      "name": "action type only; surrounding spaces removed",
+      "form": { "actor": "", "actionType": "  account_suspend ", "category": "", "from": "", "to": "" },
+      "limit": 25,
+      "query": "limit=25&actionType=account_suspend",
+      "serverParams": { "actorId": null, "actionType": "account_suspend", "category": null, "from": null, "to": null, "limit": 25, "cursor": null }
+    },
+    {
+      "name": "action type at the 50-character limit",
+      "form": { "actor": "", "actionType": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "category": "", "from": "", "to": "" },
+      "limit": 25,
+      "query": "limit=25&actionType=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "serverParams": { "actorId": null, "actionType": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "category": null, "from": null, "to": null, "limit": 25, "cursor": null }
+    },
+    {
+      "name": "category event",
+      "form": { "actor": "", "actionType": "", "category": "event", "from": "", "to": "" },
+      "limit": 25,
+      "query": "limit=25&category=event",
+      "serverParams": { "actorId": null, "actionType": null, "category": "event", "from": null, "to": null, "limit": 25, "cursor": null }
+    },
+    {
+      "name": "category moderation",
+      "form": { "actor": "", "actionType": "", "category": "moderation", "from": "", "to": "" },
+      "limit": 25,
+      "query": "limit=25&category=moderation",
+      "serverParams": { "actorId": null, "actionType": null, "category": "moderation", "from": null, "to": null, "limit": 25, "cursor": null }
+    },
+    {
+      "name": "category account",
+      "form": { "actor": "", "actionType": "", "category": "account", "from": "", "to": "" },
+      "limit": 25,
+      "query": "limit=25&category=account",
+      "serverParams": { "actorId": null, "actionType": null, "category": "account", "from": null, "to": null, "limit": 25, "cursor": null }
+    },
+    {
+      "name": "from date only: whole day, starting at 00:00:00.000000 UTC",
+      "form": { "actor": "", "actionType": "", "category": "", "from": "2026-11-03", "to": "" },
+      "limit": 25,
+      "query": "limit=25&from=2026-11-03",
+      "serverParams": { "actorId": null, "actionType": null, "category": null, "from": "2026-11-03T00:00:00.000000Z", "to": null, "limit": 25, "cursor": null }
+    },
+    {
+      "name": "to date only: whole day, ending at 23:59:59.999999 UTC",
+      "form": { "actor": "", "actionType": "", "category": "", "from": "", "to": "2026-11-03" },
+      "limit": 25,
+      "query": "limit=25&to=2026-11-03",
+      "serverParams": { "actorId": null, "actionType": null, "category": null, "from": null, "to": "2026-11-03T23:59:59.999999Z", "limit": 25, "cursor": null }
+    },
+    {
+      "name": "single day (from equals to)",
+      "form": { "actor": "", "actionType": "", "category": "", "from": "2026-11-03", "to": "2026-11-03" },
+      "limit": 25,
+      "query": "limit=25&from=2026-11-03&to=2026-11-03",
+      "serverParams": { "actorId": null, "actionType": null, "category": null, "from": "2026-11-03T00:00:00.000000Z", "to": "2026-11-03T23:59:59.999999Z", "limit": 25, "cursor": null }
+    },
+    {
+      "name": "leap day",
+      "form": { "actor": "", "actionType": "", "category": "", "from": "2028-02-29", "to": "2028-02-29" },
+      "limit": 25,
+      "query": "limit=25&from=2028-02-29&to=2028-02-29",
+      "serverParams": { "actorId": null, "actionType": null, "category": null, "from": "2028-02-29T00:00:00.000000Z", "to": "2028-02-29T23:59:59.999999Z", "limit": 25, "cursor": null }
+    },
+    {
+      "name": "every filter together, at the largest page size",
+      "form": { "actor": "123e4567-e89b-42d3-a456-426614174000", "actionType": "moderation_warn", "category": "moderation", "from": "2026-11-01", "to": "2026-11-30" },
+      "limit": 100,
+      "query": "limit=100&actor=123e4567-e89b-42d3-a456-426614174000&actionType=moderation_warn&category=moderation&from=2026-11-01&to=2026-11-30",
+      "serverParams": { "actorId": "123e4567-e89b-42d3-a456-426614174000", "actionType": "moderation_warn", "category": "moderation", "from": "2026-11-01T00:00:00.000000Z", "to": "2026-11-30T23:59:59.999999Z", "limit": 100, "cursor": null }
+    },
+    {
+      "name": "page size 50",
+      "form": { "actor": "", "actionType": "", "category": "", "from": "", "to": "" },
+      "limit": 50,
+      "query": "limit=50",
+      "serverParams": { "actorId": null, "actionType": null, "category": null, "from": null, "to": null, "limit": 50, "cursor": null }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "actor that is not a UUID",
+      "form": { "actor": "not-a-uuid", "actionType": "", "category": "", "from": "", "to": "" },
+      "serverQuery": "limit=25&actor=not-a-uuid",
+      "errorFields": ["actor"]
+    },
+    {
+      "name": "actor that is an e-mail address",
+      "form": { "actor": "admin@example.com", "actionType": "", "category": "", "from": "", "to": "" },
+      "serverQuery": "limit=25&actor=admin%40example.com",
+      "errorFields": ["actor"]
+    },
+    {
+      "name": "actor UUID that is one character short",
+      "form": { "actor": "123e4567-e89b-42d3-a456-42661417400", "actionType": "", "category": "", "from": "", "to": "" },
+      "serverQuery": "limit=25&actor=123e4567-e89b-42d3-a456-42661417400",
+      "errorFields": ["actor"]
+    },
+    {
+      "name": "action type in capitals",
+      "form": { "actor": "", "actionType": "Account_Suspend", "category": "", "from": "", "to": "" },
+      "serverQuery": "limit=25&actionType=Account_Suspend",
+      "errorFields": ["actionType"]
+    },
+    {
+      "name": "action type with a hyphen",
+      "form": { "actor": "", "actionType": "account-suspend", "category": "", "from": "", "to": "" },
+      "serverQuery": "limit=25&actionType=account-suspend",
+      "errorFields": ["actionType"]
+    },
+    {
+      "name": "action type starting with a digit",
+      "form": { "actor": "", "actionType": "1abc", "category": "", "from": "", "to": "" },
+      "serverQuery": "limit=25&actionType=1abc",
+      "errorFields": ["actionType"]
+    },
+    {
+      "name": "action type containing a SQL wildcard",
+      "form": { "actor": "", "actionType": "moderation_%", "category": "", "from": "", "to": "" },
+      "serverQuery": "limit=25&actionType=moderation_%25",
+      "errorFields": ["actionType"]
+    },
+    {
+      "name": "action type one character over the limit (51)",
+      "form": { "actor": "", "actionType": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "category": "", "from": "", "to": "" },
+      "serverQuery": "limit=25&actionType=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "errorFields": ["actionType"]
+    },
+    {
+      "name": "unknown category",
+      "form": { "actor": "", "actionType": "", "category": "other", "from": "", "to": "" },
+      "serverQuery": "limit=25&category=other",
+      "errorFields": ["category"]
+    },
+    {
+      "name": "category in the wrong case",
+      "form": { "actor": "", "actionType": "", "category": "Moderation", "from": "", "to": "" },
+      "serverQuery": "limit=25&category=Moderation",
+      "errorFields": ["category"]
+    },
+    {
+      "name": "date that does not exist (30 February)",
+      "form": { "actor": "", "actionType": "", "category": "", "from": "2026-02-30", "to": "" },
+      "serverQuery": "limit=25&from=2026-02-30",
+      "errorFields": ["from"]
+    },
+    {
+      "name": "month 13",
+      "form": { "actor": "", "actionType": "", "category": "", "from": "", "to": "2026-13-01" },
+      "serverQuery": "limit=25&to=2026-13-01",
+      "errorFields": ["to"]
+    },
+    {
+      "name": "29 February in a year that is not a leap year",
+      "form": { "actor": "", "actionType": "", "category": "", "from": "2026-02-29", "to": "" },
+      "serverQuery": "limit=25&from=2026-02-29",
+      "errorFields": ["from"]
+    },
+    {
+      "name": "a word instead of a date",
+      "form": { "actor": "", "actionType": "", "category": "", "from": "", "to": "tomorrow" },
+      "serverQuery": "limit=25&to=tomorrow",
+      "errorFields": ["to"]
+    },
+    {
+      "name": "date in the wrong format",
+      "form": { "actor": "", "actionType": "", "category": "", "from": "11/03/2026", "to": "" },
+      "serverQuery": "limit=25&from=11%2F03%2F2026",
+      "errorFields": ["from"]
+    },
+    {
+      "name": "start date after the end date",
+      "form": { "actor": "", "actionType": "", "category": "", "from": "2026-11-04", "to": "2026-11-03" },
+      "serverQuery": "limit=25&from=2026-11-04&to=2026-11-03",
+      "errorFields": ["from"]
+    },
+    {
+      "name": "several mistakes at once are all reported",
+      "form": { "actor": "bad", "actionType": "BAD", "category": "", "from": "2026-02-30", "to": "nope" },
+      "serverQuery": "limit=25&actor=bad&actionType=BAD&from=2026-02-30&to=nope",
+      "errorFields": ["actionType", "actor", "from", "to"]
+    }
+  ]
+}
