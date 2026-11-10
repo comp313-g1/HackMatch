@@ -22,6 +22,26 @@ function formatWhen(iso: string): string {
   });
 }
 
+function formatUtc(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toISOString();
+}
+
+function UnavailableChatTarget({ kind }: { kind: 'channel' | 'message' }): React.JSX.Element {
+  return (
+    <div
+      role="status"
+      className="space-y-1 rounded border border-amber-200 bg-amber-50 p-3 text-sm"
+      data-testid="moderation-chat-target-unavailable"
+    >
+      <p className="font-medium text-amber-950">Chat {kind} unavailable</p>
+      <p className="text-xs text-amber-900">
+        The moderation case is retained, but its referenced chat target is missing or stale.
+      </p>
+    </div>
+  );
+}
+
 function TargetBody({ target }: { target: SanitizedModerationTarget }): React.JSX.Element {
   if (target.type === 'team') {
     const t = target.team;
@@ -90,6 +110,90 @@ function TargetBody({ target }: { target: SanitizedModerationTarget }): React.JS
               </li>
             ))}
           </ul>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (target.type === 'event') {
+    const e = target.event;
+    return (
+      <div className="space-y-2 text-sm" data-testid="moderation-target-event">
+        <p className="font-medium text-forest-900">{e.title}</p>
+        <p className="text-xs text-ink-muted">
+          {e.format} · {e.status}
+        </p>
+      </div>
+    );
+  }
+
+  if (target.type === 'chat_channel') {
+    const channel = target.chatChannel;
+    if (channel.availability === 'Unavailable') {
+      return <UnavailableChatTarget kind="channel" />;
+    }
+
+    return (
+      <div className="space-y-2 text-sm" data-testid="moderation-target-chat-channel">
+        <div>
+          <p className="font-medium text-forest-900">{channel.title}</p>
+          <p className="text-xs text-ink-muted">
+            {channel.channelType === 'team' ? 'Private team channel' : 'Public forum'}
+          </p>
+        </div>
+        {channel.description ? <p className="text-ink">{channel.description}</p> : null}
+        <dl className="grid gap-1 text-xs">
+          <div>
+            <dt className="inline text-ink-muted">Creator handle: </dt>
+            <dd className="inline text-ink">{channel.creatorHandle?.trim() || 'Unavailable'}</dd>
+          </div>
+          <div>
+            <dt className="inline text-ink-muted">Created (UTC): </dt>
+            <dd className="inline text-ink">
+              <time dateTime={channel.createdAt}>{formatUtc(channel.createdAt)}</time>
+            </dd>
+          </div>
+        </dl>
+        {channel.contentRedacted ? (
+          <p className="text-xs text-amber-900" data-testid="moderation-chat-content-redacted">
+            Sensitive content was redacted from this evidence summary.
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (target.type === 'chat_message') {
+    const message = target.chatMessage;
+    if (message.availability === 'Unavailable') {
+      return <UnavailableChatTarget kind="message" />;
+    }
+
+    return (
+      <div className="space-y-2 text-sm" data-testid="moderation-target-chat-message">
+        <dl className="grid gap-1 text-xs">
+          <div>
+            <dt className="inline text-ink-muted">Author handle: </dt>
+            <dd className="inline text-ink">{message.authorHandle?.trim() || 'Unavailable'}</dd>
+          </div>
+          <div>
+            <dt className="inline text-ink-muted">Sent (UTC): </dt>
+            <dd className="inline text-ink">
+              <time dateTime={message.createdAt}>{formatUtc(message.createdAt)}</time>
+            </dd>
+          </div>
+        </dl>
+        <blockquote className="rounded border-l-4 border-forest-200 bg-cream-50 px-3 py-2 text-ink whitespace-pre-wrap break-words">
+          {message.messageContext.text}
+        </blockquote>
+        {message.messageContext.redacted || message.messageContext.truncated ? (
+          <p className="text-xs text-amber-900" data-testid="moderation-chat-content-limited">
+            {message.messageContext.redacted && message.messageContext.truncated
+              ? 'Sensitive content was redacted and the evidence excerpt was truncated.'
+              : message.messageContext.redacted
+                ? 'Sensitive content was redacted from this evidence excerpt.'
+                : 'The evidence excerpt was truncated.'}
+          </p>
         ) : null}
       </div>
     );

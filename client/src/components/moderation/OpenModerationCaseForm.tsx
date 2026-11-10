@@ -35,8 +35,8 @@ export function OpenModerationCaseForm({
 
   const validate = (): CreateModerationCaseInput | null => {
     const next: ModerationFieldErrors = {};
-    if (!['team', 'profile', 'url'].includes(targetType)) {
-      next.targetType = 'Choose team, profile, or url.';
+    if (!['team', 'profile', 'url', 'chat_channel', 'chat_message'].includes(targetType)) {
+      next.targetType = 'Choose a supported moderation target.';
     }
     const id = targetId.trim();
     if (!UUID_RE.test(id)) {
@@ -128,6 +128,8 @@ export function OpenModerationCaseForm({
           <option value="team">Team listing</option>
           <option value="profile">Participant profile</option>
           <option value="url">Suspicious URL</option>
+          <option value="chat_channel">Chat channel</option>
+          <option value="chat_message">Chat message</option>
         </select>
         {errors.targetType ? (
           <p id="moderation-target-type-error" role="alert" className="mt-1 text-xs text-red-600">
@@ -151,7 +153,7 @@ export function OpenModerationCaseForm({
           aria-invalid={Boolean(errors.targetId)}
           aria-describedby={errors.targetId ? 'moderation-target-id-error' : undefined}
           className={`${inputClass} ${errors.targetId ? 'border-red-400 bg-red-50/30' : 'border-cream-300'}`}
-          placeholder="UUID of team or participant"
+          placeholder="UUID of the moderation target"
           data-testid="moderation-target-id"
         />
         {errors.targetId ? (

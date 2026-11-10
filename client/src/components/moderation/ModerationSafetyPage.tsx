@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AuthRequiredError,
   ModerationApiError,
@@ -64,6 +64,8 @@ export function ModerationSafetyPage({
   const [recordsState, setRecordsState] = useState<ModerationRecordsState>('idle');
   const [records, setRecords] = useState<ModerationActionRecordView[]>([]);
   const [recordsError, setRecordsError] = useState<string | null>(null);
+  const detailRequestId = useRef(0);
+  const recordsRequestId = useRef(0);
 
   const checkAccess = useCallback(async () => {
     setAccessState('loading');
@@ -108,13 +110,18 @@ export function ModerationSafetyPage({
   }, []);
 
   const loadDetail = useCallback(async (caseId: string) => {
+    const requestId = ++detailRequestId.current;
+    // Never show evidence from the previously selected case while a new case loads.
+    setDetail(null);
     setDetailState('loading');
     setDetailError(null);
     try {
       const data = await fetchModerationCaseDetail(caseId);
+      if (requestId !== detailRequestId.current) return;
       setDetail(data);
       setDetailState('success');
     } catch (err: unknown) {
+      if (requestId !== detailRequestId.current) return;
       if (err instanceof AuthRequiredError) {
         setDetailError('You need to sign in to view this case.');
       } else if (err instanceof ModerationApiError) {
@@ -127,13 +134,16 @@ export function ModerationSafetyPage({
   }, []);
 
   const loadRecords = useCallback(async (caseId: string) => {
+    const requestId = ++recordsRequestId.current;
     setRecordsState('loading');
     setRecordsError(null);
     try {
       const rows = await fetchModerationActionRecords(caseId);
+      if (requestId !== recordsRequestId.current) return;
       setRecords(rows);
       setRecordsState('success');
     } catch (err: unknown) {
+      if (requestId !== recordsRequestId.current) return;
       if (err instanceof AuthRequiredError) {
         setRecordsError('You need to sign in to view action records.');
       } else if (err instanceof ModerationApiError) {
@@ -157,6 +167,9 @@ export function ModerationSafetyPage({
 
   const handleSelect = (caseId: string) => {
     setSelectedCaseId(caseId);
+    setDetail(null);
+    setDetailState('loading');
+    setDetailError(null);
     setDecideFieldErrors({});
     setDecideFormError(null);
     setDecideSuccess(null);
@@ -212,6 +225,8 @@ export function ModerationSafetyPage({
       setCases((prev) => sortCasesNewestFirst([created, ...prev.filter((c) => c.id !== created.id)]));
       setListState('success');
       setSelectedCaseId(created.id);
+      setDetail(null);
+      setDetailState('loading');
       void loadDetail(created.id);
       void loadRecords(created.id);
     } catch (err: unknown) {
@@ -287,7 +302,7 @@ export function ModerationSafetyPage({
       <header className="space-y-1">
         <h2 className="font-display text-2xl font-semibold text-forest-900">Safety queue</h2>
         <p className="text-sm text-ink-muted">
-          Review flagged team listings, profiles, and suspicious links. Newest cases appear first.
+          Review flagged listings, profiles, links, and privacy-safe chat evidence. Newest cases appear first.
         </p>
       </header>
 
@@ -325,6 +340,8 @@ export function ModerationSafetyPage({
               if (selectedCaseId) void loadDetail(selectedCaseId);
             }}
             onBackToQueue={() => {
+              detailRequestId.current += 1;
+              recordsRequestId.current += 1;
               setSelectedCaseId(null);
               setDetail(null);
               setDetailState('idle');
@@ -338,8 +355,13 @@ export function ModerationSafetyPage({
             }}
           />
           <ModerationActionPanel
-            caseId={selectedCaseId}
+            caseId={
+              detailState === 'success' && detail?.case.id === selectedCaseId
+                ? selectedCaseId
+                : null
+            }
             caseStatus={detail?.case.status ?? null}
+            targetType={detail?.case.targetType ?? null}
             submitting={deciding}
             fieldErrors={decideFieldErrors}
             formError={decideFormError}
