@@ -11,6 +11,8 @@ import type {
   DirectMessageThreadView,
   DirectMessageView,
 } from './chatTypes';
+import { ChatActivityBadge } from './ChatUnreadBadge';
+import { useChatUnread } from './ChatUnreadContext';
 
 const MESSAGE_MAX_LENGTH = 4000;
 
@@ -51,6 +53,10 @@ function sortMessages(messages: DirectMessageView[]): DirectMessageView[] {
  * retained per thread and are removed only after the server confirms a successful send.
  */
 export function DirectMessagesView(): React.JSX.Element {
+  const unread = useChatUnread();
+  const unreadEnabled = unread.enabled;
+  const markRead = unread.markRead;
+  const refreshUnread = unread.refresh;
   const [threads, setThreads] = useState<DirectMessageThreadView[]>([]);
   const [inboxLoading, setInboxLoading] = useState(true);
   const [inboxError, setInboxError] = useState<string | null>(null);
@@ -68,6 +74,7 @@ export function DirectMessagesView(): React.JSX.Element {
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [readStateError, setReadStateError] = useState<string | null>(null);
 
   const inboxRequestId = useRef(0);
   const threadRequestId = useRef(0);
@@ -92,13 +99,14 @@ export function DirectMessagesView(): React.JSX.Element {
       setMessages([]);
       if (isAccessDenied(error)) {
         setInboxAccessDenied(true);
+        if (unreadEnabled) void refreshUnread();
       } else {
         setInboxError(errorMessage(error, 'Could not load direct messages. Please try again.'));
       }
     } finally {
       if (requestId === inboxRequestId.current) setInboxLoading(false);
     }
-  }, []);
+  }, [unreadEnabled, refreshUnread]);
 
   useEffect(() => {
     void loadInbox();
@@ -120,25 +128,44 @@ export function DirectMessagesView(): React.JSX.Element {
     setFieldErrors({});
     setSendError(null);
     setSendSuccess(null);
+    setReadStateError(null);
 
     try {
       const detail = await getDirectMessageThread(threadId);
       if (requestId !== threadRequestId.current) return;
       setSelectedThread(detail.thread);
-      setMessages(sortMessages(detail.messages));
+      const orderedMessages = sortMessages(detail.messages);
+      setMessages(orderedMessages);
+      const latest = orderedMessages.at(-1);
+      if (unreadEnabled && latest) {
+        try {
+          await markRead({
+            conversationType: 'directMessage',
+            conversationId: threadId,
+            messageId: latest.id,
+          });
+        } catch {
+          if (requestId === threadRequestId.current) {
+            setReadStateError(
+              'Conversation loaded, but unread activity could not be updated. Existing badges were kept.'
+            );
+          }
+        }
+      }
     } catch (error: unknown) {
       if (requestId !== threadRequestId.current) return;
       setSelectedThread(null);
       setMessages([]);
       if (isAccessDenied(error)) {
         setThreadAccessDenied(true);
+        if (unreadEnabled) void refreshUnread();
       } else {
         setThreadError(errorMessage(error, 'Could not load this conversation. Please try again.'));
       }
     } finally {
       if (requestId === threadRequestId.current) setThreadLoading(false);
     }
-  }, []);
+  }, [unreadEnabled, markRead, refreshUnread]);
 
   const updateDraft = (value: string): void => {
     if (!selectedThreadId) return;
@@ -189,6 +216,7 @@ export function DirectMessagesView(): React.JSX.Element {
               Date.parse(left.lastMessageAt ?? left.updatedAt)
           )
       );
+      if (unreadEnabled) void refreshUnread();
     } catch (error: unknown) {
       if (requestId !== sendRequestId.current) return;
       if (error instanceof ChatApiError && error.errors) {
@@ -202,6 +230,7 @@ export function DirectMessagesView(): React.JSX.Element {
         setSelectedThread(null);
         setMessages([]);
         setThreadAccessDenied(true);
+        if (unreadEnabled) void refreshUnread();
       } else {
         setSendError(errorMessage(error, 'Could not send message. Your draft has been kept.'));
       }
@@ -226,7 +255,10 @@ export function DirectMessagesView(): React.JSX.Element {
               {!inboxLoading && !inboxAccessDenied && (
                 <button
                   type="button"
-                  onClick={() => void loadInbox()}
+                  onClick={() => {
+                    void loadInbox();
+                    if (unreadEnabled) void refreshUnread();
+                  }}
                   className="rounded-md border border-cream-300 px-3 py-2 text-xs font-semibold text-forest-800 hover:bg-cream-50"
                 >
                   Refresh inbox
@@ -266,8 +298,20 @@ export function DirectMessagesView(): React.JSX.Element {
                           selectedThreadId === thread.id ? 'bg-forest-50' : 'bg-white hover:bg-cream-50'
                         }`}
                       >
-                        <span className="block truncate text-sm font-semibold text-forest-900">
-                          {thread.peer.handle || 'Participant'}
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="block min-w-0 truncate text-sm font-semibold text-forest-900">
+                            {thread.peer.handle || 'Participant'}
+                          </span>
+                          {(() => {
+                            const count = unread.getCount('directMessage', thread.id);
+                            return (
+                              <ChatActivityBadge
+                                unreadCount={count?.unreadCount ?? 0}
+                                mentionCount={count?.unreadMentionCount ?? 0}
+                                label={`Direct messages with ${thread.peer.handle || 'Participant'}`}
+                              />
+                            );
+                          })()}
                         </span>
                         <span className="mt-1 block truncate text-xs text-ink-muted">
                           {thread.lastMessage?.body || 'No messages yet'}
@@ -318,6 +362,12 @@ export function DirectMessagesView(): React.JSX.Element {
                   </h3>
                   <p className="mt-1 text-xs text-ink-muted">Private direct-message conversation</p>
                 </div>
+
+                {readStateError && (
+                  <p role="alert" className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                    {readStateError}
+                  </p>
+                )}
 
                 {messages.length === 0 ? (
                   <div role="status" data-testid="dm-thread-empty" className="my-4 flex flex-1 items-center justify-center rounded-md border border-dashed border-cream-300 p-8 text-center text-sm text-ink-muted">

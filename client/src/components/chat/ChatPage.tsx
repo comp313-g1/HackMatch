@@ -17,6 +17,8 @@ import {
   type PresenceStatus,
 } from './chatTypes';
 import { DirectMessagesView } from './DirectMessagesView';
+import { ChatActivityBadge, ChatUnreadStatus } from './ChatUnreadBadge';
+import { useChatUnread } from './ChatUnreadContext';
 
 export interface ChatPageProps {
   onNavigateToSignIn?: () => void;
@@ -47,6 +49,16 @@ function isAccessDenied(err: unknown): boolean {
   return false;
 }
 
+function latestMessage<T extends { id: string; createdAt: string }>(rows: T[]): T | null {
+  return rows.reduce<T | null>((latest, row) => {
+    if (!latest) return row;
+    const byTime = Date.parse(row.createdAt) - Date.parse(latest.createdAt);
+    return byTime > 0 || (byTime === 0 && row.id.localeCompare(latest.id) > 0)
+      ? row
+      : latest;
+  }, null);
+}
+
 /**
  * US-030 / #346 — Chat page: presence status, forum list/create, message thread.
  * Loading / empty / validation / success / error; drafts kept on failure (NR-017).
@@ -55,6 +67,10 @@ export function ChatPage({
   onNavigateToSignIn,
   onNavigateAway,
 }: ChatPageProps): React.JSX.Element {
+  const unread = useChatUnread();
+  const unreadEnabled = unread.enabled;
+  const markRead = unread.markRead;
+  const refreshUnread = unread.refresh;
   const [chatSection, setChatSection] = useState<'forums' | 'direct'>('forums');
   const [presenceStatus, setPresenceStatus] = useState<PresenceStatus>('Invisible');
   const [presenceSaving, setPresenceSaving] = useState(false);
@@ -86,6 +102,7 @@ export function ChatPage({
 
   const [accessDenied, setAccessDenied] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [readStateError, setReadStateError] = useState<string | null>(null);
 
   const selectedChannel =
     channels.find((c) => c.id === selectedChannelId) ?? null;
@@ -139,13 +156,32 @@ export function ChatPage({
     async function loadMessages() {
       setMessagesLoading(true);
       setMessagesError(null);
+      setReadStateError(null);
       try {
         const rows = await listChatMessages(selectedChannelId!);
-        if (!cancelled) setMessages(rows);
+        if (cancelled) return;
+        setMessages(rows);
+        const latest = latestMessage(rows);
+        if (unreadEnabled && latest) {
+          try {
+            await markRead({
+              conversationType: 'channel',
+              conversationId: selectedChannelId!,
+              messageId: latest.id,
+            });
+          } catch {
+            if (!cancelled) {
+              setReadStateError(
+                'Messages loaded, but unread activity could not be updated. Existing badges were kept.'
+              );
+            }
+          }
+        }
       } catch (err: unknown) {
         if (cancelled) return;
         if (isAccessDenied(err)) {
           setAccessDenied(true);
+          if (unreadEnabled) void refreshUnread();
           return;
         }
         setMessagesError(
@@ -160,7 +196,7 @@ export function ChatPage({
     return () => {
       cancelled = true;
     };
-  }, [selectedChannelId]);
+  }, [selectedChannelId, unreadEnabled, markRead, refreshUnread]);
 
   const handlePresenceChange = async (
     next: PresenceStatus
@@ -273,6 +309,7 @@ export function ChatPage({
       setMessageDraft('');
       setMessageErrors({});
       setMessageSuccess('Message sent.');
+      if (unreadEnabled) void refreshUnread();
     } catch (err: unknown) {
       if (isAccessDenied(err)) {
         setAccessDenied(true);
@@ -393,7 +430,23 @@ export function ChatPage({
               : 'text-forest-800 hover:bg-cream-50'
           }`}
         >
-          Forums
+          <span className="inline-flex items-center">
+            Forums
+            <ChatActivityBadge
+              unreadCount={channels.reduce(
+                (total, channel) =>
+                  total + (unread.getCount('channel', channel.id)?.unreadCount ?? 0),
+                0
+              )}
+              mentionCount={channels.reduce(
+                (total, channel) =>
+                  total +
+                  (unread.getCount('channel', channel.id)?.unreadMentionCount ?? 0),
+                0
+              )}
+              label="Forums"
+            />
+          </span>
         </button>
         <button
           type="button"
@@ -405,9 +458,28 @@ export function ChatPage({
               : 'text-forest-800 hover:bg-cream-50'
           }`}
         >
-          Direct messages
+          <span className="inline-flex items-center">
+            Direct messages
+            <ChatActivityBadge
+              unreadCount={unread.counts
+                .filter((item) => item.conversationType === 'directMessage')
+                .reduce((total, item) => total + item.unreadCount, 0)}
+              mentionCount={unread.counts
+                .filter((item) => item.conversationType === 'directMessage')
+                .reduce((total, item) => total + item.unreadMentionCount, 0)}
+              label="Direct messages"
+            />
+          </span>
         </button>
       </nav>
+
+      <ChatUnreadStatus />
+
+      {readStateError && (
+        <p role="alert" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          {readStateError}
+        </p>
+      )}
 
       {chatSection === 'direct' ? (
         <DirectMessagesView />
@@ -531,8 +603,20 @@ export function ChatPage({
                               : 'bg-white hover:bg-cream-50 text-ink'
                           }`}
                         >
-                          <span className="font-semibold block truncate">
-                            {channel.title}
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="font-semibold block min-w-0 truncate">
+                              {channel.title}
+                            </span>
+                            {(() => {
+                              const count = unread.getCount('channel', channel.id);
+                              return (
+                                <ChatActivityBadge
+                                  unreadCount={count?.unreadCount ?? 0}
+                                  mentionCount={count?.unreadMentionCount ?? 0}
+                                  label={channel.title}
+                                />
+                              );
+                            })()}
                           </span>
                           <span className="text-xs text-ink-muted line-clamp-2">
                             {channel.description}
