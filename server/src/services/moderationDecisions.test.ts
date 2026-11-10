@@ -313,4 +313,28 @@ describe('decideModerationCase (US-026 / #242)', () => {
       })
     ).rejects.toMatchObject({ code: 'CASE_CLOSED', status: 409 });
   });
+
+  it('does not route a chat target through legacy team/profile mutations', async () => {
+    vi.spyOn(moderationRepository, 'findById').mockResolvedValue({
+      ...openCase,
+      target_type: 'chat_message',
+    });
+    const actionRecordSpy = vi.spyOn(moderationRepository, 'insertActionRecord');
+    const resolveSpy = vi.spyOn(moderationRepository, 'resolveCase');
+    const teamLookupSpy = vi.spyOn(teamsRepository, 'findTeamById');
+
+    await expect(
+      decideModerationCase({
+        actorParticipantId: openCase.created_by,
+        actorRole: 'ADMIN',
+        caseId: openCase.id,
+        action: 'redact',
+        reason: 'Chat controls are not implemented yet',
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_TARGET', status: 400 });
+
+    expect(teamLookupSpy).not.toHaveBeenCalled();
+    expect(actionRecordSpy).not.toHaveBeenCalled();
+    expect(resolveSpy).not.toHaveBeenCalled();
+  });
 });

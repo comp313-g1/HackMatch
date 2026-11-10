@@ -476,8 +476,14 @@ export interface EventAvailability {
   updated_at: string;
 }
 
-/** US-025 / US-026 / FR-073 / FR-075 moderation queue and report target kinds. */
-export type ModerationTargetType = 'team' | 'profile' | 'event' | 'url';
+/** US-025 / US-026 / US-033 moderation-case target kinds. */
+export type ModerationTargetType =
+  | 'team'
+  | 'profile'
+  | 'event'
+  | 'url'
+  | 'chat_channel'
+  | 'chat_message';
 
 export type ModerationReportTargetType = 'team' | 'profile' | 'event' | 'url';
 

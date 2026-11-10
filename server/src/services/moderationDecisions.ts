@@ -307,6 +307,22 @@ async function applyAction(
   action: ModerationDecisionAction,
   reason: string
 ): Promise<Record<string, unknown>> {
+  // US-033 / #392 only introduces safe polymorphic target recognition.
+  // Until #396 defines chat-specific controls, never fall through to the
+  // legacy team/profile mutations for a chat target. Dismiss remains a
+  // target-neutral case lifecycle operation.
+  if (
+    (row.target_type === 'chat_channel' || row.target_type === 'chat_message') &&
+    action !== 'dismiss'
+  ) {
+    throw new ModerationServiceError(
+      400,
+      'INVALID_TARGET',
+      'This moderation action is not supported for chat targets.',
+      { targetType: row.target_type }
+    );
+  }
+
   switch (action) {
     case 'dismiss':
       return applyDismiss(row);

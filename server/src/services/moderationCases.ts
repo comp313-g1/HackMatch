@@ -1,4 +1,5 @@
 import { moderationRepository } from '../db/moderation.repository.js';
+import { moderationTargetRepository } from '../db/moderationTarget.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import { profileRepository } from '../db/profile.repository.js';
 import { participantsRepository } from '../db/participants.repository.js';
@@ -120,11 +121,31 @@ export interface SanitizedEventTarget {
   };
 }
 
+/**
+ * Identity-only chat target references for US-033 / #392.
+ * Privacy-safe channel/message evidence is intentionally deferred to #394.
+ */
+export interface SanitizedChatChannelTarget {
+  type: 'chat_channel';
+  chatChannel: {
+    id: string;
+  };
+}
+
+export interface SanitizedChatMessageTarget {
+  type: 'chat_message';
+  chatMessage: {
+    id: string;
+  };
+}
+
 export type SanitizedModerationTarget =
   | SanitizedTeamTarget
   | SanitizedProfileTarget
   | SanitizedUrlTarget
-  | SanitizedEventTarget;
+  | SanitizedEventTarget
+  | SanitizedChatChannelTarget
+  | SanitizedChatMessageTarget;
 
 export interface ModerationCaseDetailView {
   case: ModerationCaseView;
@@ -156,6 +177,23 @@ async function assertTargetExists(
   if (targetType === 'team' || targetType === 'url') {
     const team = await teamsRepository.findTeamById(targetId);
     if (!team) {
+      throw new ModerationServiceError(
+        404,
+        'TARGET_NOT_FOUND',
+        'The moderation target was not found.',
+        { targetType, targetId }
+      );
+    }
+    return;
+  }
+
+  if (targetType === 'chat_channel' || targetType === 'chat_message') {
+    const exists =
+      targetType === 'chat_channel'
+        ? await moderationTargetRepository.chatChannelExists(targetId)
+        : await moderationTargetRepository.chatMessageExists(targetId);
+
+    if (!exists) {
       throw new ModerationServiceError(
         404,
         'TARGET_NOT_FOUND',
@@ -310,6 +348,18 @@ export async function loadSanitizedTarget(
     target = await loadSanitizedProfileTarget(targetId);
   } else if (targetType === 'event') {
     target = await loadSanitizedEventTarget(targetId);
+  } else if (targetType === 'chat_channel') {
+    await assertTargetExists(targetType, targetId);
+    target = {
+      type: 'chat_channel',
+      chatChannel: { id: targetId },
+    };
+  } else if (targetType === 'chat_message') {
+    await assertTargetExists(targetType, targetId);
+    target = {
+      type: 'chat_message',
+      chatMessage: { id: targetId },
+    };
   } else {
     if (!flaggedUrl) {
       throw new ModerationServiceError(

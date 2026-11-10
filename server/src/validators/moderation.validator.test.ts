@@ -4,6 +4,7 @@ import {
   validateCreateModerationCaseInput,
   validateCreateModerationCaseBody,
   validateDecideModerationCaseInput,
+  MODERATION_TARGET_TYPES,
   MODERATION_REASON_MAX,
 } from './moderation.validator.js';
 
@@ -23,6 +24,67 @@ describe('validateCreateModerationCaseInput (US-026 / #239)', () => {
       reason: 'Suspicious pitch',
       flaggedUrl: null,
     });
+  });
+
+  it('preserves every pre-US-033 moderation target type', () => {
+    expect(MODERATION_TARGET_TYPES).toEqual(
+      expect.arrayContaining(['team', 'profile', 'event', 'url'])
+    );
+
+    for (const targetType of ['team', 'profile', 'event'] as const) {
+      expect(
+        validateCreateModerationCaseInput({
+          ...validTeam,
+          targetType,
+        }).sanitized
+      ).toMatchObject({ targetType });
+    }
+
+    expect(
+      validateCreateModerationCaseInput({
+        ...validTeam,
+        targetType: 'url',
+        flaggedUrl: 'https://example.test/report',
+      }).sanitized
+    ).toMatchObject({ targetType: 'url' });
+  });
+
+  it.each(['chat_channel', 'chat_message'] as const)(
+    'accepts the supported %s polymorphic target type',
+    (targetType) => {
+      const result = validateCreateModerationCaseInput({
+        ...validTeam,
+        targetType,
+      });
+
+      expect(result.errors).toEqual({});
+      expect(result.sanitized).toMatchObject({
+        targetType,
+        targetId: validTeam.targetId,
+        flaggedUrl: null,
+      });
+    }
+  );
+
+  it('rejects unsupported moderation target types', () => {
+    const result = validateCreateModerationCaseInput({
+      ...validTeam,
+      targetType: 'direct_message',
+    });
+
+    expect(result.sanitized).toBeNull();
+    expect(result.errors.targetType).toMatch(/chat_channel.*chat_message/);
+  });
+
+  it('rejects a malformed chat target identifier', () => {
+    const result = validateCreateModerationCaseInput({
+      ...validTeam,
+      targetType: 'chat_message',
+      targetId: 'not-a-uuid',
+    });
+
+    expect(result.sanitized).toBeNull();
+    expect(result.errors.targetId).toMatch(/valid UUID/);
   });
 
   it('requires flaggedUrl for url targets', () => {
