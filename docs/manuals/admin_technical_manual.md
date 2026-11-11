@@ -325,7 +325,8 @@ The React workflow is platform-wide and does not ask the user to select an event
 - **Team creation:** the creator becomes owner/Team Lead and the first confirmed member. The service creates an internal shadow event when needed, then creates the team and owner membership.
 - **Recruitment board:** visitors receive an anonymized projection; authenticated participants receive only fields allowed by profile privacy rules.
 - **Vacancies:** the owner defines role/skill requirements and may edit or remove vacancies while the roster is unlocked.
-- **Recommendations:** owner-only scoring considers skills, primary role, goal, and commitment. The intended pool is platform-wide.
+- **Candidate recommendations (US-015):** owner-only scoring considers skills, primary role, goal, and commitment for an open vacancy. The intended pool is platform-wide.
+- **Recommended teams (US-016):** the authenticated Participant receives scored eligible open vacancies derived from that Participant's own profile and Looking-for-Team inputs.
 - **Invitations:** owner-issued invitations target a specific open vacancy, start pending, and use a 48-hour expiry.
 - **Applications:** a participant applies to a specific open vacancy with an optional message limited to 250 characters and may withdraw a pending application.
 - **Placement:** invitation acceptance and application approval revalidate the target team, vacancy, membership, and capacity before creating membership and filling a slot.
@@ -340,6 +341,61 @@ The React workflow is platform-wide and does not ask the user to select an event
 - **Manifest export (US-024):** `GET /api/teams/:teamId/manifest` (HTML, PDF, or JSON) and `POST /api/teams/:teamId/manifest/verify` are limited to confirmed members of a locked team. The export is built from a stored roster snapshot (0047) and a documented canonical serialization with a SHA-256 checksum. Account emails and private contact handles are excluded. The checksum is an integrity check, not proof of time or organizer approval.
 
 The product default capacity is four. The physical model currently derives several boundaries from the team's shadow event, and current validators also retain a configurable `maxTeamSize` range. Treat the shadow-event relation as compatibility plumbing, not a public workflow.
+
+### Participant team recommendations (US-016)
+
+US-016 is the reverse of the owner-facing US-015 flow: it starts with one authenticated Participant and finds eligible open team vacancies. The browser calls `GET /api/recommendations/teams`; it does not send a participant or event selector. The live path is `teamRecommendationsRouter` → `getMyTeamRecommendationsHandler` → `getEligibleTeamRecommendations` → `teamRecommendationsRepository.listEligibleTeamVacanciesForParticipant` → PostgreSQL/Supabase.
+
+#### Reverse-matching inputs and eligibility (#153)
+
+`buildReverseMatchInputs` builds `ReverseMatchInputs` from the current `participants` row, `participant_profiles.primary_role` and moderation state, `participant_skills.skill_name` rows, and `PlatformAvailabilityRecord` (`isLooking`, `desiredRole`, `commitmentHours`, and `goal`). Skill tags are trimmed, internal whitespace is collapsed, and duplicates are removed case-insensitively while retaining the first display spelling. Hours outside 0–168 or non-finite values become unstated (`null`).
+
+A Participant can receive recommendations only when the account exists, has role `PART`, is verified, is neither suspended nor deactivated, has a profile that is not moderation-hidden, has Looking for Team enabled, and has at least one normalized skill. `evaluateTeamVacancyEligibility` then requires all of the following:
+
+- the Participant is neither the team owner nor a `Confirmed` member;
+- the team is not moderation-hidden and remains `Open`, unlocked, and not disbanded;
+- the vacancy belongs to that team, remains `Open`, and has no `removed_at`; and
+- the Participant has no `Pending` `Application` or `Invitation` for that team.
+
+Role or goal differences affect scoring rather than eligibility. The participant's current count of pending applications is also not a recommendation exclusion; the US-018 submission path enforces the three-pending-application limit. The reverse matcher has no separate capacity predicate: it relies on the current open team/vacancy state for candidate selection, while US-018 revalidates capacity when an application is submitted.
+
+#### Candidate query and safe projection (#154)
+
+The repository performs participant-scoped membership and pending-request lookups concurrently, builds the excluded-team set, and issues one set-based `team_vacancies` query with an inner `teams` projection. The query applies open-vacancy, open/unlocked/non-disbanded team, moderation visibility, ownership, and excluded-team predicates before returning candidates. Existing recruitment indexes support these access patterns, including `idx_team_memberships_participant_status`, participant/request indexes, and `idx_team_vacancies_team_open`; #154 adds no schema migration or parallel recommendation store.
+
+`getEligibleTeamRecommendations` loads the participant, profile, skills, and availability concurrently, calls the repository only after participant eligibility succeeds, and reapplies `partitionTeamVacancies` as a stale-state/contract backstop. Missing or newly unavailable candidates produce a successful empty result rather than a not-found error. Repository failures propagate to the standard safe server-error path; they are not converted into a misleading empty list.
+
+The participant-facing DTO allowlists rank, team ID/name/pitch/goal/hours/recruiting state, vacancy ID/role/desired skills, match percentage, matched/missing skills, role-match flag, and plain score explanations. It excludes account email, Firebase identity, owner/member records, request details, internal event data, raw score components, and unrelated profile fields. The response uses `Cache-Control: no-store`.
+
+#### Match calculation and ordering (#155)
+
+`rankTeamVacancies` calls `scoreTeamVacancy`, which reuses `computeCompatibilityScore`. The bounded compatibility score is:
+
+`score = 100 × (S + G + H) / 3`
+
+- `S` is the share of normalized vacancy skills present on the Participant profile. A match between the vacancy role and the desired role (falling back to primary role) multiplies this component by 1.2, capped at 1. A vacancy with no required skills receives `S = 1`.
+- `G` is 1 for the same goal, 0.5 for adjacent goals, and 0 otherwise. Missing goal input scores 0.
+- `H` is `min(participant hours / team hours, 1)`. A team request of zero hours receives 1; missing input scores 0.
+
+The displayed `matchPercent` is the bounded score rounded to a whole number from 0 through 100. Matched and missing tags retain the vacancy's normalized spelling and order. Final ordering is unrounded score descending, matched-skill count descending, team name ascending case-insensitively, then vacancy ID ascending. The service assigns one-based ranks after sorting.
+
+#### React states and US-018 integration (#156–#157)
+
+`RecommendedTeamsPage` requests the self-only endpoint when opened, ignores superseded/unmounted responses through a monotonically increasing request token, and does not calculate scores in React. It renders `Finding teams for you…`, validated recommendation cards, reason-specific empty guidance, signed-out guidance, or a retryable error. Manual **Refresh** is disabled while active; a failed refresh preserves the last successful list. `RecommendedTeamCard` presents the percentage as text and an accessible progress bar, matched/missing tags, plain-text contribution explanations, and the open role/team context.
+
+The **Apply to _team name_** action passes stable `teamId` and `vacancyId` values into the existing US-018 `ApplicationFormPanel`; it does not copy percentage or skill tags into an application. The form target is fixed, the optional message remains limited to 250 characters, and validation/API failures retain the target and draft. Changing from one recommendation to another resets target-specific form state. Success uses the existing US-018 notice and increments `recommendedTeamsRefreshToken`, which reloads the recommendation set.
+
+Recommendation eligibility is advisory and can become stale. The US-018 backend remains authoritative for current account, vacancy, membership, recruiting state, duplicate request, and quota validation. A score never authorizes or guarantees an application.
+
+#### Authorization, Event-Free compatibility, and validation (#158–#159)
+
+`teamRecommendationsRouter` applies `requireFirebaseAuth`, `requireMfa`, `requireActiveAccount`, `requireParticipantRole`, `requireVerifiedParticipant`, and `requireOwnProfileScope` before the controller. The service always uses `req.participant.id`. `requireOwnProfileScope` permits no identity or the caller's own identity, rejects malformed named identities with `400 VALIDATION_ERROR`, and rejects another identity with `403 FORBIDDEN_NOT_OWN_PROFILE` without repeating it or confirming that it exists. Visitors, ADMIN accounts, incomplete-MFA sessions, unverified accounts, and suspended/deactivated accounts are denied by their existing earlier guards.
+
+The recommendation query is platform-wide. `availabilityRepository` reads `event_availability` using the fixed `PLATFORM_AVAILABILITY_EVENT_ID`, and legacy `event_id` values remain on recruitment records as internal schema plumbing. No event ID is accepted as recommendation scope, selected in React, or returned in the DTO.
+
+The #159 suites cover participant and team inclusion/exclusion, database-prefiltered candidates, stale-state backstops, score boundaries and normalization, matched/missing skill spelling, deterministic ties and large pools, empty/ineligible states, safe failures, privacy projections, visitor/ADMIN/MFA/verification/account-state denial, arbitrary-profile probes, client contract validation, loading/refresh/error states, application draft retention and stale-team rejection, state isolation, and server-to-React fixtures. These are contract and integration tests over the existing feature; they do not create a separate recommendation subsystem.
+
+See the [recommendation query and authorization sequence](../diagrams/US-016/US-016-recommendation-query-sequence.png), [eligibility flow](../diagrams/US-016/US-016-eligibility-filter-flow.png), [scoring flow](../diagrams/US-016/US-016-match-scoring-flow.png), and [US-018 application integration flow](../diagrams/US-016/US-016-application-integration-flow.png).
 
 ## 12. ADMIN content moderation
 
@@ -646,6 +702,8 @@ GitHub Actions uses Node 22 and runs dependency installation, commit-message val
 
 | Purpose | Command |
 |---|---|
+| US-016 reverse eligibility, query, scoring, authorization, and server contract | `npm run test --prefix server -- src/services/teamRecommendationEligibility.test.ts src/services/teamRecommendationScoring.test.ts src/services/teamRecommendations.test.ts src/db/teamRecommendations.repository.test.ts src/routes/teamRecommendations.routes.test.ts src/routes/teamRecommendations.permissions.routes.test.ts src/routes/teamRecommendations.integration.test.ts` |
+| US-016 React states, API contract, and application integration | `npm run test --prefix client -- src/components/recommendations src/App.test.tsx` |
 | US-031 team channel (model, repository, services, routes, real-SQL lifecycle) | `npm run test:us031 --prefix server` |
 | US-032 direct messages (threads, blocks, access, privacy, routes, real SQL) | `npm run test:us032 --prefix server` |
 | US-033 moderation target/report/privacy/audit server coverage | `npm run test --prefix server -- src/validators/moderation.validator.test.ts src/services/moderationChatTargets.test.ts src/services/moderationCases.privacy.test.ts src/services/moderationReports.test.ts src/services/moderationDecisions.test.ts src/routes/moderation.routes.test.ts src/routes/moderation.decide.routes.test.ts src/routes/moderation.actionRecords.routes.test.ts src/routes/reports.routes.test.ts` |
@@ -654,6 +712,8 @@ GitHub Actions uses Node 22 and runs dependency installation, commit-message val
 | US-034 React badge coverage | `npm run test --prefix client -- src/components/chat` |
 
 The real-SQL tests run migrations on an in-process PostgreSQL (PGlite, a server dev dependency), so they need no external database.
+
+Issue #442 validation on November 11, 2026 ran the US-016 commands above: the focused server selection passed **158 tests in 7 files**, and the client recommendation/application selection passed **146 tests in 4 files**. The client run retained existing React `act(...)` warnings from unrelated landing-page cases in `App.test.tsx`; no test failed.
 
 The #397 suites cover successful ADMIN channel/message cases, PART and visitor denial, malformed and stale targets, mandatory reasons, allowlisted/redacted evidence, participant-report linkage, safe action records, UTC timestamps, and absence of unrelated chat or authentication data. The focused client suite covers chat queue labels, loading and stale-target states, safe evidence rendering, dismissal-only chat controls, kept validation drafts, successful decisions, API failures, and compatibility with non-chat cases.
 

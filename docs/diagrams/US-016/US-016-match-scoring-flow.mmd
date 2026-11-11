@@ -1,0 +1,34 @@
+---
+title: "HackMatch — US-016: Match Scoring and Ranking Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":42,"rankSpacing":58,"padding":14}}}%%
+flowchart TB
+    Inputs([ReverseMatchInputs plus eligible team vacancy]):::identity
+    Normalize["Normalize participant and required skills<br/>case-insensitive, single spaces, first spelling wins"]:::availability
+    Skill["S: required-skill coverage<br/>role match times 1.2, capped at 1<br/>no required skills gives 1"]:::team
+    Goal["G: same goal 1<br/>adjacent goals 0.5<br/>otherwise or missing 0"]:::team
+    Hours["H: min participant over team hours, 1<br/>team request zero gives 1<br/>missing input gives 0"]:::team
+    Combine["Score = 100 times average of S, G, H<br/>bound 0 through 100"]:::team
+    Explain["Round matchPercent<br/>retain vacancy spelling for matched and missing tags<br/>return component explanations"]:::success
+    Rank["Rank by unrounded score,<br/>matched-skill count, team name,<br/>then vacancy id"]:::success
+    Service["getEligibleTeamRecommendations invokes<br/>rankTeamVacancies for eligible candidates"]:::success
+    Contract["Safe scored DTO satisfies React contract<br/>rank, percentage, skill tags, explanations"]:::success
+    Privacy["No email, Firebase identity,<br/>member details, or private profile fields"]:::internal
+
+    Inputs --> Normalize
+    Normalize --> Skill
+    Normalize --> Goal
+    Normalize --> Hours
+    Skill --> Combine
+    Goal --> Combine
+    Hours --> Combine
+    Combine --> Explain --> Rank --> Service --> Contract
+    Privacy -.-> Explain
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef availability fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef team fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+

@@ -98,6 +98,7 @@ After OTP succeeds, the main navigation shows:
 - **Open teams** — platform-wide recruitment board;
 - **My teams** — owned and joined teams;
 - **Find teammates** — Looking-for-Team profile and candidate cards;
+- **Recommended teams** — ranked open roles matched to the signed-in Participant's own profile;
 - **Requests** — tabs for **Applications** and **Invitations**; and
 - the **Notifications** bell, which shows an unread alert badge;
 - the account-name menu — **Profile** and **Sign out**.
@@ -237,15 +238,40 @@ Visitors receive anonymized previews and **Sign in to apply** prompts. A signed-
 
 *Figure 5 — Platform-wide open-team filtering and anonymized visitor previews.*
 
+### Review recommended teams
+
+**Prerequisite:** Signed in as a verified active `PART` with OTP complete. Suggestions require **Looking for Team** to be on and at least one skill on the Participant profile.
+
+1. Select **Recommended teams**.
+2. While HackMatch evaluates the current profile and open roles, the page shows **Finding teams for you…**.
+3. Review the suggestions in best-match-first order. Each card identifies the team and open role, shows a match percentage, and separates skills already on the profile from skills the role asks for that are not yet listed.
+4. Select **Why this match?** to see the plain-language skill, goal, and weekly-hours explanation. Select it again to hide the explanation.
+5. Select **Refresh** to request the latest suggestions.
+6. To continue, select **Apply to _team name_**. HackMatch opens the existing application dialog with that team and vacancy fixed as the target.
+
+The percentage compares self-declared profile and Looking-for-Team information with the team's declared role requirements, goal, and hours. It is a suggestion, not a prediction, guarantee of compatibility, or approval of an application. Two open roles on the same team can appear separately.
+
+HackMatch omits teams the Participant already owns or has joined, hidden or unavailable teams and vacancies, and teams with an existing pending application or invitation for that Participant. Suggestions can change when the profile, team, vacancy, membership, or request state changes.
+
+| State | What the page does |
+|---|---|
+| Looking for Team is off | Shows **Turn on Looking for Team to see suggestions** and **Set up Looking for Team**. |
+| No profile skills | Shows **Add your skills to see suggestions** and **Update my profile**. |
+| No current match | Shows **No open teams match you right now**, with **Browse open teams** and **Check again**. |
+| Initial request fails | Shows a safe error and **Try again**. |
+| Refresh fails | Keeps the last successful list and says that the last results are still displayed. |
+| Session is no longer valid | Removes recommendation data and asks the Participant to sign in again. |
+
+Recommendations are generated only for the signed-in Participant's own profile. They never expose account email, private membership/request details, or another Participant's recommendation results.
+
 ### Apply to an open vacancy
 
 **Prerequisite:** Signed in as a verified active `PART`, not already a confirmed member of the target team.
 
-1. Find the desired vacancy on **Open teams**.
-2. Select **Apply**.
-3. Review the displayed team and open-slot role.
-4. Optionally enter a message of no more than 250 characters.
-5. Select **Submit application**.
+1. Find the desired vacancy, then select **Apply** on **Open teams** or **Apply to _team name_** on **Recommended teams**.
+2. Review the displayed team and open-slot role.
+3. Optionally enter a message of no more than 250 characters.
+4. Select **Submit application**.
 
 ![HackMatch vacancy application form](../assets/wireframes/US-018-team-vacancy-application-form.png)
 
@@ -258,6 +284,8 @@ Rules shown by the current UI:
 - Withdrawing a pending application immediately frees one quota position.
 - Membership in another team does not by itself prevent applying to a different team.
 - A validation or request failure keeps the application message for correction or retry.
+
+When the dialog was opened from a recommendation, the selected team and vacancy also remain fixed after a validation or request failure. Opening a different recommendation resets the target-specific draft so an application intended for Team A cannot be submitted to Team B. A recommendation can become stale before submission; the server rechecks the current account, vacancy, membership, recruiting state, duplicate request, and pending-application quota. Rejection keeps the selected target and entered message available for review. A successful submission clears the message, shows the existing success notice, and refreshes the recommendation list.
 
 **Expected result:** A successful application appears as **Pending Review** in **Requests → Applications**.
 

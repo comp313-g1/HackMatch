@@ -1,0 +1,91 @@
+{
+  "status": "ok",
+  "recommendations": [
+    {
+      "rank": 1,
+      "teamId": "00001002-0000-4000-8000-000000000000",
+      "teamName": "Alpha Backend",
+      "pitch": "Alpha Backend pitch",
+      "goal": "Learning",
+      "commitmentHours": 10,
+      "recruitmentStatus": "Open",
+      "vacancyId": "00002002-0000-4000-8000-000000000000",
+      "vacancyRole": "Backend",
+      "desiredSkills": [
+        "Node.js",
+        "PostgreSQL"
+      ],
+      "matchPercent": 100,
+      "matchedSkills": [
+        "Node.js",
+        "PostgreSQL"
+      ],
+      "missingSkills": [],
+      "roleMatched": true,
+      "contributions": {
+        "skill": "Matched 2 of 2 required skills with primary-role match (×1.2, capped at 1.0).",
+        "goal": "Identical goals.",
+        "hours": "Commitment 12h vs requested 10h."
+      }
+    },
+    {
+      "rank": 2,
+      "teamId": "00001003-0000-4000-8000-000000000000",
+      "teamName": "Gamma Stretch",
+      "pitch": "Gamma Stretch pitch",
+      "goal": "Competitive",
+      "commitmentHours": 12,
+      "recruitmentStatus": "Open",
+      "vacancyId": "00002003-0000-4000-8000-000000000000",
+      "vacancyRole": "Backend",
+      "desiredSkills": [
+        "Node.js",
+        "Go",
+        "Rust"
+      ],
+      "matchPercent": 47,
+      "matchedSkills": [
+        "Node.js"
+      ],
+      "missingSkills": [
+        "Go",
+        "Rust"
+      ],
+      "roleMatched": true,
+      "contributions": {
+        "skill": "Matched 1 of 3 required skills with primary-role match (×1.2, capped at 1.0).",
+        "goal": "Non-adjacent goals.",
+        "hours": "Commitment 12h vs requested 12h."
+      }
+    },
+    {
+      "rank": 3,
+      "teamId": "00001001-0000-4000-8000-000000000000",
+      "teamName": "Beta Frontend",
+      "pitch": "Beta Frontend pitch",
+      "goal": "Project Completion",
+      "commitmentHours": 20,
+      "recruitmentStatus": "Open",
+      "vacancyId": "00002001-0000-4000-8000-000000000000",
+      "vacancyRole": "Frontend",
+      "desiredSkills": [
+        "React"
+      ],
+      "matchPercent": 37,
+      "matchedSkills": [],
+      "missingSkills": [
+        "React"
+      ],
+      "roleMatched": false,
+      "contributions": {
+        "skill": "Matched 0 of 1 required skills.",
+        "goal": "Adjacent goals (partial alignment).",
+        "hours": "Commitment 12h vs requested 20h."
+      }
+    }
+  ],
+  "empty": false,
+  "message": null,
+  "eligibilityReason": null,
+  "notice": "Match percentages compare the skills, goal and hours you and each team have declared. They are suggestions, not predictions."
+}

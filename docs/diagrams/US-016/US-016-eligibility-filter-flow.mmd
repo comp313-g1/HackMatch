@@ -1,0 +1,30 @@
+---
+title: "HackMatch — US-016: Reverse Recommendation Eligibility Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":42,"rankSpacing":58,"padding":14}}}%%
+flowchart TB
+    ParticipantGate{"Authenticated active verified PART,<br/>profile not Hidden, Looking for Team on,<br/>and at least one normalized skill?"}:::decision
+    Empty["Successful empty result<br/>with safe participant guidance"]:::denied
+    Inputs["ReverseMatchInputs<br/>desired or primary role, goal,<br/>valid hours, deduplicated skills"]:::availability
+    Query["Set-based platform query<br/>Open vacancies and recruiting teams<br/>membership and request anti-joins"]:::team
+    CandidateGate{"Not owner or Confirmed member;<br/>team visible, Open, unlocked, not disbanded;<br/>vacancy belongs, Open, not removed;<br/>no Pending Application or Invitation?"}:::decision
+    Exclude["Exclude without returning<br/>membership or request details"]:::denied
+    Safe["Safe eligible candidate DTO<br/>team and vacancy recruitment fields only"]:::success
+    Sort["Current service order<br/>team name, team id, vacancy id"]:::success
+    EventFree["No event selection<br/>legacy event ids stay internal"]:::internal
+    NonRules["Role or goal mismatch and<br/>pending-application quota<br/>are not candidate exclusions"]:::internal
+
+    ParticipantGate -->|"No"| Empty
+    ParticipantGate -->|"Yes"| Inputs --> Query --> CandidateGate
+    CandidateGate -->|"No"| Exclude
+    CandidateGate -->|"Yes"| Safe --> Sort
+    EventFree -.-> Query
+    NonRules -.-> Safe
+
+    classDef availability fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef team fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+

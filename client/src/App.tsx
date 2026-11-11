@@ -17,6 +17,8 @@ import { MyTeamsPage } from './components/teams/MyTeamsPage';
 import { CreateTeamPage } from './components/teams/CreateTeamPage';
 import { LookingForTeamPage } from './components/LookingForTeamPage';
 import { OpenTeamsBoard } from './components/teams/OpenTeamsBoard';
+import { RecommendedTeamsPage } from './components/recommendations/RecommendedTeamsPage';
+import type { RecommendedTeam } from './components/recommendations/recommendedTeamsApi';
 import { ApplicationFormPanel } from './components/teams/ApplicationFormPanel';
 import { RequestsPage, type RequestsTab } from './components/RequestsPage';
 import { ModerationSafetyPage } from './components/moderation/ModerationSafetyPage';
@@ -48,6 +50,7 @@ type View =
   | 'create-team'
   | 'looking'
   | 'browse-teams'
+  | 'recommended-teams'
   | 'requests'
   | 'moderation'
   | 'accounts'
@@ -97,6 +100,9 @@ const getInitialView = (): View => {
   if (view === 'browse-teams' || view === 'open-teams') {
     return 'browse-teams';
   }
+  if (view === 'recommended-teams' || view === 'recommendations') {
+    return 'recommended-teams';
+  }
   if (
     view === 'requests' ||
     view === 'applications' ||
@@ -135,6 +141,7 @@ export function App(): React.JSX.Element {
   const [recoveryEmail, setRecoveryEmail] = useState<string>('');
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [applyTarget, setApplyTarget] = useState<OpenTeamApplyTarget | null>(null);
+  const [recommendedTeamsRefreshToken, setRecommendedTeamsRefreshToken] = useState(0);
   const [teamEventId, setTeamEventId] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
     const params = new URLSearchParams(window.location.search);
@@ -260,8 +267,26 @@ export function App(): React.JSX.Element {
 
   const goToBrowseTeams = () => {
     setStatusNotice(null);
+    setApplyTarget(null);
     closeMenus();
     setCurrentView('browse-teams');
+  };
+
+  const goToRecommendedTeams = () => {
+    setStatusNotice(null);
+    setApplyTarget(null);
+    closeMenus();
+    setCurrentView('recommended-teams');
+  };
+
+  const applyToRecommendedTeam = (team: RecommendedTeam) => {
+    setStatusNotice(null);
+    setApplyTarget({
+      teamId: team.teamId,
+      vacancyId: team.vacancyId,
+      role: team.vacancyRole,
+      teamName: team.teamName,
+    });
   };
 
   const goToRequests = (tab: RequestsTab = 'applications') => {
@@ -413,6 +438,14 @@ export function App(): React.JSX.Element {
                   className={navLinkClass(currentView === 'looking')}
                 >
                   Find teammates
+                </button>
+                <button
+                  type="button"
+                  onClick={goToRecommendedTeams}
+                  aria-current={currentView === 'recommended-teams' ? 'page' : undefined}
+                  className={navLinkClass(currentView === 'recommended-teams')}
+                >
+                  Recommended teams
                 </button>
                 <button
                   type="button"
@@ -635,6 +668,13 @@ export function App(): React.JSX.Element {
                   className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
                 >
                   Find teammates
+                </button>
+                <button
+                  type="button"
+                  onClick={goToRecommendedTeams}
+                  className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
+                >
+                  Recommended teams
                 </button>
                 <button
                   type="button"
@@ -874,6 +914,42 @@ export function App(): React.JSX.Element {
               )}
             </MfaGate>
           </section>
+        ) : currentView === 'recommended-teams' ? (
+          <>
+            <ApplicationFormPanel
+              target={applyTarget}
+              onClose={() => setApplyTarget(null)}
+              onSuccess={(notice) => {
+                setStatusNotice(notice);
+                setRecommendedTeamsRefreshToken((token) => token + 1);
+              }}
+            />
+            <section aria-labelledby="recommended-teams-view-heading">
+              <h2 id="recommended-teams-view-heading" className="sr-only">
+                Recommended teams
+              </h2>
+              <MfaGate
+                initialChallenge={otpChallenge}
+                onNavigateToSignIn={() => {
+                  setStatusNotice(null);
+                  setApplyTarget(null);
+                  setOtpChallenge(null);
+                  setCurrentView('login');
+                }}
+              >
+                {() => (
+                  <RecommendedTeamsPage
+                    onNavigateToSignIn={goToLogin}
+                    onGoToLookingForTeam={goToLooking}
+                    onGoToProfile={goToAccount}
+                    onBrowseOpenTeams={goToBrowseTeams}
+                    onApply={applyToRecommendedTeam}
+                    refreshToken={recommendedTeamsRefreshToken}
+                  />
+                )}
+              </MfaGate>
+            </section>
+          </>
         ) : currentView === 'browse-teams' ? (
           <>
             <ApplicationFormPanel
