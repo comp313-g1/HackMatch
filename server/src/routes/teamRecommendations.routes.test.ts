@@ -152,6 +152,16 @@ describe('GET /api/recommendations/teams (US-016 / #154)', () => {
     expect(teamRecommendationsRepository.listEligibleTeamVacanciesForParticipant).toHaveBeenCalledWith(ME);
     expect(response.body.recommendations).toEqual([
       {
+        rank: 1,
+        matchPercent: 100,
+        matchedSkills: ['Node.js'],
+        missingSkills: [],
+        roleMatched: true,
+        contributions: {
+          skill: 'Matched 1 of 1 required skills with primary-role match (×1.2, capped at 1.0).',
+          goal: 'Identical goals.',
+          hours: 'Commitment 10h vs requested 10h.',
+        },
         teamId: TEAM,
         teamName: 'Safe Team',
         pitch: 'Safe public pitch',

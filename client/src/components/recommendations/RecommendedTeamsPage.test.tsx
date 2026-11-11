@@ -29,7 +29,7 @@ const team = (over: Partial<RecommendedTeam> = {}): RecommendedTeam => ({
 const list = (teams: RecommendedTeam[], over: Partial<RecommendedTeamsResponse> = {}): RecommendedTeamsResponse => ({
   recommendations: teams,
   empty: teams.length === 0,
-  ineligibleReason: null,
+  eligibilityReason: null,
   message: null,
   notice: 'Scores use self-declared information.',
   ...over,
@@ -156,7 +156,7 @@ describe('RecommendedTeamsPage (US-016 / #156)', () => {
     });
 
     it('asks a person who is not Looking for Team to turn it on, and takes them there', async () => {
-      fetchMock().mockResolvedValue(list([], { ineligibleReason: 'participant_not_looking' }));
+      fetchMock().mockResolvedValue(list([], { eligibilityReason: 'participant_not_looking' }));
       const { onGoToLookingForTeam } = await show();
       const empty = screen.getByTestId('recommended-teams-empty');
       expect(empty).toHaveAttribute('data-reason', 'participant_not_looking');
@@ -167,7 +167,7 @@ describe('RecommendedTeamsPage (US-016 / #156)', () => {
     });
 
     it('asks a person with no skills to add some, and takes them to their profile', async () => {
-      fetchMock().mockResolvedValue(list([], { ineligibleReason: 'participant_no_skills' }));
+      fetchMock().mockResolvedValue(list([], { eligibilityReason: 'participant_no_skills' }));
       const { onGoToProfile } = await show();
       expect(screen.getByTestId('recommended-teams-empty')).toHaveTextContent('Add your skills to see suggestions');
       fireEvent.click(screen.getByTestId('go-to-profile'));
@@ -175,7 +175,7 @@ describe('RecommendedTeamsPage (US-016 / #156)', () => {
     });
 
     it('hides the profile button when the page was given nowhere to go', async () => {
-      fetchMock().mockResolvedValue(list([], { ineligibleReason: 'participant_no_skills' }));
+      fetchMock().mockResolvedValue(list([], { eligibilityReason: 'participant_no_skills' }));
       await show({ onGoToProfile: undefined });
       expect(screen.queryByTestId('go-to-profile')).not.toBeInTheDocument();
     });
@@ -183,7 +183,7 @@ describe('RecommendedTeamsPage (US-016 / #156)', () => {
     it.each(['participant_profile_hidden', 'participant_unavailable'] as const)(
       'gives a neutral message for %s, without saying why',
       async (reason) => {
-        fetchMock().mockResolvedValue(list([], { ineligibleReason: reason }));
+        fetchMock().mockResolvedValue(list([], { eligibilityReason: reason }));
         await show();
         const empty = screen.getByTestId('recommended-teams-empty');
         expect(empty).toHaveTextContent('Suggestions are not available for your account right now');

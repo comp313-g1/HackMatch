@@ -35,7 +35,7 @@ const team = (over: Record<string, unknown> = {}) => ({
 const ok = (over: Record<string, unknown> = {}) => ({
   recommendations: [team()],
   empty: false,
-  ineligibleReason: null,
+  eligibilityReason: null,
   message: null,
   notice: 'Self-declared.',
   ...over,
@@ -67,10 +67,10 @@ describe('recommended teams API (US-016 / #156)', () => {
   });
 
   it('accepts an empty list, with or without a reason', () => {
-    expect(parseRecommendedTeamsResponse(ok({ recommendations: [], empty: true }))).toMatchObject({ empty: true, ineligibleReason: null });
+    expect(parseRecommendedTeamsResponse(ok({ recommendations: [], empty: true }))).toMatchObject({ empty: true, eligibilityReason: null });
     expect(
-      parseRecommendedTeamsResponse(ok({ recommendations: [], empty: true, ineligibleReason: 'participant_not_looking', message: 'm' }))
-    ).toMatchObject({ ineligibleReason: 'participant_not_looking', message: 'm' });
+      parseRecommendedTeamsResponse(ok({ recommendations: [], empty: true, eligibilityReason: 'participant_not_looking', message: 'm' }))
+    ).toMatchObject({ eligibilityReason: 'participant_not_looking', message: 'm' });
   });
 
   it('keeps unset optional values as null', () => {
@@ -94,8 +94,8 @@ describe('recommended teams API (US-016 / #156)', () => {
     ['no empty flag', { recommendations: [] }],
     ['empty flag disagrees with a non-empty list', ok({ empty: true })],
     ['empty flag disagrees with an empty list', ok({ recommendations: [], empty: false })],
-    ['a reason on a non-empty list', ok({ ineligibleReason: 'participant_not_looking' })],
-    ['an unknown reason', ok({ recommendations: [], empty: true, ineligibleReason: 'made_up' })],
+    ['a reason on a non-empty list', ok({ eligibilityReason: 'participant_not_looking' })],
+    ['an unknown reason', ok({ recommendations: [], empty: true, eligibilityReason: 'made_up' })],
     ['a percentage above 100', ok({ recommendations: [team({ matchPercent: 101 })] })],
     ['a negative percentage', ok({ recommendations: [team({ matchPercent: -1 })] })],
     ['a fractional percentage', ok({ recommendations: [team({ matchPercent: 80.5 })] })],

@@ -1,6 +1,9 @@
 /**
- * US-016 / #154 — eligible open-team vacancy query for the authenticated participant.
- * Scoring, matched skills, recommendation UI, and application integration are later tasks.
+ * US-016 / #154 + #155 — recommended open-team vacancies for the authenticated participant.
+ *
+ * #154 finds the eligible vacancies; #155 scores each one (match percentage, matched and missing
+ * skills) and orders them best first. The recommendation page (#156) and the application hook-up
+ * (#157) build on this result.
  */
 
 import { participantsRepository } from '../db/participants.repository.js';
@@ -20,8 +23,21 @@ import {
   partitionTeamVacancies,
   type ParticipantExclusionReason,
 } from './teamRecommendationEligibility.js';
+import { rankTeamVacancies, type RankedTeamMatch } from './teamRecommendationScoring.js';
+
+/** The empty-state reasons the participant-facing page understands (the exact cause is not shared). */
+export type RecommendationIneligibleReason =
+  | 'participant_not_looking'
+  | 'participant_no_skills'
+  | 'participant_profile_hidden'
+  | 'participant_unavailable';
+
+export const RECOMMENDATION_SCORE_NOTICE =
+  'Match percentages compare the skills, goal and hours you and each team have declared. They are suggestions, not predictions.';
 
 export interface EligibleTeamRecommendation {
+  /** 1-based position, best match first. */
+  rank: number;
   teamId: string;
   teamName: string;
   pitch: string;
@@ -31,6 +47,13 @@ export interface EligibleTeamRecommendation {
   vacancyId: string;
   vacancyRole: ParticipantPrimaryRole;
   desiredSkills: string[];
+  /** Whole number, 0 to 100. */
+  matchPercent: number;
+  /** Required skills the participant has / does not have yet, in the team's spelling. */
+  matchedSkills: string[];
+  missingSkills: string[];
+  roleMatched: boolean;
+  contributions: { skill: string; goal: string; hours: string };
 }
 
 export interface TeamRecommendationsResult {
@@ -38,7 +61,12 @@ export interface TeamRecommendationsResult {
   recommendations: EligibleTeamRecommendation[];
   empty: boolean;
   message: string | null;
-  eligibilityReason: ParticipantExclusionReason | null;
+  /**
+   * Why the participant gets no suggestions at all, or null. Only the reasons the participant may
+   * see: account problems (suspended, deactivated, unverified, missing) are not spelled out.
+   */
+  eligibilityReason: RecommendationIneligibleReason | null;
+  notice: string;
 }
 
 export interface TeamRecommendationsServiceDeps {
@@ -70,15 +98,27 @@ function resolveDeps(
   };
 }
 
-function stableOrder(a: RecommendationTeamRecord, b: RecommendationTeamRecord): number {
-  const byName = a.team.name.localeCompare(b.team.name, 'en', { sensitivity: 'base' });
-  if (byName !== 0) return byName;
-  const byTeam = a.team.id.localeCompare(b.team.id);
-  return byTeam !== 0 ? byTeam : a.vacancy.id.localeCompare(b.vacancy.id);
+/**
+ * Maps the exact cause to what the page may show. A suspended, deactivated, unverified or missing
+ * account is not spelled out: the participant only learns that suggestions are unavailable.
+ */
+function toPageReason(reason: ParticipantExclusionReason): RecommendationIneligibleReason {
+  switch (reason) {
+    case 'participant_not_looking':
+    case 'participant_no_skills':
+    case 'participant_profile_hidden':
+      return reason;
+    default:
+      return 'participant_unavailable';
+  }
 }
 
-function toSafeDto(candidate: RecommendationTeamRecord): EligibleTeamRecommendation {
+function toSafeDto(
+  candidate: RecommendationTeamRecord,
+  match: RankedTeamMatch
+): EligibleTeamRecommendation {
   return {
+    rank: match.rank,
     teamId: candidate.team.id,
     teamName: candidate.team.name,
     pitch: candidate.team.pitch,
@@ -88,6 +128,11 @@ function toSafeDto(candidate: RecommendationTeamRecord): EligibleTeamRecommendat
     vacancyId: candidate.vacancy.id,
     vacancyRole: candidate.vacancy.role,
     desiredSkills: [...(candidate.vacancy.skills ?? [])],
+    matchPercent: match.matchPercent,
+    matchedSkills: match.matchedSkills,
+    missingSkills: match.missingSkills,
+    roleMatched: match.roleMatched,
+    contributions: match.contributions,
   };
 }
 
@@ -121,7 +166,8 @@ export async function getEligibleTeamRecommendations(
       recommendations: [],
       empty: true,
       message: PARTICIPANT_MESSAGES[inputResult.reason] ?? EMPTY_MESSAGE,
-      eligibilityReason: inputResult.reason,
+      eligibilityReason: toPageReason(inputResult.reason),
+      notice: RECOMMENDATION_SCORE_NOTICE,
     };
   }
 
@@ -134,9 +180,13 @@ export async function getEligibleTeamRecommendations(
     { pendingRequestTeamIds: queryResult.pendingRequestTeamIds }
   );
 
-  const recommendations = [...partitioned.eligible]
-    .sort(stableOrder)
-    .map(toSafeDto);
+  // Best match first (ties: more matched skills, team name, vacancy id), so the order is the same
+  // every time for the same data.
+  const ranked = rankTeamVacancies(inputResult.inputs, partitioned.eligible as RecommendationTeamRecord[]);
+  const byVacancyId = new Map(
+    (partitioned.eligible as RecommendationTeamRecord[]).map((candidate) => [candidate.vacancy.id, candidate])
+  );
+  const recommendations = ranked.map((match) => toSafeDto(byVacancyId.get(match.vacancyId)!, match));
 
   return {
     status: 'ok',
@@ -144,5 +194,6 @@ export async function getEligibleTeamRecommendations(
     empty: recommendations.length === 0,
     message: recommendations.length === 0 ? EMPTY_MESSAGE : null,
     eligibilityReason: null,
+    notice: RECOMMENDATION_SCORE_NOTICE,
   };
 }

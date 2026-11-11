@@ -230,8 +230,8 @@ function EmptyState({
   onCheckAgain,
   checking,
 }: EmptyStateProps): React.JSX.Element {
-  const copy = emptyCopy(result.ineligibleReason, result.message);
-  const reason = result.ineligibleReason;
+  const copy = emptyCopy(result.eligibilityReason, result.message);
+  const reason = result.eligibilityReason;
   return (
     <div
       role="status"

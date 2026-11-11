@@ -87,7 +87,7 @@ vi.mock('./components/recommendations/recommendedTeamsApi', async () => {
     fetchRecommendedTeams: vi.fn().mockResolvedValue({
       recommendations: [],
       empty: true,
-      ineligibleReason: 'participant_not_looking',
+      eligibilityReason: 'participant_not_looking',
       message: null,
       notice: null,
     }),
@@ -132,7 +132,7 @@ describe('App Component (View Routing and Integration)', () => {
     vi.mocked(fetchRecommendedTeams).mockReset().mockResolvedValue({
       recommendations: [],
       empty: true,
-      ineligibleReason: 'participant_not_looking',
+      eligibilityReason: 'participant_not_looking',
       message: null,
       notice: null,
     });
@@ -483,7 +483,7 @@ describe('App Component (View Routing and Integration)', () => {
   ): RecommendedTeamsResponse => ({
     recommendations: teams,
     empty: teams.length === 0,
-    ineligibleReason: null,
+    eligibilityReason: null,
     message: null,
     notice: 'Scores use self-declared information.',
   });

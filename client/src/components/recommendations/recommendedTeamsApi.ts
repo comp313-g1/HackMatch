@@ -43,9 +43,9 @@ export interface RecommendedTeam {
 
 export interface RecommendedTeamsResponse {
   recommendations: RecommendedTeam[];
-  /** True when there is nothing to show; `ineligibleReason` then says whether it is the person or the pool. */
+  /** True when there is nothing to show; `eligibilityReason` then says whether it is the person or the pool. */
   empty: boolean;
-  ineligibleReason: RecommendedTeamsIneligibleReason | null;
+  eligibilityReason: RecommendedTeamsIneligibleReason | null;
   /** Server-written explanation for the empty state, if any. */
   message: string | null;
   /** Reminder that the scores come from self-declared information. */
@@ -136,7 +136,7 @@ export function parseRecommendedTeamsResponse(body: unknown): RecommendedTeamsRe
     if (!team) throw new RecommendedTeamsApiError(502, 'INVALID_RESPONSE', INVALID_RESPONSE);
     recommendations.push(team);
   }
-  const reason = body.ineligibleReason;
+  const reason = body.eligibilityReason;
   if (reason != null && (typeof reason !== 'string' || !REASONS.includes(reason))) {
     throw new RecommendedTeamsApiError(502, 'INVALID_RESPONSE', INVALID_RESPONSE);
   }
@@ -147,7 +147,7 @@ export function parseRecommendedTeamsResponse(body: unknown): RecommendedTeamsRe
   return {
     recommendations,
     empty: body.empty,
-    ineligibleReason: (reason as RecommendedTeamsIneligibleReason | null | undefined) ?? null,
+    eligibilityReason: (reason as RecommendedTeamsIneligibleReason | null | undefined) ?? null,
     message: typeof body.message === 'string' ? body.message : null,
     notice: typeof body.notice === 'string' ? body.notice : null,
   };

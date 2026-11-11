@@ -1,0 +1,8 @@
+{
+  "status": "ok",
+  "recommendations": [],
+  "empty": true,
+  "message": "Turn on Looking for Team to receive team recommendations.",
+  "eligibilityReason": "participant_not_looking",
+  "notice": "Match percentages compare the skills, goal and hours you and each team have declared. They are suggestions, not predictions."
+}

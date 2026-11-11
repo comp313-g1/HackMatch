@@ -5,7 +5,7 @@ import type {
   ParticipantSkill,
 } from '../db/types.js';
 import type { RecommendationTeamRecord } from '../db/teamRecommendations.repository.js';
-import { getEligibleTeamRecommendations } from './teamRecommendations.js';
+import { getEligibleTeamRecommendations, RECOMMENDATION_SCORE_NOTICE } from './teamRecommendations.js';
 
 const ME = '11111111-1111-4111-8111-111111111111';
 const OWNER = '22222222-2222-4222-8222-222222222222';
@@ -131,6 +131,16 @@ describe('participant team recommendation query (US-016 / #154)', () => {
       status: 'ok',
       recommendations: [
         {
+          rank: 1,
+          matchPercent: 100,
+          matchedSkills: ['Node.js'],
+          missingSkills: [],
+          roleMatched: true,
+          contributions: {
+            skill: 'Matched 1 of 1 required skills with primary-role match (×1.2, capped at 1.0).',
+            goal: 'Identical goals.',
+            hours: 'Commitment 12h vs requested 10h.',
+          },
           teamId: TEAM_A,
           teamName: 'Alpha Team',
           pitch: 'Build something useful.',
@@ -145,6 +155,7 @@ describe('participant team recommendation query (US-016 / #154)', () => {
       empty: false,
       message: null,
       eligibilityReason: null,
+      notice: RECOMMENDATION_SCORE_NOTICE,
     });
 
     const serialized = JSON.stringify(result);
@@ -153,10 +164,26 @@ describe('participant team recommendation query (US-016 / #154)', () => {
     expect(serialized).not.toContain('Private Institution');
     expect(serialized).not.toContain('@private');
     expect(serialized).not.toMatch(/owner_participant_id|confirmedMemberIds|event_id|communication_link/i);
-    expect(serialized).not.toMatch(/match(ed)?Skills|score|percentage/i);
+    // The match percentage is shown; the raw ranking score and internal ids are not.
+    expect(serialized).not.toMatch(/"score"|displayScore|internalId/);
   });
 
-  it('uses stable team-name, team-id, then vacancy-id ordering without match ranking', async () => {
+  it('puts the better match first even when its team name sorts later (#155)', async () => {
+    const d = deps();
+    d.recommendationsRepo.listEligibleTeamVacanciesForParticipant.mockResolvedValue({
+      candidates: [
+        candidate({ team: { id: TEAM_A, name: 'Alpha Team', goal: 'Competitive' }, vacancy: { skills: ['Go', 'Rust'] } }),
+        candidate({ team: { id: TEAM_B, name: 'Zulu Team' }, vacancy: { id: VACANCY_B, team_id: TEAM_B } }),
+      ],
+      pendingRequestTeamIds: new Set(),
+    });
+    const result = await getEligibleTeamRecommendations(ME, d);
+    expect(result.recommendations.map((r) => r.teamName)).toEqual(['Zulu Team', 'Alpha Team']);
+    expect(result.recommendations.map((r) => r.rank)).toEqual([1, 2]);
+    expect(result.recommendations[0]!.matchPercent).toBeGreaterThan(result.recommendations[1]!.matchPercent);
+  });
+
+  it('breaks equal scores by team name, then team id, then vacancy id', async () => {
     const d = deps();
     d.recommendationsRepo.listEligibleTeamVacanciesForParticipant.mockResolvedValue({
       candidates: [
@@ -229,6 +256,41 @@ describe('participant team recommendation query (US-016 / #154)', () => {
     expect(result.recommendations).toEqual([]);
     expect(result.eligibilityReason).toBe(reason);
     expect(d.recommendationsRepo.listEligibleTeamVacanciesForParticipant).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['suspended', () => participant({ is_suspended: true })],
+    ['deactivated', () => participant({ is_deactivated: true })],
+    ['unverified', () => participant({ is_verified: false })],
+    ['an ADMIN', () => participant({ role: 'ADMIN' })],
+    ['missing', () => null],
+  ])('does not spell out that the account is %s: the reason is just "unavailable" (#158/#159)', async (_label, make) => {
+    const d = deps();
+    d.participantsRepo.findById.mockResolvedValue(make());
+    const result = await getEligibleTeamRecommendations(ME, d);
+    expect(result).toMatchObject({ empty: true, recommendations: [], eligibilityReason: 'participant_unavailable' });
+    expect(JSON.stringify(result)).not.toMatch(/suspend|deactivat|unverified|admin/i);
+    expect(d.recommendationsRepo.listEligibleTeamVacanciesForParticipant).not.toHaveBeenCalled();
+  });
+
+  it('always includes the score notice, with or without suggestions', async () => {
+    const d = deps();
+    expect((await getEligibleTeamRecommendations(ME, d)).notice).toBe(RECOMMENDATION_SCORE_NOTICE);
+    d.availabilityRepo.findByParticipantId.mockResolvedValue(null);
+    expect((await getEligibleTeamRecommendations(ME, d)).notice).toBe(RECOMMENDATION_SCORE_NOTICE);
+  });
+
+  it('numbers the suggestions from 1 in best-first order and keeps each vacancy once', async () => {
+    const d = deps();
+    d.recommendationsRepo.listEligibleTeamVacanciesForParticipant.mockResolvedValue({
+      candidates: [
+        candidate({ team: { id: TEAM_B, name: 'Zulu Team', goal: 'Competitive' }, vacancy: { id: VACANCY_B, team_id: TEAM_B, skills: ['Go'] } }),
+        candidate(),
+      ],
+      pendingRequestTeamIds: new Set(),
+    });
+    const result = await getEligibleTeamRecommendations(ME, d);
+    expect(result.recommendations.map((r) => [r.rank, r.vacancyId])).toEqual([[1, VACANCY_A], [2, VACANCY_B]]);
   });
 
   it('returns a successful standard empty collection when no team qualifies', async () => {
