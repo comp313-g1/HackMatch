@@ -103,6 +103,7 @@ describe('recommended teams API (US-016 / #156)', () => {
     ['a rank of 0', ok({ recommendations: [team({ rank: 0 })] })],
     ['no team name', ok({ recommendations: [team({ teamName: '  ' })] })],
     ['no team id', ok({ recommendations: [team({ teamId: '' })] })],
+    ['an unsupported vacancy role', ok({ recommendations: [team({ vacancyRole: 'Database Wizard' })] })],
     ['skills that are not text', ok({ recommendations: [team({ matchedSkills: [1] })] })],
     ['missing skills list', ok({ recommendations: [team({ missingSkills: undefined })] })],
     ['role match that is not true/false', ok({ recommendations: [team({ roleMatched: 'yes' })] })],

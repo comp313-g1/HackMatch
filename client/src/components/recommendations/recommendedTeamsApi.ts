@@ -1,4 +1,8 @@
 import { authFetch, AuthRequiredError } from '../../config/authFetch';
+import {
+  ALLOWED_PRIMARY_ROLES,
+  type ParticipantPrimaryRole,
+} from '../teams/openTeamsApi';
 
 export { AuthRequiredError };
 
@@ -26,7 +30,7 @@ export interface RecommendedTeam {
   goal: string | null;
   commitmentHours: number | null;
   /** The role the open slot is for. */
-  vacancyRole: string;
+  vacancyRole: ParticipantPrimaryRole;
   /** Whole number, 0 to 100. */
   matchPercent: number;
   /** Required skills the participant has / does not have yet, in the team's spelling. */
@@ -86,6 +90,7 @@ function parseTeam(raw: unknown): RecommendedTeam | null {
     typeof raw.vacancyId !== 'string' || !raw.vacancyId ||
     typeof raw.teamName !== 'string' || !raw.teamName.trim() ||
     typeof raw.vacancyRole !== 'string' ||
+    !ALLOWED_PRIMARY_ROLES.includes(raw.vacancyRole as ParticipantPrimaryRole) ||
     !Number.isInteger(raw.matchPercent) ||
     (raw.matchPercent as number) < 0 ||
     (raw.matchPercent as number) > 100 ||
@@ -107,7 +112,7 @@ function parseTeam(raw: unknown): RecommendedTeam | null {
     teamName: raw.teamName,
     goal: typeof raw.goal === 'string' ? raw.goal : null,
     commitmentHours: typeof hours === 'number' && Number.isFinite(hours) ? hours : null,
-    vacancyRole: raw.vacancyRole,
+    vacancyRole: raw.vacancyRole as ParticipantPrimaryRole,
     matchPercent: raw.matchPercent as number,
     matchedSkills: raw.matchedSkills,
     missingSkills: raw.missingSkills,

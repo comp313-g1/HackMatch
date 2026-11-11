@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, within, act } from '@testing-library/react';
+import { render, screen, fireEvent, within, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   applyActionCode,
@@ -12,6 +12,15 @@ import {
 import App from './App';
 import { fetchAuditRecords } from './components/audit/auditApi';
 import { listNotifications, markNotificationRead } from './components/notifications/notificationsApi';
+import {
+  fetchRecommendedTeams,
+  type RecommendedTeam,
+  type RecommendedTeamsResponse,
+} from './components/recommendations/recommendedTeamsApi';
+import {
+  ApplicationsApiError,
+  submitTeamApplication,
+} from './components/teams/applicationsApi';
 
 vi.mock('firebase/auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('firebase/auth')>();
@@ -84,6 +93,15 @@ vi.mock('./components/recommendations/recommendedTeamsApi', async () => {
     }),
   };
 });
+vi.mock('./components/teams/applicationsApi', async () => {
+  const actual = await vi.importActual<typeof import('./components/teams/applicationsApi')>(
+    './components/teams/applicationsApi'
+  );
+  return {
+    ...actual,
+    submitTeamApplication: vi.fn(),
+  };
+});
 vi.mock('./components/audit/auditApi', async () => {
   const actual = await vi.importActual<typeof import('./components/audit/auditApi')>(
     './components/audit/auditApi'
@@ -111,6 +129,14 @@ describe('App Component (View Routing and Integration)', () => {
     vi.mocked(onAuthStateChanged).mockImplementation(signedOut);
     vi.mocked(onIdTokenChanged).mockImplementation(signedOut as unknown as typeof onIdTokenChanged);
     vi.mocked(getIdTokenResult).mockReset();
+    vi.mocked(fetchRecommendedTeams).mockReset().mockResolvedValue({
+      recommendations: [],
+      empty: true,
+      ineligibleReason: 'participant_not_looking',
+      message: null,
+      notice: null,
+    });
+    vi.mocked(submitTeamApplication).mockReset();
   });
 
   it('renders the header with HackMatch branding', () => {
@@ -430,6 +456,154 @@ describe('App Component (View Routing and Integration)', () => {
 
     expect(screen.queryByRole('heading', { level: 1, name: /^recommended teams$/i })).not.toBeInTheDocument();
     expect(screen.queryByTestId('recommended-team')).not.toBeInTheDocument();
+  });
+
+  const recommendedTeam = (over: Partial<RecommendedTeam> = {}): RecommendedTeam => ({
+    rank: 1,
+    teamId: 'team-a',
+    vacancyId: 'vacancy-a',
+    teamName: 'Civic Signal',
+    goal: 'Learning',
+    commitmentHours: 12,
+    vacancyRole: 'Backend' as const,
+    matchPercent: 85,
+    matchedSkills: ['Node.js'],
+    missingSkills: ['PostgreSQL'],
+    roleMatched: true,
+    contributions: {
+      skill: 'Matched 1 of 2 required skills.',
+      goal: 'Identical goals.',
+      hours: 'Commitment 12h vs requested 12h.',
+    },
+    ...over,
+  });
+
+  const recommendationList = (
+    teams: RecommendedTeam[] = [recommendedTeam()]
+  ): RecommendedTeamsResponse => ({
+    recommendations: teams,
+    empty: teams.length === 0,
+    ineligibleReason: null,
+    message: null,
+    notice: 'Scores use self-declared information.',
+  });
+
+  it('opens the existing US-018 form for the recommended team and refreshes after success (#157)', async () => {
+    window.history.pushState({}, '', '/?view=recommended-teams');
+    mockSignedInUser({ mfaComplete: true, role: 'PART' });
+    vi.mocked(fetchRecommendedTeams)
+      .mockResolvedValueOnce(recommendationList())
+      .mockResolvedValueOnce(recommendationList([]));
+    vi.mocked(submitTeamApplication).mockResolvedValue({
+      id: 'application-1',
+      teamId: 'team-a',
+      vacancyId: 'vacancy-a',
+      applicantParticipantId: 'participant-1',
+      status: 'Pending',
+      requestType: 'Application',
+      message: 'I would like to help.',
+      createdAt: '2026-11-11T15:00:00.000Z',
+      teamName: 'Civic Signal',
+      vacancyRole: 'Backend',
+      notice: 'Application submitted for review.',
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /apply to civic signal/i }));
+
+    expect(screen.getByRole('dialog', { name: /apply to join civic signal/i })).toBeInTheDocument();
+    expect(screen.getByTestId('application-form-team')).toHaveTextContent('Civic Signal');
+    expect(screen.getByTestId('application-form-slot')).toHaveTextContent('Backend');
+    fireEvent.change(screen.getByTestId('application-message-input'), {
+      target: { value: 'I would like to help.' },
+    });
+    fireEvent.click(screen.getByTestId('submit-application'));
+
+    await waitFor(() => {
+      expect(submitTeamApplication).toHaveBeenCalledWith('team-a', {
+        vacancyId: 'vacancy-a',
+        message: 'I would like to help.',
+      });
+    });
+    expect(await screen.findByTestId('application-form-success')).toHaveTextContent(
+      'Application submitted for review.'
+    );
+    await waitFor(() => expect(fetchRecommendedTeams).toHaveBeenCalledTimes(2));
+    expect(await screen.findByTestId('recommended-teams-empty')).toBeInTheDocument();
+  });
+
+  it('keeps the recommended team and draft when existing US-018 validation fails (#157)', async () => {
+    window.history.pushState({}, '', '/?view=recommended-teams');
+    mockSignedInUser({ mfaComplete: true, role: 'PART' });
+    vi.mocked(fetchRecommendedTeams).mockResolvedValue(recommendationList());
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /apply to civic signal/i }));
+    const draft = 'x'.repeat(251);
+    fireEvent.change(screen.getByTestId('application-message-input'), { target: { value: draft } });
+    fireEvent.click(screen.getByTestId('submit-application'));
+
+    expect(await screen.findByTestId('application-message-error')).toHaveTextContent(/at most 250/i);
+    expect(screen.getByTestId('application-message-input')).toHaveValue(draft);
+    expect(screen.getByTestId('application-form-team')).toHaveTextContent('Civic Signal');
+    expect(submitTeamApplication).not.toHaveBeenCalled();
+  });
+
+  it('keeps recommendation context and entered data when the server rejects a stale team (#157)', async () => {
+    window.history.pushState({}, '', '/?view=recommended-teams');
+    mockSignedInUser({ mfaComplete: true, role: 'PART' });
+    vi.mocked(fetchRecommendedTeams).mockResolvedValue(recommendationList());
+    vi.mocked(submitTeamApplication).mockRejectedValue(
+      new ApplicationsApiError(
+        409,
+        'TEAM_NOT_RECRUITING',
+        undefined,
+        undefined,
+        'This team is no longer accepting applications.'
+      )
+    );
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /apply to civic signal/i }));
+    fireEvent.change(screen.getByTestId('application-message-input'), {
+      target: { value: 'Please keep this draft.' },
+    });
+    fireEvent.click(screen.getByTestId('submit-application'));
+
+    expect(await screen.findByTestId('application-form-error')).toHaveTextContent(
+      'This team is no longer accepting applications.'
+    );
+    expect(screen.getByTestId('application-message-input')).toHaveValue('Please keep this draft.');
+    expect(screen.getByTestId('application-form-team')).toHaveTextContent('Civic Signal');
+  });
+
+  it('isolates recommendation state when Team A is closed before applying to Team B (#157)', async () => {
+    window.history.pushState({}, '', '/?view=recommended-teams');
+    mockSignedInUser({ mfaComplete: true, role: 'PART' });
+    vi.mocked(fetchRecommendedTeams).mockResolvedValue(
+      recommendationList([
+        recommendedTeam(),
+        recommendedTeam({
+          rank: 2,
+          teamId: 'team-b',
+          vacancyId: 'vacancy-b',
+          teamName: 'Health Bridge',
+          vacancyRole: 'Frontend',
+        }),
+      ])
+    );
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /apply to civic signal/i }));
+    fireEvent.change(screen.getByTestId('application-message-input'), {
+      target: { value: 'Team A draft' },
+    });
+    fireEvent.click(screen.getByTestId('application-form-dismiss'));
+    fireEvent.click(screen.getByRole('button', { name: /apply to health bridge/i }));
+
+    expect(screen.getByTestId('application-form-team')).toHaveTextContent('Health Bridge');
+    expect(screen.getByTestId('application-form-slot')).toHaveTextContent('Frontend');
+    expect(screen.getByTestId('application-message-input')).toHaveValue('');
   });
 
   it('PART navbar hides Moderation and Accounts (#359 / #358)', async () => {

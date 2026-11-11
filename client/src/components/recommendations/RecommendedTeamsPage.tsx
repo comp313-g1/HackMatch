@@ -19,6 +19,8 @@ export interface RecommendedTeamsPageProps {
   onBrowseOpenTeams: () => void;
   /** When given, each suggestion shows an Apply button (the US-018 hook-up). */
   onApply?: (team: RecommendedTeam) => void;
+  /** Reload after an application changes recommendation eligibility. */
+  refreshToken?: number;
 }
 
 type Phase = 'loading' | 'loaded' | 'error' | 'signed-out';
@@ -81,6 +83,7 @@ export function RecommendedTeamsPage({
   onGoToProfile,
   onBrowseOpenTeams,
   onApply,
+  refreshToken = 0,
 }: RecommendedTeamsPageProps): React.JSX.Element {
   const [phase, setPhase] = useState<Phase>('loading');
   const [result, setResult] = useState<RecommendedTeamsResponse | null>(null);
@@ -118,7 +121,7 @@ export function RecommendedTeamsPage({
       // Ignore any answer that arrives after the page is gone or a newer request has started.
       latestRequest.current += 1;
     };
-  }, [load]);
+  }, [load, refreshToken]);
 
   const button =
     'rounded-md px-4 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2';
