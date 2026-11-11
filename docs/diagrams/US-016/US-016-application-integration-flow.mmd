@@ -1,0 +1,40 @@
+---
+title: "HackMatch — US-016: Recommended Teams and US-018 Application Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":42,"rankSpacing":58,"padding":14}}}%%
+flowchart TB
+    Open([PART opens protected Recommended teams page]):::identity
+    Response{"Recommendation request<br/>outcome?"}:::decision
+    SignedOut["Signed-out state<br/>no recommendation data"]:::denied
+    Error["Safe error and retry<br/>keep last good refresh data"]:::denied
+    Empty["Empty guidance<br/>profile, LFT, browse, or retry"]:::internal
+    Card["Validated recommendation cards<br/>match percent, skill tags, Apply action"]:::team
+    Form["Pass stable teamId and vacancyId<br/>to existing fixed US-018 form"]:::team
+    ClientGate{"Vacancy present and<br/>message at most 250?"}:::decision
+    Keep["Show error and preserve<br/>selected team plus message"]:::denied
+    ServerGate{"US-018 backend revalidates current<br/>auth, vacancy, membership, recruiting,<br/>duplicate application, and quota"}:::decision
+    Reject["Safe stale or ineligible error<br/>preserve target and message"]:::denied
+    Success["Create Pending Application<br/>show existing notice, clear message,<br/>then refetch recommendations"]:::success
+    Isolation["Team A to Team B<br/>resets target-specific form state"]:::internal
+    DisplayOnly["Match score is display context<br/>never application authorization"]:::internal
+
+    Open --> Response
+    Response -->|"Signed out"| SignedOut
+    Response -->|"Invalid or failed"| Error
+    Response -->|"Valid empty"| Empty
+    Response -->|"Valid non-empty"| Card --> Form --> ClientGate
+    ClientGate -->|"No"| Keep
+    ClientGate -->|"Yes: POST application"| ServerGate
+    ServerGate -->|"No"| Reject
+    ServerGate -->|"Yes"| Success
+    Isolation -.-> Form
+    DisplayOnly -.-> ServerGate
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef availability fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef team fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+

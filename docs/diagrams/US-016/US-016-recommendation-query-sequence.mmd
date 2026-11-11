@@ -1,0 +1,45 @@
+---
+title: "HackMatch — US-016: Recommendation Query and Authorization Sequence"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#f3f4f6","noteBorderColor":"#6b7280","noteTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":24,"diagramMarginY":18,"actorMargin":30,"width":155,"height":60,"boxMargin":8,"messageMargin":24,"noteMargin":10}}}%%
+sequenceDiagram
+    autonumber
+    actor Part as Active verified PART
+    participant React as RecommendedTeamsPage
+    participant API as Express recommendation API
+    participant Guards as Auth and own-profile guards
+    participant Service as Team recommendation service
+    participant Repo as Recommendation repository
+    participant DB as PostgreSQL via Supabase
+
+    Part->>React: Open Recommended teams
+    React->>API: GET /api/recommendations/teams
+    API->>Guards: Verify token, MFA, active PART, email, own profile
+    alt Visitor, ADMIN, suspended, unverified, or another profile named
+        Guards-->>React: Safe 400, 401, or 403 without profile existence
+        React-->>Part: Signed-out or error state
+    else Authorized own profile
+        Guards->>Service: Use req.participant.id only
+        Service->>DB: Load participant, profile, skills, and LFT availability
+        DB-->>Service: Current participant matching inputs
+        Service->>Repo: listEligibleTeamVacanciesForParticipant
+        Repo->>DB: Read confirmed memberships and Pending requests
+        Repo->>DB: Query Open visible vacancies and recruiting teams
+        DB-->>Repo: Database-prefiltered candidates
+        Repo-->>Service: Candidates and pending-request team ids
+        Service->>Service: Reapply eligibility backstop
+        Service->>Service: Score skills, goal, and hours with rankTeamVacancies
+        Service->>Service: Rank by score, matched skills, team, and vacancy
+        Service-->>API: Safe scored recommendation DTO
+        API-->>React: 200 no-store
+        alt Empty candidate list
+            React-->>Part: Empty guidance or profile action
+        else Non-empty candidate list
+            React->>React: Validate rank, matchPercent, skills, and explanations
+            React-->>Part: Ranked cards with match details and Apply action
+        end
+    end
+
+    Note over React,Service: The live service invokes the task 155 scorer, and the task 159 contract suite verifies that the server response satisfies the React parser.
+    Note over API,DB: The query is platform-wide. No event is selected, trusted, or returned, and safe DTOs omit emails, Firebase ids, membership rows, and request details.
+

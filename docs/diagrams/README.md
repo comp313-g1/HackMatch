@@ -14,11 +14,11 @@ This is the single documentation and navigation source for HackMatch engineering
 
 | Item | Count |
 |---|---:|
-| Diagrammed User Stories | 28 |
-| Mermaid sources | 74 |
-| Matching rendered diagram PNGs | 74 |
+| Diagrammed User Stories | 29 |
+| Mermaid sources | 78 |
+| Matching rendered diagram PNGs | 78 |
 | Shared reference images | 1 |
-| Total PNG files | 75 |
+| Total PNG files | 79 |
 
 ## Diagram and visual conventions
 
@@ -58,6 +58,7 @@ Every link below resolves from this central README. “Source” opens the edita
 | **US-013 — Browse and Filter Open Team Vacancies** | Partial (repository-audited) | Recruitment Board Sequence ([PNG](US-013/US-013-recruitment-board-sequence.png), [source](US-013/US-013-recruitment-board-sequence.mmd))<br>Visitor/PART Visibility Flow ([PNG](US-013/US-013-visitor-part-visibility-flow.png), [source](US-013/US-013-visitor-part-visibility-flow.mmd)) |
 | **US-014 — Advanced Candidate Directory Search and Filter for Team Leads** | Implemented (repository-audited) | Event-Free Candidate Directory Sequence ([PNG](US-014/US-014-candidate-directory-sequence.png), [source](US-014/US-014-candidate-directory-sequence.mmd))<br>Candidate Eligibility and Privacy Filter Flow ([PNG](US-014/US-014-candidate-eligibility-filter-flow.png), [source](US-014/US-014-candidate-eligibility-filter-flow.mmd)) |
 | **US-015 — Candidate Recommendations for Team Leads** | Partial (repository-audited) | Candidate Recommendation Sequence ([PNG](US-015/US-015-candidate-recommendation-sequence.png), [source](US-015/US-015-candidate-recommendation-sequence.mmd))<br>Eligibility and Scoring Flow ([PNG](US-015/US-015-eligibility-scoring-flow.png), [source](US-015/US-015-eligibility-scoring-flow.mmd)) |
+| **US-016 — Recommended Teams for Participants** | Implemented (repository-audited) | Recommendation Query and Authorization Sequence ([PNG](US-016/US-016-recommendation-query-sequence.png), [source](US-016/US-016-recommendation-query-sequence.mmd))<br>Reverse Recommendation Eligibility Flow ([PNG](US-016/US-016-eligibility-filter-flow.png), [source](US-016/US-016-eligibility-filter-flow.mmd))<br>Match Scoring and Ranking Flow ([PNG](US-016/US-016-match-scoring-flow.png), [source](US-016/US-016-match-scoring-flow.mmd))<br>Recommended Teams and US-018 Application Flow ([PNG](US-016/US-016-application-integration-flow.png), [source](US-016/US-016-application-integration-flow.mmd)) |
 | **US-017 — Issue a Team Invitation** | Partial (repository-audited) | Invitation Issuance Sequence ([PNG](US-017/US-017-invitation-issuance-sequence.png), [source](US-017/US-017-invitation-issuance-sequence.mmd))<br>Invitation Lifecycle State ([PNG](US-017/US-017-invitation-lifecycle-state.png), [source](US-017/US-017-invitation-lifecycle-state.mmd)) |
 | **US-018 — Apply to Join a Team Vacancy** | Partial (repository-audited) | Application Submission Sequence ([PNG](US-018/US-018-application-submission-sequence.png), [source](US-018/US-018-application-submission-sequence.mmd))<br>Application Lifecycle State ([PNG](US-018/US-018-application-lifecycle-state.png), [source](US-018/US-018-application-lifecycle-state.mmd)) |
 | **US-019 — Respond to a Team Invitation** | Partial (repository-audited) | Invitation Response Sequence ([PNG](US-019/US-019-invitation-response-sequence.png), [source](US-019/US-019-invitation-response-sequence.mmd))<br>Placement and Pre-Lock Leave Lifecycle ([PNG](US-019/US-019-placement-and-leave-lifecycle.png), [source](US-019/US-019-placement-and-leave-lifecycle.mmd)) |
@@ -81,7 +82,7 @@ Every link below resolves from this central README. “Source” opens the edita
 | Stories | Status | Reason |
 |---|---|---|
 | US-007 | Post-MVP / out of #426 scope | No current implementation diagram was required; it remains intentionally undiagrammed. |
-| US-016, US-029 | Active future scope; diagram audit pending | Future stories retained without an implementation claim. |
+| US-029 | Active future scope; diagram audit pending | Future story retained without an implementation claim. |
 | US-008, US-009, US-010 | Deprecated | Removed by the Event-Free Architecture and intentionally omitted. |
 
 ## Important repository-audit notes
@@ -101,6 +102,7 @@ These notes preserve the material gaps identified during the diagram audits with
 | US-013 | Server projections enforce visitor/PART privacy, but shadow-event lifecycle filtering, a 200-row prefilter, and missing public browse rate limiting can affect results. |
 | US-014 | The current candidate directory is Event-Free and team-owner scoped. Older story language remains event-oriented, while backend event state is retained only as internal compatibility context. |
 | US-015 | Platform-wide recommendation behavior is mostly present, but repository-failure fallback uses event-wide membership exclusion and responses expose internal participant IDs. |
+| US-016 | The Event-Free live service invokes the deterministic scorer and returns the ranked percentage, matched-skill, and explanation fields required by React. The #159 server/client contract suite covers the non-empty and empty response shapes, privacy, authorization, ranking, and UI states. |
 | US-017 | Event-Free client/API inputs and 48-hour/quota behavior exist; SQL still applies shadow-event membership/lifecycle rules and some DTO/UI paths expose event or internal IDs. |
 | US-018 | Express checks use a platform-wide cap and target-team membership, while the atomic RPC still uses per-event quota/membership/lifecycle rules; mocked and live-database expectations conflict. |
 | US-019 | Atomic response/leave flows exist, but SQL still uses shadow-event membership, capacity, lifecycle, and cleanup rules; LFT clearing differs from US-020. |
