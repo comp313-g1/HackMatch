@@ -47,11 +47,14 @@ export interface SendMessageInput {
   body: string;
 }
 
-/** US-032 / #389 safe one-to-one message projection. */
+/**
+ * US-032 / #389 safe one-to-one message projection. The server never sends the author's account id;
+ * it sends `fromMe` (#434) so the thread can show which messages are yours.
+ */
 export interface DirectMessageView {
   id: string;
   threadId: string;
-  authorId: string;
+  fromMe: boolean;
   authorHandle: string | null;
   body: string;
   createdAt: string;

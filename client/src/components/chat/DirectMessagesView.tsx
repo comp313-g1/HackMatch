@@ -594,9 +594,20 @@ export function DirectMessagesView({
                 ) : (
                   <ul className="my-4 max-h-80 flex-1 space-y-3 overflow-y-auto pr-1" aria-label="Direct messages">
                     {messages.map((message) => (
-                      <li key={message.id} data-testid="dm-message" className="rounded-md border border-cream-100 bg-cream-50/80 px-3 py-2">
-                        <div className="flex items-baseline justify-between gap-2">
-                          <span className="text-sm font-semibold text-forest-900">{message.authorHandle || 'Participant'}</span>
+                      <li
+                        key={message.id}
+                        data-testid="dm-message"
+                        data-from-me={message.fromMe === true ? 'true' : 'false'}
+                        className={
+                          message.fromMe === true
+                            ? 'ml-auto w-fit max-w-[85%] rounded-md border border-forest-200 bg-forest-50 px-3 py-2'
+                            : 'mr-auto w-fit max-w-[85%] rounded-md border border-cream-100 bg-cream-50/80 px-3 py-2'
+                        }
+                      >
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span className="text-sm font-semibold text-forest-900">
+                            {message.fromMe === true ? 'You' : message.authorHandle || 'Participant'}
+                          </span>
                           <time dateTime={message.createdAt} className="whitespace-nowrap text-xs text-ink-muted">
                             {formatTimestamp(message.createdAt)}
                           </time>
