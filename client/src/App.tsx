@@ -17,6 +17,7 @@ import { MyTeamsPage } from './components/teams/MyTeamsPage';
 import { CreateTeamPage } from './components/teams/CreateTeamPage';
 import { LookingForTeamPage } from './components/LookingForTeamPage';
 import { OpenTeamsBoard } from './components/teams/OpenTeamsBoard';
+import { RecommendedTeamsPage } from './components/recommendations/RecommendedTeamsPage';
 import { ApplicationFormPanel } from './components/teams/ApplicationFormPanel';
 import { RequestsPage, type RequestsTab } from './components/RequestsPage';
 import { ModerationSafetyPage } from './components/moderation/ModerationSafetyPage';
@@ -48,6 +49,7 @@ type View =
   | 'create-team'
   | 'looking'
   | 'browse-teams'
+  | 'recommended-teams'
   | 'requests'
   | 'moderation'
   | 'accounts'
@@ -96,6 +98,9 @@ const getInitialView = (): View => {
   }
   if (view === 'browse-teams' || view === 'open-teams') {
     return 'browse-teams';
+  }
+  if (view === 'recommended-teams' || view === 'recommendations') {
+    return 'recommended-teams';
   }
   if (
     view === 'requests' ||
@@ -264,6 +269,12 @@ export function App(): React.JSX.Element {
     setCurrentView('browse-teams');
   };
 
+  const goToRecommendedTeams = () => {
+    setStatusNotice(null);
+    closeMenus();
+    setCurrentView('recommended-teams');
+  };
+
   const goToRequests = (tab: RequestsTab = 'applications') => {
     setStatusNotice(null);
     setApplyTarget(null);
@@ -413,6 +424,14 @@ export function App(): React.JSX.Element {
                   className={navLinkClass(currentView === 'looking')}
                 >
                   Find teammates
+                </button>
+                <button
+                  type="button"
+                  onClick={goToRecommendedTeams}
+                  aria-current={currentView === 'recommended-teams' ? 'page' : undefined}
+                  className={navLinkClass(currentView === 'recommended-teams')}
+                >
+                  Recommended teams
                 </button>
                 <button
                   type="button"
@@ -635,6 +654,13 @@ export function App(): React.JSX.Element {
                   className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
                 >
                   Find teammates
+                </button>
+                <button
+                  type="button"
+                  onClick={goToRecommendedTeams}
+                  className="block w-full text-left px-3 py-2 text-sm font-medium text-ink hover:bg-cream-100 rounded"
+                >
+                  Recommended teams
                 </button>
                 <button
                   type="button"
@@ -870,6 +896,29 @@ export function App(): React.JSX.Element {
                   onNavigateAway={goToLanding}
                   directMessageRequest={directMessageRequest}
                   onDirectMessageRequestHandled={handleDirectMessageRequestHandled}
+                />
+              )}
+            </MfaGate>
+          </section>
+        ) : currentView === 'recommended-teams' ? (
+          <section aria-labelledby="recommended-teams-view-heading">
+            <h2 id="recommended-teams-view-heading" className="sr-only">
+              Recommended teams
+            </h2>
+            <MfaGate
+              initialChallenge={otpChallenge}
+              onNavigateToSignIn={() => {
+                setStatusNotice(null);
+                setOtpChallenge(null);
+                setCurrentView('login');
+              }}
+            >
+              {() => (
+                <RecommendedTeamsPage
+                  onNavigateToSignIn={goToLogin}
+                  onGoToLookingForTeam={goToLooking}
+                  onGoToProfile={goToAccount}
+                  onBrowseOpenTeams={goToBrowseTeams}
                 />
               )}
             </MfaGate>

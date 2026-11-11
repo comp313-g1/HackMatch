@@ -69,6 +69,21 @@ vi.mock('./components/notifications/notificationsApi', async () => {
     markAllNotificationsRead: vi.fn(),
   };
 });
+vi.mock('./components/recommendations/recommendedTeamsApi', async () => {
+  const actual = await vi.importActual<typeof import('./components/recommendations/recommendedTeamsApi')>(
+    './components/recommendations/recommendedTeamsApi'
+  );
+  return {
+    ...actual,
+    fetchRecommendedTeams: vi.fn().mockResolvedValue({
+      recommendations: [],
+      empty: true,
+      ineligibleReason: 'participant_not_looking',
+      message: null,
+      notice: null,
+    }),
+  };
+});
 vi.mock('./components/audit/auditApi', async () => {
   const actual = await vi.importActual<typeof import('./components/audit/auditApi')>(
     './components/audit/auditApi'
@@ -373,6 +388,48 @@ describe('App Component (View Routing and Integration)', () => {
     expect(screen.getByRole('menuitem', { name: /^sign out$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^open chat$/i })).toBeInTheDocument();
     expect(screen.queryByTestId('header-verification-pending')).not.toBeInTheDocument();
+  });
+
+  it('offers Recommended teams in the navigation and opens the page from it (US-016 / #156)', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    mockSignedInUser({ mfaComplete: true, role: 'PART', displayName: 'Sahil Gupta' });
+
+    render(<App />);
+
+    const link = await within(primaryNav()).findByRole('button', { name: /^recommended teams$/i });
+    fireEvent.click(link);
+
+    expect(await screen.findByRole('heading', { level: 1, name: /^recommended teams$/i })).toBeInTheDocument();
+    expect(within(primaryNav()).getByRole('button', { name: /^recommended teams$/i })).toHaveAttribute('aria-current', 'page');
+    expect(await screen.findByTestId('recommended-teams-empty')).toHaveTextContent(/turn on looking for team/i);
+  });
+
+  it('opens the recommended teams page directly from ?view=recommended-teams (US-016 / #156)', async () => {
+    window.history.pushState({}, '', '/?view=recommended-teams');
+    mockSignedInUser({ mfaComplete: true, role: 'PART', displayName: 'Sahil Gupta' });
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { level: 1, name: /^recommended teams$/i })).toBeInTheDocument();
+  });
+
+  it('sends the empty-state button to Looking for Team (US-016 / #156)', async () => {
+    window.history.pushState({}, '', '/?view=recommended-teams');
+    mockSignedInUser({ mfaComplete: true, role: 'PART', displayName: 'Sahil Gupta' });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByTestId('go-to-looking'));
+    expect(await screen.findByRole('heading', { level: 2, name: /looking for team/i })).toBeInTheDocument();
+  });
+
+  it('does not show the recommended teams page to a signed-out visitor (US-016 / #156)', async () => {
+    window.history.pushState({}, '', '/?view=recommended-teams');
+
+    render(<App />);
+
+    expect(screen.queryByRole('heading', { level: 1, name: /^recommended teams$/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('recommended-team')).not.toBeInTheDocument();
   });
 
   it('PART navbar hides Moderation and Accounts (#359 / #358)', async () => {
