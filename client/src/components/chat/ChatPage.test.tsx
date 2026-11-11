@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { ChatPage } from './ChatPage';
 import * as chatApi from './chatApi';
+import { ChatUnreadProvider } from './ChatUnreadContext';
 
 vi.mock('./chatApi', async () => {
   const actual = await vi.importActual<typeof import('./chatApi')>('./chatApi');
@@ -17,6 +18,9 @@ vi.mock('./chatApi', async () => {
     listDirectMessageThreads: vi.fn(),
     getDirectMessageThread: vi.fn(),
     sendDirectMessage: vi.fn(),
+    fetchChatUnreadSummary: vi.fn(),
+    markChatConversationRead: vi.fn(),
+    openDirectMessageThread: vi.fn(),
   };
 });
 
@@ -30,6 +34,11 @@ describe('ChatPage (US-030 / #346)', () => {
     vi.mocked(chatApi.listChatChannels).mockResolvedValue([]);
     vi.mocked(chatApi.listChatMessages).mockResolvedValue([]);
     vi.mocked(chatApi.listDirectMessageThreads).mockResolvedValue([]);
+    vi.mocked(chatApi.fetchChatUnreadSummary).mockResolvedValue({
+      counts: [],
+      totalUnreadCount: 0,
+      totalUnreadMentionCount: 0,
+    });
   });
 
   it('shows loading then empty forums state', async () => {
@@ -178,5 +187,179 @@ describe('ChatPage (US-030 / #346)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^forums$/i }));
     expect(screen.getByTestId('create-forum-form')).toBeInTheDocument();
+  });
+
+  it('renders channel unread and mention badges and clears them after confirmed mark-read', async () => {
+    const channel = {
+      id: '11111111-1111-4111-8111-111111111111',
+      title: 'General',
+      description: 'Open forum',
+      createdBy: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      createdAt: '2026-11-10T12:00:00.000Z',
+      updatedAt: '2026-11-10T12:00:00.000Z',
+    };
+    const message = {
+      id: '22222222-2222-4222-8222-222222222222',
+      channelId: channel.id,
+      authorId: channel.createdBy,
+      authorHandle: 'avery',
+      body: 'Unread update',
+      createdAt: '2026-11-10T12:05:00.000Z',
+    };
+    const unreadSummary = {
+      counts: [
+        {
+          conversationType: 'channel' as const,
+          conversationId: channel.id,
+          unreadCount: 2,
+          unreadMentionCount: 1,
+        },
+      ],
+      totalUnreadCount: 2,
+      totalUnreadMentionCount: 1,
+    };
+    vi.mocked(chatApi.listChatChannels).mockResolvedValue([channel]);
+    vi.mocked(chatApi.listChatMessages).mockResolvedValue([message]);
+    vi.mocked(chatApi.fetchChatUnreadSummary)
+      .mockResolvedValueOnce(unreadSummary)
+      .mockResolvedValue({
+        counts: [],
+        totalUnreadCount: 0,
+        totalUnreadMentionCount: 0,
+      });
+    vi.mocked(chatApi.markChatConversationRead).mockResolvedValue({
+      conversationType: 'channel',
+      conversationId: channel.id,
+      readCursor: { messageId: message.id, createdAt: message.createdAt },
+      advanced: true,
+      unreadCount: 0,
+      unreadMentionCount: 0,
+    });
+
+    render(
+      <ChatUnreadProvider enabled sessionKey="participant-a">
+        <ChatPage />
+      </ChatUnreadProvider>
+    );
+    expect(
+      await screen.findByRole('status', { name: /general: 2 unread messages, 1 unread mention/i })
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /general/i }));
+    await waitFor(() => {
+      expect(chatApi.markChatConversationRead).toHaveBeenCalledWith({
+        conversationType: 'channel',
+        conversationId: channel.id,
+        messageId: message.id,
+      });
+      expect(
+        screen.queryByRole('status', { name: /general: 2 unread messages/i })
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('keeps the channel badge when mark-read fails', async () => {
+    const channel = {
+      id: '11111111-1111-4111-8111-111111111111',
+      title: 'General',
+      description: 'Open forum',
+      createdBy: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      createdAt: '2026-11-10T12:00:00.000Z',
+      updatedAt: '2026-11-10T12:00:00.000Z',
+    };
+    const message = {
+      id: '22222222-2222-4222-8222-222222222222',
+      channelId: channel.id,
+      authorId: channel.createdBy,
+      authorHandle: 'avery',
+      body: 'Unread update',
+      createdAt: '2026-11-10T12:05:00.000Z',
+    };
+    vi.mocked(chatApi.listChatChannels).mockResolvedValue([channel]);
+    vi.mocked(chatApi.listChatMessages).mockResolvedValue([message]);
+    vi.mocked(chatApi.fetchChatUnreadSummary).mockResolvedValue({
+      counts: [
+        {
+          conversationType: 'channel',
+          conversationId: channel.id,
+          unreadCount: 2,
+          unreadMentionCount: 0,
+        },
+      ],
+      totalUnreadCount: 2,
+      totalUnreadMentionCount: 0,
+    });
+    vi.mocked(chatApi.markChatConversationRead).mockRejectedValue(
+      new chatApi.ChatApiError(503, 'UNAVAILABLE')
+    );
+
+    render(
+      <ChatUnreadProvider enabled sessionKey="participant-a">
+        <ChatPage />
+      </ChatUnreadProvider>
+    );
+    await screen.findByRole('status', { name: /general: 2 unread messages/i });
+    fireEvent.click(screen.getByRole('button', { name: /general/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /existing badges were kept/i
+    );
+    expect(
+      screen.getByRole('status', { name: /general: 2 unread messages/i })
+    ).toBeInTheDocument();
+  });
+
+  describe('opening a direct message from a Message click (#432)', () => {
+    const THREAD = {
+      id: '11111111-1111-4111-8111-111111111111',
+      peer: { id: '22222222-2222-4222-8222-222222222222', handle: 'blake' },
+      createdAt: '2026-11-10T20:00:00.000Z',
+      updatedAt: '2026-11-10T20:00:00.000Z',
+      lastMessage: null,
+      lastMessageAt: null,
+    };
+
+    beforeEach(() => {
+      vi.mocked(chatApi.openDirectMessageThread).mockResolvedValue(THREAD);
+      vi.mocked(chatApi.getDirectMessageThread).mockResolvedValue({ thread: THREAD, messages: [], isEmpty: true });
+    });
+
+    it('starts on the Direct messages tab and opens that conversation when the page is opened by a request', async () => {
+      render(<ChatPage directMessageRequest={{ participantId: THREAD.peer.id, requestId: 1 }} />);
+
+      expect(screen.getByRole('button', { name: /^direct messages$/i })).toHaveAttribute('aria-pressed', 'true');
+      expect(await screen.findByTestId('dm-thread-empty')).toBeInTheDocument();
+      expect(chatApi.openDirectMessageThread).toHaveBeenCalledWith(THREAD.peer.id);
+      expect(screen.queryByTestId('forums-empty')).not.toBeInTheDocument();
+    });
+
+    it('switches from Forums to Direct messages when a request arrives while the page is already open', async () => {
+      const { rerender } = render(<ChatPage />);
+      await waitFor(() => expect(screen.getByTestId('forums-empty')).toBeInTheDocument());
+      expect(screen.getByRole('button', { name: /^forums$/i })).toHaveAttribute('aria-pressed', 'true');
+
+      rerender(<ChatPage directMessageRequest={{ participantId: THREAD.peer.id, requestId: 1 }} />);
+
+      expect(await screen.findByTestId('dm-thread-empty')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^direct messages$/i })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('passes the "request taken" signal up so the app can clear it', async () => {
+      const handled = vi.fn();
+      render(
+        <ChatPage
+          directMessageRequest={{ participantId: THREAD.peer.id, requestId: 1 }}
+          onDirectMessageRequestHandled={handled}
+        />
+      );
+      await screen.findByTestId('dm-thread-empty');
+      expect(handled).toHaveBeenCalledTimes(1);
+    });
+
+    it('opens on Forums as before when there is no request', async () => {
+      render(<ChatPage />);
+      await waitFor(() => expect(screen.getByTestId('forums-empty')).toBeInTheDocument());
+      expect(chatApi.openDirectMessageThread).not.toHaveBeenCalled();
+    });
   });
 });

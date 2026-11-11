@@ -1,0 +1,34 @@
+---
+title: "HackMatch — US-028: Append-Only Audit Record Query Model"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f1e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"curve":"basis","nodeSpacing":42,"rankSpacing":58,"diagramPadding":24}}}%%
+flowchart LR
+    Admin["participants<br/>id PK<br/>role ADMIN<br/>is_suspended"]
+    Record["event_action_records<br/>id PK<br/>actor_id FK<br/>target_type + target_id<br/>action_type<br/>reason + outcome<br/>safe_state_summary JSONB<br/>created_at UTC"]
+    Producers["Existing action producers<br/>event actions<br/>moderation actions<br/>account actions"]
+    Targets["Logical action targets<br/>target_type + target_id<br/>no physical polymorphic FK"]
+    Query["query_admin_audit_records<br/>ADMIN re-verification<br/>actor, action, category, date filters<br/>created_at + id keyset page"]
+    Indexes["Query indexes<br/>created_at + id DESC<br/>actor_id + created_at + id<br/>action_type + created_at + id"]
+    API["Safe read DTO<br/>UTC timestamp<br/>scrubbed summary<br/>hasMore + nextCursor"]
+    Guard["Append-only controls<br/>ADMIN insert trigger<br/>UPDATE, DELETE, TRUNCATE blocked<br/>service role SELECT + INSERT only"]
+
+    Admin -->|"actor_id FK, RESTRICT"| Record
+    Producers -->|"Append"| Record
+    Record -.->|"Logical reference"| Targets
+    Indexes -->|"Supports"| Query
+    Record -->|"Read-only source"| Query
+    Admin -->|"Authorized caller"| Query
+    Query --> API
+    Guard -->|"Protects"| Record
+
+    Category["Category derived from action_type<br/>moderation_* or account_* or event"] -.-> Query
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef domain fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64
+    classDef persistence fill:#e8f7ed,stroke:#3a9b5f,color:#123d24
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#374151
+    class Admin identity
+    class Producers,Targets domain
+    class Record,Query,Indexes,API persistence
+    class Guard,Category internal
+

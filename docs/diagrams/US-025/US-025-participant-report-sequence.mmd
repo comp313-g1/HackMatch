@@ -1,0 +1,41 @@
+---
+title: "HackMatch — US-025: Participant Report Submission Sequence"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f1e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"diagramMarginX":25,"diagramMarginY":18,"actorMargin":32,"width":160,"height":60,"boxMargin":8,"messageMargin":24,"noteMargin":10}}}%%
+sequenceDiagram
+    autonumber
+    actor Reporter as Active verified PART
+    participant UI as ReportAbuseModal
+    participant API as Reporting API
+    participant Service as Reporting service
+    participant Repos as Target and moderation repositories
+    participant DB as PostgreSQL
+
+    Reporter->>UI: Open report for visible target
+    UI->>UI: Require category and validate URL or explanation
+    UI->>API: POST /api/reports
+    API->>API: Require Firebase, MFA, active verified PART
+    API->>Service: Submit normalized report
+    Service->>Repos: Resolve eligible team, profile, event, or URL owner
+    Repos->>DB: Query visible target
+    DB-->>Repos: Eligible target or unavailable
+    Repos-->>Service: Visibility-safe result
+    Service->>Repos: Count reporter submissions in rolling hour
+    Repos->>DB: Query recent reports
+    DB-->>Repos: Reports used
+    Service->>Repos: Link open case or create case
+    Service->>Repos: Persist private report
+    Repos->>DB: Insert moderation case and report state
+    DB-->>Service: Report receipt metadata
+    Service-->>API: Participant-safe confirmation
+    API-->>UI: 201 Received and remaining quota
+    UI-->>Reporter: Success receipt
+
+    alt Invalid, invisible, or rate limited
+        Service-->>API: Safe validation, not-found, or retry error
+        API-->>UI: No report created
+        UI-->>Reporter: Preserve form and show guidance
+    end
+
+    Note over Service,Reporter: Participants cannot list reports or receive ADMIN notes,<br/>evidence, action history, or other reporters' data.
+

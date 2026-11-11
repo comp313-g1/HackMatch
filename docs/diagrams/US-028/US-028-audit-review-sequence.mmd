@@ -1,0 +1,45 @@
+---
+title: "HackMatch — US-028: ADMIN Audit Review Sequence"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f1e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"diagramMarginX":25,"diagramMarginY":18,"actorMargin":34,"width":165,"height":60,"boxMargin":8,"messageMargin":24,"noteMargin":10}}}%%
+sequenceDiagram
+    autonumber
+    actor Admin as Active ADMIN
+    participant UI as AuditRecordsPage
+    participant API as Audit records API
+    participant Guard as ADMIN guard and validator
+    participant Service as Audit records service
+    participant DB as PostgreSQL query RPC
+
+    Admin->>UI: Open audit review
+    UI->>API: GET /api/admin/audit-records
+    API->>Guard: Verify Firebase, MFA, active ADMIN
+    Guard->>Guard: Validate actor, action, category, dates, cursor
+    Guard->>Service: Request filtered page
+    Service->>DB: query_admin_audit_records
+    DB->>DB: Re-verify non-suspended ADMIN
+    DB->>DB: Filter and keyset-page one snapshot
+    DB-->>Service: Records, hasMore, nextCursor
+    Service->>Service: Apply explicit safe projection and scrubbing
+    Service-->>API: No-store audit page
+    API-->>UI: Safe records and normalized filters
+    UI-->>Admin: Loading, rows, empty, or next-page state
+
+    opt Change filters or refresh
+        Admin->>UI: Apply filters or refresh newest
+        UI->>API: GET with normalized query
+        API->>Guard: Re-authorize and validate query
+        Guard->>Service: Request next safe page
+        Service->>DB: Read next snapshot
+        DB-->>Service: Matching page
+        Service-->>UI: Scrubbed records and cursor
+    end
+
+    alt Visitor, PART, or invalid request
+        Guard-->>API: Safe denied or validation error
+        API-->>UI: No audit records
+        UI-->>Admin: Access or retry state
+    end
+
+    Note over UI,DB: The interface is read-only.<br/>No update, delete, or truncate path is exposed.
+

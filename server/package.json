@@ -24,6 +24,7 @@
     "test:us031": "vitest run src/db/migration.test.ts src/db/chatModel.test.ts src/db/chat.repository.test.ts src/db/chatTeamChannel.sql.integration.test.ts src/services/chat.test.ts src/services/chatPrivacy.test.ts src/services/teamChatAuthorization.test.ts src/routes/chat.routes.test.ts src/routes/chat.integration.test.ts src/middleware/requireConfirmedTeamMember.test.ts src/routes/teamChat.routes.test.ts src/routes/teamChatPrivacy.integration.test.ts src/db/chatTeamChannel.lifecycle.sql.integration.test.ts",
     "test:coverage": "vitest run --coverage",
     "admin:provision": "tsx src/scripts/provisionAdmin.ts",
+    "chat:backfill-team-channels": "tsx src/scripts/backfillTeamChannels.ts",
     "demo:seed": "tsx ../db-seed/src/cli.ts seed",
     "demo:reset": "tsx ../db-seed/src/cli.ts reset",
     "demo:test": "tsx --test ../db-seed/src/seed.test.ts",

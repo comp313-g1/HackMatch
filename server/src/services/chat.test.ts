@@ -358,7 +358,6 @@ describe('chat service (US-030 / #344)', () => {
 
     it.each([
       ['blank teamId', '   ', null],
-      ['missing channel', TEAM_ID, null],
       ['mismatched team_id', TEAM_ID, teamChannelRow({ team_id: OTHER_TEAM_ID })],
       ['public channel_type', TEAM_ID, teamChannelRow({ channel_type: 'public' })],
     ])('fails closed with 404 TEAM_CHANNEL_NOT_FOUND for %s', async (_label, teamId, row) => {

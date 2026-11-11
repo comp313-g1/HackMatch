@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { CandidateDirectoryPanel } from './CandidateDirectoryPanel';
+import { DirectMessageLauncherProvider } from '../chat/directMessageLauncher';
 import * as candidateDirectoryApi from './candidateDirectoryApi';
 import * as invitationsApi from './invitationsApi';
 import type { CandidateDirectoryResponse, DirectoryCandidate } from './candidateDirectoryApi';
@@ -413,6 +414,37 @@ describe('CandidateDirectoryPanel (US-014-T4 / #139)', () => {
       // Cancel button dismisses composer
       fireEvent.click(screen.getByTestId('directory-cancel-invite'));
       expect(screen.queryByTestId('directory-invite-form')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Message button (#432)', () => {
+    it('lets a Team Lead message an inspected candidate', async () => {
+      fetchMock.mockResolvedValueOnce(mockResponse);
+      const open = vi.fn();
+      render(
+        <DirectMessageLauncherProvider value={{ openDirectMessage: open }}>
+          <CandidateDirectoryPanel teamId="t-1" />
+        </DirectMessageLauncherProvider>
+      );
+
+      fireEvent.click(screen.getByTestId('directory-search-submit'));
+      await waitFor(() => expect(screen.getByTestId('directory-results-container')).toBeInTheDocument());
+      expect(screen.queryByTestId('message-profile-btn')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('inspect-candidate-p-1'));
+      fireEvent.click(screen.getByTestId('message-profile-btn'));
+
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(open).toHaveBeenCalledWith('p-1');
+    });
+
+    it('shows no Message button where messaging is not available', async () => {
+      fetchMock.mockResolvedValueOnce(mockResponse);
+      render(<CandidateDirectoryPanel teamId="t-1" />);
+      fireEvent.click(screen.getByTestId('directory-search-submit'));
+      await waitFor(() => expect(screen.getByTestId('directory-results-container')).toBeInTheDocument());
+      fireEvent.click(screen.getByTestId('inspect-candidate-p-1'));
+      expect(screen.queryByTestId('message-profile-btn')).not.toBeInTheDocument();
     });
   });
 });

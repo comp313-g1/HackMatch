@@ -11,6 +11,8 @@ import type {
   ChatMessageView,
   TeamChatChannelView,
 } from './chatTypes';
+import { ChatActivityBadge, ChatUnreadStatus } from './ChatUnreadBadge';
+import { useChatUnread } from './ChatUnreadContext';
 
 const MESSAGE_MAX_LENGTH = 4000;
 
@@ -44,6 +46,16 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function latestMessage(messages: ChatMessageView[]): ChatMessageView | null {
+  return messages.reduce<ChatMessageView | null>((latest, message) => {
+    if (!latest) return message;
+    const byTime = Date.parse(message.createdAt) - Date.parse(latest.createdAt);
+    return byTime > 0 || (byTime === 0 && message.id.localeCompare(latest.id) > 0)
+      ? message
+      : latest;
+  }, null);
+}
+
 /**
  * US-031 / #383 — confirmed-member private team chat view.
  *
@@ -54,6 +66,10 @@ export function TeamChatView({
   teamId,
   teamName,
 }: TeamChatViewProps): React.JSX.Element {
+  const unread = useChatUnread();
+  const unreadEnabled = unread.enabled;
+  const markRead = unread.markRead;
+  const refreshUnread = unread.refresh;
   const [opened, setOpened] = useState(false);
   const [channel, setChannel] = useState<TeamChatChannelView | null>(null);
   const [messages, setMessages] = useState<ChatMessageView[]>([]);
@@ -66,6 +82,7 @@ export function TeamChatView({
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [readStateError, setReadStateError] = useState<string | null>(null);
   const loadRequestId = useRef(0);
   const sendRequestId = useRef(0);
 
@@ -84,6 +101,7 @@ export function TeamChatView({
     setSendError(null);
     setSendSuccess(null);
     setSending(false);
+    setReadStateError(null);
   }, [teamId]);
 
   const loadChat = useCallback(async (): Promise<void> => {
@@ -92,6 +110,7 @@ export function TeamChatView({
     setLoading(true);
     setLoadError(null);
     setAccessDenied(false);
+    setReadStateError(null);
     // Clear before authorization completes so another team's private content can never flash.
     setChannel(null);
     setMessages([]);
@@ -104,19 +123,36 @@ export function TeamChatView({
       if (requestId !== loadRequestId.current) return;
       setChannel(loadedChannel);
       setMessages(loadedMessages);
+      const latest = latestMessage(loadedMessages);
+      if (unreadEnabled && latest) {
+        try {
+          await markRead({
+            conversationType: 'channel',
+            conversationId: loadedChannel.id,
+            messageId: latest.id,
+          });
+        } catch {
+          if (requestId === loadRequestId.current) {
+            setReadStateError(
+              'Team messages loaded, but unread activity could not be updated. Existing badges were kept.'
+            );
+          }
+        }
+      }
     } catch (error: unknown) {
       if (requestId !== loadRequestId.current) return;
       setChannel(null);
       setMessages([]);
       if (isAccessDenied(error)) {
         setAccessDenied(true);
+        if (unreadEnabled) void refreshUnread();
       } else {
         setLoadError(errorMessage(error, 'Could not load team chat. Please try again.'));
       }
     } finally {
       if (requestId === loadRequestId.current) setLoading(false);
     }
-  }, [teamId]);
+  }, [teamId, unreadEnabled, markRead, refreshUnread]);
 
   const handleSend = async (
     event: React.FormEvent<HTMLFormElement>
@@ -149,12 +185,14 @@ export function TeamChatView({
       setDraft('');
       setFieldErrors({});
       setSendSuccess('Message sent.');
+      if (unreadEnabled) void refreshUnread();
     } catch (error: unknown) {
       if (requestId !== sendRequestId.current) return;
       if (isAccessDenied(error)) {
         setChannel(null);
         setMessages([]);
         setAccessDenied(true);
+        if (unreadEnabled) void refreshUnread();
       } else if (error instanceof ChatApiError) {
         setFieldErrors(error.errors ?? {});
         setSendError(error.message || 'Could not send message.');
@@ -179,7 +217,19 @@ export function TeamChatView({
             id="team-chat-heading"
             className="font-display text-lg font-semibold text-forest-900"
           >
-            Team chat
+            <span className="inline-flex items-center">
+              Team chat
+              {channel && (() => {
+                const count = unread.getCount('channel', channel.id);
+                return (
+                  <ChatActivityBadge
+                    unreadCount={count?.unreadCount ?? 0}
+                    mentionCount={count?.unreadMentionCount ?? 0}
+                    label="Team chat"
+                  />
+                );
+              })()}
+            </span>
           </h3>
           <p className="mt-1 text-xs text-ink-muted">
             Private messages for confirmed {teamName ? `${teamName} ` : ''}team members.
@@ -210,6 +260,10 @@ export function TeamChatView({
             </button>
           </div>
         )}
+      </div>
+
+      <div className="mt-2">
+        <ChatUnreadStatus />
       </div>
 
       {opened && (
@@ -255,6 +309,12 @@ export function TeamChatView({
                 <h4 className="font-semibold text-forest-900">{channel.title}</h4>
                 <p className="mt-1 text-xs text-ink-muted">{channel.description}</p>
               </div>
+
+              {readStateError && (
+                <p role="alert" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  {readStateError}
+                </p>
+              )}
 
               {messages.length === 0 ? (
                 <div

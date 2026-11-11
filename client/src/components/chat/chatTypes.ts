@@ -97,3 +97,37 @@ export interface ChatPrivacyFlags {
   emailsIncluded: false;
   notice: string;
 }
+
+/** US-034 / #399 participant-safe activity count for one authorized conversation. */
+export type ChatUnreadConversationType = 'channel' | 'directMessage';
+
+export interface ChatUnreadCountView {
+  conversationType: ChatUnreadConversationType;
+  conversationId: string;
+  unreadCount: number;
+  unreadMentionCount: number;
+}
+
+export interface ChatUnreadSummary {
+  counts: ChatUnreadCountView[];
+  totalUnreadCount: number;
+  totalUnreadMentionCount: number;
+}
+
+export interface MarkChatConversationReadInput {
+  conversationType: ChatUnreadConversationType;
+  conversationId: string;
+  messageId: string;
+}
+
+export interface MarkChatConversationReadResult {
+  conversationType: ChatUnreadConversationType;
+  conversationId: string;
+  readCursor: {
+    messageId: string;
+    createdAt: string;
+  };
+  advanced: boolean;
+  unreadCount: number;
+  unreadMentionCount: number;
+}

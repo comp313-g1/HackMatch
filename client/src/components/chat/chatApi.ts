@@ -4,12 +4,15 @@ import type {
   ChatFieldErrors,
   ChatMessageView,
   ChatPrivacyFlags,
+  ChatUnreadSummary,
   CreateChannelInput,
   DirectMessageThreadDetail,
   DirectMessageThreadView,
   DirectMessageView,
   PresenceStatus,
   PresenceView,
+  MarkChatConversationReadInput,
+  MarkChatConversationReadResult,
   SendMessageInput,
   TeamChatChannelView,
 } from './chatTypes';
@@ -343,4 +346,87 @@ export function blockDirectMessageParticipant(participantId: string): Promise<bo
 /** #433: remove your block on a participant. Resolves to false (you no longer block them). */
 export function unblockDirectMessageParticipant(participantId: string): Promise<boolean> {
   return changeDirectMessageBlock(participantId, 'DELETE');
+}
+
+/** Loads authoritative unread and mention counts for currently authorized conversations. */
+export async function fetchChatUnreadSummary(): Promise<ChatUnreadSummary> {
+  const data = await requestJson<ChatUnreadSummary>('/api/chat/unread-counts', {
+    method: 'GET',
+  });
+  if (
+    !Array.isArray(data.counts) ||
+    !data.counts.every(
+      (count) =>
+        (count.conversationType === 'channel' ||
+          count.conversationType === 'directMessage') &&
+        typeof count.conversationId === 'string' &&
+        count.conversationId.length > 0 &&
+        Number.isSafeInteger(count.unreadCount) &&
+        count.unreadCount >= 0 &&
+        Number.isSafeInteger(count.unreadMentionCount) &&
+        count.unreadMentionCount >= 0
+    ) ||
+    !Number.isSafeInteger(data.totalUnreadCount) ||
+    data.totalUnreadCount < 0 ||
+    !Number.isSafeInteger(data.totalUnreadMentionCount) ||
+    data.totalUnreadMentionCount < 0
+  ) {
+    throw new ChatApiError(
+      502,
+      'INVALID_RESPONSE',
+      { _form: 'The server returned invalid chat activity counts.' },
+      undefined,
+      'Could not load chat activity. Please try again.'
+    );
+  }
+  return {
+    counts: data.counts,
+    totalUnreadCount: data.totalUnreadCount,
+    totalUnreadMentionCount: data.totalUnreadMentionCount,
+  };
+}
+
+/** Advances one authorized conversation cursor only after server confirmation. */
+export async function markChatConversationRead(
+  input: MarkChatConversationReadInput
+): Promise<MarkChatConversationReadResult> {
+  const data = await requestJson<MarkChatConversationReadResult>(
+    '/api/chat/read',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+    input
+  );
+  if (
+    data.conversationType !== input.conversationType ||
+    data.conversationId !== input.conversationId ||
+    !data.readCursor?.messageId ||
+    typeof data.readCursor.createdAt !== 'string' ||
+    typeof data.advanced !== 'boolean' ||
+    !Number.isSafeInteger(data.unreadCount) ||
+    data.unreadCount < 0 ||
+    !Number.isSafeInteger(data.unreadMentionCount) ||
+    data.unreadMentionCount < 0
+  ) {
+    throw new ChatApiError(
+      502,
+      'INVALID_RESPONSE',
+      { _form: 'The server returned an invalid read-state response.' },
+      input,
+      'Could not update chat read state. Your badges were not cleared.'
+    );
+  }
+  return {
+    conversationType: data.conversationType,
+    conversationId: data.conversationId,
+    readCursor: {
+      messageId: data.readCursor.messageId,
+      createdAt: data.readCursor.createdAt,
+    },
+    advanced: data.advanced,
+    unreadCount: data.unreadCount,
+    unreadMentionCount: data.unreadMentionCount,
+  };
 }

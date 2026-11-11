@@ -1,0 +1,58 @@
+---
+title: "HackMatch — US-021: Notification Center — Focused Data Model"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","tertiaryColor":"#f1e8ff","fontFamily":"Arial, sans-serif"},"er":{"useMaxWidth":true,"diagramPadding":24,"layoutDirection":"LR","minEntityWidth":250,"minEntityHeight":75,"entityPadding":14,"stroke":"#4b5563","fill":"#ffffff","fontSize":14}}}%%
+erDiagram
+    direction LR
+
+    PARTICIPANTS ||--o{ PARTICIPANT_NOTIFICATIONS : receives
+    TEAMS o|--o{ PARTICIPANT_NOTIFICATIONS : contextualizes
+    EVENTS o|--o{ PARTICIPANT_NOTIFICATIONS : contextualizes
+    TEAM_REQUESTS o|--o{ PARTICIPANT_NOTIFICATIONS : deep_links
+    PENDING_EVENT_SUBMISSIONS o|--o{ PARTICIPANT_NOTIFICATIONS : deep_links
+
+    PARTICIPANTS["participants"] {
+        uuid id PK
+        string role "PART / ADMIN"
+        boolean is_verified
+        boolean is_suspended
+        boolean is_deactivated
+    }
+
+    PARTICIPANT_NOTIFICATIONS["participant_notifications"] {
+        uuid id PK
+        uuid participant_id FK
+        uuid team_id FK "Nullable; SET NULL"
+        uuid event_id FK "Nullable; SET NULL"
+        uuid request_id FK "Nullable; SET NULL"
+        uuid submission_id FK "Nullable; SET NULL"
+        string type
+        string category "Derived from type"
+        string message "Nonblank, at most 500"
+        datetime read_at "Null means unread"
+        datetime created_at
+    }
+
+    TEAMS["teams"] {
+        uuid id PK
+    }
+
+    EVENTS["events"] {
+        uuid id PK
+    }
+
+    TEAM_REQUESTS["team_requests"] {
+        uuid id PK
+    }
+
+    PENDING_EVENT_SUBMISSIONS["pending_event_submissions"] {
+        uuid id PK
+    }
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef domain fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64
+    classDef persistence fill:#e8f7ed,stroke:#3a9b5f,color:#123d24
+    class PARTICIPANTS identity
+    class TEAMS,EVENTS,TEAM_REQUESTS,PENDING_EVENT_SUBMISSIONS domain
+    class PARTICIPANT_NOTIFICATIONS persistence
+

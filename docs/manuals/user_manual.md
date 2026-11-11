@@ -4,8 +4,8 @@ This manual explains how to use the current HackMatch web application. It is wri
 
 | Item | Current manual scope |
 |---|---|
-| Version | 5.1 — Issue #425 update for completed user stories through US-033 |
-| Covers | Registration, email verification, sign-in, email OTP, password recovery, profiles, hackathon history and experience badges, Looking for Team, team discovery, candidate directory search, recruitment, requests, roster locking, notifications, private team workspace, team manifest export, abuse reporting, forums chat, private team chat, direct messages, chat moderation, and ADMIN screens (moderation, accounts, audit log) |
+| Version | 5.2 — Issue #430 update for completed user stories through US-034 |
+| Covers | Registration, email verification, sign-in, email OTP, password recovery, profiles, hackathon history and experience badges, Looking for Team, team discovery, candidate directory search, recruitment, requests, roster locking, notifications, private team workspace, team manifest export, abuse reporting, forums chat, private team chat, direct messages, chat unread/mention indicators, chat moderation, and ADMIN screens (moderation, accounts, audit log) |
 | Does not cover | Removed hackathon-directory workflows (US-008–US-010), authenticator-app 2FA (US-029, future), starting a brand-new direct message from a profile or card (not available yet), blocking and unblocking controls, or other unimplemented features |
 | Sources checked | Current React components, Express routes and access middleware, tests, User Stories, requirements, and real application captures |
 
@@ -58,10 +58,11 @@ The current application supports:
 - reporting of abusive profiles, team listings, and suspicious links, plus server-side intake for visible forum/team-chat messages;
 - participant presence, shared forums, and text messages;
 - a private team chat for the confirmed members of a team;
-- one-to-one direct messages between Participants; and
+- one-to-one direct messages between Participants;
+- persistent unread-message and `@mention` indicators for accessible chat conversations; and
 - ADMIN-only content moderation, account enforcement, and a read-only audit log.
 
-The current application does **not** provide a public hackathon directory, hackathon submission, event approval workflow, a "new message" button for starting a direct message from a profile, block or unblock controls, unread or mention badges, attachments, voice/video, reactions, typing indicators, or authenticator-app two-factor sign-in.
+The current application does **not** provide a public hackathon directory, hackathon submission, event approval workflow, a "new message" button for starting a direct message from a profile, block or unblock controls, attachments, voice/video, reactions, typing indicators, or authenticator-app two-factor sign-in.
 
 ## 2. Roles and access
 
@@ -98,10 +99,10 @@ After OTP succeeds, the main navigation shows:
 - **My teams** — owned and joined teams;
 - **Find teammates** — Looking-for-Team profile and candidate cards;
 - **Requests** — tabs for **Applications** and **Invitations**; and
-- the **Notifications** bell, which shows an unread badge; and
+- the **Notifications** bell, which shows an unread alert badge;
 - the account-name menu — **Profile** and **Sign out**.
 
-Chat opens from the floating chat button at the lower-left corner. An ADMIN also sees an **Admin ▾** menu containing **Moderation**, **Accounts**, and **Audit log**.
+Chat opens from the floating **Open chat** button at the lower-left corner. For a Participant, this button shows the total unread chat-message count in red and the total unread `@mention` count in amber. These chat indicators are separate from the general **Notifications** bell. An ADMIN also sees an **Admin ▾** menu containing **Moderation**, **Accounts**, and **Audit log**.
 
 On a small screen, choose **Open menu** to display the same destinations.
 
@@ -535,13 +536,25 @@ A report never gives the reporter access to another Participant's reports, Admin
 5. Read messages in the **Message thread**.
 6. Enter a nonblank message and select **Send message**.
 
+The **Open chat** button, **Forums** tab, and individual forum rows show nonzero unread counts. An amber badge prefixed with `@` shows unread messages that mention your handle. A zero count is hidden. When a forum opens successfully, HackMatch records the newest loaded message as read and refreshes the forum and navigation badges. If that update fails, the messages stay visible and the existing badges remain until the server confirms a later update.
+
+To mention a Participant, type `@` followed by their HackMatch handle, for example `@alex_7`. Handle matching is case-insensitive. Repeating the same handle in one message creates one mention indicator, not several. Text that is not a valid handle mention remains ordinary message text; HackMatch does not reveal whether an unavailable or ineligible handle belongs to an account.
+
+### Unread and mention indicators
+
+Chat activity is stored by HackMatch, so confirmed read positions and badges survive a page refresh, browser restart, or sign-in on another device. On initial load, a small loading indicator appears instead of a misleading zero. Refreshing the inbox or messages, sending successfully, and opening a conversation request updated counts from the server; constant per-channel polling and realtime chat delivery are not used.
+
+If chat activity cannot be loaded, the **Open chat** button shows an error indicator and the chat panel offers **Retry chat activity**. A failed refresh keeps the last server-confirmed badges. A failed mark-read does not clear a badge and shows that messages loaded but unread activity could not be updated. Signing out or changing accounts clears the participant-specific badge state so it cannot carry over to another account.
+
+Unread and mention indicators include only conversations the signed-in Participant may currently access. They contain counts, not message bodies, account emails, credentials, OTPs, tokens, private membership data, or unrelated participant details. A later handle change does not transfer an earlier mention to another account; the mention remains associated with the Participant who owned the handle when the message was sent. Suspended, deactivated, or otherwise ineligible accounts do not receive activity summaries while ineligible.
+
 ![HackMatch chat forum and message thread](../assets/wireframes/US-030-chat-message-thread.png)
 
 *Figure 17 — Participant presence, forum selection, and a text-message thread.*
 
 Current limits are 120 characters for a forum title, 2,000 for its description, and 4,000 for a message. Validation and request failures preserve drafts. Messages show the author handle, UTC-backed timestamp rendered for the viewer, and content; chat responses do not expose account email, passwords, OTPs, or OTP hashes.
 
-Forums are shared: every verified active Participant can read and post in them. For a private conversation use your team's chat ([§21](#21-use-the-private-team-chat)) or a direct message ([§22](#22-use-direct-messages)). Unread/mention badges, reactions, typing indicators, attachments, and voice/video are not available.
+Forums are shared: every verified active Participant can read and post in them. For a private conversation use your team's chat ([§21](#21-use-the-private-team-chat)) or a direct message ([§22](#22-use-direct-messages)). Reactions, typing indicators, attachments, and voice/video are not available.
 
 ## 21. Use the private team chat
 
@@ -555,6 +568,8 @@ Forums are shared: every verified active Participant can read and post in them. 
 4. Read the messages, oldest first. Each shows the author's handle and the time.
 5. Type in **Write a private team message...** and select **Send message**. A short confirmation says **Message sent.**
 6. Select **Refresh messages** to load new messages, or **Close** to hide the chat.
+
+After the team channel has loaded, its heading shows nonzero unread and `@mention` badges. Opening the channel and successfully loading its messages marks the newest loaded message as read. Only current confirmed members receive activity for the private channel; if membership is lost, its badges are removed when activity refreshes rather than revealing continued team conversation.
 
 What you will see in other situations:
 
@@ -584,6 +599,8 @@ Messages show handles only. Account emails, contact details, and presence are ne
 2. The **Direct-message conversations** list shows each conversation with the other person's handle, the latest message, and its time, most recent first. Select **Refresh inbox** to reload it.
 3. Select a conversation to open it. Messages appear oldest first, each with the author's handle and the time.
 4. Type in **Write a direct message...** and select **Send message**.
+
+The **Direct messages** tab shows aggregate DM activity, and each inbox row shows that conversation's nonzero unread and `@mention` counts. Opening a conversation and successfully loading its messages marks the newest loaded message as read. The indicators are available only to the two people in the thread and do not reveal unrelated conversations.
 
 What you will see in other situations:
 

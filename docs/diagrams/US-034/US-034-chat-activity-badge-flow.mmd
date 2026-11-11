@@ -1,0 +1,44 @@
+---
+title: "HackMatch — US-034: Chat Activity and Badge Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f1e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"curve":"basis","nodeSpacing":38,"rankSpacing":54,"diagramPadding":22}}}%%
+flowchart LR
+    Message[Persisted channel or DM message] --> Unread[Unread range uses created_at and id]
+    Message --> Parser[Parse distinct normalized handle tokens]
+    Parser --> Mentionable{Eligible in this conversation?}
+    Mentionable -->|Yes| Mention[Persist stable participant mention]
+    Mentionable -->|No| Text[Keep token as ordinary text]
+
+    Cursor[(Participant read cursor)] --> Counts[Authorized activity count RPC]
+    Unread --> Counts
+    Mention --> Counts
+    Access[Current public, team, or DM authorization] --> Counts
+    Counts --> Safe[Count-only conversation summary]
+    Safe --> Provider[Session-scoped ChatUnreadProvider]
+    Provider --> Channel[Channel and team badges]
+    Provider --> Direct[DM thread badges]
+    Provider --> Navigation[Aggregate chat navigation badges]
+    Provider --> Status[Zero, loading, refresh, and error states]
+
+    Open[Open authorized conversation] --> Mark[Server-confirmed mark-read]
+    Mark --> Cursor
+    Mark --> Reconcile[Refresh authorized summary]
+    Reconcile --> Provider
+
+    Notification[US-021 notification records] -.-> Pattern[Badge and accessibility conventions only]
+    Pattern -.-> Provider
+    Separate[No WebSocket or constant per-channel polling] -.-> Provider
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef domain fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4b3b00
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#5f1228
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#374151
+    class Access,Open identity
+    class Message,Unread,Parser,Provider,Channel,Direct,Navigation,Status,Mark,Reconcile domain
+    class Mentionable decision
+    class Cursor,Counts,Safe,Mention success
+    class Text denied
+    class Notification,Pattern,Separate internal
+

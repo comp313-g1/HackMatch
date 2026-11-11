@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as chatApi from './chatApi';
 import { TeamChatView } from './TeamChatView';
+import { ChatUnreadProvider } from './ChatUnreadContext';
 import type { ChatMessageView, TeamChatChannelView } from './chatTypes';
 
 vi.mock('./chatApi', async () => {
@@ -12,6 +13,8 @@ vi.mock('./chatApi', async () => {
     openTeamChat: vi.fn(),
     listTeamChatMessages: vi.fn(),
     sendTeamChatMessage: vi.fn(),
+    fetchChatUnreadSummary: vi.fn(),
+    markChatConversationRead: vi.fn(),
   };
 });
 
@@ -49,6 +52,11 @@ describe('TeamChatView (US-031 / #383)', () => {
     vi.mocked(chatApi.openTeamChat).mockResolvedValue(channel);
     vi.mocked(chatApi.listTeamChatMessages).mockResolvedValue([]);
     vi.mocked(chatApi.sendTeamChatMessage).mockResolvedValue(message);
+    vi.mocked(chatApi.fetchChatUnreadSummary).mockResolvedValue({
+      counts: [],
+      totalUnreadCount: 0,
+      totalUnreadMentionCount: 0,
+    });
   });
 
   it('shows an explicit loading state without rendering stale private content', () => {
@@ -207,5 +215,50 @@ describe('TeamChatView (US-031 / #383)', () => {
     expect(await screen.findByText(/team channel is read-only/i)).toBeInTheDocument();
     expect(composer).toHaveValue('Retain this lifecycle draft');
     expect(screen.queryByTestId('team-chat-access-denied')).not.toBeInTheDocument();
+  });
+
+  it('marks a loaded team channel read and clears its unread and mention badge', async () => {
+    vi.mocked(chatApi.listTeamChatMessages).mockResolvedValue([message]);
+    vi.mocked(chatApi.fetchChatUnreadSummary)
+      .mockResolvedValueOnce({
+        counts: [
+          {
+            conversationType: 'channel',
+            conversationId: CHANNEL_ID,
+            unreadCount: 3,
+            unreadMentionCount: 2,
+          },
+        ],
+        totalUnreadCount: 3,
+        totalUnreadMentionCount: 2,
+      })
+      .mockResolvedValue({
+        counts: [],
+        totalUnreadCount: 0,
+        totalUnreadMentionCount: 0,
+      });
+    vi.mocked(chatApi.markChatConversationRead).mockResolvedValue({
+      conversationType: 'channel',
+      conversationId: CHANNEL_ID,
+      readCursor: { messageId: message.id, createdAt: message.createdAt },
+      advanced: true,
+      unreadCount: 0,
+      unreadMentionCount: 0,
+    });
+
+    render(
+      <ChatUnreadProvider enabled sessionKey="participant-a">
+        <TeamChatView teamId={TEAM_ID} teamName="Civic Signal" />
+      </ChatUnreadProvider>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /open team chat/i }));
+    await waitFor(() => {
+      expect(chatApi.markChatConversationRead).toHaveBeenCalledWith({
+        conversationType: 'channel',
+        conversationId: CHANNEL_ID,
+        messageId: message.id,
+      });
+    });
+    expect(screen.queryByTestId('chat-activity-badge')).not.toBeInTheDocument();
   });
 });

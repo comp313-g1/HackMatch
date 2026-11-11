@@ -8,6 +8,7 @@ import { requireJsonObjectBody } from '../validators/team.validator.js';
 import {
   validateChatChannelIdParam,
   validateCreateChannelBody,
+  validateMarkConversationReadBody,
   validateSendMessageBody,
 } from '../validators/chat.validator.js';
 import {
@@ -18,6 +19,8 @@ import {
   sendChannelMessage,
 } from '../services/chat.js';
 import { buildChatSuccessPayload } from '../services/chatPrivacy.js';
+import { getParticipantChatUnreadSummary } from '../services/chatUnread.js';
+import { markChatConversationRead } from '../services/chatRead.js';
 
 export const chatRouter = Router();
 
@@ -45,6 +48,55 @@ function handleChatError(err: unknown, res: Response, next: NextFunction): void 
   }
   next(err);
 }
+
+/**
+ * GET /api/chat/unread-counts
+ * Counts only for public/team channels and DM threads the caller may currently read.
+ */
+chatRouter.get(
+  '/unread-counts',
+  ...chatAuthGuard,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const summary = await getParticipantChatUnreadSummary(req.participant!);
+      res.status(200).json(
+        buildChatSuccessPayload({
+          status: 'ok',
+          ...summary,
+        })
+      );
+    } catch (err) {
+      handleChatError(err, res, next);
+    }
+  }
+);
+
+/**
+ * POST /api/chat/read
+ * Atomically advances one authorized channel/team/DM cursor to a concrete
+ * message position. Repeated or older positions are safe no-ops.
+ */
+chatRouter.post(
+  '/read',
+  ...chatAuthGuard,
+  requireJsonObjectBody,
+  validateMarkConversationReadBody,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const result = await markChatConversationRead(req.participant!, req.body);
+      res.status(200).json(
+        buildChatSuccessPayload({
+          status: 'ok',
+          ...result,
+        })
+      );
+    } catch (err) {
+      handleChatError(err, res, next);
+    }
+  }
+);
 
 /**
  * GET /api/chat/channels

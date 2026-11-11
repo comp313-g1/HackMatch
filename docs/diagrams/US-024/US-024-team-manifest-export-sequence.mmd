@@ -1,0 +1,40 @@
+---
+title: "HackMatch — US-024: Locked Team Manifest Export Sequence"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f1e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"diagramMarginX":25,"diagramMarginY":18,"actorMargin":34,"width":165,"height":60,"boxMargin":8,"messageMargin":24,"noteMargin":10}}}%%
+sequenceDiagram
+    autonumber
+    actor Member as Confirmed team member
+    participant UI as TeamManifestCard
+    participant API as Team manifest API
+    participant Service as Manifest service
+    participant Repos as Team and profile repositories
+    participant DB as PostgreSQL
+
+    Member->>UI: Open locked-team manifest
+    UI->>API: GET /api/teams/:teamId/manifest
+    API->>API: Require active verified PART
+    API->>Service: Export requested format
+    Service->>Repos: Load team, memberships, event, profiles
+    Repos->>DB: Query current records
+    DB-->>Repos: Locked team and confirmed roster
+    Repos-->>Service: Domain records
+    Service->>Service: Confirm membership and locked state
+    Service->>Service: Project safe fields and pseudonyms
+    Service->>Service: Canonicalize and compute SHA-256
+    Service->>Repos: Save manifest snapshot
+    Repos->>DB: Record latest and deduplicated snapshot
+    DB-->>Repos: Stored manifest metadata
+    Repos-->>Service: Persisted snapshot result
+    Service-->>API: JSON, printable HTML, or PDF
+    API-->>UI: Attachment or safe manifest view
+    UI-->>Member: Roster, UTC lock time, checksum
+
+    alt Access or state denied
+        Service-->>API: Safe not-found or forbidden error
+        API-->>UI: No roster data
+        UI-->>Member: Error and retry state
+    end
+
+    Note over Service,UI: Event data is stored record context.<br/>The export does not claim organizer acceptance or legal eligibility.
+
