@@ -2,9 +2,11 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AuthRequiredError,
   ChatApiError,
+  blockDirectMessageParticipant,
   getDirectMessageThread,
   listDirectMessageThreads,
   sendDirectMessage,
+  unblockDirectMessageParticipant,
 } from './chatApi';
 import type {
   ChatFieldErrors,
@@ -35,6 +37,18 @@ function errorMessage(error: unknown, fallback: string): string {
 function isAccessDenied(error: unknown): boolean {
   if (error instanceof AuthRequiredError) return true;
   return error instanceof ChatApiError && (error.status === 401 || error.status === 403);
+}
+
+/**
+ * #433 — the server refuses a SEND (not the whole conversation) with these 403 answers: the other
+ * person is unavailable or has blocked you (one neutral message for both), or you blocked them.
+ * The conversation stays readable, so the screen shows the message and keeps the draft instead of
+ * replacing the conversation with "access denied".
+ */
+const SEND_REFUSED_CODES = new Set(['DM_PEER_UNAVAILABLE', 'DM_BLOCKED_BY_YOU']);
+
+function isSendRefusal(error: unknown): error is ChatApiError {
+  return error instanceof ChatApiError && error.status === 403 && SEND_REFUSED_CODES.has(error.code);
 }
 
 function sortMessages(messages: DirectMessageView[]): DirectMessageView[] {
@@ -69,11 +83,18 @@ export function DirectMessagesView(): React.JSX.Element {
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
+  const [confirmingBlock, setConfirmingBlock] = useState(false);
+  const [blockPending, setBlockPending] = useState(false);
+  const [blockNotice, setBlockNotice] = useState<string | null>(null);
+  const [blockError, setBlockError] = useState<string | null>(null);
+
   const inboxRequestId = useRef(0);
   const threadRequestId = useRef(0);
   const sendRequestId = useRef(0);
 
   const draft = selectedThreadId ? drafts[selectedThreadId] ?? '' : '';
+  // #433: true only when YOU blocked the other person (the server never reveals their block).
+  const peerBlocked = selectedThread?.youBlockedPeer === true;
 
   const loadInbox = useCallback(async (): Promise<void> => {
     const requestId = ++inboxRequestId.current;
@@ -120,6 +141,9 @@ export function DirectMessagesView(): React.JSX.Element {
     setFieldErrors({});
     setSendError(null);
     setSendSuccess(null);
+    setConfirmingBlock(false);
+    setBlockNotice(null);
+    setBlockError(null);
 
     try {
       const detail = await getDirectMessageThread(threadId);
@@ -139,6 +163,42 @@ export function DirectMessagesView(): React.JSX.Element {
       if (requestId === threadRequestId.current) setThreadLoading(false);
     }
   }, []);
+
+  /**
+   * #433 — block or unblock the other person. Each shows its own result and error, never touches
+   * the draft, and updates only this conversation's view of your own block.
+   */
+  const changeBlock = async (block: boolean): Promise<void> => {
+    if (!selectedThread || blockPending) return;
+    const threadId = selectedThread.id;
+    setBlockPending(true);
+    setBlockError(null);
+    setBlockNotice(null);
+    try {
+      const blocked = block
+        ? await blockDirectMessageParticipant(selectedThread.peer.id)
+        : await unblockDirectMessageParticipant(selectedThread.peer.id);
+      setSelectedThread((current) =>
+        current && current.id === threadId ? { ...current, youBlockedPeer: blocked } : current
+      );
+      setConfirmingBlock(false);
+      setBlockNotice(blocked ? 'Participant blocked.' : 'Participant unblocked.');
+      setSendError(null);
+    } catch (error: unknown) {
+      setBlockError(
+        isAccessDenied(error)
+          ? 'Please sign in again to use direct messages.'
+          : errorMessage(
+              error,
+              block
+                ? 'Could not block this participant. Please try again.'
+                : 'Could not unblock this participant. Please try again.'
+            )
+      );
+    } finally {
+      setBlockPending(false);
+    }
+  };
 
   const updateDraft = (value: string): void => {
     if (!selectedThreadId) return;
@@ -198,7 +258,13 @@ export function DirectMessagesView(): React.JSX.Element {
         const submitted = error.submitted as { body?: unknown } | undefined;
         if (typeof submitted?.body === 'string') updateDraft(submitted.body);
       }
-      if (isAccessDenied(error)) {
+      if (isSendRefusal(error)) {
+        // Your own block is known here even if this screen did not know yet (blocked from elsewhere).
+        if (error.code === 'DM_BLOCKED_BY_YOU') {
+          setSelectedThread((current) => (current ? { ...current, youBlockedPeer: true } : current));
+        }
+        setSendError(errorMessage(error, 'You cannot send messages in this conversation.'));
+      } else if (isAccessDenied(error)) {
         setSelectedThread(null);
         setMessages([]);
         setThreadAccessDenied(true);
@@ -313,10 +379,86 @@ export function DirectMessagesView(): React.JSX.Element {
             ) : selectedThread ? (
               <>
                 <div className="border-b border-cream-200 pb-3">
-                  <h3 className="font-display text-lg font-semibold text-forest-900">
-                    {selectedThread.peer.handle || 'Participant'}
-                  </h3>
-                  <p className="mt-1 text-xs text-ink-muted">Private direct-message conversation</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-display text-lg font-semibold text-forest-900">
+                        {selectedThread.peer.handle || 'Participant'}
+                      </h3>
+                      <p className="mt-1 text-xs text-ink-muted">Private direct-message conversation</p>
+                    </div>
+                    {peerBlocked ? (
+                      <button
+                        type="button"
+                        data-testid="dm-unblock"
+                        aria-label={`Unblock ${selectedThread.peer.handle || 'this participant'}`}
+                        onClick={() => void changeBlock(false)}
+                        disabled={blockPending}
+                        className="rounded-md border border-cream-300 px-3 py-2 text-xs font-semibold text-forest-800 hover:bg-cream-50 disabled:opacity-50"
+                      >
+                        {blockPending ? 'Unblocking…' : 'Unblock'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid="dm-block"
+                        aria-label={`Block ${selectedThread.peer.handle || 'this participant'}`}
+                        aria-expanded={confirmingBlock}
+                        onClick={() => {
+                          setBlockError(null);
+                          setBlockNotice(null);
+                          setConfirmingBlock((open) => !open);
+                        }}
+                        disabled={blockPending}
+                        className="rounded-md border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        Block
+                      </button>
+                    )}
+                  </div>
+
+                  {confirmingBlock && !peerBlocked && (
+                    <div
+                      role="group"
+                      aria-label="Confirm block"
+                      data-testid="dm-block-confirm"
+                      className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900"
+                    >
+                      <p>
+                        Block {selectedThread.peer.handle || 'this participant'}? Neither of you will be able to
+                        send messages in this conversation until you unblock them.
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          data-testid="dm-block-confirm-yes"
+                          onClick={() => void changeBlock(true)}
+                          disabled={blockPending}
+                          className="rounded-md bg-red-700 px-3 py-2 text-xs font-semibold text-white hover:bg-red-800 disabled:opacity-50"
+                        >
+                          {blockPending ? 'Blocking…' : 'Block participant'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingBlock(false)}
+                          disabled={blockPending}
+                          className="rounded-md border border-red-200 px-3 py-2 text-xs font-semibold text-red-800 hover:bg-red-100 disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {blockError && (
+                    <p role="alert" data-testid="dm-block-error" className="mt-3 text-xs text-red-700">
+                      {blockError}
+                    </p>
+                  )}
+                  {blockNotice && (
+                    <p role="status" data-testid="dm-block-notice" className="mt-3 text-xs text-forest-800">
+                      {blockNotice}
+                    </p>
+                  )}
                 </div>
 
                 {messages.length === 0 ? (
@@ -340,12 +482,17 @@ export function DirectMessagesView(): React.JSX.Element {
                 )}
 
                 <form onSubmit={handleSend} noValidate data-testid="dm-composer" className="space-y-2 border-t border-cream-200 pt-4">
+                  {peerBlocked && (
+                    <p role="status" data-testid="dm-blocked-notice" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      You have blocked this participant. Unblock them to send messages.
+                    </p>
+                  )}
                   <label htmlFor="dm-message-body" className="block text-sm font-medium text-forest-900">Message</label>
                   <textarea
                     id="dm-message-body"
                     value={draft}
                     onChange={(event) => updateDraft(event.target.value)}
-                    disabled={sending}
+                    disabled={sending || peerBlocked}
                     rows={3}
                     maxLength={MESSAGE_MAX_LENGTH}
                     aria-invalid={Boolean(fieldErrors.body)}
@@ -357,7 +504,7 @@ export function DirectMessagesView(): React.JSX.Element {
                   {fieldErrors.body && <p id="dm-message-error" role="alert" className="text-xs text-red-700">{fieldErrors.body}</p>}
                   {sendError && <p role="alert" className="text-xs text-red-700">{sendError}</p>}
                   {sendSuccess && <p role="status" className="text-xs text-forest-800">{sendSuccess}</p>}
-                  <button type="submit" disabled={sending} className={primaryButtonClass}>
+                  <button type="submit" disabled={sending || peerBlocked} className={primaryButtonClass}>
                     {sending ? 'Sending…' : 'Send message'}
                   </button>
                 </form>

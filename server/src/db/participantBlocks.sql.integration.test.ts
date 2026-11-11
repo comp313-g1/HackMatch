@@ -85,4 +85,45 @@ describe('participant_blocks on real SQL (US-032 / #388)', () => {
     expect(await rows("SELECT 1 FROM pg_policies WHERE tablename='participant_blocks'")).toHaveLength(0);
     expect(await rows("SELECT 1 FROM pg_indexes WHERE indexname='idx_participant_blocks_blocked'")).toHaveLength(1);
   });
+
+  describe('add and remove as the application does them (#433)', () => {
+    const upsert = (a: string, b: string) =>
+      fails('INSERT INTO participant_blocks (blocker_id, blocked_id) VALUES ($1,$2) ON CONFLICT (blocker_id, blocked_id) DO NOTHING', [a, b]);
+    const count = async (a: string, b: string) =>
+      (await rows<{ c: number }>('SELECT count(*)::int c FROM participant_blocks WHERE blocker_id=$1 AND blocked_id=$2', [a, b]))[0].c;
+
+    it('blocking twice with ON CONFLICT DO NOTHING keeps exactly one row and raises no error', async () => {
+      const [a, b] = [await person(), await person()];
+      expect(await upsert(a, b)).toBeNull();
+      expect(await upsert(a, b)).toBeNull();
+      expect(await count(a, b)).toBe(1);
+    });
+
+    it('the upsert path still refuses a self-block', async () => {
+      const a = await person();
+      expect(await upsert(a, a)).toMatch(/chk_participant_blocks_not_self/);
+    });
+
+    it('removing one direction leaves the other direction in place', async () => {
+      const [a, b] = [await person(), await person()];
+      await upsert(a, b);
+      await upsert(b, a);
+      expect(await fails('DELETE FROM participant_blocks WHERE blocker_id=$1 AND blocked_id=$2', [a, b])).toBeNull();
+      expect(await count(a, b)).toBe(0);
+      expect(await count(b, a)).toBe(1);
+    });
+
+    it('removing a block that does not exist is not an error (idempotent unblock)', async () => {
+      const [a, b] = [await person(), await person()];
+      expect(await fails('DELETE FROM participant_blocks WHERE blocker_id=$1 AND blocked_id=$2', [a, b])).toBeNull();
+    });
+
+    it('block, unblock, block again leaves one block', async () => {
+      const [a, b] = [await person(), await person()];
+      await upsert(a, b);
+      await db.query('DELETE FROM participant_blocks WHERE blocker_id=$1 AND blocked_id=$2', [a, b]);
+      await upsert(a, b);
+      expect(await count(a, b)).toBe(1);
+    });
+  });
 });

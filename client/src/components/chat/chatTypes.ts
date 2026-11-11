@@ -68,6 +68,11 @@ export interface DirectMessageThreadView {
   updatedAt: string;
   lastMessage?: DirectMessageView | null;
   lastMessageAt?: string | null;
+  /**
+   * #433: true when YOU have blocked the other participant. It only ever describes your own block;
+   * the server never says whether the other person blocked you. Present on the single-conversation view.
+   */
+  youBlockedPeer?: boolean;
 }
 
 export interface DirectMessageThreadDetail {

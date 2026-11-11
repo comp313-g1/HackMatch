@@ -62,6 +62,33 @@ export const validateOpenThreadBody: RequestHandler = (
 };
 
 /**
+ * #433: validates the `:participantId` path parameter of the block routes as a UUID, before any
+ * lookup, and normalizes it (trimmed, lower-case).
+ */
+export const validateBlockTargetParam: RequestHandler = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  const raw = req.params.participantId;
+  const participantId = (Array.isArray(raw) ? raw[0] : raw)?.trim();
+
+  if (!participantId || !UUID_REGEX.test(participantId)) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(400).json({
+      error: 'Validation failed.',
+      code: 'VALIDATION_ERROR',
+      errors: { participantId: 'participantId must be a valid UUID.' },
+      fieldErrors: { participantId: 'participantId must be a valid UUID.' },
+    });
+    return;
+  }
+
+  req.params.participantId = participantId.toLowerCase();
+  next();
+};
+
+/**
  * Validates `:threadId` route parameter as a UUID (US-032 / #387).
  * Rejects malformed UUIDs with 400 VALIDATION_ERROR before any database lookup.
  */

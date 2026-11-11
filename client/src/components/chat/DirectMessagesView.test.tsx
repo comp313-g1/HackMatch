@@ -164,10 +164,12 @@ describe('DirectMessagesView (US-032 / #389)', () => {
   });
 
   it('hides private content but retains the draft when send access is denied', async () => {
+    // Not (or no longer) a participant of the conversation. A refusal because the other person is
+    // unavailable or a block exists keeps the conversation (see DirectMessagesView.block.test.tsx, #433).
     vi.mocked(chatApi.sendDirectMessage).mockRejectedValue(
       new chatApi.ChatApiError(
         403,
-        'DM_PEER_UNAVAILABLE',
+        'FORBIDDEN_NOT_THREAD_PARTICIPANT',
         undefined,
         undefined,
         'Conversation unavailable.'

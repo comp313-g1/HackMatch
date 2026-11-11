@@ -563,3 +563,224 @@ describe('DM inbox, thread, and send-message endpoints (US-032 / #387 / FR-089, 
     });
   });
 });
+
+describe('block and unblock a participant (#433 / US-032 / FR-091)', () => {
+  const BLOCKS = `/api/direct-messages/blocks/${peer.id}`;
+  /** Blocks currently stored: "blocker>blocked". */
+  let blocks: Set<string>;
+
+  const as = (who: Participant): void => {
+    mockVerifyIdToken.mockResolvedValue({ ...token, uid: who.firebase_uid });
+    vi.mocked(participantsRepository.findByFirebaseUid).mockResolvedValue(who);
+  };
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    blocks = new Set();
+    mockVerifyIdToken.mockResolvedValue(token);
+    directory = { [caller.id]: caller, [peer.id]: peer };
+    vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(caller);
+    vi.spyOn(participantsRepository, 'findById').mockImplementation(async (id: string) => directory[id] ?? null);
+    // A small in-memory stand-in for the block table, so a block set by one request affects the next.
+    vi.spyOn(participantBlockRepository, 'addBlock').mockImplementation(async (a: string, b: string) => {
+      blocks.add(`${a}>${b}`);
+    });
+    vi.spyOn(participantBlockRepository, 'removeBlock').mockImplementation(async (a: string, b: string) => {
+      blocks.delete(`${a}>${b}`);
+    });
+    vi.spyOn(participantBlockRepository, 'findBlockState').mockImplementation(async (a: string, b: string) => ({
+      blockedByMe: blocks.has(`${a}>${b}`),
+      blockedByThem: blocks.has(`${b}>${a}`),
+    }));
+    vi.spyOn(directMessageRepository, 'isParticipantPairBlocked').mockImplementation(async (a: string, b: string) =>
+      blocks.has(`${a}>${b}`) || blocks.has(`${b}>${a}`)
+    );
+    vi.spyOn(directMessageRepository, 'findThreadById').mockResolvedValue(thread);
+    vi.spyOn(directMessageRepository, 'listMessagesByThread').mockResolvedValue([]);
+    vi.spyOn(directMessageRepository, 'createMessage').mockResolvedValue(message);
+    vi.spyOn(directMessageRepository, 'findOrCreateThread').mockResolvedValue({ thread, created: true });
+    vi.spyOn(profileRepository, 'findProfileByParticipantId').mockResolvedValue({ handle: 'pat' } as never);
+  });
+
+  const block = () => request(app).put(BLOCKS).set(auth);
+  const unblock = () => request(app).delete(BLOCKS).set(auth);
+  const send = () => request(app).post(`/api/direct-messages/threads/${THREAD_ID}/messages`).set(auth).send({ body: 'hi' });
+  const detail = () => request(app).get(`/api/direct-messages/threads/${THREAD_ID}`).set(auth);
+
+  describe('access', () => {
+    it('401 for Visitors on both routes', async () => {
+      expect((await request(app).put(BLOCKS)).status).toBe(401);
+      expect((await request(app).delete(BLOCKS)).status).toBe(401);
+      expect(participantBlockRepository.addBlock).not.toHaveBeenCalled();
+      expect(participantBlockRepository.removeBlock).not.toHaveBeenCalled();
+    });
+
+    it('403 for unverified, suspended and ADMIN callers', async () => {
+      vi.mocked(participantsRepository.findByFirebaseUid).mockResolvedValue({ ...caller, is_verified: false });
+      expect((await block()).status).toBe(403);
+      vi.mocked(participantsRepository.findByFirebaseUid).mockResolvedValue({ ...caller, is_suspended: true });
+      expect((await unblock()).status).toBe(403);
+      mockVerifyIdToken.mockResolvedValue({ ...token, role: 'ADMIN' });
+      vi.mocked(participantsRepository.findByFirebaseUid).mockResolvedValue({ ...caller, role: 'ADMIN' });
+      expect((await block()).status).toBe(403);
+      expect(participantBlockRepository.addBlock).not.toHaveBeenCalled();
+    });
+
+    it('400 for a malformed participant id on both routes, before any lookup', async () => {
+      for (const res of [
+        await request(app).put('/api/direct-messages/blocks/not-a-uuid').set(auth),
+        await request(app).delete('/api/direct-messages/blocks/not-a-uuid').set(auth),
+      ]) {
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('VALIDATION_ERROR');
+        expect(res.body.errors.participantId).toBeDefined();
+      }
+      expect(participantsRepository.findById).not.toHaveBeenCalledWith('not-a-uuid');
+      expect(participantBlockRepository.addBlock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('blocking', () => {
+    it('blocks the participant and reports only the caller\'s own block', async () => {
+      const res = await block();
+      expect(res.status).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(res.body.status).toBe('ok');
+      expect(res.body.youBlockedPeer).toBe(true);
+      expect(participantBlockRepository.addBlock).toHaveBeenCalledWith(caller.id, peer.id);
+      expect(res.body.privacy).toMatchObject({ credentialsIncluded: false, emailsIncluded: false });
+    });
+
+    it('is idempotent: blocking again gives the same answer and keeps one block', async () => {
+      await block();
+      const again = await block();
+      expect(again.status).toBe(200);
+      expect(again.body.youBlockedPeer).toBe(true);
+      expect(blocks.size).toBe(1);
+    });
+
+    it('cannot block yourself', async () => {
+      const res = await request(app).put(`/api/direct-messages/blocks/${caller.id}`).set(auth);
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('CANNOT_BLOCK_SELF');
+      expect(participantBlockRepository.addBlock).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a participant that does not exist', () => { directory[peer.id] = null; }],
+      ['an administrator', () => { directory[peer.id] = { ...peer, role: 'ADMIN' }; }],
+    ])('gives the same 404 for %s', async (_label, arrange) => {
+      arrange();
+      const res = await block();
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: 'That participant is not available.', code: 'PEER_NOT_AVAILABLE' });
+      expect(participantBlockRepository.addBlock).not.toHaveBeenCalled();
+    });
+
+    it('the response contains no emails, names or internal ids', async () => {
+      const res = await block();
+      expect(JSON.stringify({ ...res.body, privacy: undefined })).not.toMatch(/@example\.com|fb-|firebase|full_name/i);
+      expect(directMessagePayloadHasPrivateKey({ ...res.body, privacy: undefined })).toBe(false);
+    });
+
+    it('does not hide storage failures as a 404', async () => {
+      vi.mocked(participantBlockRepository.addBlock).mockRejectedValue(new Error('db down'));
+      expect((await block()).status).toBeGreaterThanOrEqual(500);
+    });
+  });
+
+  describe('unblocking', () => {
+    it('removes the block and reports it is gone', async () => {
+      await block();
+      const res = await unblock();
+      expect(res.status).toBe(200);
+      expect(res.body.youBlockedPeer).toBe(false);
+      expect(blocks.size).toBe(0);
+      expect(participantBlockRepository.removeBlock).toHaveBeenCalledWith(caller.id, peer.id);
+    });
+
+    it('gives the same answer when there was no block, or no such participant, so nothing can be probed', async () => {
+      const none = await unblock();
+      directory[peer.id] = null;
+      const missing = await unblock();
+      const unknown = await request(app).delete('/api/direct-messages/blocks/99999999-9999-4999-8999-999999999999').set(auth);
+      for (const res of [none, missing, unknown]) {
+        expect(res.status).toBe(200);
+        expect(res.body.youBlockedPeer).toBe(false);
+      }
+    });
+
+    it('only removes the caller\'s OWN block, never one the other person set', async () => {
+      blocks.add(`${peer.id}>${caller.id}`); // the peer blocked the caller
+      await unblock();
+      expect(blocks.has(`${peer.id}>${caller.id}`)).toBe(true);
+    });
+  });
+
+  describe('what a block does to messaging (acceptance)', () => {
+    it('after blocking, the blocker is told and the blocked person gets the neutral refusal', async () => {
+      await block();
+
+      const blockerSend = await send();
+      expect(blockerSend.status).toBe(403);
+      expect(blockerSend.body.code).toBe('DM_BLOCKED_BY_YOU');
+      expect(blockerSend.body.error).toMatch(/you have blocked this participant/i);
+
+      as(peer);
+      const blockedSend = await send();
+      expect(blockedSend.status).toBe(403);
+      expect(blockedSend.body.code).toBe('DM_PEER_UNAVAILABLE');
+      expect(JSON.stringify(blockedSend.body)).not.toMatch(/block/i);
+      expect(directMessageRepository.createMessage).not.toHaveBeenCalled();
+    });
+
+    it('opening a conversation with someone who has a block either way gives the usual 404', async () => {
+      await block();
+      const fromBlocker = await request(app).post(URL).set(auth).send({ participantId: peer.id });
+      expect(fromBlocker.status).toBe(404);
+      expect(fromBlocker.body.code).toBe('PEER_NOT_AVAILABLE');
+
+      as(peer);
+      const fromBlocked = await request(app).post(URL).set(auth).send({ participantId: caller.id });
+      expect(fromBlocked.status).toBe(404);
+      expect(fromBlocked.body).toEqual(fromBlocker.body);
+    });
+
+    it('unblocking restores sending for both people', async () => {
+      await block();
+      await unblock();
+
+      const first = await send();
+      expect(first.status).toBe(201);
+      as(peer);
+      const second = await send();
+      expect(second.status).toBe(201);
+    });
+
+    it('the conversation view tells ONLY the blocker, and never reveals the other person\'s block', async () => {
+      await block();
+      const blockerView = await detail();
+      expect(blockerView.status).toBe(200);
+      expect(blockerView.body.thread.youBlockedPeer).toBe(true);
+
+      as(peer);
+      const blockedView = await detail();
+      expect(blockedView.status).toBe(200);
+      expect(blockedView.body.thread.youBlockedPeer).toBe(false);
+      expect(JSON.stringify(blockedView.body)).not.toMatch(/blockedBy|blocker|"blocked"/i);
+    });
+
+    it('reading an existing conversation still works for both people while blocked', async () => {
+      await block();
+      expect((await detail()).status).toBe(200);
+      as(peer);
+      expect((await detail()).status).toBe(200);
+    });
+
+    it('after unblocking, the conversation view no longer says you blocked them', async () => {
+      await block();
+      await unblock();
+      expect((await detail()).body.thread.youBlockedPeer).toBe(false);
+    });
+  });
+});

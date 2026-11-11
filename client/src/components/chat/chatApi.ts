@@ -317,3 +317,30 @@ export async function sendDirectMessage(
   }
   return data.message;
 }
+
+async function changeDirectMessageBlock(participantId: string, method: 'PUT' | 'DELETE'): Promise<boolean> {
+  const data = await requestJson<{ youBlockedPeer?: unknown }>(
+    `/api/direct-messages/blocks/${encodeURIComponent(participantId)}`,
+    { method }
+  );
+  if (typeof data.youBlockedPeer !== 'boolean') {
+    throw new ChatApiError(
+      502,
+      'INVALID_RESPONSE',
+      { _form: 'The server returned an invalid answer.' },
+      undefined,
+      method === 'PUT' ? 'Could not block this participant. Please try again.' : 'Could not unblock this participant. Please try again.'
+    );
+  }
+  return data.youBlockedPeer;
+}
+
+/** #433: block a participant. Neither of you can send messages to the other until you unblock them. Resolves to true. */
+export function blockDirectMessageParticipant(participantId: string): Promise<boolean> {
+  return changeDirectMessageBlock(participantId, 'PUT');
+}
+
+/** #433: remove your block on a participant. Resolves to false (you no longer block them). */
+export function unblockDirectMessageParticipant(participantId: string): Promise<boolean> {
+  return changeDirectMessageBlock(participantId, 'DELETE');
+}

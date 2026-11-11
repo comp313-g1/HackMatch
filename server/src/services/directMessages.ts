@@ -20,6 +20,10 @@ import {
   profileRepository,
   type IProfileRepository,
 } from '../db/profile.repository.js';
+import {
+  participantBlockRepository,
+  type IParticipantBlockRepository,
+} from '../db/participantBlock.repository.js';
 import type { Participant } from '../db/types.js';
 import { ChatServiceError } from './chat.js';
 import {
@@ -58,6 +62,7 @@ export interface DirectMessageServiceDeps {
   dmRepo?: Partial<IDirectMessageRepository>;
   participantsRepo?: Pick<IParticipantRepository, 'findById'>;
   profileRepo?: Pick<IProfileRepository, 'findProfileByParticipantId'>;
+  blockRepo?: Pick<IParticipantBlockRepository, 'findBlockState'>;
 }
 
 /** One answer for "does not exist" and "cannot be messaged", so accounts cannot be enumerated. */
@@ -112,6 +117,7 @@ function getDeps(deps: DirectMessageServiceDeps = {}) {
     },
     participantsRepo: deps.participantsRepo ?? participantsRepository,
     profileRepo: deps.profileRepo ?? profileRepository,
+    blockRepo: deps.blockRepo ?? participantBlockRepository,
   };
 }
 
@@ -329,7 +335,7 @@ export async function getDmThread(
   },
   deps: DirectMessageServiceDeps = {}
 ): Promise<DmThreadDetailResult> {
-  const { dmRepo, profileRepo } = getDeps(deps);
+  const { dmRepo, profileRepo, blockRepo } = getDeps(deps);
 
   const thread = await findAuthorizedDmThreadOrThrow(
     input.threadId,
@@ -366,13 +372,18 @@ export async function getDmThread(
       ? sortedMessages[sortedMessages.length - 1]
       : null;
 
+  // Only the viewer's OWN block is reported, so the screen can offer Unblock. A block set by the
+  // other person is never exposed.
+  const blocks = await blockRepo.findBlockState(callerId.toLowerCase(), peerId.toLowerCase());
+
   const threadView = toDirectInboxItemView(
     thread,
     callerId,
     handles.get(peerId) ?? null,
     latestMessage
       ? { message: latestMessage, authorHandle: handles.get(latestMessage.author_id) ?? null }
-      : null
+      : null,
+    blocks.blockedByMe
   );
 
   return {
