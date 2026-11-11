@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { getRecommendationsForOpenSlot } from '../services/recommendations.js';
+import { getEligibleTeamRecommendations } from '../services/teamRecommendations.js';
 import { omitInternalIdentifierFields } from '../services/scoreExplanation.js';
 import { toTeamServiceError } from '../services/teamErrors.js';
 
@@ -45,5 +46,23 @@ export async function getVacancyRecommendationsHandler(
     );
   } catch (err: unknown) {
     handleRecommendationError(err, res, next);
+  }
+}
+
+/**
+ * GET /api/recommendations/teams
+ * Returns only the authenticated participant's platform-wide eligible team/vacancy candidates.
+ */
+export async function getMyTeamRecommendationsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const result = await getEligibleTeamRecommendations(req.participant!.id);
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json(result);
+  } catch (err: unknown) {
+    next(err);
   }
 }

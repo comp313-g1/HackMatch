@@ -228,8 +228,10 @@ export interface TeamExclusionSummary {
   totalExcluded: number;
 }
 
-export interface PartitionedTeamVacancies {
-  eligible: TeamVacancyCandidate[];
+export interface PartitionedTeamVacancies<
+  TCandidate extends TeamVacancyCandidate = TeamVacancyCandidate,
+> {
+  eligible: TCandidate[];
   excluded: Array<{ teamId: string; vacancyId: string; reason: TeamExclusionReason }>;
   summary: TeamExclusionSummary;
 }
@@ -242,12 +244,12 @@ export const NO_TEAM_RECOMMENDATIONS_HINT =
  * Splits a pool of open slots into the ones that may be recommended and the ones that may not,
  * with a count per reason. It only filters the pool it is given and never invents teams.
  */
-export function partitionTeamVacancies(
-  candidates: readonly TeamVacancyCandidate[],
+export function partitionTeamVacancies<TCandidate extends TeamVacancyCandidate>(
+  candidates: readonly TCandidate[],
   inputs: Pick<ReverseMatchInputs, 'participantId'>,
   context: ReverseMatchContext
-): PartitionedTeamVacancies {
-  const eligible: TeamVacancyCandidate[] = [];
+): PartitionedTeamVacancies<TCandidate> {
+  const eligible: TCandidate[] = [];
   const excluded: PartitionedTeamVacancies['excluded'] = [];
   const summary: TeamExclusionSummary = {
     considered: candidates.length,
