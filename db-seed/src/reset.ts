@@ -43,9 +43,10 @@ export async function resetDemoData(
   await cleanupScenario(database, manifests, true);
   if (options.selection === 'scenario-only') return;
 
-  // PostgreSQL is removed first. If an unrelated FK (for example manually-created
-  // chat content) references a demo participant, deletion fails closed and Firebase
-  // accounts remain available for recovery.
+  // PostgreSQL is removed first. The demo scenario's own chat (team channels and direct
+  // messages, #437) was already removed by cleanupScenario above. If an unrelated FK (for example
+  // manually-created chat content) still references a demo participant, deletion fails closed and
+  // Firebase accounts remain available for recovery.
   await deleteOwnedDatabaseAccounts(database, accounts, true);
   await deleteOwnedFirebaseAccounts(firebase, accounts, true);
 }

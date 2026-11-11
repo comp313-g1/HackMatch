@@ -1,4 +1,5 @@
 import { manifestOwnedIds } from './manifest.js';
+import { canonicalPair } from './recruitmentGraph.js';
 import type {
   DatabasePort,
   DemoManifests,
@@ -40,7 +41,10 @@ export async function verifyDemoState(
     if (user.customClaims?.role !== account.role) issues.push(`${account.key}: Firebase role claim does not match ${account.role}.`);
   }
 
-  const [participants, profiles, skills, portfolios, events, teams, memberships, vacancies, requests, notifications, availability] = await Promise.all([
+  const [
+    participants, profiles, skills, portfolios, events, teams, memberships, vacancies, requests, notifications, availability,
+    teamChannels, teamChannelMessages, directMessageThreads, directMessages,
+  ] = await Promise.all([
     database.select('participants', [{ column: 'id', operator: 'in', value: ids.participants }]),
     database.select('participant_profiles', [{ column: 'participant_id', operator: 'in', value: ids.participants }]),
     database.select('participant_skills', [{ column: 'id', operator: 'in', value: ids.skills }]),
@@ -55,6 +59,10 @@ export async function verifyDemoState(
       { column: 'participant_id', operator: 'in', value: ids.participants },
       { column: 'event_id', operator: 'eq', value: manifests.availability.platformEventId },
     ]),
+    database.select('chat_channels', [{ column: 'id', operator: 'in', value: ids.teamChannels }]),
+    database.select('chat_messages', [{ column: 'id', operator: 'in', value: ids.teamChannelMessages }]),
+    database.select('direct_message_threads', [{ column: 'id', operator: 'in', value: ids.directMessageThreads }]),
+    database.select('direct_messages', [{ column: 'id', operator: 'in', value: ids.directMessages }]),
   ]);
 
   addCountIssue(issues, 'PostgreSQL demo participants', participants.length, 6);
@@ -68,6 +76,10 @@ export async function verifyDemoState(
   addCountIssue(issues, 'requests', requests.length, ids.requests.length);
   addCountIssue(issues, 'notifications', notifications.length, ids.notifications.length);
   addCountIssue(issues, 'platform availability rows', availability.length, 4);
+  addCountIssue(issues, 'team channels', teamChannels.length, ids.teamChannels.length);
+  addCountIssue(issues, 'team chat messages', teamChannelMessages.length, ids.teamChannelMessages.length);
+  addCountIssue(issues, 'direct-message threads', directMessageThreads.length, ids.directMessageThreads.length);
+  addCountIssue(issues, 'direct messages', directMessages.length, ids.directMessages.length);
 
   const participantMap = indexBy(participants, 'id');
   for (const account of accounts) {
@@ -148,6 +160,8 @@ export async function verifyDemoState(
     }
   }
 
+  verifyChat(issues, manifests, accountByKey, teamByKey, { teamChannels, teamChannelMessages, directMessageThreads, directMessages });
+
   return {
     ok: issues.length === 0,
     issues,
@@ -159,6 +173,68 @@ export async function verifyDemoState(
       memberships: memberships.length,
       vacancies: vacancies.length,
       requests: requests.length,
+      teamChannels: teamChannels.length,
+      teamChannelMessages: teamChannelMessages.length,
+      directMessageThreads: directMessageThreads.length,
+      directMessages: directMessages.length,
     },
   };
+}
+
+/** #437 — each seeded channel, thread and message exists and belongs to the right team or people. */
+function verifyChat(
+  issues: string[],
+  manifests: DemoManifests,
+  accountByKey: ReadonlyMap<string, ResolvedAccount>,
+  teamByKey: ReadonlyMap<string, DemoManifests['recruitment']['teams'][number]>,
+  rows: {
+    teamChannels: Array<Record<string, unknown>>;
+    teamChannelMessages: Array<Record<string, unknown>>;
+    directMessageThreads: Array<Record<string, unknown>>;
+    directMessages: Array<Record<string, unknown>>;
+  }
+): void {
+  const { recruitment } = manifests;
+  const channelMap = indexBy(rows.teamChannels, 'id');
+  for (const channel of recruitment.teamChannels) {
+    const row = channelMap.get(channel.id);
+    if (!row) continue;
+    const team = teamByKey.get(channel.teamKey)!;
+    if (row.channel_type !== 'team' || row.team_id !== team.id || row.created_by !== accountByKey.get(team.ownerAccountKey)!.participantId) {
+      issues.push(`${channel.key}: team channel does not match the manifest.`);
+    }
+  }
+
+  const channelByKey = new Map(recruitment.teamChannels.map((channel) => [channel.key, channel]));
+  const messageMap = indexBy(rows.teamChannelMessages, 'id');
+  for (const message of recruitment.teamChannelMessages) {
+    const row = messageMap.get(message.id);
+    if (!row) continue;
+    if (row.channel_id !== channelByKey.get(message.channelKey)!.id || row.author_id !== accountByKey.get(message.accountKey)!.participantId || row.body !== message.body) {
+      issues.push(`${message.id}: team chat message does not match the manifest.`);
+    }
+  }
+
+  const threadMap = indexBy(rows.directMessageThreads, 'id');
+  for (const thread of recruitment.directMessageThreads) {
+    const row = threadMap.get(thread.id);
+    if (!row) continue;
+    const [low, high] = canonicalPair(
+      accountByKey.get(thread.accountKeys[0])!.participantId,
+      accountByKey.get(thread.accountKeys[1])!.participantId
+    );
+    if (String(row.participant_low_id).toLowerCase() !== low || String(row.participant_high_id).toLowerCase() !== high) {
+      issues.push(`${thread.key}: direct-message thread does not connect the two demo accounts in the manifest.`);
+    }
+  }
+
+  const threadByKey = new Map(recruitment.directMessageThreads.map((thread) => [thread.key, thread]));
+  const directMessageMap = indexBy(rows.directMessages, 'id');
+  for (const message of recruitment.directMessages) {
+    const row = directMessageMap.get(message.id);
+    if (!row) continue;
+    if (row.thread_id !== threadByKey.get(message.threadKey)!.id || row.author_id !== accountByKey.get(message.accountKey)!.participantId || row.body !== message.body) {
+      issues.push(`${message.id}: direct message does not match the manifest.`);
+    }
+  }
 }

@@ -52,6 +52,7 @@ interface QueryBuilder {
 
 interface SupabaseLike {
   from(table: string): QueryBuilder;
+  rpc(name: string, args: Record<string, unknown>): PromiseLike<QueryResult>;
 }
 
 interface FirebaseAuthLike {
@@ -155,6 +156,12 @@ export function createDatabasePort(): DatabasePort {
       if (filters.length === 0) throw new Error(`SafetyError: refusing unfiltered delete from ${table}.`);
       await executeQuery(applyFilters(client.from(table).delete(), filters), table);
     },
+    async rpc(name, args) {
+      const result = await client.rpc(name, args);
+      if (result.error) {
+        throw new Error(`DatabaseError(rpc ${name}): ${result.error.code ?? 'unknown'} ${result.error.message ?? 'operation failed'}`);
+      }
+    },
   };
 }
 
@@ -239,7 +246,7 @@ export async function executeSeed(
     })),
     ids: manifestOwnedIds(manifests),
   });
-  dependencies.log(`Applied and verified ${verification.summary.firebaseAccounts} Firebase accounts, ${verification.summary.databaseAccounts} PostgreSQL accounts, ${verification.summary.teams} teams, and ${verification.summary.requests} pending requests.`);
+  dependencies.log(`Applied and verified ${verification.summary.firebaseAccounts} Firebase accounts, ${verification.summary.databaseAccounts} PostgreSQL accounts, ${verification.summary.teams} teams, ${verification.summary.requests} pending requests, ${verification.summary.teamChannels} team channels (${verification.summary.teamChannelMessages} messages), and ${verification.summary.directMessageThreads} direct-message threads (${verification.summary.directMessages} messages).`);
 }
 
 interface ParsedArguments {

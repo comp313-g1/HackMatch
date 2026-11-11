@@ -582,13 +582,14 @@ See the [core chat sequence](../diagrams/US-030/US-030-core-chat-sequence.png) a
 
 ## 15. Demo seed tooling
 
-The deterministic seed under `db-seed/` coordinates Firebase identities/custom claims with PostgreSQL accounts and creates the `recruitment-v1` scenario. It owns exact deterministic IDs for two ADMIN accounts, four PART accounts, profiles, platform-wide availability, two teams, shadow events, memberships, vacancies, one invitation, and one application.
+The deterministic seed under `db-seed/` coordinates Firebase identities/custom claims with PostgreSQL accounts and creates the `recruitment-v1` scenario. It owns exact deterministic IDs for two ADMIN accounts, four PART accounts, profiles, platform-wide availability, two teams, shadow events, memberships, vacancies, one invitation, one application, a team chat channel with messages for each team, and two direct-message threads.
 
 The scenario demonstrates:
 
 - **Civic Signal:** open team owned by Avery, with an invitation to Blake and an application from Casey;
 - **Campus Compass:** locked team owned by Drew, with Drew and Blake as confirmed members; and
-- manually re-enabled platform-wide LFT for Blake after membership creation.
+- manually re-enabled platform-wide LFT for Blake after membership creation; and
+- **chat:** each team has a private team channel with a few messages, and two direct-message threads exist between demo accounts (Avery and Casey, Blake and Drew). Re-seeding and reset remove the demo teams' chat through the guarded `demo_remove_team_chat` function from migration `0062`, so apply that migration before re-seeding a database that already has seeded chat. See the [demo seed README](../../db-seed/README.md#team-chat-and-direct-messages-437).
 
 ### Safe operating sequence
 
