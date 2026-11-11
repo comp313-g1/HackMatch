@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { ApplicationReviewCard } from './ApplicationReviewCard';
+import { DirectMessageLauncherProvider } from '../chat/directMessageLauncher';
 import type { OwnerApplicationReviewItem } from './applicationsApi';
 
 const application: OwnerApplicationReviewItem = {
@@ -141,5 +142,23 @@ describe('ApplicationReviewCard (US-020 / #189 / #194 / FR-060)', () => {
       'true'
     );
     expect(screen.getByRole('button', { name: /approve application/i })).toBeDisabled();
+  });
+
+  describe('Message button (#432)', () => {
+    it('lets the Team Lead message the applicant', () => {
+      const open = vi.fn();
+      render(
+        <DirectMessageLauncherProvider value={{ openDirectMessage: open }}>
+          <ApplicationReviewCard application={application} />
+        </DirectMessageLauncherProvider>
+      );
+      fireEvent.click(screen.getByTestId('message-profile-btn'));
+      expect(open).toHaveBeenCalledWith('participant-1');
+    });
+
+    it('shows no Message button where messaging is not available', () => {
+      render(<ApplicationReviewCard application={application} />);
+      expect(screen.queryByTestId('message-profile-btn')).not.toBeInTheDocument();
+    });
   });
 });

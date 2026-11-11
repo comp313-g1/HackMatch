@@ -10,9 +10,11 @@ import {
 } from '../middleware/requireDirectThreadParticipant.js';
 import { requireJsonObjectBody } from '../validators/team.validator.js';
 import {
+  validateBlockTargetParam,
   validateOpenThreadBody,
   validateSendMessageBody,
 } from '../validators/directMessage.validator.js';
+import { blockParticipant, unblockParticipant } from '../services/directMessageBlocks.js';
 import { ChatServiceError } from '../services/chat.js';
 import {
   DirectMessageServiceError,
@@ -178,6 +180,52 @@ directMessageRouter.post(
         body: req.body.body,
       });
       res.status(201).json(buildDirectMessageSuccessPayload({ status: 'ok', message }));
+    } catch (err) {
+      handleDmError(err, res, next);
+    }
+  }
+);
+
+/**
+ * PUT /api/direct-messages/blocks/:participantId
+ * #433: the caller blocks that participant. Neither of you can send messages to the other until
+ * the block is removed. Idempotent: blocking someone already blocked returns the same answer.
+ */
+directMessageRouter.put(
+  '/blocks/:participantId',
+  ...directMessageAuthGuard,
+  validateBlockTargetParam,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const result = await blockParticipant({
+        caller: req.participant!,
+        targetId: String(req.params.participantId),
+      });
+      res.status(200).json(buildDirectMessageSuccessPayload({ status: 'ok', ...result }));
+    } catch (err) {
+      handleDmError(err, res, next);
+    }
+  }
+);
+
+/**
+ * DELETE /api/direct-messages/blocks/:participantId
+ * #433: removes the caller's block on that participant. Idempotent, and gives the same answer
+ * whether or not a block (or such a participant) exists, so nothing can be probed.
+ */
+directMessageRouter.delete(
+  '/blocks/:participantId',
+  ...directMessageAuthGuard,
+  validateBlockTargetParam,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const result = await unblockParticipant({
+        caller: req.participant!,
+        targetId: String(req.params.participantId),
+      });
+      res.status(200).json(buildDirectMessageSuccessPayload({ status: 'ok', ...result }));
     } catch (err) {
       handleDmError(err, res, next);
     }

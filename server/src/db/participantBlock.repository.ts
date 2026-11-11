@@ -12,6 +12,16 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 
 export interface IParticipantBlockRepository {
   findBlockState(a: string, b: string): Promise<BlockState>;
+  /** #433: `blockerId` blocks `blockedId`. Idempotent: blocking someone already blocked changes nothing. */
+  addBlock(blockerId: string, blockedId: string): Promise<void>;
+  /** #433: removes the block `blockerId` set on `blockedId`. Idempotent: nothing to remove is not an error. */
+  removeBlock(blockerId: string, blockedId: string): Promise<void>;
+}
+
+function requireUuids(...ids: string[]): void {
+  if (!ids.every((id) => UUID_PATTERN.test(id))) {
+    throw new Error('A block operation requires valid participant ids.');
+  }
 }
 
 export const participantBlockRepository: IParticipantBlockRepository = {
@@ -32,5 +42,28 @@ export const participantBlockRepository: IParticipantBlockRepository = {
       blockedByMe: rows.some((r) => r.blocker_id === a && r.blocked_id === b),
       blockedByThem: rows.some((r) => r.blocker_id === b && r.blocked_id === a),
     };
+  },
+
+  async addBlock(blockerId, blockedId) {
+    requireUuids(blockerId, blockedId);
+    const client = getSupabaseClient();
+    const { error } = await client
+      .from('participant_blocks')
+      .upsert(
+        { blocker_id: blockerId.toLowerCase(), blocked_id: blockedId.toLowerCase() },
+        { onConflict: 'blocker_id,blocked_id', ignoreDuplicates: true }
+      );
+    if (error) throw error;
+  },
+
+  async removeBlock(blockerId, blockedId) {
+    requireUuids(blockerId, blockedId);
+    const client = getSupabaseClient();
+    const { error } = await client
+      .from('participant_blocks')
+      .delete()
+      .eq('blocker_id', blockerId.toLowerCase())
+      .eq('blocked_id', blockedId.toLowerCase());
+    if (error) throw error;
   },
 };

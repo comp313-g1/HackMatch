@@ -20,6 +20,8 @@ export interface IChatRepository {
   findChannelById(id: string): Promise<ChatChannel | null>;
   /** US-031 / #378: the private channel linked to a team, if any (served by uq_chat_channels_team_id). */
   findChannelByTeamId(teamId: string): Promise<ChatChannel | null>;
+  /** #431: ids of teams that are not disbanded and have no private channel yet (for the backfill). */
+  listTeamIdsNeedingChannel(): Promise<string[]>;
   /** US-031 / #378 / T2: Idempotently provision or link a private team chat channel. */
   provisionOrLinkTeamChannel(
     data: ProvisionTeamChannelDTO
@@ -77,6 +79,34 @@ export const chatRepository: IChatRepository = {
 
     if (error) throw error;
     return data as ChatChannel | null;
+  },
+
+  async listTeamIdsNeedingChannel(): Promise<string[]> {
+    const client = getSupabaseClient();
+    const PAGE = 1000;
+
+    const readAll = async (
+      table: 'teams' | 'chat_channels',
+      column: string,
+      filter: (q: any) => any // eslint-disable-line @typescript-eslint/no-explicit-any
+    ): Promise<string[]> => {
+      const ids: string[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await filter(client.from(table).select(column)).range(from, from + PAGE - 1);
+        if (error) throw error;
+        const rows = (data ?? []) as Array<Record<string, string>>;
+        ids.push(...rows.map((r) => r[column]));
+        if (rows.length < PAGE) return ids;
+      }
+    };
+
+    const activeTeamIds = await readAll('teams', 'id', (q) =>
+      q.is('disbanded_at', null).neq('recruitment_status', 'Disbanded').order('id')
+    );
+    const linkedTeamIds = new Set(
+      await readAll('chat_channels', 'team_id', (q) => q.not('team_id', 'is', null).order('team_id'))
+    );
+    return activeTeamIds.filter((id) => !linkedTeamIds.has(id));
   },
 
   async provisionOrLinkTeamChannel(

@@ -3,6 +3,7 @@ import type { TeamView, TeamMemberView } from './teamTypes';
 import { codePointLength, validateRemovalReason } from './teamValidation';
 import { removeMember, disbandTeam, TeamApiError, AuthRequiredError } from './teamApi';
 import { postLockMutationErrorMessage } from './postLockGuards';
+import { useDirectMessageLauncher } from '../chat/directMessageLauncher';
 
 export interface TeamRosterPanelProps {
   teamId: string;
@@ -22,6 +23,7 @@ export function TeamRosterPanel({
   onChanged,
   onDisbanded,
 }: TeamRosterPanelProps): React.JSX.Element {
+  const dmLauncher = useDirectMessageLauncher();
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [removalReason, setRemovalReason] = useState<string>('');
   const [removalError, setRemovalError] = useState<string | null>(null);
@@ -184,6 +186,18 @@ export function TeamRosterPanel({
                     Joined on {new Date(member.joinedAt).toLocaleDateString()}
                   </p>
                 </div>
+
+                {!isOwner && !isRemovingThis && dmLauncher && (
+                  <button
+                    type="button"
+                    data-testid={`message-member-${member.participantId}`}
+                    aria-label={`Send a direct message to ${member.displayName}`}
+                    onClick={() => dmLauncher.openDirectMessage(member.participantId)}
+                    className="self-end sm:self-auto px-3 py-1 text-xs font-semibold text-white bg-forest border border-transparent rounded hover:bg-forest-800"
+                  >
+                    Message
+                  </button>
+                )}
 
                 {!isOwner && !isRemovingThis && (
                   <button

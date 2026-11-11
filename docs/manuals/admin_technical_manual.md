@@ -2,7 +2,7 @@
 
 **Audience:** project administrators, maintainers, developers, and technical reviewers
 
-**Repository baseline:** `US-033/chat-moderation-targets` branch (migrations through `0057`, Issue #425 update)
+**Repository baseline:** `US-034/chat-read-cursors` branch (migrations through `0061`, Issue #430 update)
 
 **Last reviewed:** November 10, 2026
 
@@ -307,6 +307,7 @@ Review migration diffs and the selected Supabase target before applying any chan
 | Team workspace and manifest | workspace links, shared note and revision tables (0046); roster manifest snapshots (0047) |
 | Administration | `moderation_cases`, `moderation_reports` (0048), `event_action_records` (the append-only audit records; query model 0049, least privilege 0050), `account_deletion_requests` |
 | Chat | `chat_channels` (public forums and, since 0051, private team channels via `channel_type` and `team_id`), `chat_messages`; presence is stored on `participants` |
+| Chat activity (US-034) | `chat_channel_read_cursors`, `direct_message_read_cursors`, `chat_message_mentions`, and `direct_message_mentions` (migrations 0058–0061); separate from `participant_notifications` |
 | Direct messages | `direct_message_threads` (0053, activity column added in 0055), `direct_messages` (0055), `participant_blocks` (0054) |
 | Legacy compatibility | `pending_event_submissions` and event-oriented columns retained by the physical schema |
 
@@ -459,7 +460,7 @@ Channel titles and descriptions are required and validated. Message bodies must 
 
 Public forums have no channel-membership persistence or join/leave mechanism: every verified active `PART` passes the same global-channel access gate. Private team channels (below) are gated by team membership instead. There is also no implemented peer-presence directory; `Invisible` is filtered by helper logic, but broader peer visibility policy remains undefined.
 
-US-033 moderation/report integration is implemented for `chat_channels` and `chat_messages`; it does not make the ADMIN interface a general chat browser, and direct-message rows are outside the current target contract. Reactions, typing indicators, attachments, voice/video, and unread/mention tracking remain deferred.
+US-033 moderation/report integration is implemented for `chat_channels` and `chat_messages`; it does not make the ADMIN interface a general chat browser, and direct-message rows are outside the current target contract. US-034 unread/mention tracking is implemented for public and team channels plus direct-message threads as described below. Reactions, typing indicators, attachments, and voice/video remain deferred.
 
 ### Private team channels (US-031)
 
@@ -527,8 +528,53 @@ Privacy projection (US-032 #390, `directMessagePrivacy`):
 Operational notes:
 
 - `participant_blocks` is enforced but **no endpoint or screen creates a block yet**, so blocks can only be added directly in the database by an authorized operator. Plan a block/unblock feature before relying on this rule.
-- There is no screen or button that starts a new conversation (the `openDirectMessageThread` client helper exists but no UI calls it), and no unread or mention tracking.
+- There is no screen or button that starts a new conversation (the `openDirectMessageThread` client helper exists but no UI calls it). Existing conversations participate in the US-034 unread and mention system below.
 - Run the story's tests with `npm run test:us032 --prefix server`.
+
+### Chat unread counts, mentions, and read state (US-034)
+
+US-034 reuses the US-021 badge, zero-state, loading, retry, and accessibility conventions, but it does **not** store chat activity in `participant_notifications`. PostgreSQL chat cursors and mention relations are the authoritative state; React holds only a session-scoped view of the server result.
+
+#### Persistent read cursors (#398, migration `0058`)
+
+The physical chat roots differ, so the schema uses two ordinary relational tables instead of one polymorphic cursor:
+
+| Scope | Cursor table | Conversation FK | Deterministic position |
+|---|---|---|---|
+| US-030 public forums and US-031 team channels | `chat_channel_read_cursors` | `channel_id → chat_channels.id` | `last_read_message_created_at`, then `last_read_message_id` |
+| US-032 direct messages | `direct_message_read_cursors` | `thread_id → direct_message_threads.id` | `last_read_message_created_at`, then `last_read_message_id` |
+
+Each primary key is `(participant_id, channel_id)` or `(participant_id, thread_id)`, enforcing one cursor per Participant/conversation. Participant and conversation FKs cascade cursor cleanup. `last_read_message_id` is deliberately not an FK: a validation trigger confirms that the message belongs to the selected conversation and copies its trusted `created_at`, while the stored tuple remains usable if a public message is later removed. Team-channel cursor writes additionally require a `Confirmed` membership; DM cursor writes require the Participant to be one of the persisted pair. Account/session eligibility and endpoint authorization remain service-layer responsibilities.
+
+The reverse cursor indexes `(channel_id, participant_id)` and `(thread_id, participant_id)` support conversation cleanup/lookup. Channel unread ranges use `idx_chat_messages_channel_created_id (channel_id, created_at, id)`; direct messages reuse `idx_direct_messages_thread_created_id`. The UUID tie-breaker prevents equal timestamps from making a read position ambiguous. RLS is enabled with no public policies, and only the server service role invokes the read-state functions.
+
+#### Unread and mention derivation (#399–#400, migrations `0059`–`0060`)
+
+Migration `0059` establishes the set-based unread semantics; migration `0061` extends the current query with mention counts. `GET /api/chat/unread-counts` calls `get_participant_chat_activity_counts(participant_id)` and returns an allowlisted, `Cache-Control: no-store` summary: conversation type/id, unread count, unread-mention count, and aggregate totals. It never returns bodies, handles, email, membership records, credentials, OTPs, tokens, or raw database rows.
+
+Unread messages are derived rather than stored as a mutable counter. With no cursor, every message from another Participant in an authorized conversation is unread. With a cursor, only messages whose `(created_at, id)` tuple is strictly later are unread; the caller's own messages are excluded. The set-based query returns public channels for an eligible verified active `PART`, team channels only with current `Confirmed` membership, and DM threads only when the Participant is one of the persisted pair. Missing conversations and conversations after access loss are omitted, so stale cursors cannot reveal activity. General notification `read_at` state remains independent.
+
+Mentions use stable relation tables:
+
+- `chat_message_mentions(message_id, mentioned_participant_id, created_at)` for public/team channel messages;
+- `direct_message_mentions(message_id, mentioned_participant_id, created_at)` for DMs; and
+- a primary key on `(message_id, mentioned_participant_id)` in each table, preventing repeated `@handle` text from producing duplicate mention events.
+
+`extract_chat_mention_handles` recognizes case-insensitive `@handle` tokens using the profile grammar `[A-Za-z0-9_-]{2,50}` and normalizes them to lowercase for lookup. `AFTER INSERT` triggers resolve eligible recipients in the same message transaction and persist only the stable Participant ID—never the handle, email, or account snapshot. Existing messages are not reinterpreted or backfilled after a rename, so an old mention cannot transfer to a later owner of that handle. Invalid, hidden, suspended, deactivated, unverified, self, blocked-DM, non-thread-participant, or non-team-member targets remain ordinary text without an account-existence error.
+
+#### Atomic mark-read (#401, migration `0061`)
+
+`POST /api/chat/read` accepts an allowlisted `conversationType`, `conversationId`, and concrete `messageId` that the client loaded. Route/service authorization occurs before persistence: public channels use normal chat eligibility, team channels require current confirmed membership, and a DM requires thread participation. A missing conversation, wrong-conversation message, stale position, malformed ID, or access change receives the existing safe error response without private content.
+
+`mark_chat_conversation_read` performs `INSERT ... ON CONFLICT DO UPDATE` and updates only when the requested `(created_at, id)` tuple is greater than the stored tuple. The single database statement locks the Participant/conversation cursor row, making repeated requests idempotent and preventing a concurrent older request from moving the cursor backward. After the write, the function derives fresh unread and unread-mention counts in the same transaction. It does not delete mention history: mentions at or before the cursor stop counting, while later mentions remain unread. If access changes during the operation, the exception rolls the cursor change back.
+
+#### React integration (#402)
+
+`ChatUnreadProvider` loads the authoritative count summary only for a ready `PART` session and keys its cache by the current Firebase UID. A sign-out or account/session change immediately discards the prior snapshot. It does not introduce per-channel polling, WebSockets, or a second notification store.
+
+The floating **Open chat** button shows aggregate unread and mention badges. The **Forums** and **Direct messages** tabs show per-scope aggregates; forum rows and DM inbox rows show per-conversation badges; the opened `TeamChatView` heading shows its channel activity. Badges reuse the US-021 hidden-at-zero and `99+` formatting convention, render unread and `@mention` counts separately, and provide a screen-reader status such as “3 unread messages, 1 unread mention.” Initial loading uses a neutral indicator rather than zero; fetch failure shows `!` and **Retry chat activity**. A refresh failure retains the last server-confirmed counts.
+
+After a forum, team channel, or DM loads, the client marks the newest loaded message read. It applies new counts only after server confirmation, then refreshes the aggregate summary to remove newly inaccessible conversations. A failed mark-read keeps the badges and displays a safe warning. Successful message sends and explicit inbox/message refreshes also reconcile activity. Stale or inaccessible conversation data is cleared from message views and omitted after the authorized summary refresh.
 
 ![Participant chat thread](../assets/wireframes/US-030-chat-message-thread.png)
 
@@ -536,13 +582,14 @@ See the [core chat sequence](../diagrams/US-030/US-030-core-chat-sequence.png) a
 
 ## 15. Demo seed tooling
 
-The deterministic seed under `db-seed/` coordinates Firebase identities/custom claims with PostgreSQL accounts and creates the `recruitment-v1` scenario. It owns exact deterministic IDs for two ADMIN accounts, four PART accounts, profiles, platform-wide availability, two teams, shadow events, memberships, vacancies, one invitation, and one application.
+The deterministic seed under `db-seed/` coordinates Firebase identities/custom claims with PostgreSQL accounts and creates the `recruitment-v1` scenario. It owns exact deterministic IDs for two ADMIN accounts, four PART accounts, profiles, platform-wide availability, two teams, shadow events, memberships, vacancies, one invitation, one application, a team chat channel with messages for each team, and two direct-message threads.
 
 The scenario demonstrates:
 
 - **Civic Signal:** open team owned by Avery, with an invitation to Blake and an application from Casey;
 - **Campus Compass:** locked team owned by Drew, with Drew and Blake as confirmed members; and
-- manually re-enabled platform-wide LFT for Blake after membership creation.
+- manually re-enabled platform-wide LFT for Blake after membership creation; and
+- **chat:** each team has a private team channel with a few messages, and two direct-message threads exist between demo accounts (Avery and Casey, Blake and Drew). Re-seeding and reset remove the demo teams' chat through the guarded `demo_remove_team_chat` function from migration `0062`, so apply that migration before re-seeding a database that already has seeded chat. See the [demo seed README](../../db-seed/README.md#team-chat-and-direct-messages-437).
 
 ### Safe operating sequence
 
@@ -603,12 +650,16 @@ GitHub Actions uses Node 22 and runs dependency installation, commit-message val
 | US-032 direct messages (threads, blocks, access, privacy, routes, real SQL) | `npm run test:us032 --prefix server` |
 | US-033 moderation target/report/privacy/audit server coverage | `npm run test --prefix server -- src/validators/moderation.validator.test.ts src/services/moderationChatTargets.test.ts src/services/moderationCases.privacy.test.ts src/services/moderationReports.test.ts src/services/moderationDecisions.test.ts src/routes/moderation.routes.test.ts src/routes/moderation.decide.routes.test.ts src/routes/moderation.actionRecords.routes.test.ts src/routes/reports.routes.test.ts` |
 | US-033 ADMIN moderation UI coverage | `npm run test --prefix client -- src/components/moderation` |
+| US-034 cursor/unread/mention/mark-read server coverage | `npm run test --prefix server -- src/db/chatReadCursors.sql.integration.test.ts src/db/chatUnreadCounts.sql.integration.test.ts src/db/chatMentionMetadata.sql.integration.test.ts src/db/chatMarkRead.sql.integration.test.ts src/db/chatUnreadMentionAccuracy.sql.integration.test.ts src/db/chatRead.repository.test.ts src/db/chatUnread.repository.test.ts src/services/chatRead.test.ts src/services/chatUnread.test.ts src/routes/chatRead.routes.test.ts src/routes/chatUnread.routes.test.ts` |
+| US-034 React badge coverage | `npm run test --prefix client -- src/components/chat` |
 
 The real-SQL tests run migrations on an in-process PostgreSQL (PGlite, a server dev dependency), so they need no external database.
 
 The #397 suites cover successful ADMIN channel/message cases, PART and visitor denial, malformed and stale targets, mandatory reasons, allowlisted/redacted evidence, participant-report linkage, safe action records, UTC timestamps, and absence of unrelated chat or authentication data. The focused client suite covers chat queue labels, loading and stale-target states, safe evidence rendering, dismissal-only chat controls, kept validation drafts, successful decisions, API failures, and compatibility with non-chat cases.
 
 Issue #425 documentation validation on November 10, 2026 ran the commands above: the focused server selection passed **103 tests in 9 files**, and the client moderation selection passed **70 tests in 10 files**.
+
+Issue #403 validation on November 10, 2026 ran the US-034 focused suites above: the server selection passed **77 tests in 11 files**, and the React chat selection passed **51 tests in 5 files**. The tests cover unread increments, own-message exclusion, deterministic mention categorization and deduplication, cursor/mention clearing, refresh persistence, lost-access privacy, same-timestamp message ordering, concurrent newer/older mark-read requests, and session-isolated accessible badges. Compatibility selections passed **476 US-021 tests** (11 skipped) and **146 US-030/US-031/US-032 authorization tests**. The complete branch suites passed **3,393 server tests** (59 skipped, 1 todo) and **1,352 client tests**.
 
 ### Earlier branch validation baseline (October 23, 2026)
 
@@ -638,6 +689,7 @@ Current controls include:
 - hashed OTP storage, challenge expiry/invalidation, attempt locking, and issuance limits;
 - Supabase service-role isolation on the server;
 - server-generated privacy projections for visitor/profile/recruitment/admin/chat responses;
+- count-only chat activity responses, service-role-only cursor/mention functions, and current-access filtering before unread data is returned;
 - chat moderation projections that query only the targeted channel/message, redact secret-like text, and never return unrelated conversation history;
 - suspension checks across protected workflows; and
 - exact-ID, target-guarded, redacted demo seed/reset behavior.
@@ -701,7 +753,9 @@ Operational rules:
 | Deleting a team, channel, message, or membership fails with a `TEAM_*_IMMUTABLE` error | Lifecycle protections from migration `0052` | Intended; change `status` instead of deleting |
 | Audit log shows no "Past retention" labels | `VITE_AUDIT_RETENTION_DAYS` is empty (no approved retention period) or invalid | Set a whole number of days from 1 to 3650 once the period is approved |
 | Notification bell does not update live | Live stream unavailable | The client falls back to polling every 30 seconds; check `/api/notifications/stream` and the server logs |
-| Build/type-check currently fails | Known server TypeScript errors in tests and parameter parsing remain on this branch | Use the validation baseline above and address under a separate application/test issue |
+| Chat badges show `!` or **Could not refresh chat activity** | `GET /api/chat/unread-counts` failed, the session is no longer eligible, or storage returned an invalid result | Retry from the chat activity status; inspect only sanitized server logs and verify migrations 0058–0061. Last confirmed counts are intentionally retained on refresh failure |
+| Messages load but unread badges do not clear | `POST /api/chat/read` failed, the newest message no longer belongs to the conversation, or access changed during advancement | Preserve the badge, verify the Participant still has channel/thread access, and inspect the safe mark-read code. Do not update cursor tables by hand |
+| Build or type-check fails | A dependency, generated output, or source/test typing changed after the documented validation run | Run the client and server commands separately, inspect the first current error, and do not rely on the historical October baseline below |
 
 ## 20. Known implementation constraints
 
@@ -710,8 +764,8 @@ Operational rules:
 - Team capacity defaults to four in the current product design, while physical event bounds and current validators can permit configured sizes outside that default.
 - New MFA challenge creation and some ADMIN moderation/account-enforcement workflows consist of sequential cross-service or multi-write operations rather than a single distributed transaction. Retry only after inspecting resulting state.
 - ADMIN account enforcement supports suspension and deletion processing, but not unsuspension/reactivation through the current API.
-- Public chat is global to verified active participants. Peer presence discovery policy, rich media, reactions, typing, and unread/mention features are not implemented. Private team channels (US-031) are implemented end to end except automatic provisioning: nothing creates a team's channel when the team is created, so a team has no chat until a channel is provisioned.
-- Direct messages (US-032) have a back end and inbox/conversation screens, but no UI to start a new conversation, no block/unblock endpoint or screen (the block rule is enforced against `participant_blocks` only), and no unread or mention tracking.
+- Public chat is global to verified active participants. Peer presence discovery policy, rich media, reactions, and typing are not implemented. Private team channels (US-031) are implemented end to end except automatic provisioning: nothing creates a team's channel when the team is created, so a team has no chat until a channel is provisioned. US-034 badges update on initial load and relevant chat actions; they do not add realtime message delivery or constant per-channel polling.
+- Direct messages (US-032) have a back end, inbox/conversation screens, and US-034 unread/mention tracking for existing threads, but no UI to start a new conversation and no block/unblock endpoint or screen (the block rule is enforced against `participant_blocks` only).
 - US-033 supports ADMIN cases for `chat_channel`/`chat_message` and participant reports for visible `chat_messages`, but the participant React UI has no **Report message** control. Direct-message rows are not supported moderation targets, and chat cases currently support dismissal only.
 - The audit retention period is not yet approved, so no record is marked "Past retention" by default.
 - US-029 (authenticator-app two-factor authentication) is future scope; every sign-in uses email OTP.

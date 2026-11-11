@@ -175,9 +175,97 @@ export function validateManifests(manifests: DemoManifests): void {
   assert(recruitment.requests.some((item) => item.requestType === 'Invitation' && item.accountKey === 'blake'), 'Blake pending invitation is required.');
   assert(recruitment.requests.some((item) => item.requestType === 'Application' && item.accountKey === 'casey'), 'Casey pending application is required.');
 
+  validateChat(manifests, partKeys, teamByKey);
+
   const serialized = JSON.stringify(manifests).toLowerCase();
   assert(!serialized.includes('"password"'), 'manifests must not contain passwords.');
   assert(!serialized.includes('mfa_auth_time'), 'manifests must not contain MFA claims.');
+}
+
+const CHAT_BODY_MAX_LENGTH = 4000;
+
+/**
+ * #437 — seeded team chat and direct messages. These rules mirror the database rules (0052 and
+ * 0055) so a bad manifest fails here with a clear message instead of halfway through an apply:
+ * only confirmed members write to a team channel, and only the two people in a thread write in it.
+ */
+function validateChat(
+  manifests: DemoManifests,
+  partKeys: ReadonlySet<string>,
+  teamByKey: ReadonlyMap<string, unknown>
+): void {
+  const { recruitment } = manifests;
+  const { teamChannels, teamChannelMessages, directMessageThreads, directMessages } = recruitment;
+
+  assertUnique(teamChannels.map((channel) => channel.id), 'team channel UUID');
+  assertUnique(teamChannels.map((channel) => channel.key), 'team channel key');
+  assertUnique(teamChannels.map((channel) => channel.teamKey), 'team channel team (one channel per team)');
+  assertUnique(teamChannelMessages.map((message) => message.id), 'team chat message UUID');
+  assertUnique(directMessageThreads.map((thread) => thread.id), 'direct-message thread UUID');
+  assertUnique(directMessageThreads.map((thread) => thread.key), 'direct-message thread key');
+  assertUnique(directMessages.map((message) => message.id), 'direct message UUID');
+
+  const channelByKey = new Map(teamChannels.map((channel) => [channel.key, channel]));
+  for (const team of recruitment.teams) {
+    const channel = teamChannels.find((item) => item.teamKey === team.key);
+    assert(Boolean(channel), `${team.key} must have a team channel.`);
+    assert(
+      teamChannelMessages.filter((message) => message.channelKey === channel!.key).length >= 2,
+      `${team.key} team channel needs at least two messages.`
+    );
+  }
+  for (const channel of teamChannels) {
+    assertUuid(channel.id, `${channel.key}.id`);
+    assert(teamByKey.has(channel.teamKey), `${channel.key} references an unknown team.`);
+  }
+  for (const message of teamChannelMessages) {
+    assertUuid(message.id, 'team chat message id');
+    const channel = channelByKey.get(message.channelKey);
+    assert(Boolean(channel), `team chat message references unknown channel ${message.channelKey}.`);
+    assert(
+      recruitment.memberships.some(
+        (membership) =>
+          membership.teamKey === channel!.teamKey &&
+          membership.accountKey === message.accountKey &&
+          membership.status === 'Confirmed'
+      ),
+      `${message.accountKey} must be a confirmed member of ${channel!.teamKey} to write in its channel.`
+    );
+    assertChatBody(message.body, 'team chat message');
+    assertMinutesAgo(message.minutesAgo, 'team chat message');
+  }
+
+  for (const thread of directMessageThreads) {
+    assertUuid(thread.id, `${thread.key}.id`);
+    assert(thread.accountKeys.length === 2, `${thread.key} must name exactly two accounts.`);
+    assert(thread.accountKeys[0] !== thread.accountKeys[1], `${thread.key} cannot be a conversation with oneself.`);
+    for (const key of thread.accountKeys) {
+      assert(partKeys.has(key), `${thread.key} account ${key} must be a PART demo account.`);
+    }
+    assert(
+      directMessages.filter((message) => message.threadKey === thread.key).length >= 1,
+      `${thread.key} needs at least one message.`
+    );
+  }
+  assert(directMessageThreads.length >= 1, 'at least one direct-message thread is required.');
+  const threadByKey = new Map(directMessageThreads.map((thread) => [thread.key, thread]));
+  for (const message of directMessages) {
+    assertUuid(message.id, 'direct message id');
+    const thread = threadByKey.get(message.threadKey);
+    assert(Boolean(thread), `direct message references unknown thread ${message.threadKey}.`);
+    assert(thread!.accountKeys.includes(message.accountKey), `${message.accountKey} is not in thread ${message.threadKey}.`);
+    assertChatBody(message.body, 'direct message');
+    assertMinutesAgo(message.minutesAgo, 'direct message');
+  }
+}
+
+function assertChatBody(body: string, label: string): void {
+  assert(body.trim().length > 0, `${label} body is required.`);
+  assert(body.length <= CHAT_BODY_MAX_LENGTH, `${label} body must be at most ${CHAT_BODY_MAX_LENGTH} characters.`);
+}
+
+function assertMinutesAgo(value: number, label: string): void {
+  assert(Number.isInteger(value) && value > 0, `${label} minutesAgo must be a positive whole number.`);
 }
 
 export function normalizeEmail(value: string): string {
@@ -288,6 +376,10 @@ export function manifestOwnedIds(manifests: DemoManifests): Record<string, strin
     vacancies: manifests.recruitment.vacancies.map((item) => item.id),
     requests: manifests.recruitment.requests.map((item) => item.id),
     notifications: manifests.recruitment.notifications.map((item) => item.id),
+    teamChannels: manifests.recruitment.teamChannels.map((item) => item.id),
+    teamChannelMessages: manifests.recruitment.teamChannelMessages.map((item) => item.id),
+    directMessageThreads: manifests.recruitment.directMessageThreads.map((item) => item.id),
+    directMessages: manifests.recruitment.directMessages.map((item) => item.id),
   };
 }
 

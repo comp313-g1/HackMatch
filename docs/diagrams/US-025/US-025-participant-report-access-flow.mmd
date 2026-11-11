@@ -1,0 +1,39 @@
+---
+title: "HackMatch — US-025: Reporting Authorization, Validation, and Privacy Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f1e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"curve":"basis","nodeSpacing":36,"rankSpacing":52,"diagramPadding":22}}}%%
+flowchart LR
+    Start([POST /api/reports]) --> Auth{Authenticated active PART?}
+    Auth -->|No| Reject[Return safe 401 or 403]
+    Auth -->|Yes| Verified{Verified account?}
+    Verified -->|No| Reject
+    Verified -->|Yes| Shape{Valid target, category, and text?}
+    Shape -->|No| Validation[Return field validation]
+    Shape -->|Yes| Target{Target eligible and visible?}
+    Target -->|No| Hidden[Return safe target unavailable]
+    Target -->|Yes| Quota{Fewer than 5 reports in 60 minutes?}
+    Quota -->|No| Limited[Return 429 and retry guidance]
+    Quota -->|Yes| Case{Open case for target?}
+    Case -->|Yes| Increment[Increment report count]
+    Case -->|No| Create[Create Open moderation case]
+    Increment --> Persist[Insert private moderation report]
+    Create --> Persist
+    Persist --> Receipt[Return minimal Received receipt]
+    Receipt --> Pipeline[Existing ADMIN moderation pipeline]
+
+    ReadAttempt([GET participant reports]) --> ReadDenied[Always return 403]
+    Later[US-033 later adds chat-message reporting outside US-025] -.-> Pipeline
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef domain fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4b3b00
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#5f1228
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#374151
+    class Start,Auth,Verified,ReadAttempt identity
+    class Shape,Target,Quota,Case decision
+    class Increment,Create,Persist,Pipeline domain
+    class Receipt success
+    class Reject,Validation,Hidden,Limited,ReadDenied denied
+    class Later internal
+

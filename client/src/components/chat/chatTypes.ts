@@ -47,11 +47,14 @@ export interface SendMessageInput {
   body: string;
 }
 
-/** US-032 / #389 safe one-to-one message projection. */
+/**
+ * US-032 / #389 safe one-to-one message projection. The server never sends the author's account id;
+ * it sends `fromMe` (#434) so the thread can show which messages are yours.
+ */
 export interface DirectMessageView {
   id: string;
   threadId: string;
-  authorId: string;
+  fromMe: boolean;
   authorHandle: string | null;
   body: string;
   createdAt: string;
@@ -68,6 +71,11 @@ export interface DirectMessageThreadView {
   updatedAt: string;
   lastMessage?: DirectMessageView | null;
   lastMessageAt?: string | null;
+  /**
+   * #433: true when YOU have blocked the other participant. It only ever describes your own block;
+   * the server never says whether the other person blocked you. Present on the single-conversation view.
+   */
+  youBlockedPeer?: boolean;
 }
 
 export interface DirectMessageThreadDetail {
@@ -91,4 +99,38 @@ export interface ChatPrivacyFlags {
   otpsIncluded: false;
   emailsIncluded: false;
   notice: string;
+}
+
+/** US-034 / #399 participant-safe activity count for one authorized conversation. */
+export type ChatUnreadConversationType = 'channel' | 'directMessage';
+
+export interface ChatUnreadCountView {
+  conversationType: ChatUnreadConversationType;
+  conversationId: string;
+  unreadCount: number;
+  unreadMentionCount: number;
+}
+
+export interface ChatUnreadSummary {
+  counts: ChatUnreadCountView[];
+  totalUnreadCount: number;
+  totalUnreadMentionCount: number;
+}
+
+export interface MarkChatConversationReadInput {
+  conversationType: ChatUnreadConversationType;
+  conversationId: string;
+  messageId: string;
+}
+
+export interface MarkChatConversationReadResult {
+  conversationType: ChatUnreadConversationType;
+  conversationId: string;
+  readCursor: {
+    messageId: string;
+    createdAt: string;
+  };
+  advanced: boolean;
+  unreadCount: number;
+  unreadMentionCount: number;
 }

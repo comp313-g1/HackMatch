@@ -198,3 +198,35 @@ describe('sanitizeSubmittedDirectMessageDraft (US-032 / #390 / NR-017)', () => {
     expect(sanitizeSubmittedDirectMessageDraft([1])).toEqual([1]);
   });
 });
+
+describe('the viewer\'s own block state (#433)', () => {
+  const aThread = {
+    id: '44444444-4444-4444-8444-444444444444',
+    participant_low_id: A,
+    participant_high_id: B,
+    last_message_at: '2026-11-09T10:05:00.000Z',
+    created_at: '2026-11-09T10:00:00.000Z',
+    updated_at: '2026-11-09T10:05:00.000Z',
+  } as unknown as DirectMessageThread;
+
+  it('reports youBlockedPeer on the single-conversation view, true or false', () => {
+    expect(toDirectInboxItemView(aThread, A, 'bea', null, true).youBlockedPeer).toBe(true);
+    expect(toDirectInboxItemView(aThread, A, 'bea', null, false).youBlockedPeer).toBe(false);
+  });
+
+  it('leaves it out when it is not given (inbox list, open-thread answers)', () => {
+    expect(toDirectInboxItemView(aThread, A, 'bea', null)).not.toHaveProperty('youBlockedPeer');
+    expect(toDirectThreadView(aThread, A, 'bea')).not.toHaveProperty('youBlockedPeer');
+  });
+
+  it('the new key survives the safety scrub', () => {
+    expect(scrubDirectMessageFields({ youBlockedPeer: true })).toEqual({ youBlockedPeer: true });
+    expect(isPrivateDirectMessageKey('youBlockedPeer')).toBe(false);
+  });
+
+  it('every other way of naming block state is still scrubbed, so the peer\'s block cannot leak', () => {
+    for (const key of ['blocked', 'blockedByMe', 'blockedByThem', 'blocked_by_them', 'blocker_id', 'blocked_id', 'block_state']) {
+      expect(scrubDirectMessageFields({ [key]: true, keep: 1 })).toEqual({ keep: 1 });
+    }
+  });
+});

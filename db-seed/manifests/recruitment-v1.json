@@ -136,5 +136,117 @@
       "type": "team_application_submitted",
       "message": "Casey applied to the AI/ML vacancy on Civic Signal."
     }
+  ],
+  "teamChannels": [
+    {
+      "key": "civic-signal-chat",
+      "id": "35000000-0000-4000-8000-000000000001",
+      "teamKey": "civic-signal"
+    },
+    {
+      "key": "campus-compass-chat",
+      "id": "35000000-0000-4000-8000-000000000002",
+      "teamKey": "campus-compass"
+    }
+  ],
+  "teamChannelMessages": [
+    {
+      "id": "36000000-0000-4000-8000-000000000001",
+      "channelKey": "civic-signal-chat",
+      "accountKey": "avery",
+      "minutesAgo": 180,
+      "body": "Welcome to the Civic Signal team channel. This is where we will coordinate."
+    },
+    {
+      "id": "36000000-0000-4000-8000-000000000002",
+      "channelKey": "civic-signal-chat",
+      "accountKey": "avery",
+      "minutesAgo": 175,
+      "body": "We are looking for a backend developer and an AI/ML teammate. Our pitch: make municipal service updates easier to understand and act on."
+    },
+    {
+      "id": "36000000-0000-4000-8000-000000000003",
+      "channelKey": "civic-signal-chat",
+      "accountKey": "avery",
+      "minutesAgo": 60,
+      "body": "Next step: sketch the data sources we want to start with. Ideas welcome once the team fills up."
+    },
+    {
+      "id": "36000000-0000-4000-8000-000000000004",
+      "channelKey": "campus-compass-chat",
+      "accountKey": "drew",
+      "minutesAgo": 240,
+      "body": "Team locked. Welcome, Blake! Let's plan how to map accessible campus services."
+    },
+    {
+      "id": "36000000-0000-4000-8000-000000000005",
+      "channelKey": "campus-compass-chat",
+      "accountKey": "blake",
+      "minutesAgo": 230,
+      "body": "Thanks Drew, glad to be here. I can start on the service listing and search."
+    },
+    {
+      "id": "36000000-0000-4000-8000-000000000006",
+      "channelKey": "campus-compass-chat",
+      "accountKey": "drew",
+      "minutesAgo": 215,
+      "body": "Great. I will collect accessibility notes for the main buildings so we have real data to show."
+    },
+    {
+      "id": "36000000-0000-4000-8000-000000000007",
+      "channelKey": "campus-compass-chat",
+      "accountKey": "blake",
+      "minutesAgo": 45,
+      "body": "First draft of the service list is ready for review."
+    }
+  ],
+  "directMessageThreads": [
+    {
+      "key": "avery-casey",
+      "id": "37000000-0000-4000-8000-000000000001",
+      "accountKeys": ["avery", "casey"]
+    },
+    {
+      "key": "blake-drew",
+      "id": "37000000-0000-4000-8000-000000000002",
+      "accountKeys": ["blake", "drew"]
+    }
+  ],
+  "directMessages": [
+    {
+      "id": "38000000-0000-4000-8000-000000000001",
+      "threadKey": "avery-casey",
+      "accountKey": "avery",
+      "minutesAgo": 120,
+      "body": "Hi Casey, thanks for applying to the AI/ML role on Civic Signal. Do you have time for a quick chat?"
+    },
+    {
+      "id": "38000000-0000-4000-8000-000000000002",
+      "threadKey": "avery-casey",
+      "accountKey": "casey",
+      "minutesAgo": 110,
+      "body": "Hi Avery! Yes, I would love to. I have a few civic data sets I could start with."
+    },
+    {
+      "id": "38000000-0000-4000-8000-000000000003",
+      "threadKey": "avery-casey",
+      "accountKey": "avery",
+      "minutesAgo": 100,
+      "body": "Perfect. I will review your application today and get back to you."
+    },
+    {
+      "id": "38000000-0000-4000-8000-000000000004",
+      "threadKey": "blake-drew",
+      "accountKey": "drew",
+      "minutesAgo": 90,
+      "body": "Blake, can you take the lead on the service search page?"
+    },
+    {
+      "id": "38000000-0000-4000-8000-000000000005",
+      "threadKey": "blake-drew",
+      "accountKey": "blake",
+      "minutesAgo": 80,
+      "body": "Sure, I will start on it this afternoon."
+    }
   ]
 }

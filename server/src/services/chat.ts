@@ -96,12 +96,47 @@ export interface TeamChatChannelView extends ChatChannelView {
   teamId: string;
 }
 
+const TEAM_CHANNEL_NOT_FOUND = {
+  status: 404,
+  code: 'TEAM_CHANNEL_NOT_FOUND',
+  message: 'Team channel not found.',
+} as const;
+
+/**
+ * Returns the team's private channel, creating it on first use (#431).
+ *
+ * Teams created before channel provisioning existed, and teams whose creation-time provisioning
+ * failed, get their channel the first time an authorized member opens the chat. Provisioning is
+ * idempotent, so two simultaneous first opens (the chat panel loads the channel and the messages
+ * together) end up with the same single channel. Only callers that already passed the
+ * confirmed-member gate reach this. A team that cannot have a channel (it does not exist, or it was
+ * disbanded without one) is reported as 404 TEAM_CHANNEL_NOT_FOUND.
+ */
 async function findTeamChannelOrThrow(teamId: string): Promise<ChatChannel> {
-  const channel = await chatRepository.findChannelByTeamId(teamId);
-  // Fail closed: the row must really be this team's private channel.
-  if (!channel || channel.channel_type !== 'team' || channel.team_id !== teamId) {
-    throw new ChatServiceError(404, 'TEAM_CHANNEL_NOT_FOUND', 'Team channel not found.');
+  const notFound = () =>
+    new ChatServiceError(TEAM_CHANNEL_NOT_FOUND.status, TEAM_CHANNEL_NOT_FOUND.code, TEAM_CHANNEL_NOT_FOUND.message);
+
+  const trimmed = typeof teamId === 'string' ? teamId.trim() : '';
+  if (!trimmed) throw notFound();
+
+  let channel = await chatRepository.findChannelByTeamId(trimmed);
+  if (!channel) {
+    try {
+      await provisionOrLinkTeamChannel({ teamId: trimmed });
+    } catch (err) {
+      if (
+        err instanceof ChatServiceError &&
+        (err.code === 'TEAM_NOT_FOUND' || err.code === 'TEAM_CHAT_TEAM_DISBANDED')
+      ) {
+        throw notFound();
+      }
+      throw err;
+    }
+    channel = await chatRepository.findChannelByTeamId(trimmed);
   }
+
+  // Fail closed: the row must really be this team's private channel.
+  if (!channel || channel.channel_type !== 'team' || channel.team_id !== trimmed) throw notFound();
   return channel;
 }
 
@@ -214,6 +249,47 @@ export async function sendChannelMessage(input: {
 
   const profile = await profileRepository.findProfileByParticipantId(input.authorId);
   return toMessageView(message, profile?.handle ?? null);
+}
+
+export interface TeamChannelBackfillResult {
+  checked: number;
+  created: number;
+  alreadyLinked: number;
+  skipped: number;
+  failed: Array<{ teamId: string; reason: string }>;
+}
+
+/**
+ * #431: gives every active team that has no private chat channel one. Safe to run any number of
+ * times (provisioning is idempotent); disbanded teams are never given a new channel.
+ */
+export async function backfillTeamChannels(): Promise<TeamChannelBackfillResult> {
+  const teamIds = await chatRepository.listTeamIdsNeedingChannel();
+  const result: TeamChannelBackfillResult = {
+    checked: teamIds.length,
+    created: 0,
+    alreadyLinked: 0,
+    skipped: 0,
+    failed: [],
+  };
+
+  for (const teamId of teamIds) {
+    try {
+      const { created } = await provisionOrLinkTeamChannel({ teamId });
+      if (created) result.created += 1;
+      else result.alreadyLinked += 1;
+    } catch (err) {
+      if (
+        err instanceof ChatServiceError &&
+        (err.code === 'TEAM_NOT_FOUND' || err.code === 'TEAM_CHAT_TEAM_DISBANDED')
+      ) {
+        result.skipped += 1;
+      } else {
+        result.failed.push({ teamId, reason: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  }
+  return result;
 }
 
 export interface ProvisionedTeamChannelResult {

@@ -1,0 +1,55 @@
+---
+title: "HackMatch — US-023: Team Private Coordination Workspace — Authorization and Privacy Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":28,"rankSpacing":36,"padding":14}}}%%
+flowchart LR
+    subgraph GATE[Locked-team access gate]
+        direction TB
+        A[Workspace request]:::identity --> B{Authenticated, MFA complete,<br/>active, verified PART?}:::decision
+        B -- No --> X[Deny without workspace data]:::denied
+        B -- Yes --> C{Team exists?}:::decision
+        C -- No --> Y[Safe not-found response]:::denied
+        C -- Yes --> D{Team is Locked<br/>and locked_at is present?}:::decision
+        D -- No --> Z[WORKSPACE_TEAM_NOT_LOCKED]:::denied
+        D -- Yes --> E{Confirmed membership?}:::decision
+        E -- No --> X
+        E -- Yes --> F{Requested operation}:::decision
+    end
+
+    subgraph VIEW[Read and privacy projection]
+        direction TB
+        G[Load contacts, links, note, and revisions]:::domain --> H[Explicit privacy projection]:::domain
+        H --> H1[Permitted handles, roles,<br/>portfolio links, and timestamps]:::success
+        H --> H2[Pseudonymize former identities]:::success
+        H --> H3[Scrub emails, auth UIDs,<br/>passwords, OTPs, and tokens]:::success
+    end
+
+    subgraph LINKS[Owner-managed links]
+        direction TB
+        I{Team owner?}:::decision
+        I -- No --> J[Owner-only 403<br/>and client draft remains]:::denied
+        I -- Yes --> K{1–10 unique HTTPS links<br/>with valid labels and order?}:::decision
+        K -- No --> L[400 validation error]:::denied
+        K -- Yes --> M[Atomic link replacement]:::success
+    end
+
+    subgraph NOTE[Confirmed-member shared note]
+        direction TB
+        N{Content and expectedVersion valid?}:::decision
+        N -- No --> L2[400 validation error]:::denied
+        N -- Yes --> O[Sanitize Markdown and lock team note]:::domain
+        O --> P{Expected version equals<br/>current version?}:::decision
+        P -- No --> Q[409 returns latest safe state<br/>and preserves unsaved text]:::denied
+        P -- Yes --> R[Increment version and append<br/>immutable revision atomically]:::success
+    end
+
+    F -- Read --> G
+    F -- Replace links --> I
+    F -- Save note --> N
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef domain fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#5f4700
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#6f1733
+

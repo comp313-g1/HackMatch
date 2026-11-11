@@ -1,0 +1,31 @@
+---
+title: "HackMatch — US-025: Participant Report and Moderation Case Model"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f1e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"curve":"basis","nodeSpacing":42,"rankSpacing":58,"diagramPadding":24}}}%%
+flowchart LR
+    Participant["participants<br/>id PK<br/>role PART<br/>account state"]
+    Report["moderation_reports<br/>id PK<br/>reporter_id FK<br/>target_type + target_id<br/>category + optional explanation<br/>flagged_url<br/>case_id FK<br/>created_at"]
+    Case["moderation_cases<br/>id PK<br/>target_type + target_id<br/>reason + status<br/>created_by FK<br/>report_count<br/>flagged_url"]
+    Targets["Logical US-025 targets<br/>teams<br/>participant profiles<br/>Published events<br/>eligible external URLs"]
+    Rate["Indexes<br/>reporter_id + created_at DESC<br/>target_type + target_id<br/>case_id"]
+    Privacy["RLS with no participant read policy<br/>service-role persistence only"]
+
+    Participant -->|"reporter_id FK"| Report
+    Participant -->|"created_by FK"| Case
+    Case -->|"case_id FK, nullable"| Report
+    Report -.->|"Polymorphic target, no physical FK"| Targets
+    Case -.->|"Polymorphic target, no physical FK"| Targets
+    Rate -->|"Supports quota and lookup"| Report
+    Privacy -->|"Protects"| Report
+
+    Later["US-033 extension<br/>chat_message target<br/>not original US-025 scope"] -.-> Report
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef domain fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64
+    classDef persistence fill:#e8f7ed,stroke:#3a9b5f,color:#123d24
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#374151
+    class Participant identity
+    class Targets domain
+    class Report,Case,Rate,Privacy persistence
+    class Later internal
+

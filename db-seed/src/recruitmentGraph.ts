@@ -1,5 +1,20 @@
+import { buildTeamChannelDescription, buildTeamChannelTitle } from '../../server/src/db/chatModel.js';
 import { manifestOwnedIds } from './manifest.js';
 import type { DatabasePort, DemoManifests, ResolvedAccount } from './types.js';
+
+/** Name of the guarded database function that removes the team chat of demo-owned teams (0062). */
+export const DEMO_TEAM_CHAT_RESET_FUNCTION = 'demo_remove_team_chat';
+
+function minutesBefore(now: Date, minutes: number): string {
+  return new Date(now.getTime() - minutes * 60 * 1000).toISOString();
+}
+
+/** A direct-message thread stores its two people in canonical order (low id < high id). */
+export function canonicalPair(a: string, b: string): [string, string] {
+  const first = a.toLowerCase();
+  const second = b.toLowerCase();
+  return first < second ? [first, second] : [second, first];
+}
 
 function byKey<T extends { key: string }>(items: readonly T[]): Map<string, T> {
   return new Map(items.map((item) => [item.key, item]));
@@ -36,6 +51,27 @@ export async function cleanupScenario(
   const ids = manifestOwnedIds(manifests);
   const participantIds = ids.participants;
   const tableCounts: Record<string, number> = {};
+
+  // #437 — direct messages: every message in a seeded thread first, then the thread itself
+  // (read cursors and mentions are removed with them).
+  tableCounts.direct_messages = await deleteExactIds(database, 'direct_messages', 'thread_id', ids.directMessageThreads, apply);
+  tableCounts.direct_message_threads = await deleteExactIds(database, 'direct_message_threads', 'id', ids.directMessageThreads, apply);
+
+  // #437 — team chat. Migration 0052 makes team channels and their messages permanent, so the
+  // demo teams' chat is removed through one guarded database function that only accepts demo-owned
+  // teams. This must happen before the memberships and teams below are deleted.
+  const teamChannels = ids.teams.length === 0
+    ? []
+    : await database.select('chat_channels', [{ column: 'team_id', operator: 'in', value: ids.teams }]);
+  const teamChannelIds = teamChannels.map((row) => String(row.id));
+  const teamChatMessages = teamChannelIds.length === 0
+    ? []
+    : await database.select('chat_messages', [{ column: 'channel_id', operator: 'in', value: teamChannelIds }]);
+  tableCounts.chat_channels = teamChannels.length;
+  tableCounts.chat_messages = teamChatMessages.length;
+  if (apply && teamChannels.length > 0) {
+    await database.rpc(DEMO_TEAM_CHAT_RESET_FUNCTION, { p_team_ids: ids.teams });
+  }
 
   tableCounts.participant_notifications = await deleteExactIds(database, 'participant_notifications', 'id', ids.notifications, apply);
   tableCounts.team_requests = await deleteExactIds(database, 'team_requests', 'id', ids.requests, apply);
@@ -186,6 +222,92 @@ export async function createRecruitmentGraph(
         created_at: timestamp,
       };
     })
+  );
+
+  await createDemoChat(database, manifests, accountMap, teamMap, now);
+}
+
+/**
+ * #437 — the private channel of each seeded team with a few messages, and direct-message threads
+ * between demo accounts. Runs after the teams and memberships exist, because the database only
+ * accepts team-channel messages from confirmed members (0052) and thread messages from the
+ * thread's two people (0055). Demo accounts only.
+ */
+async function createDemoChat(
+  database: DatabasePort,
+  manifests: DemoManifests,
+  accountMap: ReadonlyMap<string, ResolvedAccount>,
+  teamMap: ReadonlyMap<string, DemoManifests['recruitment']['teams'][number]>,
+  now: Date
+): Promise<void> {
+  const { teamChannels, teamChannelMessages, directMessageThreads, directMessages } = manifests.recruitment;
+  const channelByKey = new Map(teamChannels.map((channel) => [channel.key, channel]));
+  const threadByKey = new Map(directMessageThreads.map((thread) => [thread.key, thread]));
+
+  await database.insert(
+    'chat_channels',
+    teamChannels.map((channel) => {
+      const team = teamMap.get(channel.teamKey)!;
+      const oldest = Math.max(
+        0,
+        ...teamChannelMessages.filter((message) => message.channelKey === channel.key).map((message) => message.minutesAgo)
+      );
+      return {
+        id: channel.id,
+        title: buildTeamChannelTitle(team.name),
+        description: buildTeamChannelDescription(team.id, team.name),
+        created_by: accountMap.get(team.ownerAccountKey)!.participantId,
+        channel_type: 'team',
+        team_id: team.id,
+        created_at: minutesBefore(now, oldest + 1),
+      };
+    })
+  );
+
+  // Oldest first, so the rows are written in conversation order.
+  await database.insert(
+    'chat_messages',
+    [...teamChannelMessages]
+      .sort((a, b) => b.minutesAgo - a.minutesAgo)
+      .map((message) => ({
+        id: message.id,
+        channel_id: channelByKey.get(message.channelKey)!.id,
+        author_id: accountMap.get(message.accountKey)!.participantId,
+        body: message.body,
+        created_at: minutesBefore(now, message.minutesAgo),
+      }))
+  );
+
+  await database.insert(
+    'direct_message_threads',
+    directMessageThreads.map((thread) => {
+      const [low, high] = canonicalPair(
+        accountMap.get(thread.accountKeys[0])!.participantId,
+        accountMap.get(thread.accountKeys[1])!.participantId
+      );
+      const minutes = directMessages.filter((message) => message.threadKey === thread.key).map((message) => message.minutesAgo);
+      return {
+        id: thread.id,
+        participant_low_id: low,
+        participant_high_id: high,
+        created_at: minutesBefore(now, Math.max(...minutes) + 1),
+        updated_at: minutesBefore(now, Math.min(...minutes)),
+        last_message_at: minutesBefore(now, Math.min(...minutes)),
+      };
+    })
+  );
+
+  await database.insert(
+    'direct_messages',
+    [...directMessages]
+      .sort((a, b) => b.minutesAgo - a.minutesAgo)
+      .map((message) => ({
+        id: message.id,
+        thread_id: threadByKey.get(message.threadKey)!.id,
+        author_id: accountMap.get(message.accountKey)!.participantId,
+        body: message.body,
+        created_at: minutesBefore(now, message.minutesAgo),
+      }))
   );
 }
 

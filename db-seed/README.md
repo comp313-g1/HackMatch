@@ -104,6 +104,20 @@ No seed writes occur without `--apply`. Reset additionally requires an exact `--
 
 Each team has a deterministic, Published backend shadow event with minimum size 2, maximum size 4, and a stable future end date. These rows exist only because current PostgreSQL constraints/RPCs still require `event_id`; they are not user-facing hackathons and are omitted from the copy/paste JSON.
 
+### Team chat and direct messages (#437)
+
+The scenario also seeds chat so the demo can show it, using demo accounts only:
+
+| Where | What is seeded |
+|---|---|
+| Civic Signal team chat | Private team channel with three messages from Avery (its only confirmed member) |
+| Campus Compass team chat | Private team channel with four messages between Drew and Blake |
+| Direct messages | Two threads: Avery and Casey (three messages about Casey's application) and Blake and Drew (two messages) |
+
+Sign in as a seeded participant and open **Chat → Team chat** or the **Direct messages** tab to see them. Every row has a deterministic UUID in `manifests/recruitment-v1.json` (`teamChannels`, `teamChannelMessages`, `directMessageThreads`, `directMessages`). The manifest is validated to follow the same rules as the database: only confirmed team members write in a team channel, and only the two people in a thread write in it.
+
+Migration `0052` makes team chat history permanent (messages and team channels cannot be deleted, and membership rows of a team with a channel cannot be deleted). Re-seeding and `demo:reset` need to remove the demo teams' chat first, so they call one guarded database function from migration `0062`, `demo_remove_team_chat`. It only accepts teams owned by demo accounts (`hm-demo-v1-*`), only removes their private team channels and messages, is executable by the service role only, and leaves the `0052` protections on. **Apply migration `0062` to the target database before re-seeding or resetting a database that already has seeded chat.** Direct-message threads need no special function; a seeded thread is removed together with any messages typed into it by hand.
+
 ## Firebase, roles, and MFA
 
 Firebase reconciliation looks up both exact deterministic UID and normalized email, refuses split ownership, creates missing users, preserves unrelated custom claims, and reconciles only the `role` claim. Existing passwords are unchanged unless `--rotate-password` is supplied. Refresh tokens are revoked after role changes, password rotation, or re-enabling a disabled owned account.
@@ -116,7 +130,7 @@ An apply validates targets and manifests, reconciles exact Firebase identities, 
 
 ADMIN rows never receive participant profiles. Only the six deterministic owned accounts may have suspension/deactivation state cleared. A PostgreSQL account failure compensates by deleting Firebase accounts created during that same run only; pre-existing Firebase accounts are never removed as compensation.
 
-Scenario reset uses exact manifest IDs in reverse dependency order. Full reset then deletes exact participant UUIDs and exact Firebase UIDs; it never enumerates Firebase users or deletes by domain, display name, or UID prefix. If unrelated records—such as manually authored chat content—reference a demo participant, PostgreSQL deletion fails safely rather than deleting that unrelated content.
+Scenario reset uses exact manifest IDs in reverse dependency order. Full reset then deletes exact participant UUIDs and exact Firebase UIDs; it never enumerates Firebase users or deletes by domain, display name, or UID prefix. The demo scenario's own chat is removed first (see above). If unrelated records—such as manually authored chat content outside the demo teams and threads—reference a demo participant, PostgreSQL deletion fails safely rather than deleting that unrelated content.
 
 The current participant schema also includes US-030 presence. Reconciliation deliberately preserves an existing demo account’s presence value and relies on the database default for newly inserted accounts because presence is unrelated to the recruitment scenario.
 

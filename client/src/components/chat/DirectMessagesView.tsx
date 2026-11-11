@@ -2,15 +2,24 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AuthRequiredError,
   ChatApiError,
+  blockDirectMessageParticipant,
   getDirectMessageThread,
   listDirectMessageThreads,
+  openDirectMessageThread,
   sendDirectMessage,
+  unblockDirectMessageParticipant,
 } from './chatApi';
+import {
+  friendlyOpenConversationError,
+  type DirectMessageOpenRequest,
+} from './directMessageLauncher';
 import type {
   ChatFieldErrors,
   DirectMessageThreadView,
   DirectMessageView,
 } from './chatTypes';
+import { ChatActivityBadge } from './ChatUnreadBadge';
+import { useChatUnread } from './ChatUnreadContext';
 
 const MESSAGE_MAX_LENGTH = 4000;
 
@@ -37,6 +46,18 @@ function isAccessDenied(error: unknown): boolean {
   return error instanceof ChatApiError && (error.status === 401 || error.status === 403);
 }
 
+/**
+ * #433 — the server refuses a SEND (not the whole conversation) with these 403 answers: the other
+ * person is unavailable or has blocked you (one neutral message for both), or you blocked them.
+ * The conversation stays readable, so the screen shows the message and keeps the draft instead of
+ * replacing the conversation with "access denied".
+ */
+const SEND_REFUSED_CODES = new Set(['DM_PEER_UNAVAILABLE', 'DM_BLOCKED_BY_YOU']);
+
+function isSendRefusal(error: unknown): error is ChatApiError {
+  return error instanceof ChatApiError && error.status === 403 && SEND_REFUSED_CODES.has(error.code);
+}
+
 function sortMessages(messages: DirectMessageView[]): DirectMessageView[] {
   return [...messages].sort((left, right) => {
     const byTime = Date.parse(left.createdAt) - Date.parse(right.createdAt);
@@ -50,7 +71,21 @@ function sortMessages(messages: DirectMessageView[]): DirectMessageView[] {
  * Private thread contents are cleared before each authorization-sensitive load. Drafts are
  * retained per thread and are removed only after the server confirms a successful send.
  */
-export function DirectMessagesView(): React.JSX.Element {
+export interface DirectMessagesViewProps {
+  /** #432 — open (or continue) the conversation with this participant when the request arrives. */
+  openRequest?: DirectMessageOpenRequest | null;
+  /** Called once the request has been taken, so the app does not replay it on a later visit. */
+  onOpenRequestHandled?: () => void;
+}
+
+export function DirectMessagesView({
+  openRequest = null,
+  onOpenRequestHandled,
+}: DirectMessagesViewProps = {}): React.JSX.Element {
+  const unread = useChatUnread();
+  const unreadEnabled = unread.enabled;
+  const markRead = unread.markRead;
+  const refreshUnread = unread.refresh;
   const [threads, setThreads] = useState<DirectMessageThreadView[]>([]);
   const [inboxLoading, setInboxLoading] = useState(true);
   const [inboxError, setInboxError] = useState<string | null>(null);
@@ -68,12 +103,25 @@ export function DirectMessagesView(): React.JSX.Element {
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [readStateError, setReadStateError] = useState<string | null>(null);
+
+  const [openingConversation, setOpeningConversation] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
+
+  const [confirmingBlock, setConfirmingBlock] = useState(false);
+  const [blockPending, setBlockPending] = useState(false);
+  const [blockNotice, setBlockNotice] = useState<string | null>(null);
+  const [blockError, setBlockError] = useState<string | null>(null);
 
   const inboxRequestId = useRef(0);
   const threadRequestId = useRef(0);
   const sendRequestId = useRef(0);
+  const openRequestRun = useRef(0);
+  const handledOpenRequestId = useRef<number | null>(null);
 
   const draft = selectedThreadId ? drafts[selectedThreadId] ?? '' : '';
+  // #433: true only when YOU blocked the other person (the server never reveals their block).
+  const peerBlocked = selectedThread?.youBlockedPeer === true;
 
   const loadInbox = useCallback(async (): Promise<void> => {
     const requestId = ++inboxRequestId.current;
@@ -92,13 +140,14 @@ export function DirectMessagesView(): React.JSX.Element {
       setMessages([]);
       if (isAccessDenied(error)) {
         setInboxAccessDenied(true);
+        if (unreadEnabled) void refreshUnread();
       } else {
         setInboxError(errorMessage(error, 'Could not load direct messages. Please try again.'));
       }
     } finally {
       if (requestId === inboxRequestId.current) setInboxLoading(false);
     }
-  }, []);
+  }, [unreadEnabled, refreshUnread]);
 
   useEffect(() => {
     void loadInbox();
@@ -120,25 +169,113 @@ export function DirectMessagesView(): React.JSX.Element {
     setFieldErrors({});
     setSendError(null);
     setSendSuccess(null);
+    setConfirmingBlock(false);
+    setBlockNotice(null);
+    setBlockError(null);
+    setReadStateError(null);
 
     try {
       const detail = await getDirectMessageThread(threadId);
       if (requestId !== threadRequestId.current) return;
       setSelectedThread(detail.thread);
-      setMessages(sortMessages(detail.messages));
+      const orderedMessages = sortMessages(detail.messages);
+      setMessages(orderedMessages);
+      const latest = orderedMessages.at(-1);
+      if (unreadEnabled && latest) {
+        try {
+          await markRead({
+            conversationType: 'directMessage',
+            conversationId: threadId,
+            messageId: latest.id,
+          });
+        } catch {
+          if (requestId === threadRequestId.current) {
+            setReadStateError(
+              'Conversation loaded, but unread activity could not be updated. Existing badges were kept.'
+            );
+          }
+        }
+      }
     } catch (error: unknown) {
       if (requestId !== threadRequestId.current) return;
       setSelectedThread(null);
       setMessages([]);
       if (isAccessDenied(error)) {
         setThreadAccessDenied(true);
+        if (unreadEnabled) void refreshUnread();
       } else {
         setThreadError(errorMessage(error, 'Could not load this conversation. Please try again.'));
       }
     } finally {
       if (requestId === threadRequestId.current) setThreadLoading(false);
     }
-  }, []);
+  }, [unreadEnabled, markRead, refreshUnread]);
+
+  /**
+   * #432 — a "Message" click: create or reuse the conversation, refresh the inbox so a new
+   * conversation is listed, then show the conversation. Each request runs once (React may run
+   * effects twice in development), and a newer request makes an older one stop updating the screen.
+   */
+  useEffect(() => {
+    if (!openRequest || handledOpenRequestId.current === openRequest.requestId) return;
+    handledOpenRequestId.current = openRequest.requestId;
+    const run = ++openRequestRun.current;
+    const isCurrent = (): boolean => run === openRequestRun.current;
+
+    setOpeningConversation(true);
+    setOpenError(null);
+    onOpenRequestHandled?.();
+
+    void (async () => {
+      try {
+        const thread = await openDirectMessageThread(openRequest.participantId);
+        if (!isCurrent()) return;
+        await loadInbox();
+        if (!isCurrent()) return;
+        await loadThread(thread.id);
+      } catch (error: unknown) {
+        if (isCurrent()) setOpenError(friendlyOpenConversationError(error));
+      } finally {
+        if (isCurrent()) setOpeningConversation(false);
+      }
+    })();
+  }, [openRequest, onOpenRequestHandled, loadInbox, loadThread]);
+
+  /**
+   * #433 — block or unblock the other person. Each shows its own result and error, never touches
+   * the draft, and updates only this conversation's view of your own block.
+   */
+  const changeBlock = async (block: boolean): Promise<void> => {
+    if (!selectedThread || blockPending) return;
+    const threadId = selectedThread.id;
+    setBlockPending(true);
+    setBlockError(null);
+    setBlockNotice(null);
+    try {
+      const blocked = block
+        ? await blockDirectMessageParticipant(selectedThread.peer.id)
+        : await unblockDirectMessageParticipant(selectedThread.peer.id);
+      setSelectedThread((current) =>
+        current && current.id === threadId ? { ...current, youBlockedPeer: blocked } : current
+      );
+      setConfirmingBlock(false);
+      setBlockNotice(blocked ? 'Participant blocked.' : 'Participant unblocked.');
+      setSendError(null);
+    } catch (error: unknown) {
+      setBlockError(
+        isAccessDenied(error)
+          ? 'Please sign in again to use direct messages.'
+          : errorMessage(
+              error,
+              block
+                ? 'Could not block this participant. Please try again.'
+                : 'Could not unblock this participant. Please try again.'
+            )
+      );
+    } finally {
+      setBlockPending(false);
+    }
+  };
 
   const updateDraft = (value: string): void => {
     if (!selectedThreadId) return;
@@ -189,6 +326,7 @@ export function DirectMessagesView(): React.JSX.Element {
               Date.parse(left.lastMessageAt ?? left.updatedAt)
           )
       );
+      if (unreadEnabled) void refreshUnread();
     } catch (error: unknown) {
       if (requestId !== sendRequestId.current) return;
       if (error instanceof ChatApiError && error.errors) {
@@ -198,10 +336,17 @@ export function DirectMessagesView(): React.JSX.Element {
         const submitted = error.submitted as { body?: unknown } | undefined;
         if (typeof submitted?.body === 'string') updateDraft(submitted.body);
       }
-      if (isAccessDenied(error)) {
+      if (isSendRefusal(error)) {
+        // Your own block is known here even if this screen did not know yet (blocked from elsewhere).
+        if (error.code === 'DM_BLOCKED_BY_YOU') {
+          setSelectedThread((current) => (current ? { ...current, youBlockedPeer: true } : current));
+        }
+        setSendError(errorMessage(error, 'You cannot send messages in this conversation.'));
+      } else if (isAccessDenied(error)) {
         setSelectedThread(null);
         setMessages([]);
         setThreadAccessDenied(true);
+        if (unreadEnabled) void refreshUnread();
       } else {
         setSendError(errorMessage(error, 'Could not send message. Your draft has been kept.'));
       }
@@ -213,6 +358,32 @@ export function DirectMessagesView(): React.JSX.Element {
 
   return (
     <section aria-labelledby="direct-messages-heading" data-testid="direct-messages-view">
+      {openingConversation && (
+        <div
+          role="status"
+          aria-busy="true"
+          data-testid="dm-opening"
+          className="mb-4 rounded-md border border-cream-200 bg-cream-50 px-4 py-3 text-sm text-ink-muted"
+        >
+          Opening conversation…
+        </div>
+      )}
+      {openError && (
+        <div
+          role="alert"
+          data-testid="dm-open-error"
+          className="mb-4 flex items-start justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          <p>{openError}</p>
+          <button
+            type="button"
+            onClick={() => setOpenError(null)}
+            className="rounded-md border border-amber-300 px-2 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <div className="space-y-4 lg:col-span-2">
           <div className="rounded-xl border border-cream-200 bg-white p-4 shadow-sm">
@@ -226,7 +397,10 @@ export function DirectMessagesView(): React.JSX.Element {
               {!inboxLoading && !inboxAccessDenied && (
                 <button
                   type="button"
-                  onClick={() => void loadInbox()}
+                  onClick={() => {
+                    void loadInbox();
+                    if (unreadEnabled) void refreshUnread();
+                  }}
                   className="rounded-md border border-cream-300 px-3 py-2 text-xs font-semibold text-forest-800 hover:bg-cream-50"
                 >
                   Refresh inbox
@@ -266,8 +440,20 @@ export function DirectMessagesView(): React.JSX.Element {
                           selectedThreadId === thread.id ? 'bg-forest-50' : 'bg-white hover:bg-cream-50'
                         }`}
                       >
-                        <span className="block truncate text-sm font-semibold text-forest-900">
-                          {thread.peer.handle || 'Participant'}
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="block min-w-0 truncate text-sm font-semibold text-forest-900">
+                            {thread.peer.handle || 'Participant'}
+                          </span>
+                          {(() => {
+                            const count = unread.getCount('directMessage', thread.id);
+                            return (
+                              <ChatActivityBadge
+                                unreadCount={count?.unreadCount ?? 0}
+                                mentionCount={count?.unreadMentionCount ?? 0}
+                                label={`Direct messages with ${thread.peer.handle || 'Participant'}`}
+                              />
+                            );
+                          })()}
                         </span>
                         <span className="mt-1 block truncate text-xs text-ink-muted">
                           {thread.lastMessage?.body || 'No messages yet'}
@@ -313,11 +499,93 @@ export function DirectMessagesView(): React.JSX.Element {
             ) : selectedThread ? (
               <>
                 <div className="border-b border-cream-200 pb-3">
-                  <h3 className="font-display text-lg font-semibold text-forest-900">
-                    {selectedThread.peer.handle || 'Participant'}
-                  </h3>
-                  <p className="mt-1 text-xs text-ink-muted">Private direct-message conversation</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-display text-lg font-semibold text-forest-900">
+                        {selectedThread.peer.handle || 'Participant'}
+                      </h3>
+                      <p className="mt-1 text-xs text-ink-muted">Private direct-message conversation</p>
+                    </div>
+                    {peerBlocked ? (
+                      <button
+                        type="button"
+                        data-testid="dm-unblock"
+                        aria-label={`Unblock ${selectedThread.peer.handle || 'this participant'}`}
+                        onClick={() => void changeBlock(false)}
+                        disabled={blockPending}
+                        className="rounded-md border border-cream-300 px-3 py-2 text-xs font-semibold text-forest-800 hover:bg-cream-50 disabled:opacity-50"
+                      >
+                        {blockPending ? 'Unblocking…' : 'Unblock'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid="dm-block"
+                        aria-label={`Block ${selectedThread.peer.handle || 'this participant'}`}
+                        aria-expanded={confirmingBlock}
+                        onClick={() => {
+                          setBlockError(null);
+                          setBlockNotice(null);
+                          setConfirmingBlock((open) => !open);
+                        }}
+                        disabled={blockPending}
+                        className="rounded-md border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        Block
+                      </button>
+                    )}
+                  </div>
+
+                  {confirmingBlock && !peerBlocked && (
+                    <div
+                      role="group"
+                      aria-label="Confirm block"
+                      data-testid="dm-block-confirm"
+                      className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900"
+                    >
+                      <p>
+                        Block {selectedThread.peer.handle || 'this participant'}? Neither of you will be able to
+                        send messages in this conversation until you unblock them.
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          data-testid="dm-block-confirm-yes"
+                          onClick={() => void changeBlock(true)}
+                          disabled={blockPending}
+                          className="rounded-md bg-red-700 px-3 py-2 text-xs font-semibold text-white hover:bg-red-800 disabled:opacity-50"
+                        >
+                          {blockPending ? 'Blocking…' : 'Block participant'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingBlock(false)}
+                          disabled={blockPending}
+                          className="rounded-md border border-red-200 px-3 py-2 text-xs font-semibold text-red-800 hover:bg-red-100 disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {blockError && (
+                    <p role="alert" data-testid="dm-block-error" className="mt-3 text-xs text-red-700">
+                      {blockError}
+                    </p>
+                  )}
+                  {blockNotice && (
+                    <p role="status" data-testid="dm-block-notice" className="mt-3 text-xs text-forest-800">
+                      {blockNotice}
+                    </p>
+                  )}
                 </div>
+
+                {readStateError && (
+                  <p role="alert" className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                    {readStateError}
+                  </p>
+                )}
 
                 {messages.length === 0 ? (
                   <div role="status" data-testid="dm-thread-empty" className="my-4 flex flex-1 items-center justify-center rounded-md border border-dashed border-cream-300 p-8 text-center text-sm text-ink-muted">
@@ -326,9 +594,20 @@ export function DirectMessagesView(): React.JSX.Element {
                 ) : (
                   <ul className="my-4 max-h-80 flex-1 space-y-3 overflow-y-auto pr-1" aria-label="Direct messages">
                     {messages.map((message) => (
-                      <li key={message.id} data-testid="dm-message" className="rounded-md border border-cream-100 bg-cream-50/80 px-3 py-2">
-                        <div className="flex items-baseline justify-between gap-2">
-                          <span className="text-sm font-semibold text-forest-900">{message.authorHandle || 'Participant'}</span>
+                      <li
+                        key={message.id}
+                        data-testid="dm-message"
+                        data-from-me={message.fromMe === true ? 'true' : 'false'}
+                        className={
+                          message.fromMe === true
+                            ? 'ml-auto w-fit max-w-[85%] rounded-md border border-forest-200 bg-forest-50 px-3 py-2'
+                            : 'mr-auto w-fit max-w-[85%] rounded-md border border-cream-100 bg-cream-50/80 px-3 py-2'
+                        }
+                      >
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span className="text-sm font-semibold text-forest-900">
+                            {message.fromMe === true ? 'You' : message.authorHandle || 'Participant'}
+                          </span>
                           <time dateTime={message.createdAt} className="whitespace-nowrap text-xs text-ink-muted">
                             {formatTimestamp(message.createdAt)}
                           </time>
@@ -340,12 +619,17 @@ export function DirectMessagesView(): React.JSX.Element {
                 )}
 
                 <form onSubmit={handleSend} noValidate data-testid="dm-composer" className="space-y-2 border-t border-cream-200 pt-4">
+                  {peerBlocked && (
+                    <p role="status" data-testid="dm-blocked-notice" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      You have blocked this participant. Unblock them to send messages.
+                    </p>
+                  )}
                   <label htmlFor="dm-message-body" className="block text-sm font-medium text-forest-900">Message</label>
                   <textarea
                     id="dm-message-body"
                     value={draft}
                     onChange={(event) => updateDraft(event.target.value)}
-                    disabled={sending}
+                    disabled={sending || peerBlocked}
                     rows={3}
                     maxLength={MESSAGE_MAX_LENGTH}
                     aria-invalid={Boolean(fieldErrors.body)}
@@ -357,7 +641,7 @@ export function DirectMessagesView(): React.JSX.Element {
                   {fieldErrors.body && <p id="dm-message-error" role="alert" className="text-xs text-red-700">{fieldErrors.body}</p>}
                   {sendError && <p role="alert" className="text-xs text-red-700">{sendError}</p>}
                   {sendSuccess && <p role="status" className="text-xs text-forest-800">{sendSuccess}</p>}
-                  <button type="submit" disabled={sending} className={primaryButtonClass}>
+                  <button type="submit" disabled={sending || peerBlocked} className={primaryButtonClass}>
                     {sending ? 'Sending…' : 'Send message'}
                   </button>
                 </form>

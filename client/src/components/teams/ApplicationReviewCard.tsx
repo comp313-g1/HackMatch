@@ -43,6 +43,7 @@ export function ApplicationReviewCard({
 
       <CandidateProfileCard
         viewerCategory="PART"
+        messageParticipantId={application.applicantParticipantId}
         profile={{
           displayName: application.applicantDisplayName,
           handle: application.applicantHandle,

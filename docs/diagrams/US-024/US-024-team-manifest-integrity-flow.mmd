@@ -1,0 +1,36 @@
+---
+title: "HackMatch — US-024: Manifest Authorization and Integrity Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f1e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"curve":"basis","nodeSpacing":36,"rankSpacing":52,"diagramPadding":22}}}%%
+flowchart LR
+    Start([Manifest request]) --> Gate{Authorized locked-team member?}
+    Gate -->|No| Denied[Safe access or unavailable error]
+    Gate -->|Yes| Project[Load roster and apply privacy projection]
+    Project --> Canonical[Normalize, sort, and serialize]
+    Canonical --> Hash[Compute SHA-256]
+    Hash --> Persist[Upsert latest and deduplicate history]
+    Persist --> Operation{Export or verify?}
+    Operation -->|Export| Output[JSON, HTML, or PDF]
+    Operation -->|Verify| Lookup{Current or historical match?}
+    Lookup -->|Yes| Match[Integrity match]
+    Lookup -->|No| Mismatch[Safe mismatch]
+    Output --> Finish([HackMatch record, not organizer acceptance])
+    Match --> Finish
+    Mismatch --> Finish
+
+    Context[Event data is compatibility record context] -.-> Project
+    Excluded[Unavailable identities are pseudonymized and private data is excluded] -.-> Project
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef domain fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4b3b00
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#5f1228
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#374151
+    class Start,Auth identity
+    class Gate,Operation,Lookup decision
+    class Project,Canonical,Hash domain
+    class Persist,Output,Match,Finish success
+    class Denied,Mismatch denied
+    class Context,Excluded internal
+

@@ -20,6 +20,10 @@ import {
   profileRepository,
   type IProfileRepository,
 } from '../db/profile.repository.js';
+import {
+  participantBlockRepository,
+  type IParticipantBlockRepository,
+} from '../db/participantBlock.repository.js';
 import type { Participant } from '../db/types.js';
 import { ChatServiceError } from './chat.js';
 import {
@@ -31,16 +35,25 @@ import {
   type DirectMessageView,
   type DirectThreadView,
 } from './directMessagePrivacy.js';
-import { hasBlockBetween, isEligibleDirectMessageParticipant } from './directMessageAccess.js';
-
-export const DM_THREAD_ACCESS_DENIED_MESSAGE =
-  'You do not have permission to access this direct message thread.';
+import {
+  DM_DENIALS,
+  hasBlockBetween,
+  isEligibleDirectMessageParticipant,
+} from './directMessageAccess.js';
 
 export class DirectMessageServiceError extends ChatServiceError {
   constructor(status: number, code: string, message: string) {
     super(status, code, message);
     this.name = 'DirectMessageServiceError';
   }
+}
+
+/**
+ * #435 — the service reports denials with the SAME codes and wording as the route guard
+ * (`DM_DENIALS` in directMessageAccess.ts), so there is one set of codes whichever layer refuses.
+ */
+function denial(d: (typeof DM_DENIALS)[keyof typeof DM_DENIALS]): DirectMessageServiceError {
+  return new DirectMessageServiceError(d.status, d.code, d.message);
 }
 
 export interface DmInboxResult {
@@ -58,6 +71,7 @@ export interface DirectMessageServiceDeps {
   dmRepo?: Partial<IDirectMessageRepository>;
   participantsRepo?: Pick<IParticipantRepository, 'findById'>;
   profileRepo?: Pick<IProfileRepository, 'findProfileByParticipantId'>;
+  blockRepo?: Pick<IParticipantBlockRepository, 'findBlockState'>;
 }
 
 /** One answer for "does not exist" and "cannot be messaged", so accounts cannot be enumerated. */
@@ -112,6 +126,7 @@ function getDeps(deps: DirectMessageServiceDeps = {}) {
     },
     participantsRepo: deps.participantsRepo ?? participantsRepository,
     profileRepo: deps.profileRepo ?? profileRepository,
+    blockRepo: deps.blockRepo ?? participantBlockRepository,
   };
 }
 
@@ -136,39 +151,24 @@ export function mapDirectMessageWriteError(
   err: unknown
 ): DirectMessageServiceError | null {
   const text = String((err as { message?: unknown } | null)?.message ?? '');
-  if (text.includes('DM_PEER_BLOCKED') || text.includes('PARTICIPANT_BLOCKED')) {
-    return new DirectMessageServiceError(
-      403,
-      'DM_PEER_BLOCKED',
-      'Cannot send direct messages in a blocked conversation.'
-    );
-  }
+  // A database trigger cannot tell us WHO set a block, so every peer-side refusal (block, suspension,
+  // unverified) gets the one neutral answer; nothing here reveals a block.
   if (
+    text.includes('DM_PEER_BLOCKED') ||
+    text.includes('PARTICIPANT_BLOCKED') ||
     text.includes('DM_PEER_SUSPENDED') ||
-    text.includes('DM_ACCOUNT_SUSPENDED')
+    text.includes('DM_PEER_UNVERIFIED')
   ) {
-    return new DirectMessageServiceError(
-      403,
-      'DM_PEER_SUSPENDED',
-      'Cannot send direct messages to a suspended or deactivated participant.'
-    );
+    return denial(DM_DENIALS.peerUnavailable);
   }
-  if (text.includes('DM_PEER_UNVERIFIED')) {
-    return new DirectMessageServiceError(
-      403,
-      'DM_PEER_UNVERIFIED',
-      'Cannot send direct messages to an unverified participant.'
-    );
+  if (text.includes('DM_ACCOUNT_SUSPENDED')) {
+    return denial(DM_DENIALS.callerNotEligible);
   }
   if (
     text.includes('DM_NOT_A_PARTICIPANT') ||
     text.includes('DM_THREAD_ACCESS_DENIED')
   ) {
-    return new DirectMessageServiceError(
-      403,
-      'DM_THREAD_ACCESS_DENIED',
-      DM_THREAD_ACCESS_DENIED_MESSAGE
-    );
+    return denial(DM_DENIALS.notParticipant);
   }
   return null;
 }
@@ -181,22 +181,14 @@ async function findAuthorizedDmThreadOrThrow(
   const trimmedThreadId = threadId?.trim();
   const trimmedParticipantId = participantId?.trim();
   if (!trimmedThreadId || !trimmedParticipantId) {
-    throw new DirectMessageServiceError(
-      403,
-      'DM_THREAD_ACCESS_DENIED',
-      DM_THREAD_ACCESS_DENIED_MESSAGE
-    );
+    throw denial(DM_DENIALS.notParticipant);
   }
 
   const thread = await dmRepo.findThreadById(trimmedThreadId);
   // Fail closed: missing thread and third-party thread produce the exact same 403
   // so callers cannot probe whether an unrelated private thread exists.
   if (!thread || !isDirectMessageParticipant(thread, trimmedParticipantId)) {
-    throw new DirectMessageServiceError(
-      403,
-      'DM_THREAD_ACCESS_DENIED',
-      DM_THREAD_ACCESS_DENIED_MESSAGE
-    );
+    throw denial(DM_DENIALS.notParticipant);
   }
 
   return thread;
@@ -329,7 +321,7 @@ export async function getDmThread(
   },
   deps: DirectMessageServiceDeps = {}
 ): Promise<DmThreadDetailResult> {
-  const { dmRepo, profileRepo } = getDeps(deps);
+  const { dmRepo, profileRepo, blockRepo } = getDeps(deps);
 
   const thread = await findAuthorizedDmThreadOrThrow(
     input.threadId,
@@ -366,13 +358,18 @@ export async function getDmThread(
       ? sortedMessages[sortedMessages.length - 1]
       : null;
 
+  // Only the viewer's OWN block is reported, so the screen can offer Unblock. A block set by the
+  // other person is never exposed.
+  const blocks = await blockRepo.findBlockState(callerId.toLowerCase(), peerId.toLowerCase());
+
   const threadView = toDirectInboxItemView(
     thread,
     callerId,
     handles.get(peerId) ?? null,
     latestMessage
       ? { message: latestMessage, authorHandle: handles.get(latestMessage.author_id) ?? null }
-      : null
+      : null,
+    blocks.blockedByMe
   );
 
   return {
@@ -419,7 +416,7 @@ export async function sendDmMessage(
     );
   }
 
-  const { dmRepo, participantsRepo, profileRepo } = getDeps(deps);
+  const { dmRepo, participantsRepo, profileRepo, blockRepo } = getDeps(deps);
 
   const thread = await findAuthorizedDmThreadOrThrow(
     input.threadId,
@@ -429,40 +426,22 @@ export async function sendDmMessage(
 
   const peerId = getPeerParticipantId(thread, input.authorId);
   if (!peerId) {
-    throw new DirectMessageServiceError(
-      403,
-      'DM_THREAD_ACCESS_DENIED',
-      DM_THREAD_ACCESS_DENIED_MESSAGE
-    );
+    throw denial(DM_DENIALS.notParticipant);
   }
 
+  // Same rules and answers as the route guard (assertCanSendInDirectThread): an unavailable peer and
+  // a peer who blocked you look identical; only the person who set a block is told about it.
   const peer = await participantsRepo.findById(peerId);
-  if (!peer || peer.is_suspended || peer.is_deactivated) {
-    throw new DirectMessageServiceError(
-      403,
-      'DM_PEER_SUSPENDED',
-      'Cannot send direct messages to a suspended or deactivated participant.'
-    );
-  }
-  if (!peer.is_verified || peer.role !== 'PART') {
-    throw new DirectMessageServiceError(
-      403,
-      'DM_PEER_UNVERIFIED',
-      'Cannot send direct messages to an unverified participant.'
-    );
+  if (!isEligibleDirectMessageParticipant(peer)) {
+    throw denial(DM_DENIALS.peerUnavailable);
   }
 
-  const isBlocked = await dmRepo.isParticipantPairBlocked(
-    thread.participant_low_id,
-    thread.participant_high_id
+  const blocks = await blockRepo.findBlockState(
+    input.authorId.trim().toLowerCase(),
+    peerId.toLowerCase()
   );
-  if (isBlocked) {
-    throw new DirectMessageServiceError(
-      403,
-      'DM_PEER_BLOCKED',
-      'Cannot send direct messages in a blocked conversation.'
-    );
-  }
+  if (blocks.blockedByMe) throw denial(DM_DENIALS.blockedByYou);
+  if (blocks.blockedByThem) throw denial(DM_DENIALS.peerUnavailable);
 
   let createdMessage: DirectMessage;
   try {

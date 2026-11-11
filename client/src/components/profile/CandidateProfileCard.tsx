@@ -7,6 +7,7 @@ import {
 } from './hackathonHistoryValidation';
 import { ReportAbuseModal } from '../moderation/ReportAbuseModal';
 import type { ReportTargetSummary } from '../moderation/reportTypes';
+import { useDirectMessageLauncher } from '../chat/directMessageLauncher';
 
 export type ProfileViewerCategory = 'VISITOR' | 'PART' | 'CONFIRMED_TEAMMATE' | 'OWNER';
 
@@ -42,6 +43,11 @@ export interface CandidateProfileCardProps {
   onRetry?: () => void;
   onRequestSignIn?: () => void;
   onReportProfile?: (target: ReportTargetSummary) => void;
+  /**
+   * #432 — the participant this card describes. When set, signed-in viewers (other than the
+   * profile owner) get a "Message" button that starts or continues a direct message.
+   */
+  messageParticipantId?: string;
 }
 
 export function CandidateProfileCard({
@@ -52,8 +58,13 @@ export function CandidateProfileCard({
   onRetry,
   onRequestSignIn,
   onReportProfile,
+  messageParticipantId,
 }: CandidateProfileCardProps): React.JSX.Element {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const dmLauncher = useDirectMessageLauncher();
+  const canMessage =
+    Boolean(dmLauncher && messageParticipantId) &&
+    (viewerCategory === 'PART' || viewerCategory === 'CONFIRMED_TEAMMATE');
   if (loading) {
     return (
       <article
@@ -313,6 +324,20 @@ export function CandidateProfileCard({
             {profile.sharedContactAudienceNotice ||
               'Visible only to confirmed teammates. Leaving or removal from a team revokes access.'}
           </p>
+        </div>
+      )}
+
+      {canMessage && (
+        <div className="pt-2 border-t border-cream-100 flex justify-end">
+          <button
+            type="button"
+            data-testid="message-profile-btn"
+            aria-label={`Send a direct message to ${profile.displayName || profile.handle || 'this participant'}`}
+            onClick={() => dmLauncher?.openDirectMessage(messageParticipantId as string)}
+            className="px-2.5 py-1 text-xs font-semibold text-white bg-forest hover:bg-forest-800 rounded focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-1"
+          >
+            Message
+          </button>
         </div>
       )}
 

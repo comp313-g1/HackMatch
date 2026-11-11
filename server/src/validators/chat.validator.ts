@@ -18,6 +18,9 @@ export interface ChatFieldErrors {
   description?: string;
   body?: string;
   channelId?: string;
+  conversationType?: string;
+  conversationId?: string;
+  messageId?: string;
   [unknownKey: string]: string | undefined;
 }
 
@@ -30,8 +33,15 @@ export interface SendMessageSanitized {
   body: string;
 }
 
+export interface MarkConversationReadSanitized {
+  conversationType: 'channel' | 'directMessage';
+  conversationId: string;
+  messageId: string;
+}
+
 const CREATE_CHANNEL_KEYS = new Set(['title', 'description']);
 const SEND_MESSAGE_KEYS = new Set(['body']);
+const MARK_READ_KEYS = new Set(['conversationType', 'conversationId', 'messageId']);
 
 /**
  * Validates POST /api/chat/channels (FR-087).
@@ -202,5 +212,63 @@ export const validateChatChannelIdParam: RequestHandler = (
     });
     return;
   }
+  next();
+};
+
+export function validateMarkConversationReadInput(raw: unknown): {
+  errors: ChatFieldErrors;
+  sanitized: MarkConversationReadSanitized | null;
+} {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return {
+      errors: { body: 'Request body must be a JSON object.' },
+      sanitized: null,
+    };
+  }
+
+  const record = raw as Record<string, unknown>;
+  const errors: ChatFieldErrors = {};
+  for (const key of Object.keys(record)) {
+    if (!MARK_READ_KEYS.has(key)) errors[key] = `Unknown field "${key}".`;
+  }
+
+  if (record.conversationType !== 'channel' && record.conversationType !== 'directMessage') {
+    errors.conversationType = 'conversationType must be channel or directMessage.';
+  }
+  if (typeof record.conversationId !== 'string' || !UUID_REGEX.test(record.conversationId)) {
+    errors.conversationId = 'conversationId must be a valid UUID.';
+  }
+  if (typeof record.messageId !== 'string' || !UUID_REGEX.test(record.messageId)) {
+    errors.messageId = 'messageId must be a valid UUID.';
+  }
+
+  if (Object.keys(errors).length > 0) return { errors, sanitized: null };
+  return {
+    errors: {},
+    sanitized: {
+      conversationType: record.conversationType as 'channel' | 'directMessage',
+      conversationId: (record.conversationId as string).toLowerCase(),
+      messageId: (record.messageId as string).toLowerCase(),
+    },
+  };
+}
+
+export const validateMarkConversationReadBody: RequestHandler = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  const result = validateMarkConversationReadInput(req.body);
+  if (Object.keys(result.errors).length > 0) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(400).json({
+      error: 'Validation failed.',
+      code: 'VALIDATION_ERROR',
+      errors: result.errors,
+      fieldErrors: result.errors,
+    });
+    return;
+  }
+  req.body = result.sanitized;
   next();
 };

@@ -1,0 +1,57 @@
+---
+title: "HackMatch — US-023: Team Private Coordination Workspace — Interaction Sequence"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f1e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"diagramMarginX":25,"diagramMarginY":18,"actorMargin":35,"width":165,"height":62,"boxMargin":8,"messageMargin":25,"noteMargin":10}}}%%
+sequenceDiagram
+    autonumber
+    actor Member as Confirmed team member
+    participant UI as PrivateCoordinationWorkspace
+    participant API as Express team workspace routes
+    participant Svc as Workspace service and privacy projection
+    participant Repo as Workspace repository
+    participant DB as PostgreSQL RPCs and tables
+
+    Member->>UI: Open locked-team workspace
+    UI->>API: GET /api/teams/:teamId/workspace
+    API->>API: Require Firebase, MFA, active verified PART
+    API->>Svc: Load workspace for actor and team
+    Svc->>Svc: Require locked roster and confirmed membership
+    alt Not locked, unrelated, ADMIN, or inactive account
+        Svc-->>UI: Safe 403 or 404 with no workspace data
+        UI-->>Member: Access/error state with reload where applicable
+    else Authorized member
+        Svc->>Repo: Load links, note, revisions, and teammate profiles
+        Repo->>DB: Query service-role-only tables
+        DB-->>Svc: Workspace records
+        Svc->>Svc: Project permitted contacts, pseudonymize former members,<br/>scrub emails and authentication fields
+        Svc-->>UI: No-store private workspace view
+        UI-->>Member: Contacts, links, shared note, and revision history
+    end
+
+    opt Team owner replaces shared links
+        Member->>UI: Validate up to 10 HTTPS links
+        UI->>API: PUT /api/teams/:teamId/workspace/links
+        API->>Svc: Owner-authorized replacement
+        Svc->>Repo: replaceLinksForTeam(...)
+        Repo->>DB: Atomic replace_team_workspace_links RPC
+        DB-->>UI: Updated safe link list
+    end
+
+    opt Any confirmed member saves shared note
+        Member->>UI: Submit sanitized Markdown and expectedVersion
+        UI->>API: PUT /api/teams/:teamId/workspace/note
+        API->>Svc: saveWorkspaceSharedNote(...)
+        Svc->>Svc: Sanitize scripts, handlers, and unsafe links
+        Svc->>Repo: saveNoteWithOptimisticLock(...)
+        Repo->>DB: Atomic save_team_workspace_note RPC
+        DB->>DB: Advisory lock, compare version,<br/>save note and append revision
+        alt Version matches
+            DB-->>UI: New note, revision, and history
+            UI-->>Member: Success and updated preview
+        else Stale expectedVersion
+            DB-->>Svc: WORKSPACE_NOTE_CONFLICT
+            Svc-->>UI: 409 with latest safe note and revisions
+            UI-->>Member: Preserve unsaved draft and offer load latest
+        end
+    end
+

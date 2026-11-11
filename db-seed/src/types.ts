@@ -111,6 +111,38 @@ export interface NotificationManifestEntry {
   message: string;
 }
 
+/** #437: the private chat channel of a seeded team (one per team). */
+export interface TeamChannelManifestEntry {
+  key: string;
+  id: string;
+  teamKey: string;
+}
+
+/** #437: a message in a seeded team channel, written by a confirmed member of that team. */
+export interface TeamChannelMessageManifestEntry {
+  id: string;
+  channelKey: string;
+  accountKey: string;
+  minutesAgo: number;
+  body: string;
+}
+
+/** #437: a one-to-one direct-message thread between two seeded PART accounts. */
+export interface DirectMessageThreadManifestEntry {
+  key: string;
+  id: string;
+  accountKeys: [string, string];
+}
+
+/** #437: a direct message written by one of the two people in its thread. */
+export interface DirectMessageManifestEntry {
+  id: string;
+  threadKey: string;
+  accountKey: string;
+  minutesAgo: number;
+  body: string;
+}
+
 export interface RecruitmentManifest {
   scenario: string;
   shadowEvents: ShadowEventManifestEntry[];
@@ -119,6 +151,10 @@ export interface RecruitmentManifest {
   vacancies: VacancyManifestEntry[];
   requests: RequestManifestEntry[];
   notifications: NotificationManifestEntry[];
+  teamChannels: TeamChannelManifestEntry[];
+  teamChannelMessages: TeamChannelMessageManifestEntry[];
+  directMessageThreads: DirectMessageThreadManifestEntry[];
+  directMessages: DirectMessageManifestEntry[];
 }
 
 export interface DemoManifests {
@@ -190,6 +226,8 @@ export interface DatabasePort {
   upsert(table: string, rows: readonly Record<string, unknown>[], onConflict?: string): Promise<void>;
   update(table: string, values: Record<string, unknown>, filters: readonly DatabaseFilter[]): Promise<void>;
   delete(table: string, filters: readonly DatabaseFilter[]): Promise<void>;
+  /** Calls a database function (used only for the guarded demo team-chat removal, #437). */
+  rpc(name: string, args: Record<string, unknown>): Promise<void>;
 }
 
 export type ChangeAction = 'create' | 'update' | 'claims' | 'revoke' | 'unchanged';
@@ -220,6 +258,10 @@ export interface VerificationResult {
     memberships: number;
     vacancies: number;
     requests: number;
+    teamChannels: number;
+    teamChannelMessages: number;
+    directMessageThreads: number;
+    directMessages: number;
   };
 }
 

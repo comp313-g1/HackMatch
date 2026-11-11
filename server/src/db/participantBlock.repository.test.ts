@@ -54,3 +54,56 @@ describe('participantBlockRepository.findBlockState (US-032 / #388)', () => {
     await expect(participantBlockRepository.findBlockState(A, B)).rejects.toMatchObject({ message: 'boom' });
   });
 });
+
+describe('participantBlockRepository.addBlock / removeBlock (#433)', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  function fakeWrites(result: { error: unknown } = { error: null }) {
+    const upsert = vi.fn().mockResolvedValue(result);
+    const eq2 = vi.fn().mockResolvedValue(result);
+    const eq1 = vi.fn(() => ({ eq: eq2 }));
+    const del = vi.fn(() => ({ eq: eq1 }));
+    const from = vi.fn(() => ({ upsert, delete: del }));
+    vi.mocked(getSupabaseClient).mockReturnValue({ from } as never);
+    return { from, upsert, del, eq1, eq2 };
+  }
+
+  it('adds a block for exactly this pair, ignoring one that already exists (idempotent)', async () => {
+    const c = fakeWrites();
+    await participantBlockRepository.addBlock(A, B);
+    expect(c.from).toHaveBeenCalledWith('participant_blocks');
+    expect(c.upsert).toHaveBeenCalledWith(
+      { blocker_id: A, blocked_id: B },
+      { onConflict: 'blocker_id,blocked_id', ignoreDuplicates: true }
+    );
+  });
+
+  it('stores ids in lower case', async () => {
+    const c = fakeWrites();
+    await participantBlockRepository.addBlock(A.toUpperCase(), B.toUpperCase());
+    expect(c.upsert).toHaveBeenCalledWith({ blocker_id: A, blocked_id: B }, expect.anything());
+  });
+
+  it('removes only the block the blocker set on the blocked person', async () => {
+    const c = fakeWrites();
+    await participantBlockRepository.removeBlock(A, B);
+    expect(c.from).toHaveBeenCalledWith('participant_blocks');
+    expect(c.eq1).toHaveBeenCalledWith('blocker_id', A);
+    expect(c.eq2).toHaveBeenCalledWith('blocked_id', B);
+  });
+
+  it('refuses ids that are not plain uuids and never queries', async () => {
+    const c = fakeWrites();
+    await expect(participantBlockRepository.addBlock('x', B)).rejects.toThrow();
+    await expect(participantBlockRepository.addBlock(A, 'y')).rejects.toThrow();
+    await expect(participantBlockRepository.removeBlock(`${A},blocker_id.neq.z`, B)).rejects.toThrow();
+    expect(c.from).not.toHaveBeenCalled();
+  });
+
+  it('rethrows database errors', async () => {
+    fakeWrites({ error: { message: 'add failed' } });
+    await expect(participantBlockRepository.addBlock(A, B)).rejects.toMatchObject({ message: 'add failed' });
+    fakeWrites({ error: { message: 'remove failed' } });
+    await expect(participantBlockRepository.removeBlock(A, B)).rejects.toMatchObject({ message: 'remove failed' });
+  });
+});

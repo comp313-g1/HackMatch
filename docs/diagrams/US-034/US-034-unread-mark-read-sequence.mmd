@@ -1,0 +1,44 @@
+---
+title: "HackMatch — US-034: Unread Loading and Mark-Read Sequence"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f1e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"diagramMarginX":25,"diagramMarginY":18,"actorMargin":34,"width":165,"height":60,"boxMargin":8,"messageMargin":24,"noteMargin":10}}}%%
+sequenceDiagram
+    autonumber
+    actor Part as Active verified PART
+    participant UI as Chat, team chat, or DM view
+    participant Provider as ChatUnreadProvider
+    participant API as Chat API
+    participant Service as Read and unread services
+    participant DB as PostgreSQL RPCs
+
+    Part->>UI: Enter authenticated application
+    UI->>Provider: Start session-scoped unread state
+    Provider->>API: GET /api/chat/unread-counts
+    API->>API: Require authenticated active PART
+    API->>Service: Get participant activity summary
+    Service->>DB: get_participant_chat_activity_counts
+    DB->>DB: Authorize channels, team membership, and DM pair
+    DB->>DB: Count messages and mentions after each cursor
+    DB-->>Service: Count-only authorized rows
+    Service-->>Provider: Per-conversation and aggregate counts
+    Provider-->>UI: Render channel, DM, navigation, and mention badges
+
+    Part->>UI: Open a conversation
+    UI->>API: Load authorized messages
+    API-->>UI: Ordered safe messages
+    UI->>Provider: Mark latest visible message read
+    Provider->>API: POST /api/chat/read
+    API->>Service: Authorize conversation before storage
+    Service->>DB: mark_chat_conversation_read
+    DB->>DB: Monotonic tuple upsert and fresh count query
+    DB-->>Service: Cursor, advanced flag, unread counts
+    Service-->>Provider: Server-confirmed safe result
+    Provider-->>UI: Update affected badges and reconcile summary
+
+    alt Mark-read fails or access changes
+        API-->>Provider: Safe denied or unavailable error
+        Provider-->>UI: Keep confirmed badges and show recovery state
+    end
+
+    Note over Provider,DB: PostgreSQL cursors remain authoritative across refresh.<br/>Changing sessions discards the previous participant cache.
+

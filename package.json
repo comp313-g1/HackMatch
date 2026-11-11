@@ -17,6 +17,7 @@
     "test": "npm run test --prefix client && npm run test --prefix server && npm run demo:test",
     "test:coverage": "npm run test:coverage --prefix client && npm run test:coverage --prefix server",
     "admin:provision": "npm run admin:provision --prefix server --",
+    "chat:backfill-team-channels": "npm run chat:backfill-team-channels --prefix server",
     "demo:seed": "npm run demo:seed --prefix server --",
     "demo:reset": "npm run demo:reset --prefix server --",
     "demo:test": "npm run demo:test --prefix server",

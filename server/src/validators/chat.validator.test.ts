@@ -6,6 +6,7 @@ import {
 } from '../db/chatModel.js';
 import {
   validateCreateChannelInput,
+  validateMarkConversationReadInput,
   validateSendMessageInput,
 } from './chat.validator.js';
 
@@ -62,5 +63,44 @@ describe('chat.validator (US-030 / #344 / #347 / FR-087–FR-088)', () => {
     expect(result.sanitized).toBeNull();
     expect(result.errors.body).toMatch(/at most/i);
     expect(result.submitted).toEqual(body);
+  });
+
+  it('accepts the canonical mark-read conversation types and UUIDs', () => {
+    expect(
+      validateMarkConversationReadInput({
+        conversationType: 'channel',
+        conversationId: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',
+        messageId: 'BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB',
+      })
+    ).toEqual({
+      errors: {},
+      sanitized: {
+        conversationType: 'channel',
+        conversationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        messageId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      },
+    });
+    expect(
+      validateMarkConversationReadInput({
+        conversationType: 'directMessage',
+        conversationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        messageId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      }).errors
+    ).toEqual({});
+  });
+
+  it('rejects malformed, unsupported, missing, and extra mark-read fields', () => {
+    const result = validateMarkConversationReadInput({
+      conversationType: 'team',
+      conversationId: 'not-a-uuid',
+      extra: true,
+    });
+    expect(result.sanitized).toBeNull();
+    expect(result.errors).toMatchObject({
+      conversationType: expect.any(String),
+      conversationId: expect.any(String),
+      messageId: expect.any(String),
+      extra: expect.any(String),
+    });
   });
 });

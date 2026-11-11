@@ -3,11 +3,13 @@ import { AuthRequiredError } from '../../config/authFetch';
 import {
   ChatApiError,
   createChatChannel,
+  fetchChatUnreadSummary,
   fetchMyPresence,
   getDirectMessageThread,
   listDirectMessageThreads,
   listChatChannels,
   listTeamChatMessages,
+  markChatConversationRead,
   openTeamChat,
   sendChatMessage,
   sendDirectMessage,
@@ -279,5 +281,92 @@ describe('chatApi (US-030 / #346)', () => {
       `/api/direct-messages/threads/${threadId}/messages`,
       expect.objectContaining({ method: 'POST', body: JSON.stringify(draft) })
     );
+  });
+
+  it('loads authoritative unread counts and marks a conversation read', async () => {
+    const conversationId = '11111111-1111-4111-8111-111111111111';
+    const messageId = '22222222-2222-4222-8222-222222222222';
+    const count = {
+      conversationType: 'channel' as const,
+      conversationId,
+      unreadCount: 3,
+      unreadMentionCount: 1,
+    };
+    const result = {
+      conversationType: 'channel' as const,
+      conversationId,
+      readCursor: { messageId, createdAt: '2026-11-10T12:00:00.000Z' },
+      advanced: true,
+      unreadCount: 0,
+      unreadMentionCount: 0,
+    };
+    vi.mocked(authFetch)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            status: 'ok',
+            counts: [count],
+            totalUnreadCount: 3,
+            totalUnreadMentionCount: 1,
+          }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'ok', ...result }), { status: 200 })
+      );
+
+    await expect(fetchChatUnreadSummary()).resolves.toMatchObject({ counts: [count] });
+    await expect(
+      markChatConversationRead({
+        conversationType: 'channel',
+        conversationId,
+        messageId,
+      })
+    ).resolves.toEqual(result);
+    expect(authFetch).toHaveBeenNthCalledWith(1, '/api/chat/unread-counts', {
+      method: 'GET',
+    });
+    expect(authFetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/chat/read',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          conversationType: 'channel',
+          conversationId,
+          messageId,
+        }),
+      })
+    );
+  });
+
+  it('rejects malformed unread and mark-read responses without clearing client state', async () => {
+    vi.mocked(authFetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'ok', counts: null }), { status: 200 })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            status: 'ok',
+            conversationType: 'channel',
+            conversationId: '11111111-1111-4111-8111-111111111111',
+            unreadCount: 'zero',
+          }),
+          { status: 200 }
+        )
+      );
+
+    await expect(fetchChatUnreadSummary()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    await expect(
+      markChatConversationRead({
+        conversationType: 'channel',
+        conversationId: '11111111-1111-4111-8111-111111111111',
+        messageId: '22222222-2222-4222-8222-222222222222',
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
   });
 });

@@ -1,0 +1,42 @@
+---
+title: "HackMatch — US-028: Audit Authorization, Filtering, and State Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f1e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"curve":"basis","nodeSpacing":36,"rankSpacing":52,"diagramPadding":22}}}%%
+flowchart LR
+    Start([Audit route request]) --> Method{GET request?}
+    Method -->|No| ReadOnly[Return 405 read-only]
+    Method -->|Yes| Auth{Authenticated active ADMIN?}
+    Auth -->|No| Denied[Return safe 401 or 403]
+    Auth -->|Yes| Validate{Filters and cursor valid?}
+    Validate -->|No| Invalid[Return field validation]
+    Validate -->|Yes| DbAuth{Database confirms ADMIN?}
+    DbAuth -->|No| Denied
+    DbAuth -->|Yes| Query[Filter actor, action, category, UTC dates]
+    Query --> Page[Order by created_at and id descending]
+    Page --> Scrub[Project and scrub safe summaries]
+    Scrub --> Result{Matching records?}
+    Result -->|No| Empty[Render empty state]
+    Result -->|Yes| Table[Render read-only table]
+    Table --> More{More records?}
+    More -->|Yes| Cursor[Use stable next cursor]
+    More -->|No| Done([Review complete])
+    Cursor --> Table
+    Empty --> Done
+
+    Append[Event, moderation, and account actions append records] -.-> Store[(event_action_records)]
+    Store --> Query
+    Immutable[Triggers and grants block update, delete, and truncate] -.-> Store
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef domain fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4b3b00
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#5f1228
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#374151
+    class Start,Auth identity
+    class Method,Validate,DbAuth,Result,More decision
+    class Query,Page,Scrub,Table,Cursor domain
+    class Empty,Done,Store success
+    class ReadOnly,Denied,Invalid denied
+    class Append,Immutable internal
+

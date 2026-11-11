@@ -727,7 +727,9 @@ describe('US-032 / #391 DM access, validation, and privacy integration & route s
         .send({ body: 'Message during concurrent block' });
 
       expect(raceBlockRes.status).toBe(403);
-      expect(raceBlockRes.body.code).toBe('DM_PEER_BLOCKED');
+      // #435: a block that appears mid-send is refused with the same neutral code as a suspended peer.
+      expect(raceBlockRes.body.code).toBe('DM_PEER_UNAVAILABLE');
+      expect(JSON.stringify(raceBlockRes.body)).not.toMatch(/block/i);
     });
   });
 });

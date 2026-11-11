@@ -1,5 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import React from 'react';
+import { describe, it, expect, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { DirectMessageLauncherProvider } from '../chat/directMessageLauncher';
 import { CandidateProfileCard } from './CandidateProfileCard';
 
 describe('CandidateProfileCard Privacy Boundaries (US-006 / #67 / FR-014)', () => {
@@ -197,5 +199,65 @@ describe('CandidateProfileCard Privacy Boundaries (US-006 / #67 / FR-014)', () =
       '0 self-reported hackathons'
     );
     expect(screen.getByText(/no past hackathons recorded/i)).toBeInTheDocument();
+  });
+
+  describe('Message button (#432)', () => {
+    const profile = { displayName: 'Maya Lin', handle: 'maya_ml', primaryRole: 'AI/ML', skills: ['PyTorch'] };
+
+    function renderWithLauncher(ui: React.JSX.Element, openDirectMessage = vi.fn()) {
+      render(<DirectMessageLauncherProvider value={{ openDirectMessage }}>{ui}</DirectMessageLauncherProvider>);
+      return openDirectMessage;
+    }
+
+    it('lets a signed-in participant start a direct message with the person on the card', () => {
+      const open = renderWithLauncher(
+        <CandidateProfileCard viewerCategory="PART" profile={profile} messageParticipantId="p-maya" />
+      );
+      const button = screen.getByTestId('message-profile-btn');
+      expect(button).toHaveTextContent('Message');
+      expect(button).toHaveAccessibleName(/send a direct message to maya lin/i);
+      fireEvent.click(button);
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(open).toHaveBeenCalledWith('p-maya');
+    });
+
+    it('also shows for a confirmed teammate', () => {
+      renderWithLauncher(
+        <CandidateProfileCard viewerCategory="CONFIRMED_TEAMMATE" profile={profile} messageParticipantId="p-maya" />
+      );
+      expect(screen.getByTestId('message-profile-btn')).toBeInTheDocument();
+    });
+
+    it.each(['VISITOR', 'OWNER'] as const)('never shows for the %s view (visitors and your own profile)', (category) => {
+      renderWithLauncher(
+        <CandidateProfileCard viewerCategory={category} profile={profile} messageParticipantId="p-maya" />
+      );
+      expect(screen.queryByTestId('message-profile-btn')).not.toBeInTheDocument();
+    });
+
+    it('does not show when the card has no participant to message', () => {
+      renderWithLauncher(<CandidateProfileCard viewerCategory="PART" profile={profile} />);
+      expect(screen.queryByTestId('message-profile-btn')).not.toBeInTheDocument();
+    });
+
+    it('does not show where messaging is not available (no launcher provided)', () => {
+      render(<CandidateProfileCard viewerCategory="PART" profile={profile} messageParticipantId="p-maya" />);
+      expect(screen.queryByTestId('message-profile-btn')).not.toBeInTheDocument();
+    });
+
+    it('does not replace the Report Profile button', () => {
+      renderWithLauncher(
+        <CandidateProfileCard viewerCategory="PART" profile={{ ...profile, id: 'p-maya' }} messageParticipantId="p-maya" />
+      );
+      expect(screen.getByTestId('message-profile-btn')).toBeInTheDocument();
+      expect(screen.getByTestId('report-profile-btn')).toBeInTheDocument();
+    });
+
+    it('is not shown while the card is loading', () => {
+      renderWithLauncher(
+        <CandidateProfileCard viewerCategory="PART" profile={{}} loading messageParticipantId="p-maya" />
+      );
+      expect(screen.queryByTestId('message-profile-btn')).not.toBeInTheDocument();
+    });
   });
 });

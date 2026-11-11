@@ -814,6 +814,7 @@ export function CandidateDirectoryPanel({
                   >
                     <CandidateProfileCard
                       viewerCategory="PART"
+                      messageParticipantId={candidate.participantId}
                       profile={{
                         displayName: candidate.displayName,
                         handle: candidate.handle,

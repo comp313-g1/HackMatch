@@ -73,6 +73,12 @@ export interface DirectThreadView {
   lastMessageAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * #433: true when the VIEWER has blocked the other participant, so the screen can offer Unblock.
+   * It only ever describes the viewer's own action. Whether the other person blocked the viewer is
+   * never exposed. Present only on the single-conversation view.
+   */
+  youBlockedPeer?: boolean;
 }
 
 /**
@@ -148,11 +154,13 @@ export function toDirectInboxItemView(
   thread: DirectMessageThread,
   callerId: string,
   peerHandle: string | null,
-  lastMessage: { message: DirectMessage; authorHandle: string | null } | null
+  lastMessage: { message: DirectMessage; authorHandle: string | null } | null,
+  youBlockedPeer?: boolean
 ): DirectInboxItemView {
   return scrubDirectMessageFields({
     ...toDirectThreadView(thread, callerId, peerHandle),
     lastMessage: lastMessage ? toDirectMessageView(lastMessage.message, callerId, lastMessage.authorHandle) : null,
+    ...(typeof youBlockedPeer === 'boolean' ? { youBlockedPeer } : {}),
   });
 }
 
