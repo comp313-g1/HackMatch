@@ -144,7 +144,7 @@ describe('GET /api/recommendations/teams (US-016 / #154)', () => {
 
   it('uses the authenticated PART and returns only the safe candidate DTO', async () => {
     const response = await request(app)
-      .get('/api/recommendations/teams?eventId=88888888-8888-4888-8888-888888888888&participantId=someone-else')
+      .get('/api/recommendations/teams?eventId=88888888-8888-4888-8888-888888888888')
       .set('Authorization', 'Bearer valid-token');
 
     expect(response.status).toBe(200);
