@@ -25,6 +25,9 @@ import {
   sendDmMessage,
 } from '../services/directMessages.js';
 import { buildDirectMessageSuccessPayload } from '../services/directMessagePrivacy.js';
+import { setDirectMessageReaction } from '../services/chatReactions.js';
+import { limitReactionMutations, requireReactionsEnabled } from '../middleware/richChatReactions.js';
+import { validateReactionParams, type ReactionTarget } from '../validators/chatReaction.validator.js';
 
 export const directMessageRouter = Router();
 
@@ -230,4 +233,49 @@ directMessageRouter.delete(
       handleDmError(err, res, next);
     }
   }
+);
+
+/**
+ * PUT    /api/direct-messages/threads/:threadId/messages/:messageId/reactions/:reaction  (add)
+ * DELETE /api/direct-messages/threads/:threadId/messages/:messageId/reactions/:reaction  (remove)
+ * US-035 / #405: reacting needs SEND access (thread participant, eligible peer, no block
+ * either way), with the same denial codes as sending a message.
+ */
+function dmReactionHandler(present: boolean) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const target = res.locals.reactionTarget as ReactionTarget;
+      const result = await setDirectMessageReaction({
+        participant: req.participant!,
+        threadId: threadIdOf(req),
+        messageId: target.messageId,
+        reaction: target.reaction,
+        present,
+      });
+      res.status(200).json(buildDirectMessageSuccessPayload({ status: 'ok', ...result }));
+    } catch (err) {
+      handleDmError(err, res, next);
+    }
+  };
+}
+
+const dmReactionChain = [
+  ...directMessageAuthGuard,
+  requireReactionsEnabled,
+  validateReactionParams,
+  limitReactionMutations,
+  requireDirectThreadSendAccess,
+];
+
+directMessageRouter.put(
+  '/threads/:threadId/messages/:messageId/reactions/:reaction',
+  ...dmReactionChain,
+  dmReactionHandler(true)
+);
+
+directMessageRouter.delete(
+  '/threads/:threadId/messages/:messageId/reactions/:reaction',
+  ...dmReactionChain,
+  dmReactionHandler(false)
 );

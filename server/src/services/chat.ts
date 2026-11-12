@@ -9,6 +9,8 @@ import { profileRepository } from '../db/profile.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import type { ChatChannel, ChatMessage } from '../db/types.js';
 import { scrubPrivateChatFields } from './chatPrivacy.js';
+import type { ChatReactionSummary } from '../db/chatReactionModel.js';
+import { withChatReactionSummaries, withEmptyChatReactions } from './chatReactionSummaries.js';
 
 /**
  * Safe channel payload (US-030 / #344–#345 / FR-087, FR-089).
@@ -36,6 +38,11 @@ export interface ChatMessageView {
   authorHandle: string | null;
   body: string;
   createdAt: string;
+  /**
+   * US-035 / #405: present only while RICH_CHAT_REACTIONS_ENABLED is on. Counts and the
+   * viewer's own state per approved reaction; never who reacted.
+   */
+  reactions?: ChatReactionSummary[];
 }
 
 export class ChatServiceError extends Error {
@@ -165,13 +172,17 @@ export async function openTeamChannel(teamId: string): Promise<TeamChatChannelVi
   return scrubPrivateChatFields({ ...toChannelView(channel), teamId });
 }
 
-export async function listTeamChannelMessages(teamId: string): Promise<ChatMessageView[]> {
+export async function listTeamChannelMessages(
+  teamId: string,
+  viewerId?: string
+): Promise<ChatMessageView[]> {
   const channel = await findTeamChannelOrThrow(teamId);
   const messages = await chatRepository.listMessagesByChannel(channel.id);
   const handles = await resolveAuthorHandles(messages.map((m) => m.author_id));
-  return messages.map((message) =>
+  const views = messages.map((message) =>
     toMessageView(message, handles.get(message.author_id) ?? null)
   );
+  return withChatReactionSummaries('channel', viewerId, views);
 }
 
 export async function sendTeamChannelMessage(input: {
@@ -193,7 +204,7 @@ export async function sendTeamChannelMessage(input: {
     throw mapTeamChannelWriteError(err) ?? err;
   }
   const profile = await profileRepository.findProfileByParticipantId(input.authorId);
-  return toMessageView(message, profile?.handle ?? null);
+  return withEmptyChatReactions(toMessageView(message, profile?.handle ?? null));
 }
 
 export async function listChannels(): Promise<ChatChannelView[]> {
@@ -215,7 +226,8 @@ export async function createChannel(input: {
 }
 
 export async function listChannelMessages(
-  channelId: string
+  channelId: string,
+  viewerId?: string
 ): Promise<ChatMessageView[]> {
   const channel = await chatRepository.findChannelById(channelId);
   // US-031 / #378: a private team channel is indistinguishable from a missing one here, so the
@@ -226,9 +238,10 @@ export async function listChannelMessages(
 
   const messages = await chatRepository.listMessagesByChannel(channelId);
   const handles = await resolveAuthorHandles(messages.map((m) => m.author_id));
-  return messages.map((message) =>
+  const views = messages.map((message) =>
     toMessageView(message, handles.get(message.author_id) ?? null)
   );
+  return withChatReactionSummaries('channel', viewerId, views);
 }
 
 export async function sendChannelMessage(input: {
@@ -248,7 +261,7 @@ export async function sendChannelMessage(input: {
   });
 
   const profile = await profileRepository.findProfileByParticipantId(input.authorId);
-  return toMessageView(message, profile?.handle ?? null);
+  return withEmptyChatReactions(toMessageView(message, profile?.handle ?? null));
 }
 
 export interface TeamChannelBackfillResult {

@@ -14,6 +14,9 @@ import {
   sendTeamChannelMessage,
 } from '../services/chat.js';
 import { buildChatSuccessPayload } from '../services/chatPrivacy.js';
+import { setTeamChannelMessageReaction } from '../services/chatReactions.js';
+import { limitReactionMutations, requireReactionsEnabled } from '../middleware/richChatReactions.js';
+import { validateReactionParams, type ReactionTarget } from '../validators/chatReaction.validator.js';
 
 /**
  * US-031 / #381 / FR-090 — private team channel, mounted at /api/teams/:teamId/chat.
@@ -22,15 +25,15 @@ import { buildChatSuccessPayload } from '../services/chatPrivacy.js';
  */
 export const teamChatRouter = Router({ mergeParams: true });
 
-const teamChatGuard = [
+const participantAuthGuard = [
   requireFirebaseAuth,
   requireMfa,
   requireActiveAccount,
   requireParticipantRole,
   requireVerifiedParticipant,
-  validateTeamIdParams,
-  requireConfirmedTeamMember,
 ];
+
+const teamChatGuard = [...participantAuthGuard, validateTeamIdParams, requireConfirmedTeamMember];
 
 function teamIdOf(req: Request): string {
   const raw = req.params.teamId;
@@ -68,7 +71,7 @@ teamChatRouter.get(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     res.setHeader('Cache-Control', 'no-store');
     try {
-      const messages = await listTeamChannelMessages(teamIdOf(req));
+      const messages = await listTeamChannelMessages(teamIdOf(req), req.participant!.id);
       res.status(200).json(buildChatSuccessPayload({ status: 'ok', messages }));
     } catch (err) {
       handleError(err, res, next);
@@ -95,4 +98,50 @@ teamChatRouter.post(
       handleError(err, res, next);
     }
   }
+);
+
+/**
+ * PUT    /api/teams/:teamId/chat/messages/:messageId/reactions/:reaction  (add)
+ * DELETE /api/teams/:teamId/chat/messages/:messageId/reactions/:reaction  (remove)
+ * US-035 / #405: confirmed members only, same 403 for non-members and missing teams;
+ * a disbanded team's channel is read-only for reactions just as for messages.
+ */
+function teamReactionHandler(present: boolean) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const target = res.locals.reactionTarget as ReactionTarget;
+      const result = await setTeamChannelMessageReaction({
+        participant: req.participant!,
+        teamId: teamIdOf(req),
+        messageId: target.messageId,
+        reaction: target.reaction,
+        present,
+      });
+      res.status(200).json(buildChatSuccessPayload({ status: 'ok', ...result }));
+    } catch (err) {
+      handleError(err, res, next);
+    }
+  };
+}
+
+const teamReactionChain = [
+  ...participantAuthGuard,
+  requireReactionsEnabled,
+  validateTeamIdParams,
+  validateReactionParams,
+  limitReactionMutations,
+  requireConfirmedTeamMember,
+];
+
+teamChatRouter.put(
+  '/messages/:messageId/reactions/:reaction',
+  ...teamReactionChain,
+  teamReactionHandler(true)
+);
+
+teamChatRouter.delete(
+  '/messages/:messageId/reactions/:reaction',
+  ...teamReactionChain,
+  teamReactionHandler(false)
 );

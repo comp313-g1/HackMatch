@@ -1,4 +1,5 @@
 import type { DirectMessage, DirectMessageThread } from '../db/directMessage.repository.js';
+import type { ChatReactionSummary } from '../db/chatReactionModel.js';
 import {
   chatPrivacyFlags,
   isPrivateChatKey,
@@ -92,6 +93,8 @@ export interface DirectMessageView {
   authorHandle: string | null;
   body: string;
   createdAt: string;
+  /** US-035 / #405: present only while reactions are enabled; counts and own state only. */
+  reactions?: ChatReactionSummary[];
 }
 
 export interface DirectInboxItemView extends DirectThreadView {

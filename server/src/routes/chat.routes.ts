@@ -21,6 +21,10 @@ import {
 import { buildChatSuccessPayload } from '../services/chatPrivacy.js';
 import { getParticipantChatUnreadSummary } from '../services/chatUnread.js';
 import { markChatConversationRead } from '../services/chatRead.js';
+import { getRichChatCapabilities } from '../services/chatCapabilities.js';
+import { setPublicChannelMessageReaction } from '../services/chatReactions.js';
+import { limitReactionMutations, requireReactionsEnabled } from '../middleware/richChatReactions.js';
+import { validateReactionParams, type ReactionTarget } from '../validators/chatReaction.validator.js';
 
 export const chatRouter = Router();
 
@@ -48,6 +52,22 @@ function handleChatError(err: unknown, res: Response, next: NextFunction): void 
   }
   next(err);
 }
+
+/**
+ * GET /api/chat/capabilities
+ * US-035 / #405: which rich-chat features the server currently offers. The
+ * server stays authoritative; each rich-chat route checks its own flag.
+ */
+chatRouter.get(
+  '/capabilities',
+  ...chatAuthGuard,
+  (_req: Request, res: Response): void => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json(
+      buildChatSuccessPayload({ status: 'ok', capabilities: getRichChatCapabilities() })
+    );
+  }
+);
 
 /**
  * GET /api/chat/unread-counts
@@ -152,7 +172,7 @@ chatRouter.get(
     res.setHeader('Cache-Control', 'no-store');
     try {
       const channelId = typeof req.params.channelId === 'string' ? req.params.channelId : req.params.channelId[0];
-      const messages = await listChannelMessages(channelId);
+      const messages = await listChannelMessages(channelId, req.participant!.id);
       res.status(200).json(buildChatSuccessPayload({ status: 'ok', messages }));
     } catch (err) {
       handleChatError(err, res, next);
@@ -184,4 +204,50 @@ chatRouter.post(
       handleChatError(err, res, next);
     }
   }
+);
+
+/**
+ * PUT    /api/chat/channels/:channelId/messages/:messageId/reactions/:reaction  (add)
+ * DELETE /api/chat/channels/:channelId/messages/:messageId/reactions/:reaction  (remove)
+ * US-035 / #405: idempotent; both answer 200 with the caller's final state and the
+ * message's aggregate. Same channel answers as the message routes (a private team
+ * channel is "not found" here).
+ */
+function publicReactionHandler(present: boolean) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const target = res.locals.reactionTarget as ReactionTarget;
+      const result = await setPublicChannelMessageReaction({
+        participant: req.participant!,
+        channelId: String(req.params.channelId),
+        messageId: target.messageId,
+        reaction: target.reaction,
+        present,
+      });
+      res.status(200).json(buildChatSuccessPayload({ status: 'ok', ...result }));
+    } catch (err) {
+      handleChatError(err, res, next);
+    }
+  };
+}
+
+const publicReactionChain = [
+  ...chatAuthGuard,
+  requireReactionsEnabled,
+  validateChatChannelIdParam,
+  validateReactionParams,
+  limitReactionMutations,
+];
+
+chatRouter.put(
+  '/channels/:channelId/messages/:messageId/reactions/:reaction',
+  ...publicReactionChain,
+  publicReactionHandler(true)
+);
+
+chatRouter.delete(
+  '/channels/:channelId/messages/:messageId/reactions/:reaction',
+  ...publicReactionChain,
+  publicReactionHandler(false)
 );

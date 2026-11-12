@@ -33,6 +33,13 @@ export interface ServerConfig {
     keyBase64?: string;
     keyVersion: string;
   };
+  /**
+   * US-035 rich-chat feature flags (#404 policy, section 8). Server-authoritative,
+   * read once at startup, and on only for the exact string 'true'.
+   */
+  richChat: {
+    reactionsEnabled: boolean;
+  };
 }
 
 export const config: ServerConfig = {
@@ -61,6 +68,9 @@ export const config: ServerConfig = {
   totpEncryption: {
     keyBase64: process.env.TOTP_ENCRYPTION_KEY_BASE64,
     keyVersion: process.env.TOTP_ENCRYPTION_KEY_VERSION || 'v1',
+  },
+  richChat: {
+    reactionsEnabled: process.env.RICH_CHAT_REACTIONS_ENABLED === 'true',
   },
 };
 

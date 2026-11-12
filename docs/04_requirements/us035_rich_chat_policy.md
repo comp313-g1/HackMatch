@@ -4,7 +4,7 @@
 
 **Story / requirement:** [US-035](../02_user_stories/user_stories.md#us-035) / [FR-093](./functional_nonfunctional_requirements.md#fr-093)
 
-**Status:** Approved design contract for Iteration 2. **Nothing in this document is implemented yet.** Tasks #405–#411 implement it.
+**Status:** Approved design contract for Iteration 2, implemented by tasks #405–#411. **Implemented so far:** server-side reaction persistence and API (#405). **Still pending:** React reaction controls (#406), typing indicators (#407–#408), attachments (#409–#410), and the broad test task (#411). Voice/video stays deferred.
 
 **Last reviewed:** November 12, 2026
 
@@ -55,7 +55,7 @@ Everything else stays out of scope: message editing or deletion, threads/replies
 | Storage | `chat_message_reactions` and `direct_message_reactions`, mirroring the `0060` mention tables: message FK `ON DELETE CASCADE`, participant FK `ON DELETE CASCADE`, composite primary key, RLS enabled with no browser policies, service-role-only access. |
 | Side effects | Reactions do not create `participant_notifications`, do not change US-034 unread or mention counts, and do not update `last_message_at`. |
 | Moderation | Reactions are not US-033 targets; they disappear with their message. |
-| Rate limit | 30 reaction changes per participant per rolling minute, then `429 RATE_LIMITED` with `Retry-After`. |
+| Rate limit | 30 reaction mutation requests (add or remove) per authenticated participant per rolling minute, then `429 RATE_LIMITED` with `Retry-After`. Idempotent duplicate adds and removes count toward the limit. Requests rejected before the limiter (invalid input, feature disabled, or unauthenticated) do not use the budget. |
 
 ## 5. Typing indicators
 
@@ -154,7 +154,7 @@ Text chat (US-030–US-034) must keep working whatever happens to rich-chat feat
 
 | Control | Value | Pattern |
 |---|---|---|
-| Reaction changes | 30 / participant / minute | In-memory sliding window (`utils/rateLimiter.ts` style) |
+| Reaction mutation requests | 30 / authenticated participant / minute, idempotent duplicates included | In-memory sliding window (`utils/rateLimiter.ts` style) |
 | Typing signals | 40 / participant / minute; client ≥ 2 s apart; 6 s expiry | In-memory |
 | Uploads | 20 / participant / rolling hour | Database rolling window (`reportRateLimiter` style) |
 | Attachment size, count, and quota | 10 MB, 5 per message, 100 MB per participant | Server validation and database totals |

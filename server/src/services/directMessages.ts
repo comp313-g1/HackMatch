@@ -26,6 +26,7 @@ import {
 } from '../db/participantBlock.repository.js';
 import type { Participant } from '../db/types.js';
 import { ChatServiceError } from './chat.js';
+import { withChatReactionSummaries, withEmptyChatReactions } from './chatReactionSummaries.js';
 import {
   toDirectInboxItemView,
   toDirectMessageView,
@@ -349,8 +350,13 @@ export async function getDmThread(
   const handles = await resolveParticipantHandles(idsToResolve, profileRepo);
 
   const callerId = input.participantId.trim();
-  const messages = sortedMessages.map((message) =>
-    toDirectMessageView(message, callerId, handles.get(message.author_id) ?? null)
+  // US-035 / #405: one batched aggregate query for the whole thread, only when enabled.
+  const messages = await withChatReactionSummaries(
+    'directMessage',
+    callerId,
+    sortedMessages.map((message) =>
+      toDirectMessageView(message, callerId, handles.get(message.author_id) ?? null)
+    )
   );
 
   const latestMessage =
@@ -457,5 +463,7 @@ export async function sendDmMessage(
   const authorProfile = await profileRepo.findProfileByParticipantId(
     input.authorId.trim()
   );
-  return toDirectMessageView(createdMessage, input.authorId.trim(), authorProfile?.handle ?? null);
+  return withEmptyChatReactions(
+    toDirectMessageView(createdMessage, input.authorId.trim(), authorProfile?.handle ?? null)
+  );
 }
