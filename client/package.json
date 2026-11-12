@@ -16,7 +16,7 @@
     "test:us032": "vitest run src/components/chat/DirectMessagesView.test.tsx src/components/chat/chatApi.test.ts src/components/chat/ChatPage.test.tsx",
     "test:us003": "vitest run src/components/auth/LoginForm.test.tsx src/components/auth/login.integration.test.tsx src/components/auth/loginErrors.test.ts src/components/auth/accountStatus.test.ts src/components/auth/MfaGate.test.tsx src/components/auth/logout.test.ts src/config/authFetch.test.ts",
     "test:us012": "vitest run src/components/teams",
-    "test:us029": "vitest run src/components/auth/AuthenticatorEnrollmentCard.test.tsx src/components/auth/authenticatorEnrollmentApi.test.ts src/components/auth/authenticatorRecoveryControlsApi.test.ts src/components/auth/RecoveryCodesPanel.test.tsx src/components/auth/ReauthenticationPanel.test.tsx src/components/auth/reauthentication.test.ts src/components/auth/SignedInPanel.test.tsx src/components/auth/authenticatorSecretIsolation.test.tsx src/components/auth/emailOtpReauth.test.tsx",
+    "test:us029": "vitest run src/components/auth/AuthenticatorEnrollmentCard.test.tsx src/components/auth/authenticatorEnrollmentApi.test.ts src/components/auth/authenticatorRecoveryControlsApi.test.ts src/components/auth/RecoveryCodesPanel.test.tsx src/components/auth/ReauthenticationPanel.test.tsx src/components/auth/reauthentication.test.ts src/components/auth/SignedInPanel.test.tsx src/components/auth/authenticatorSecretIsolation.test.tsx src/components/auth/emailOtpReauth.test.tsx src/components/auth/authenticatorJourney.integration.test.tsx",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
