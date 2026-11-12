@@ -14,11 +14,11 @@ This is the single documentation and navigation source for HackMatch engineering
 
 | Item | Count |
 |---|---:|
-| Diagrammed User Stories | 29 |
-| Mermaid sources | 78 |
-| Matching rendered diagram PNGs | 78 |
+| Diagrammed User Stories | 30 |
+| Mermaid sources | 84 |
+| Matching rendered diagram PNGs | 84 |
 | Shared reference images | 1 |
-| Total PNG files | 79 |
+| Total PNG files | 85 |
 
 ## Diagram and visual conventions
 
@@ -71,6 +71,7 @@ Every link below resolves from this central README. “Source” opens the edita
 | **US-026 — Administrative Content Moderation and Safety Queue** | Partial (repository-audited) | Moderation Workflow Sequence ([PNG](US-026/US-026-moderation-workflow-sequence.png), [source](US-026/US-026-moderation-workflow-sequence.mmd))<br>Moderation Case Lifecycle Flow ([PNG](US-026/US-026-moderation-case-lifecycle-flow.png), [source](US-026/US-026-moderation-case-lifecycle-flow.mmd)) |
 | **US-027 — Administrative Account Management and Enforcement** | Partial (repository-audited) | Account Suspension Sequence ([PNG](US-027/US-027-account-suspension-sequence.png), [source](US-027/US-027-account-suspension-sequence.mmd))<br>Verified Account Deletion Sequence ([PNG](US-027/US-027-account-deletion-sequence.png), [source](US-027/US-027-account-deletion-sequence.mmd)) |
 | **US-028 — Administrative Audit Review and Filtering** | Implemented (repository-audited) | ADMIN Audit Review Sequence ([PNG](US-028/US-028-audit-review-sequence.png), [source](US-028/US-028-audit-review-sequence.mmd))<br>Audit Authorization, Filtering, and State Flow ([PNG](US-028/US-028-audit-access-filter-flow.png), [source](US-028/US-028-audit-access-filter-flow.mmd))<br>Append-Only Audit Record Query Model ([PNG](US-028/US-028-audit-record-data-model.png), [source](US-028/US-028-audit-record-data-model.mmd)) |
+| **US-029 — Authenticator-App Two-Factor Authentication** | Partial (repository-audited) | Authenticator Management Use Case ([PNG](US-029/US-029-authenticator-management-use-case.png), [source](US-029/US-029-authenticator-management-use-case.mmd))<br>Enrollment and Activation Sequence ([PNG](US-029/US-029-authenticator-enrollment-sequence.png), [source](US-029/US-029-authenticator-enrollment-sequence.mmd))<br>Reauthentication Sequence ([PNG](US-029/US-029-reauthentication-sequence.png), [source](US-029/US-029-reauthentication-sequence.mmd))<br>Authenticator and Recovery-Code Lifecycle State ([PNG](US-029/US-029-authenticator-lifecycle-state.png), [source](US-029/US-029-authenticator-lifecycle-state.mmd))<br>Authorization and Privacy Flow ([PNG](US-029/US-029-authenticator-access-flow.png), [source](US-029/US-029-authenticator-access-flow.mmd))<br>Authenticator and Recovery-Code Persistence Model ([PNG](US-029/US-029-authenticator-data-model.png), [source](US-029/US-029-authenticator-data-model.mmd)) |
 | **US-030 — Participant Chat Forums and Messaging** | Planned — specification-grounded | Chat Use Case ([PNG](US-030/US-030-chat-use-case.png), [source](US-030/US-030-chat-use-case.mmd))<br>Core Chat Sequence ([PNG](US-030/US-030-core-chat-sequence.png), [source](US-030/US-030-core-chat-sequence.mmd))<br>Chat Access and Presence Flow ([PNG](US-030/US-030-presence-access-flow.png), [source](US-030/US-030-presence-access-flow.mmd))<br>Planned Chat Data Model ([PNG](US-030/US-030-chat-data-model.png), [source](US-030/US-030-chat-data-model.mmd)) |
 | **US-031 — Private Team Chat Channel for Confirmed Team Members** | Implemented (repository-audited) | Private Team Chat Use Case ([PNG](US-031/US-031-private-team-chat-use-case.png), [source](US-031/US-031-private-team-chat-use-case.mmd))<br>Private Team Chat Sequence ([PNG](US-031/US-031-private-team-chat-sequence.png), [source](US-031/US-031-private-team-chat-sequence.mmd))<br>Authorization and Privacy Flow ([PNG](US-031/US-031-team-chat-authorization-flow.png), [source](US-031/US-031-team-chat-authorization-flow.mmd))<br>Focused Team Chat Data Model ([PNG](US-031/US-031-team-chat-data-model.png), [source](US-031/US-031-team-chat-data-model.mmd))<br>History and Lifecycle Flow ([PNG](US-031/US-031-team-chat-lifecycle-flow.png), [source](US-031/US-031-team-chat-lifecycle-flow.mmd)) |
 | **US-032 — Private Direct Messaging Between Participants** | Partial (repository-audited) | Focused Direct Message Data Model ([PNG](US-032/US-032-direct-message-data-model.png), [source](US-032/US-032-direct-message-data-model.mmd))<br>Direct Message Sequence ([PNG](US-032/US-032-direct-message-sequence.png), [source](US-032/US-032-direct-message-sequence.mmd))<br>Access and Privacy Flow ([PNG](US-032/US-032-direct-message-access-flow.png), [source](US-032/US-032-direct-message-access-flow.mmd)) |
@@ -82,7 +83,6 @@ Every link below resolves from this central README. “Source” opens the edita
 | Stories | Status | Reason |
 |---|---|---|
 | US-007 | Post-MVP / out of #426 scope | No current implementation diagram was required; it remains intentionally undiagrammed. |
-| US-029 | Active future scope; diagram audit pending | Future story retained without an implementation claim. |
 | US-008, US-009, US-010 | Deprecated | Removed by the Event-Free Architecture and intentionally omitted. |
 
 ## Important repository-audit notes
@@ -115,6 +115,7 @@ These notes preserve the material gaps identified during the diagram audits with
 | US-026 | ADMIN moderation exists, but mutation and audit writes are sequential rather than atomic; URL disablement may touch a shadow event and action records lack a direct case relationship. |
 | US-027 | Suspension and verified deletion exist; unsuspension is not implemented, Firebase/PostgreSQL/audit steps are non-atomic, and moderation “Hidden” is reused for account state. |
 | US-028 | Event, moderation, and account actions share the append-only `event_action_records` table and are categorized from `action_type`; the ADMIN query path is read-only, filtered, keyset-paged, and privacy-scrubbed. |
+| US-029 | Owner-only PART/ADMIN enrollment, confirm-before-activation, AES-256-GCM secret storage, refresh-safe restart, replacement with atomic recovery-code rotation, disable, HMAC-only recovery codes, Firebase-plus-email-OTP reauthentication, and secret-safe logging are implemented and covered by full-migration-chain PGlite integration tests. US-004 email OTP retains serialized attempt reservation, the fifth-failure/15-minute lock, and fresh-primary-auth enforcement after lock expiry. Every login still uses mandatory email OTP: authenticator codes are not yet accepted at sign-in and recovery-code redemption is not implemented, so recovery codes are generated and managed but cannot yet be used. |
 | US-031 | One immutable private channel is linked per team; only verified active PART users with current Confirmed membership receive access. Open and Locked teams remain writable, Disbanded channels are read-only history, former members lose access, unrelated ADMIN users have no bypass, and safe projections prevent private-field leakage. |
 | US-032 | Canonical low/high participant pairs, one thread per pair, participant-only reads, block/eligibility-aware sends, safe projections, and the React inbox/thread/composer are implemented. The broader #391 access/validation suite remains pending; the client message type still names legacy `authorId` while the #390 server projection returns `fromMe`, although the current UI renders neither field. |
 | US-033 | US-026 moderation now accepts polymorphic `chat_channel` and `chat_message` targets without physical chat foreign keys. Eligible PART users can report only visible `chat_messages`; direct-message rows are outside the current target contract. ADMIN detail uses bounded, redacted evidence projections, stale targets remain safely reviewable, and chat cases currently support dismissal only with a safe append-only action record. |

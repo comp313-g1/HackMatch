@@ -1,0 +1,41 @@
+---
+title: "HackMatch — US-029: Authenticator and Recovery-Code Lifecycle — State Diagram"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f3e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":38,"rankSpacing":50,"padding":14}}}%%
+flowchart TB
+    NONE["Not enrolled<br/>Email OTP is the only second factor"]:::identity
+    PENDING["Pending setup<br/>Encrypted secret, 10-minute expiry<br/>Setup material shown once"]:::transition
+    CANCELED["Canceled<br/>Restart issued a fresh Pending setup<br/>Old enrollment cannot activate"]:::denied
+    EXPIRED["Expired<br/>Rejected at or after expiry<br/>Restart issues a fresh Pending setup"]:::denied
+    ACTIVE["Active authenticator<br/>One per account<br/>Email OTP still available"]:::success
+    CODES["Current recovery set<br/>10 single-use HMAC verifiers<br/>Raw codes shown once"]:::success
+    REVOKED["Previous recovery set revoked<br/>Rows kept, codes no longer valid"]:::denied
+    REPLACING["Replacement pending beside Active<br/>Old factor and recovery codes stay valid"]:::transition
+    PRESERVED["Replacement not activated<br/>Old factor stays Active<br/>Recovery codes unchanged"]:::transition
+    ROTATED["Replacement confirmed in one transaction<br/>Old factor Retired, new factor Active<br/>Old set revoked, new set shown once"]:::success
+    RETIRED["Turned off: factor Retired<br/>Pending replacement canceled<br/>Recovery set revoked, history kept<br/>Account returns to Not enrolled"]:::internal
+
+    NONE -->|Begin after recent sign-in + current MFA| PENDING
+    PENDING -->|Incorrect code| PENDING
+    PENDING -->|Restart after refresh| CANCELED
+    PENDING -->|Time reaches expiry| EXPIRED
+    PENDING -->|Correct 6-digit code before expiry<br/>atomic activation| ACTIVE
+    ACTIVE -->|Generate, expected batch must match| CODES
+    CODES -->|Regenerate replaces set atomically| REVOKED
+    ACTIVE -->|Begin replacement| REPLACING
+    REPLACING -->|Wrong code: retry<br/>Restart: cancel old Pending and create fresh Pending| REPLACING
+    REPLACING -->|Expiry or failed activation| PRESERVED
+    REPLACING -->|Correct code via<br/>replacement confirmation| ROTATED
+    ACTIVE -->|Turn off after recent sign-in<br/>email OTP remains| RETIRED
+
+    GUARD["Original confirm path refuses a pending<br/>replacement, so codes cannot skip rotation"]:::warning
+    STORE["Persistence detail<br/>authenticator_enrollments holds lifecycle rows;<br/>authenticator_recovery_codes holds verifiers"]:::internal
+    GUARD -.-> REPLACING
+    STORE -.-> ACTIVE
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef transition fill:#fff7d6,stroke:#d4a72c,color:#3f3300,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef warning fill:#fff7d6,stroke:#d4a72c,color:#3f3300,stroke-width:1.5px,stroke-dasharray:5 3;

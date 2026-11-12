@@ -1,0 +1,68 @@
+---
+title: "HackMatch — US-029: Authenticator and Recovery-Code Persistence Model"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","tertiaryColor":"#f1e8ff","fontFamily":"Arial, sans-serif"},"er":{"useMaxWidth":true,"diagramPadding":24,"layoutDirection":"LR","minEntityWidth":245,"minEntityHeight":75,"entityPadding":14,"stroke":"#4b5563","fill":"#ffffff","fontSize":14}}}%%
+erDiagram
+    direction LR
+
+    PARTICIPANTS ||--o{ AUTHENTICATOR_ENROLLMENTS : owns
+    PARTICIPANTS ||--o{ AUTHENTICATOR_RECOVERY_CODES : owns
+    PARTICIPANTS ||--o{ MFA_CHALLENGES : receives
+    PARTICIPANTS ||--o{ MFA_ATTEMPTS : records
+    MFA_CHALLENGES |o--o{ MFA_ATTEMPTS : "verified by"
+
+    PARTICIPANTS["participants"] {
+        uuid id PK
+        string firebase_uid UK "Owner mapping"
+        string role "Owner role"
+        boolean is_verified
+        boolean is_suspended
+        boolean is_deactivated
+    }
+
+    AUTHENTICATOR_ENROLLMENTS["authenticator_enrollments"] {
+        uuid id PK
+        uuid participant_id FK
+        text secret_ciphertext "AES-256-GCM, owner-bound"
+        text secret_iv
+        text secret_auth_tag
+        string encryption_key_version "Key stays in server env"
+        string status "Pending Active Retired Expired Canceled"
+        datetime pending_expires_at "10-minute setup window"
+        datetime activated_at
+        datetime retired_at
+    }
+
+    AUTHENTICATOR_RECOVERY_CODES["authenticator_recovery_codes"] {
+        uuid id PK
+        uuid participant_id FK
+        uuid batch_id "One current set of 10"
+        string code_verifier "HMAC only, unique per owner"
+        string verifier_key_version
+        datetime created_at
+        datetime used_at "Single-use marker"
+        datetime revoked_at "Set on regenerate, rotate, disable"
+    }
+
+    MFA_CHALLENGES["mfa_challenges (US-004)"] {
+        uuid id PK
+        uuid participant_id FK
+        datetime expires_at "10-minute email OTP"
+        datetime consumed_at
+        datetime invalidated_at
+    }
+
+    MFA_ATTEMPTS["mfa_attempts (US-004)"] {
+        uuid id PK
+        uuid participant_id FK
+        uuid challenge_id FK "Nullable"
+        boolean success
+        datetime created_at "Serialized reservation order"
+    }
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef persistence fill:#e8f7ed,stroke:#3a9b5f,color:#123d24
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#374151
+    class PARTICIPANTS identity
+    class AUTHENTICATOR_ENROLLMENTS,AUTHENTICATOR_RECOVERY_CODES persistence
+    class MFA_CHALLENGES,MFA_ATTEMPTS internal

@@ -1,0 +1,45 @@
+---
+title: "HackMatch — US-029: Authenticator-App Two-Factor Management — Use Case"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":42,"rankSpacing":58,"padding":14}}}%%
+flowchart TB
+    OWNER([Verified active PART or ADMIN<br/>account owner]):::identity
+    RESTRICTED([Visitor, suspended, deactivated,<br/>or unverified account]):::denied
+    OTHER([Another PART or ADMIN]):::denied
+    FUTURE(["Authenticator or recovery code<br/>at sign-in — not implemented"]):::internal
+
+    subgraph SIGNIN["Existing sign-in boundary (US-003 / US-004)"]
+        EMAIL(["Complete mandatory email OTP<br/>5 attempts / 15-minute lock"]):::identity
+    end
+
+    subgraph AUTH["US-029 owner-only authenticator controls"]
+        VERIFY(["Verify identity again<br/>Firebase sign-in + email OTP"]):::usecase
+        STATUS(["View secret-free<br/>authenticator status"]):::usecase
+        SETUP(["Set up authenticator<br/>QR code or manual key"]):::usecase
+        RESTART(["Restart lost pending setup"]):::usecase
+        CONFIRM(["Confirm 6-digit code<br/>before activation"]):::success
+        CODES(["Generate or regenerate<br/>10 single-use recovery codes"]):::persistence
+        REPLACE(["Replace authenticator<br/>Rotate recovery codes on success"]):::persistence
+        DISABLE(["Turn off authenticator<br/>Revoke codes, email OTP remains"]):::usecase
+    end
+
+    OWNER --> EMAIL --> STATUS
+    OWNER -->|"Sign-in older than 10 minutes"| VERIFY
+    VERIFY --> SETUP
+    STATUS --> SETUP
+    SETUP --> RESTART
+    SETUP --> CONFIRM
+    CONFIRM --> CODES
+    CONFIRM --> REPLACE
+    CONFIRM --> DISABLE
+
+    RESTRICTED -->|"401 or 403<br/>no authenticator data"| STATUS
+    OTHER -. "Foreign ids look nonexistent<br/>ADMIN has no bypass" .-> CONFIRM
+    FUTURE -. "Every login still uses email OTP" .-> EMAIL
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef usecase fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef persistence fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;

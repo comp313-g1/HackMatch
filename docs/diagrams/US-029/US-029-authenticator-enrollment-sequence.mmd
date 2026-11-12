@@ -1,0 +1,61 @@
+---
+title: "HackMatch — US-029: Authenticator Enrollment and Activation Sequence"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","noteBkgColor":"#f3f4f6","noteBorderColor":"#6b7280","noteTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":24,"diagramMarginY":18,"actorMargin":30,"width":155,"height":60,"boxMargin":8,"messageMargin":24,"noteMargin":10}}}%%
+sequenceDiagram
+    autonumber
+    actor Owner as PART or ADMIN owner
+    participant React as React authenticator card
+    participant API as Express authenticator API
+    participant Guards as Auth, MFA, role, and recent-auth guards
+    participant Provider as Enrollment provider (AES-GCM, TOTP)
+    participant DB as PostgreSQL via Supabase
+
+    Owner->>React: Open account security settings
+    React->>API: GET authenticator status
+    API->>Guards: Verify token, active account, current MFA, role, recent sign-in
+    alt Sign-in older than 10 minutes
+        Guards-->>React: 401 reauthentication required, no-store
+        React-->>Owner: Offer Verify identity (reauthentication sequence)
+    else Authorized owner
+        Guards->>Provider: Use resolved participant only
+        Provider->>DB: Read status columns only
+        DB-->>Provider: Not enrolled, pending, or active
+        Provider-->>React: Secret-free status with email OTP fallback
+    end
+
+    Owner->>React: Set up authenticator app
+    React->>API: POST enrollment with empty body
+    API->>Guards: Same guards, then reject any account-targeting field
+    Guards->>Provider: Begin for resolved owner
+    Provider->>Provider: Generate and encrypt secret
+    Provider->>DB: begin_authenticator_enrollment
+    DB->>DB: Lock owner, store Pending
+    alt Already active or still pending
+        DB-->>Provider: Deterministic conflict
+        Provider-->>React: 409 already active or pending
+    else Pending created with 10-minute expiry
+        DB-->>Provider: Enrollment id and expiry
+        Provider-->>React: 201 one-time QR URI and manual key
+        React-->>Owner: Show QR, manual key, and code input from memory
+    end
+
+    Owner->>React: Enter 6-digit code from the app
+    React->>API: POST enrollment confirmation
+    API->>Guards: Same guards, exactly 6 digits
+    Guards->>Provider: Confirm for resolved owner
+    Provider->>DB: Read owner-scoped enrollment row
+    alt Missing, foreign, canceled, expired, or wrong code
+        Provider-->>React: Safe 409, 410, or 401 without secrets
+        React-->>Owner: Show error, keep setup unless stale or expired
+    else Code valid for current or adjacent 30-second step
+        Provider->>DB: activate_authenticator_enrollment
+        DB->>DB: Recheck, mark Active
+        DB-->>Provider: Activation time
+        Provider-->>React: 200 active status, no setup material
+        React->>React: Clear setup from memory
+        React-->>Owner: Authenticator active, email codes still available
+    end
+
+    Note over React,Guards: Foreign enrollment ids receive the same response as nonexistent ids. ADMIN has no cross-account bypass.
+    Note over Provider,DB: Only AES-256-GCM ciphertext is stored. The key stays in the server environment, and decrypted secrets exist only during confirmation.
