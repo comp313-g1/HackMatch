@@ -5,7 +5,7 @@ import type { DecodedIdToken } from 'firebase-admin/auth';
 import { config } from '../config/index.js';
 import { createPgliteSupabaseClient } from '../db/pgliteSupabase.testUtils.js';
 import { createChatAttachmentDb, SAMPLE_FILES } from '../db/chatAttachments.testUtils.js';
-import { reactionIds as ids, unsuspendParticipant } from '../db/chatReactions.testUtils.js';
+import { reactionIds as ids, suspendParticipant, unsuspendParticipant } from '../db/chatReactions.testUtils.js';
 import { participantBlockRepository } from '../db/participantBlock.repository.js';
 import { MemoryAttachmentStore, _setAttachmentObjectStore } from '../services/attachmentStorage.js';
 import { _resetAttachmentMaintenanceClock } from '../services/chatAttachments.js';
@@ -46,7 +46,7 @@ const publicUpload = `/api/chat/channels/${ids.publicChannel}/attachments`;
 const teamUpload = `/api/teams/${ids.team}/chat/attachments`;
 const dmUpload = `/api/direct-messages/threads/${ids.dm}/attachments`;
 
-async function upload(path: string, who: Who = 'reader', file = SAMPLE_FILES.png) {
+async function upload(path: string, who: Who = 'reader', file: { readonly name: string; readonly bytes: Uint8Array } = SAMPLE_FILES.png) {
   return request(app).post(path).set(as(who)).attach('file', Buffer.from(file.bytes), {
     filename: file.name,
     contentType: 'application/octet-stream', // deliberately ignored; bytes are authoritative
@@ -76,7 +76,7 @@ beforeEach(async () => {
     DELETE FROM chat_message_attachments;
     DELETE FROM direct_message_attachments;
     DELETE FROM participant_blocks;
-    DELETE FROM chat_messages WHERE body LIKE 'attachment test:%';
+    DELETE FROM chat_messages WHERE channel_id = '${ids.publicChannel}' AND body LIKE 'attachment test:%';
     DELETE FROM direct_messages WHERE body LIKE 'attachment test:%';
     UPDATE teams SET recruitment_status = 'Open';
     UPDATE team_memberships SET status = 'Confirmed'
@@ -262,5 +262,171 @@ describe('association and current-read download authorization', () => {
       .get(`/api/direct-messages/threads/${ids.dm}/attachments/${dmAttachment}/access`)
       .set(as('reader'));
     expect(historical.status).toBe(200);
+  });
+});
+
+describe('US-035 / #411 attachment HTTP gaps: degradation, expiry, scan-gating, disposition, and log privacy', () => {
+  it('returns 503 ATTACHMENT_STORAGE_UNAVAILABLE on storage failure while plain-text chat keeps working', async () => {
+    store.failNext.put = true;
+    const failedUpload = await upload(publicUpload);
+    expect(failedUpload.status).toBe(503);
+    expect(failedUpload.body.code).toBe('ATTACHMENT_STORAGE_UNAVAILABLE');
+    expect((await db.query<{ n: number }>('SELECT COUNT(*)::int AS n FROM chat_message_attachments')).rows[0]!.n).toBe(0);
+
+    const plainText = await request(app)
+      .post(`/api/chat/channels/${ids.publicChannel}/messages`)
+      .set(as('reader'))
+      .send({ body: 'attachment test: plain text succeeds while storage down' });
+    expect(plainText.status).toBe(201);
+
+    const uploaded = await upload(publicUpload);
+    expect(uploaded.status).toBe(201);
+    const attachmentId = uploaded.body.attachment.id as string;
+    const attached = await request(app)
+      .post(`/api/chat/channels/${ids.publicChannel}/messages`)
+      .set(as('reader'))
+      .send({ body: 'attachment test: attached for read failure', attachmentIds: [attachmentId] });
+    expect(attached.status).toBe(201);
+
+    const access = await request(app)
+      .get(`/api/chat/channels/${ids.publicChannel}/attachments/${attachmentId}/access`)
+      .set(as('peer'));
+    expect(access.status).toBe(200);
+
+    store.failNext.get = true;
+    const failedRead = await request(app).get(access.body.access.url as string);
+    expect(failedRead.status).toBe(503);
+    expect(failedRead.body.code).toBe('ATTACHMENT_STORAGE_UNAVAILABLE');
+  });
+
+  it('expires signed content URLs after 60 seconds and rejects tampered tokens with 404', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const baseTime = new Date('2026-11-12T12:00:00.000Z');
+      vi.setSystemTime(baseTime);
+      const authNow = Math.floor(baseTime.getTime() / 1000) - 30;
+      mockVerifyIdToken.mockImplementation(async (token: string) => {
+        const who = token.replace(/^token-/, '');
+        return {
+          uid: `fb-${who}`,
+          role: who === 'admin' ? 'ADMIN' : 'PART',
+          auth_time: authNow,
+          [MFA_CLAIM]: authNow,
+        } as unknown as DecodedIdToken;
+      });
+
+      const uploaded = await upload(publicUpload);
+      const attachmentId = uploaded.body.attachment.id as string;
+      await request(app)
+        .post(`/api/chat/channels/${ids.publicChannel}/messages`)
+        .set(as('reader'))
+        .send({ body: 'attachment test: expiry check', attachmentIds: [attachmentId] });
+
+      const access = await request(app)
+        .get(`/api/chat/channels/${ids.publicChannel}/attachments/${attachmentId}/access`)
+        .set(as('peer'));
+      expect(access.status).toBe(200);
+      const contentUrl = access.body.access.url as string;
+
+      expect((await request(app).get(`${contentUrl}tampered`)).status).toBe(404);
+
+      vi.setSystemTime(new Date(baseTime.getTime() + 61_000));
+      const expired = await request(app).get(contentUrl);
+      expect(expired.status).toBe(404);
+      expect(expired.body.code).toBe('ATTACHMENT_NOT_FOUND');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('forces Content-Disposition attachment on PDFs, blocks non-downloadable scan states, and rejects suspended accounts', async () => {
+    const pdfUpload = await upload(publicUpload, 'reader', SAMPLE_FILES.pdf);
+    expect(pdfUpload.status).toBe(201);
+    const pdfId = pdfUpload.body.attachment.id as string;
+    await request(app)
+      .post(`/api/chat/channels/${ids.publicChannel}/messages`)
+      .set(as('reader'))
+      .send({ body: 'attachment test: pdf', attachmentIds: [pdfId] });
+
+    const pdfAccess = await request(app)
+      .get(`/api/chat/channels/${ids.publicChannel}/attachments/${pdfId}/access`)
+      .set(as('peer'));
+    expect(pdfAccess.status).toBe(200);
+    const pdfContent = await request(app).get(pdfAccess.body.access.url as string);
+    expect(pdfContent.status).toBe(200);
+    expect(pdfContent.headers['content-disposition']).toMatch(/^attachment;/);
+    expect(pdfContent.headers['content-disposition']).toContain('brief.pdf');
+
+    for (const scanStatus of ['pending', 'infected', 'scan_failed'] as const) {
+      await db.query('UPDATE chat_message_attachments SET scan_status = $1 WHERE id = $2', [scanStatus, pdfId]);
+      const listed = await request(app).get(`/api/chat/channels/${ids.publicChannel}/messages`).set(as('peer'));
+      const msg = (listed.body.messages as Array<{ attachments?: Array<{ id: string; downloadable: boolean; scanStatus: string }> }>).find(
+        (m) => m.attachments?.some((a) => a.id === pdfId)
+      );
+      expect(msg?.attachments?.[0]).toMatchObject({ id: pdfId, scanStatus, downloadable: false });
+
+      const blockedAccess = await request(app)
+        .get(`/api/chat/channels/${ids.publicChannel}/attachments/${pdfId}/access`)
+        .set(as('peer'));
+      expect(blockedAccess.status).toBe(403);
+      expect(blockedAccess.body.code).toBe('ATTACHMENT_NOT_DOWNLOADABLE');
+
+      const blockedContent = await request(app).get(pdfAccess.body.access.url as string);
+      expect(blockedContent.status).toBe(404);
+    }
+
+    await suspendParticipant(db, ids.peer);
+    const suspendedUpload = await upload(publicUpload, 'peer');
+    expect(suspendedUpload.status).toBe(403);
+    const suspendedAccess = await request(app)
+      .get(`/api/chat/channels/${ids.publicChannel}/attachments/${pdfId}/access`)
+      .set(as('peer'));
+    expect(suspendedAccess.status).toBe(403);
+  });
+
+  it('never logs signed tokens, raw filenames, storage keys, or signed URLs via requestLogger', async () => {
+    const lines: string[] = [];
+    const spies = (['log', 'info', 'warn', 'error'] as const).map((level) =>
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        lines.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '));
+      })
+    );
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+    try {
+      const secretNameFile = { name: 'secret-roster-leak-check.png', bytes: SAMPLE_FILES.png.bytes };
+      const uploaded = await upload(publicUpload, 'reader', secretNameFile);
+      expect(uploaded.status).toBe(201);
+      const attachmentId = uploaded.body.attachment.id as string;
+      const { rows } = await db.query<{ storage_key: string }>('SELECT storage_key FROM chat_message_attachments WHERE id = $1', [
+        attachmentId,
+      ]);
+      const storageKey = rows[0]!.storage_key;
+
+      await request(app)
+        .post(`/api/chat/channels/${ids.publicChannel}/messages`)
+        .set(as('reader'))
+        .send({ body: 'attachment test: log check', attachmentIds: [attachmentId] });
+
+      const access = await request(app)
+        .get(`/api/chat/channels/${ids.publicChannel}/attachments/${attachmentId}/access`)
+        .set(as('peer'));
+      expect(access.status).toBe(200);
+      const accessUrl = access.body.access.url as string;
+      const rawToken = decodeURIComponent(accessUrl.split('token=')[1] ?? '');
+      expect(rawToken.length).toBeGreaterThan(20);
+
+      expect((await request(app).get(accessUrl)).status).toBe(200);
+
+      const combinedLogs = lines.join('\n');
+      expect(combinedLogs).toContain('/api/chat/attachments/content');
+      expect(combinedLogs).not.toContain('secret-roster-leak-check.png');
+      expect(combinedLogs).not.toContain(storageKey);
+      expect(combinedLogs).not.toContain(rawToken);
+      expect(combinedLogs).not.toContain(encodeURIComponent(rawToken));
+    } finally {
+      process.env.NODE_ENV = previousNodeEnv;
+      spies.forEach((s) => s.mockRestore());
+    }
   });
 });
