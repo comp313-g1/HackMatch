@@ -51,6 +51,25 @@ function begin(enrollmentId: string, participantId = ids.owner, expiresAt = futu
   );
 }
 
+function restart(enrollmentId: string, participantId = ids.owner, expiresAt = future()) {
+  return rows<{
+    enrollment_id: string;
+    enrollment_status: string;
+    expires_at: Date;
+  }>(
+    'SELECT * FROM restart_authenticator_enrollment($1, $2, $3, $4, $5, $6, $7)',
+    [
+      participantId,
+      enrollmentId,
+      'ZnJlc2gtZW5jcnlwdGVkLXNlY3JldA==',
+      'ZnJlc2gtaXYtMTIz',
+      'ZnJlc2gtYXV0aC10YWctMTIzNA==',
+      'v1',
+      expiresAt,
+    ]
+  );
+}
+
 describe('protected authenticator enrollment SQL (US-029 / #267)', () => {
   beforeAll(async () => {
     db = new PGlite();
@@ -63,6 +82,7 @@ describe('protected authenticator enrollment SQL (US-029 / #267)', () => {
       'ALTER TABLE participants ADD COLUMN is_deactivated BOOLEAN NOT NULL DEFAULT FALSE;'
     );
     await db.exec(sqlOf('0063_create_authenticator_enrollments.sql'));
+    await db.exec(sqlOf('0064_restart_pending_authenticator_enrollment.sql'));
     await db.query(
       `INSERT INTO participants
          (id, firebase_uid, email, full_name, role, is_verified)
@@ -214,6 +234,46 @@ describe('protected authenticator enrollment SQL (US-029 / #267)', () => {
     ]);
   });
 
+  it('atomically replaces pending setup after refresh and makes the old enrollment stale', async () => {
+    await begin(ids.first);
+    const replacement = await restart(ids.second);
+    expect(replacement[0]).toMatchObject({
+      enrollment_id: ids.second,
+      enrollment_status: 'Pending',
+    });
+
+    expect(await failure(
+      'SELECT * FROM activate_authenticator_enrollment($1, $2)',
+      [ids.owner, ids.first]
+    )).toMatch(/TOTP_ENROLLMENT_STALE/);
+    const states = await rows<{ id: string; status: string }>(
+      'SELECT id, status FROM authenticator_enrollments WHERE participant_id = $1 ORDER BY id',
+      [ids.owner]
+    );
+    expect(states).toEqual([
+      { id: ids.first, status: 'Canceled' },
+      { id: ids.second, status: 'Pending' },
+    ]);
+  });
+
+  it('applies the same owner-scoped restart behavior to ADMIN accounts', async () => {
+    await db.query(
+      `UPDATE participants SET role = 'ADMIN' WHERE id = $1`,
+      [ids.owner]
+    );
+    try {
+      await begin(ids.first);
+      await expect(restart(ids.second)).resolves.toHaveLength(1);
+      const states = await rows<{ status: string }>(
+        'SELECT status FROM authenticator_enrollments WHERE participant_id = $1 ORDER BY created_at, id',
+        [ids.owner]
+      );
+      expect(states.map((row) => row.status).sort()).toEqual(['Canceled', 'Pending']);
+    } finally {
+      await db.query(`UPDATE participants SET role = 'PART' WHERE id = $1`, [ids.owner]);
+    }
+  });
+
   it('retires an old active factor only inside successful replacement activation', async () => {
     await begin(ids.first);
     await rows('SELECT * FROM activate_authenticator_enrollment($1, $2)', [ids.owner, ids.first]);
@@ -257,9 +317,9 @@ describe('protected authenticator enrollment SQL (US-029 / #267)', () => {
     const functionGrants = await rows<{ routine_name: string; grantee: string }>(
       `SELECT routine_name, grantee
        FROM information_schema.routine_privileges
-       WHERE routine_name IN ('begin_authenticator_enrollment', 'activate_authenticator_enrollment')`
+       WHERE routine_name IN ('begin_authenticator_enrollment', 'restart_authenticator_enrollment', 'activate_authenticator_enrollment')`
     );
-    for (const routine of ['begin_authenticator_enrollment', 'activate_authenticator_enrollment']) {
+    for (const routine of ['begin_authenticator_enrollment', 'restart_authenticator_enrollment', 'activate_authenticator_enrollment']) {
       const grantees = functionGrants.filter((row) => row.routine_name === routine).map((row) => row.grantee);
       expect(grantees).toContain('service_role');
       expect(grantees).not.toContain('PUBLIC');
@@ -270,8 +330,12 @@ describe('protected authenticator enrollment SQL (US-029 / #267)', () => {
 
   it('is additive/idempotent and owns the unique next migration number', async () => {
     await expect(db.exec(sqlOf('0063_create_authenticator_enrollments.sql'))).resolves.not.toThrow();
+    await expect(db.exec(sqlOf('0064_restart_pending_authenticator_enrollment.sql'))).resolves.not.toThrow();
     expect(fs.readdirSync(DIR).filter((file) => file.startsWith('0063_'))).toEqual([
       '0063_create_authenticator_enrollments.sql',
+    ]);
+    expect(fs.readdirSync(DIR).filter((file) => file.startsWith('0064_'))).toEqual([
+      '0064_restart_pending_authenticator_enrollment.sql',
     ]);
   });
 });

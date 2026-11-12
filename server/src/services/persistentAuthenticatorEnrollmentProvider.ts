@@ -85,37 +85,68 @@ export function createPersistentAuthenticatorEnrollmentProvider(
   const enrollmentIdGenerator = dependencies.generateEnrollmentId ?? randomUUID;
   const now = dependencies.now ?? (() => new Date());
 
+  async function createSetup(
+    owner: AuthenticatorOwnerContext,
+    persist: AuthenticatorEnrollmentRepository['createPending']
+  ) {
+    let secret = '';
+    try {
+      const protector = getProtector();
+      const enrollmentId = enrollmentIdGenerator();
+      const createdAt = now();
+      const expiresAt = new Date(createdAt.getTime() + AUTHENTICATOR_ENROLLMENT_TTL_MS);
+      secret = secretGenerator();
+      const protectedSecret = protector.encrypt(secret, {
+        participantId: owner.participantId,
+        enrollmentId,
+      });
+      const pending = await persist.call(repository, {
+        enrollmentId,
+        participantId: owner.participantId,
+        protectedSecret,
+        expiresAt: expiresAt.toISOString(),
+      });
+      return {
+        enrollmentId: pending.enrollmentId,
+        expiresAt: pending.expiresAt,
+        otpauthUri: buildTotpAuthUri(secret, AUTHENTICATOR_ACCOUNT_LABEL),
+        manualEntryKey: secret,
+        accountLabel: AUTHENTICATOR_ACCOUNT_LABEL,
+      };
+    } catch (error: unknown) {
+      throw mapStorageError(error);
+    } finally {
+      secret = '';
+    }
+  }
+
   return {
-    async begin(owner: AuthenticatorOwnerContext) {
-      let secret = '';
+    async getStatus(owner: AuthenticatorOwnerContext) {
       try {
-        const protector = getProtector();
-        const enrollmentId = enrollmentIdGenerator();
-        const createdAt = now();
-        const expiresAt = new Date(createdAt.getTime() + AUTHENTICATOR_ENROLLMENT_TTL_MS);
-        secret = secretGenerator();
-        const protectedSecret = protector.encrypt(secret, {
-          participantId: owner.participantId,
-          enrollmentId,
-        });
-
-        const pending = await repository.createPending({
-          enrollmentId,
-          participantId: owner.participantId,
-          protectedSecret,
-          expiresAt: expiresAt.toISOString(),
-        });
-
-        return {
-          enrollmentId: pending.enrollmentId,
-          expiresAt: pending.expiresAt,
-          otpauthUri: buildTotpAuthUri(secret, AUTHENTICATOR_ACCOUNT_LABEL),
-          manualEntryKey: secret,
-          accountLabel: AUTHENTICATOR_ACCOUNT_LABEL,
-        };
+        const row = await repository.findCurrentByParticipantId(owner.participantId);
+        if (!row) return { status: 'not_enrolled' as const };
+        if (row.status === 'Active' && row.activated_at) {
+          return { status: 'active' as const, activatedAt: row.activated_at };
+        }
+        if (
+          row.status === 'Pending' &&
+          row.pending_expires_at &&
+          Date.parse(row.pending_expires_at) > now().getTime()
+        ) {
+          return { status: 'pending' as const, expiresAt: row.pending_expires_at };
+        }
+        return { status: 'not_enrolled' as const };
       } catch (error: unknown) {
         throw mapStorageError(error);
       }
+    },
+
+    async begin(owner: AuthenticatorOwnerContext) {
+      return createSetup(owner, repository.createPending);
+    },
+
+    async restart(owner: AuthenticatorOwnerContext) {
+      return createSetup(owner, repository.restartPending);
     },
 
     async confirm(owner: AuthenticatorOwnerContext, enrollmentId: string, code: string) {

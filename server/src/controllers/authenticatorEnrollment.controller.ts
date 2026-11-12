@@ -3,6 +3,8 @@ import {
   AuthenticatorEnrollmentError,
   beginAuthenticatorEnrollment as beginEnrollment,
   confirmAuthenticatorEnrollment as confirmEnrollment,
+  getAuthenticatorEnrollmentStatus as getEnrollmentStatus,
+  restartAuthenticatorEnrollment as restartEnrollment,
   type AuthenticatorEnrollmentErrorCode,
   type AuthenticatorOwnerContext,
 } from '../services/authenticatorEnrollment.js';
@@ -89,6 +91,19 @@ function sendSafeEnrollmentError(res: Response, error: unknown): void {
   });
 }
 
+export async function getAuthenticatorEnrollmentStatus(req: Request, res: Response): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  const owner = ownerFromRequest(req, res);
+  if (!owner) return;
+
+  try {
+    const result = await getEnrollmentStatus(owner);
+    res.status(200).json(result);
+  } catch (error: unknown) {
+    sendSafeEnrollmentError(res, error);
+  }
+}
+
 export async function beginAuthenticatorEnrollment(req: Request, res: Response): Promise<void> {
   res.setHeader('Cache-Control', 'no-store');
   const owner = ownerFromRequest(req, res);
@@ -96,6 +111,19 @@ export async function beginAuthenticatorEnrollment(req: Request, res: Response):
 
   try {
     const result = await beginEnrollment(owner);
+    res.status(201).json(result);
+  } catch (error: unknown) {
+    sendSafeEnrollmentError(res, error);
+  }
+}
+
+export async function restartAuthenticatorEnrollment(req: Request, res: Response): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  const owner = ownerFromRequest(req, res);
+  if (!owner) return;
+
+  try {
+    const result = await restartEnrollment(owner);
     res.status(201).json(result);
   } catch (error: unknown) {
     sendSafeEnrollmentError(res, error);

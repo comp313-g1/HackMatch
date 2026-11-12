@@ -33,6 +33,7 @@ vi.mock('../config/firebase.js', () => {
 
 const AUTH = 'Bearer valid.id.token';
 const PENDING_ID = 'enrollment_123';
+const RESTARTED_ID = 'enrollment_456';
 const NOW = () => Math.floor(Date.now() / 1000);
 
 const participant = (role: 'PART' | 'ADMIN' = 'PART'): Participant => ({
@@ -71,7 +72,17 @@ class FakeEnrollmentProvider implements AuthenticatorEnrollmentProvider {
   >();
 
   beginCalls: AuthenticatorOwnerContext[] = [];
+  restartCalls: AuthenticatorOwnerContext[] = [];
   confirmCalls: Array<{ owner: AuthenticatorOwnerContext; enrollmentId: string; code: string }> = [];
+
+  async getStatus(owner: AuthenticatorOwnerContext) {
+    const current = this.states.get(owner.participantId);
+    if (!current) return { status: 'not_enrolled' as const };
+    if (current.status === 'active') {
+      return { status: 'active' as const, activatedAt: current.activatedAt! };
+    }
+    return { status: 'pending' as const, expiresAt: '2026-11-11T18:10:00.000Z' };
+  }
 
   async begin(owner: AuthenticatorOwnerContext) {
     this.beginCalls.push(owner);
@@ -89,6 +100,25 @@ class FakeEnrollmentProvider implements AuthenticatorEnrollmentProvider {
       expiresAt: '2026-11-11T18:10:00.000Z',
       otpauthUri: 'otpauth://totp/HackMatch%3Aaccount?secret=OWNERONLY&issuer=HackMatch',
       manualEntryKey: 'OWNERONLY',
+      accountLabel: 'HackMatch account',
+    };
+  }
+
+  async restart(owner: AuthenticatorOwnerContext) {
+    this.restartCalls.push(owner);
+    const current = this.states.get(owner.participantId);
+    if (current?.status === 'active') {
+      throw new AuthenticatorEnrollmentError('AUTHENTICATOR_ALREADY_ACTIVE', 409);
+    }
+    if (!current) {
+      throw new AuthenticatorEnrollmentError('AUTHENTICATOR_ENROLLMENT_NOT_PENDING', 409);
+    }
+    this.states.set(owner.participantId, { status: 'pending', enrollmentId: RESTARTED_ID });
+    return {
+      enrollmentId: RESTARTED_ID,
+      expiresAt: '2026-11-11T18:20:00.000Z',
+      otpauthUri: 'otpauth://totp/HackMatch%3Aaccount?secret=FRESHOWNER&issuer=HackMatch',
+      manualEntryKey: 'FRESHOWNER',
       accountLabel: 'HackMatch account',
     };
   }
@@ -136,6 +166,17 @@ describe('authenticator enrollment API contract (US-029 / #266)', () => {
   const begin = () =>
     request(app)
       .post('/api/auth/mfa/authenticator/enrollment')
+      .set('Authorization', AUTH)
+      .send({});
+
+  const status = () =>
+    request(app)
+      .get('/api/auth/mfa/authenticator/enrollment')
+      .set('Authorization', AUTH);
+
+  const restart = () =>
+    request(app)
+      .post('/api/auth/mfa/authenticator/enrollment/restart')
       .set('Authorization', AUTH)
       .send({});
 
@@ -189,6 +230,30 @@ describe('authenticator enrollment API contract (US-029 / #266)', () => {
     expect(provider.beginCalls).toEqual([
       { participantId: 'admin-1', firebaseUid: 'firebase-admin', role: 'ADMIN' },
     ]);
+  });
+
+  it('returns owner-only status for PART and ADMIN without setup credentials', async () => {
+    const initial = await status();
+    expect(initial.status).toBe(200);
+    expect(initial.body).toEqual({
+      authenticator: { status: 'not_enrolled' },
+      availableChallengeMethods: ['email_otp'],
+      emailOtpFallback: true,
+    });
+
+    await begin();
+    const pendingStatus = await status();
+    expect(pendingStatus.body.authenticator).toEqual({
+      status: 'pending',
+      expiresAt: '2026-11-11T18:10:00.000Z',
+    });
+    expect(JSON.stringify(pendingStatus.body)).not.toMatch(/OWNERONLY|otpauth|secret/i);
+
+    mockVerifyIdToken.mockResolvedValue(token('ADMIN'));
+    vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(participant('ADMIN'));
+    const adminStatus = await status();
+    expect(adminStatus.status).toBe(200);
+    expect(adminStatus.body.authenticator.status).toBe('not_enrolled');
   });
 
   it('rejects arbitrary account targeting without invoking the provider', async () => {
@@ -261,6 +326,40 @@ describe('authenticator enrollment API contract (US-029 / #266)', () => {
     expect(duplicateActive.body.code).toBe('AUTHENTICATOR_ALREADY_ACTIVE');
   });
 
+  it.each(['PART', 'ADMIN'] as const)(
+    'lets a %s owner restart lost pending setup material without returning it from status',
+    async (role) => {
+      mockVerifyIdToken.mockResolvedValue(token(role));
+      vi.spyOn(participantsRepository, 'findByFirebaseUid').mockResolvedValue(participant(role));
+      expect((await begin()).status).toBe(201);
+
+      const refreshedStatus = await status();
+      expect(refreshedStatus.body.authenticator.status).toBe('pending');
+      expect(JSON.stringify(refreshedStatus.body)).not.toMatch(/OWNERONLY|FRESHOWNER|otpauth|secret/i);
+
+      const recovered = await restart();
+      expect(recovered.status).toBe(201);
+      expect(recovered.body).toMatchObject({
+        authenticator: { status: 'pending', enrollmentId: RESTARTED_ID },
+        setup: { manualEntryKey: 'FRESHOWNER' },
+        availableChallengeMethods: ['email_otp'],
+        emailOtpFallback: true,
+      });
+      expect(provider.restartCalls).toEqual([
+        {
+          participantId: role === 'ADMIN' ? 'admin-1' : 'part-1',
+          firebaseUid: role === 'ADMIN' ? 'firebase-admin' : 'firebase-part',
+          role,
+        },
+      ]);
+
+      const oldConfirmation = await confirm({ enrollmentId: PENDING_ID, code: '123456' });
+      expect(oldConfirmation.status).toBe(409);
+      expect(oldConfirmation.body.code).toBe('AUTHENTICATOR_ENROLLMENT_STALE');
+      expect((await confirm({ enrollmentId: RESTARTED_ID, code: '123456' })).status).toBe(200);
+    }
+  );
+
   it('rejects malformed confirmation before provider access and does not echo the code', async () => {
     const response = await confirm({ enrollmentId: PENDING_ID, code: '12A456' });
 
@@ -296,7 +395,9 @@ describe('authenticator enrollment API contract (US-029 / #266)', () => {
     ],
   ])('maps an %s enrollment to an explicit safe failure', async (_label, code, status) => {
     _setAuthenticatorEnrollmentProvider({
+      getStatus: vi.fn(),
       begin: vi.fn(),
+      restart: vi.fn(),
       confirm: vi.fn().mockRejectedValue(new AuthenticatorEnrollmentError(code, status)),
     });
 
@@ -339,7 +440,9 @@ describe('authenticator enrollment API contract (US-029 / #266)', () => {
 
   it('maps unknown provider/configuration failures to a privacy-safe 503', async () => {
     _setAuthenticatorEnrollmentProvider({
+      getStatus: vi.fn(),
       begin: vi.fn().mockRejectedValue(new Error('database row contains secret OWNERONLY')),
+      restart: vi.fn(),
       confirm: vi.fn(),
     });
 

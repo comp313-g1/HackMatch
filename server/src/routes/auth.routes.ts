@@ -42,6 +42,8 @@ import {
 import {
   beginAuthenticatorEnrollment,
   confirmAuthenticatorEnrollment,
+  getAuthenticatorEnrollmentStatus,
+  restartAuthenticatorEnrollment,
 } from '../controllers/authenticatorEnrollment.controller.js';
 
 export const authRouter = Router();
@@ -139,8 +141,8 @@ authRouter.post(
 /**
  * US-029 / #266 owner-only contract for standards-based TOTP enrollment.
  * A current email-MFA-complete session and recent primary authentication are
- * required. Protected secret storage is supplied by #267; until then the
- * provider fails closed with AUTHENTICATOR_ENROLLMENT_UNAVAILABLE.
+ * required. #267 supplies protected secret storage; the GET status response
+ * added for #268 is owner-scoped and never returns setup or storage material.
  */
 const requireAuthenticatorOwner = [
   requireFirebaseAuth,
@@ -150,11 +152,24 @@ const requireAuthenticatorOwner = [
   requireRecentAuthentication,
 ];
 
+authRouter.get(
+  '/mfa/authenticator/enrollment',
+  ...requireAuthenticatorOwner,
+  getAuthenticatorEnrollmentStatus
+);
+
 authRouter.post(
   '/mfa/authenticator/enrollment',
   ...requireAuthenticatorOwner,
   validateBeginAuthenticatorEnrollment,
   beginAuthenticatorEnrollment
+);
+
+authRouter.post(
+  '/mfa/authenticator/enrollment/restart',
+  ...requireAuthenticatorOwner,
+  validateBeginAuthenticatorEnrollment,
+  restartAuthenticatorEnrollment
 );
 
 authRouter.post(

@@ -12,16 +12,24 @@ describe('authenticatorEnrollmentRepository (US-029 / #267)', () => {
   const maybeSingle = vi.fn();
   const builder: Record<string, unknown> = {};
   const calls: unknown[][] = [];
+  const selected: string[] = [];
 
   beforeEach(() => {
     vi.clearAllMocks();
     calls.length = 0;
-    builder.select = vi.fn(() => builder);
+    selected.length = 0;
+    builder.select = vi.fn((columns: string) => {
+      selected.push(columns);
+      return builder;
+    });
     builder.eq = vi.fn((...args: unknown[]) => {
       calls.push(args);
       return builder;
     });
     builder.maybeSingle = maybeSingle;
+    builder.in = vi.fn(() => builder);
+    builder.order = vi.fn(() => builder);
+    builder.limit = vi.fn(() => builder);
     vi.mocked(getSupabaseClient).mockReturnValue({
       rpc,
       from: vi.fn(() => builder),
@@ -103,6 +111,60 @@ describe('authenticatorEnrollmentRepository (US-029 / #267)', () => {
       p_participant: PARTICIPANT,
       p_enrollment: ENROLLMENT,
     });
+  });
+
+  it('passes fresh protected material to the atomic pending-restart RPC', async () => {
+    rpc.mockResolvedValue({
+      data: [{
+        enrollment_id: ENROLLMENT,
+        enrollment_status: 'Pending',
+        expires_at: '2026-11-11T18:10:00.000Z',
+      }],
+      error: null,
+    });
+
+    await expect(authenticatorEnrollmentRepository.restartPending({
+      enrollmentId: ENROLLMENT,
+      participantId: PARTICIPANT,
+      protectedSecret: {
+        ciphertext: 'fresh-encrypted-value',
+        iv: 'fresh-random-iv',
+        authTag: 'fresh-auth-tag',
+        keyVersion: 'v1',
+      },
+      expiresAt: '2026-11-11T18:10:00.000Z',
+    })).resolves.toEqual({
+      enrollmentId: ENROLLMENT,
+      status: 'Pending',
+      expiresAt: '2026-11-11T18:10:00.000Z',
+    });
+    expect(rpc).toHaveBeenCalledWith('restart_authenticator_enrollment', {
+      p_participant: PARTICIPANT,
+      p_enrollment: ENROLLMENT,
+      p_secret_ciphertext: 'fresh-encrypted-value',
+      p_secret_iv: 'fresh-random-iv',
+      p_secret_auth_tag: 'fresh-auth-tag',
+      p_key_version: 'v1',
+      p_expires_at: '2026-11-11T18:10:00.000Z',
+    });
+  });
+
+  it('loads current owner status with a status-only projection', async () => {
+    maybeSingle.mockResolvedValue({
+      data: {
+        status: 'Active',
+        pending_expires_at: null,
+        activated_at: '2026-11-11T18:05:00.000Z',
+      },
+      error: null,
+    });
+
+    await expect(
+      authenticatorEnrollmentRepository.findCurrentByParticipantId(PARTICIPANT)
+    ).resolves.toMatchObject({ status: 'Active' });
+    expect(selected[0]).toBe('status, pending_expires_at, activated_at');
+    expect(selected[0]).not.toMatch(/secret_|ciphertext|auth_tag|secret_iv/i);
+    expect(calls).toContainEqual(['participant_id', PARTICIPANT]);
   });
 
   it('propagates storage errors and rejects empty RPC results', async () => {

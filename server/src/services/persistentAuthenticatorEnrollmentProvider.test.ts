@@ -14,6 +14,7 @@ const KEY = Buffer.alloc(32, 11).toString('base64');
 const SECRET = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
 const NOW = new Date('2026-11-11T18:00:00.000Z');
 const ENROLLMENT_ID = '20000000-0000-4000-8000-000000000002';
+const RESTARTED_ENROLLMENT_ID = '20000000-0000-4000-8000-000000000003';
 const owner: AuthenticatorOwnerContext = {
   participantId: '10000000-0000-4000-8000-000000000001',
   firebaseUid: 'firebase-owner',
@@ -52,6 +53,16 @@ class MemoryRepository implements AuthenticatorEnrollmentRepository {
     return { enrollmentId: input.enrollmentId, status: 'Pending' as const, expiresAt: input.expiresAt };
   }
 
+  async restartPending(input: CreatePendingAuthenticatorInput) {
+    const pending = [...this.rows.values()].find(
+      (row) => row.participant_id === input.participantId && row.status === 'Pending'
+    );
+    if (!pending) throw new Error('TOTP_ENROLLMENT_NOT_PENDING');
+    pending.status = 'Canceled';
+    pending.retired_at = NOW.toISOString();
+    return this.createPending(input);
+  }
+
   async findOwnedById(participantId: string, enrollmentId: string) {
     const row = this.rows.get(enrollmentId);
     return row?.participant_id === participantId ? row : null;
@@ -61,6 +72,20 @@ class MemoryRepository implements AuthenticatorEnrollmentRepository {
     return [...this.rows.values()].find(
       (row) => row.participant_id === participantId && row.status === 'Active'
     ) ?? null;
+  }
+
+  async findCurrentByParticipantId(participantId: string) {
+    const rows = [...this.rows.values()].filter(
+      (row) => row.participant_id === participantId &&
+        (row.status === 'Active' || row.status === 'Pending')
+    );
+    const row = rows.find((candidate) => candidate.status === 'Active') ?? rows[0];
+    if (!row || (row.status !== 'Active' && row.status !== 'Pending')) return null;
+    return {
+      status: row.status,
+      pending_expires_at: row.pending_expires_at,
+      activated_at: row.activated_at,
+    };
   }
 
   async activatePending(participantId: string, enrollmentId: string): Promise<ActivatedAuthenticator> {
@@ -92,6 +117,23 @@ function providerWith(repository: AuthenticatorEnrollmentRepository, overrides =
 }
 
 describe('persistent authenticator enrollment provider (US-029 / #267)', () => {
+  it('loads safe current status without decrypting or returning protected material', async () => {
+    const repository = new MemoryRepository();
+    const provider = providerWith(repository);
+    await expect(provider.getStatus(owner)).resolves.toEqual({ status: 'not_enrolled' });
+
+    await provider.begin(owner);
+    await expect(provider.getStatus(owner)).resolves.toEqual({
+      status: 'pending',
+      expiresAt: '2026-11-11T18:10:00.000Z',
+    });
+    await provider.confirm(owner, ENROLLMENT_ID, _totpCodeForTest(SECRET, NOW));
+    await expect(provider.getStatus(owner)).resolves.toEqual({
+      status: 'active',
+      activatedAt: NOW.toISOString(),
+    });
+  });
+
   it('persists only encrypted pending material and returns owner setup material', async () => {
     const repository = new MemoryRepository();
     const result = await providerWith(repository).begin(owner);
@@ -107,6 +149,22 @@ describe('persistent authenticator enrollment provider (US-029 / #267)', () => {
     expect(JSON.stringify(stored)).not.toContain(SECRET);
     expect(stored.protectedSecret.keyVersion).toBe('v1');
     expect(stored.protectedSecret.ciphertext).not.toBe(SECRET);
+  });
+
+  it('replaces lost pending setup material and leaves the previous enrollment stale', async () => {
+    const repository = new MemoryRepository();
+    let id = ENROLLMENT_ID;
+    const provider = providerWith(repository, { generateEnrollmentId: () => id });
+    const first = await provider.begin(owner);
+    id = RESTARTED_ENROLLMENT_ID;
+
+    const restarted = await provider.restart(owner);
+    expect(restarted.enrollmentId).toBe(RESTARTED_ENROLLMENT_ID);
+    expect(repository.rows.get(first.enrollmentId)?.status).toBe('Canceled');
+    expect(repository.rows.get(RESTARTED_ENROLLMENT_ID)?.status).toBe('Pending');
+    await expect(
+      provider.confirm(owner, first.enrollmentId, _totpCodeForTest(SECRET, NOW))
+    ).rejects.toMatchObject({ code: 'AUTHENTICATOR_ENROLLMENT_STALE' });
   });
 
   it('decrypts and activates only after a valid current code', async () => {

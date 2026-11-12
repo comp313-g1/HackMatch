@@ -67,6 +67,11 @@ export interface ConfirmAuthenticatorEnrollmentProviderResult {
   activatedAt: string;
 }
 
+export type AuthenticatorEnrollmentProviderStatus =
+  | { status: 'not_enrolled' }
+  | { status: 'pending'; expiresAt: string }
+  | { status: 'active'; activatedAt: string };
+
 /**
  * #267 supplies the durable implementation. Implementations must atomically
  * enforce one current enrollment per participant, pending expiry, and
@@ -74,7 +79,13 @@ export interface ConfirmAuthenticatorEnrollmentProviderResult {
  * existing active credential and email OTP fallback unchanged.
  */
 export interface AuthenticatorEnrollmentProvider {
+  getStatus(
+    owner: AuthenticatorOwnerContext
+  ): Promise<AuthenticatorEnrollmentProviderStatus>;
   begin(
+    owner: AuthenticatorOwnerContext
+  ): Promise<BeginAuthenticatorEnrollmentProviderResult>;
+  restart(
     owner: AuthenticatorOwnerContext
   ): Promise<BeginAuthenticatorEnrollmentProviderResult>;
   confirm(
@@ -112,12 +123,30 @@ export interface ConfirmAuthenticatorEnrollmentResult {
   emailOtpFallback: true;
 }
 
+export interface AuthenticatorEnrollmentStatusResult {
+  authenticator: AuthenticatorEnrollmentProviderStatus;
+  availableChallengeMethods: MfaChallengeMethod[];
+  emailOtpFallback: true;
+}
+
 const persistentProvider: AuthenticatorEnrollmentProvider = {
+  async getStatus(owner) {
+    const { persistentAuthenticatorEnrollmentProvider } = await import(
+      './persistentAuthenticatorEnrollmentProvider.js'
+    );
+    return persistentAuthenticatorEnrollmentProvider.getStatus(owner);
+  },
   async begin(owner) {
     const { persistentAuthenticatorEnrollmentProvider } = await import(
       './persistentAuthenticatorEnrollmentProvider.js'
     );
     return persistentAuthenticatorEnrollmentProvider.begin(owner);
+  },
+  async restart(owner) {
+    const { persistentAuthenticatorEnrollmentProvider } = await import(
+      './persistentAuthenticatorEnrollmentProvider.js'
+    );
+    return persistentAuthenticatorEnrollmentProvider.restart(owner);
   },
   async confirm(owner, enrollmentId, code) {
     const { persistentAuthenticatorEnrollmentProvider } = await import(
@@ -145,6 +174,31 @@ function normalizeProviderError(error: unknown): AuthenticatorEnrollmentError {
   return new AuthenticatorEnrollmentError('AUTHENTICATOR_ENROLLMENT_UNAVAILABLE', 503);
 }
 
+export async function getAuthenticatorEnrollmentStatus(
+  owner: AuthenticatorOwnerContext
+): Promise<AuthenticatorEnrollmentStatusResult> {
+  try {
+    const providerStatus = await enrollmentProvider.getStatus(owner);
+    // Explicit projection prevents repository/provider fields from reaching the client.
+    const authenticator: AuthenticatorEnrollmentProviderStatus =
+      providerStatus.status === 'active'
+        ? { status: 'active', activatedAt: providerStatus.activatedAt }
+        : providerStatus.status === 'pending'
+          ? { status: 'pending', expiresAt: providerStatus.expiresAt }
+          : { status: 'not_enrolled' };
+    return {
+      authenticator,
+      availableChallengeMethods:
+        authenticator.status === 'active'
+          ? ['authenticator_totp', 'email_otp']
+          : ['email_otp'],
+      emailOtpFallback: true,
+    };
+  } catch (error: unknown) {
+    throw normalizeProviderError(error);
+  }
+}
+
 export async function beginAuthenticatorEnrollment(
   owner: AuthenticatorOwnerContext
 ): Promise<BeginAuthenticatorEnrollmentResult> {
@@ -168,6 +222,34 @@ export async function beginAuthenticatorEnrollment(
         manualEntryKey: pending.manualEntryKey,
       },
       // An unconfirmed factor cannot be offered as a challenge method.
+      availableChallengeMethods: ['email_otp'],
+      emailOtpFallback: true,
+    };
+  } catch (error: unknown) {
+    throw normalizeProviderError(error);
+  }
+}
+
+export async function restartAuthenticatorEnrollment(
+  owner: AuthenticatorOwnerContext
+): Promise<BeginAuthenticatorEnrollmentResult> {
+  try {
+    const pending = await enrollmentProvider.restart(owner);
+    return {
+      authenticator: {
+        status: 'pending',
+        enrollmentId: pending.enrollmentId,
+        expiresAt: pending.expiresAt,
+        issuer: AUTHENTICATOR_TOTP_POLICY.issuer,
+        accountLabel: pending.accountLabel,
+        algorithm: AUTHENTICATOR_TOTP_POLICY.algorithm,
+        digits: AUTHENTICATOR_TOTP_POLICY.digits,
+        periodSeconds: AUTHENTICATOR_TOTP_POLICY.periodSeconds,
+      },
+      setup: {
+        otpauthUri: pending.otpauthUri,
+        manualEntryKey: pending.manualEntryKey,
+      },
       availableChallengeMethods: ['email_otp'],
       emailOtpFallback: true,
     };

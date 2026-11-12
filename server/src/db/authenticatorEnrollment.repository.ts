@@ -42,8 +42,15 @@ export interface ActivatedAuthenticator {
   activatedAt: string | null;
 }
 
+export interface CurrentAuthenticatorEnrollment {
+  status: 'Pending' | 'Active';
+  pending_expires_at: string | null;
+  activated_at: string | null;
+}
+
 export interface AuthenticatorEnrollmentRepository {
   createPending(input: CreatePendingAuthenticatorInput): Promise<CreatedPendingAuthenticator>;
+  restartPending(input: CreatePendingAuthenticatorInput): Promise<CreatedPendingAuthenticator>;
   findOwnedById(
     participantId: string,
     enrollmentId: string
@@ -51,6 +58,10 @@ export interface AuthenticatorEnrollmentRepository {
   findActiveByParticipantId(
     participantId: string
   ): Promise<StoredAuthenticatorEnrollment | null>;
+  /** Safe status-only projection; never selects protected secret columns. */
+  findCurrentByParticipantId(
+    participantId: string
+  ): Promise<CurrentAuthenticatorEnrollment | null>;
   activatePending(participantId: string, enrollmentId: string): Promise<ActivatedAuthenticator>;
 }
 
@@ -58,6 +69,27 @@ export const authenticatorEnrollmentRepository: AuthenticatorEnrollmentRepositor
   async createPending(input) {
     const client = getSupabaseClient();
     const { data, error } = await client.rpc('begin_authenticator_enrollment', {
+      p_participant: input.participantId,
+      p_enrollment: input.enrollmentId,
+      p_secret_ciphertext: input.protectedSecret.ciphertext,
+      p_secret_iv: input.protectedSecret.iv,
+      p_secret_auth_tag: input.protectedSecret.authTag,
+      p_key_version: input.protectedSecret.keyVersion,
+      p_expires_at: input.expiresAt,
+    });
+    if (error) throw error;
+    const row = (data as Array<Record<string, unknown>> | null)?.[0];
+    if (!row) throw new Error('TOTP_STORAGE_EMPTY_RESULT');
+    return {
+      enrollmentId: String(row.enrollment_id),
+      status: 'Pending',
+      expiresAt: String(row.expires_at),
+    };
+  },
+
+  async restartPending(input) {
+    const client = getSupabaseClient();
+    const { data, error } = await client.rpc('restart_authenticator_enrollment', {
       p_participant: input.participantId,
       p_enrollment: input.enrollmentId,
       p_secret_ciphertext: input.protectedSecret.ciphertext,
@@ -102,6 +134,21 @@ export const authenticatorEnrollmentRepository: AuthenticatorEnrollmentRepositor
       .maybeSingle();
     if (error) throw error;
     return data as StoredAuthenticatorEnrollment | null;
+  },
+
+  async findCurrentByParticipantId(participantId) {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('authenticator_enrollments')
+      .select('status, pending_expires_at, activated_at')
+      .eq('participant_id', participantId)
+      .in('status', ['Active', 'Pending'])
+      // Active sorts first and remains authoritative if a future replacement is pending.
+      .order('status', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return data as CurrentAuthenticatorEnrollment | null;
   },
 
   async activatePending(participantId, enrollmentId) {
