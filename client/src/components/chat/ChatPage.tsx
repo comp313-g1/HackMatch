@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   AuthRequiredError,
   ChatApiError,
@@ -14,8 +14,10 @@ import {
   type ChatChannelView,
   type ChatFieldErrors,
   type ChatMessageView,
+  type ChatReactionSummary,
   type PresenceStatus,
 } from './chatTypes';
+import { MessageReactions } from './MessageReactions';
 import { DirectMessagesView } from './DirectMessagesView';
 import { ChatActivityBadge, ChatUnreadStatus } from './ChatUnreadBadge';
 import { useChatUnread } from './ChatUnreadContext';
@@ -120,6 +122,13 @@ export function ChatPage({
 
   const selectedChannel =
     channels.find((c) => c.id === selectedChannelId) ?? null;
+
+  // US-035 / #406: a confirmed reaction change updates only that message's reactions.
+  const updateMessageReactions = useCallback(
+    (messageId: string, reactions: ChatReactionSummary[]) =>
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions } : m))),
+    []
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -712,6 +721,12 @@ export function ChatPage({
                       <p className="mt-1 text-sm text-ink whitespace-pre-wrap break-words">
                         {message.body}
                       </p>
+                      <MessageReactions
+                        target={{ kind: 'channel', channelId: selectedChannelId }}
+                        messageId={message.id}
+                        reactions={message.reactions}
+                        onReactionsChange={updateMessageReactions}
+                      />
                     </li>
                   ))}
                 </ul>

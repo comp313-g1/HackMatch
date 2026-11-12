@@ -26,6 +26,7 @@ import { AccountEnforcementPage } from './components/accounts/AccountEnforcement
 import { AuditRecordsPage } from './components/audit/AuditRecordsPage';
 import { ChatPage } from './components/chat/ChatPage';
 import { ChatUnreadProvider } from './components/chat/ChatUnreadContext';
+import { ChatCapabilitiesProvider } from './components/chat/ChatCapabilitiesContext';
 import { ChatNavigationButton } from './components/chat/ChatUnreadBadge';
 import {
   DirectMessageLauncherProvider,
@@ -386,6 +387,10 @@ export function App(): React.JSX.Element {
       sessionKey={sessionReady ? currentUser?.uid ?? null : null}
       enabled={sessionReady && authRole === 'PART'}
     >
+      <ChatCapabilitiesProvider
+        sessionKey={sessionReady ? currentUser?.uid ?? null : null}
+        enabled={sessionReady && authRole === 'PART'}
+      >
       <DirectMessageLauncherProvider value={directMessageLauncher}>
       <div className="flex flex-col min-h-screen bg-cream text-ink font-sans">
       {/* Skip to Content Link for WCAG 2.1 AA Compliance per NR-018 */}
@@ -1241,6 +1246,7 @@ export function App(): React.JSX.Element {
       )}
       </div>
       </DirectMessageLauncherProvider>
+      </ChatCapabilitiesProvider>
     </ChatUnreadProvider>
   );
 }

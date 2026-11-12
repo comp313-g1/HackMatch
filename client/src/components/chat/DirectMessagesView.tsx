@@ -15,9 +15,11 @@ import {
 } from './directMessageLauncher';
 import type {
   ChatFieldErrors,
+  ChatReactionSummary,
   DirectMessageThreadView,
   DirectMessageView,
 } from './chatTypes';
+import { MessageReactions } from './MessageReactions';
 import { ChatActivityBadge } from './ChatUnreadBadge';
 import { useChatUnread } from './ChatUnreadContext';
 
@@ -122,6 +124,14 @@ export function DirectMessagesView({
   const draft = selectedThreadId ? drafts[selectedThreadId] ?? '' : '';
   // #433: true only when YOU blocked the other person (the server never reveals their block).
   const peerBlocked = selectedThread?.youBlockedPeer === true;
+
+  // US-035 / #406: a confirmed reaction change updates only that message's reactions;
+  // it never reorders the inbox or touches unread state.
+  const updateMessageReactions = useCallback(
+    (messageId: string, reactions: ChatReactionSummary[]) =>
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions } : m))),
+    []
+  );
 
   const loadInbox = useCallback(async (): Promise<void> => {
     const requestId = ++inboxRequestId.current;
@@ -613,6 +623,17 @@ export function DirectMessagesView({
                           </time>
                         </div>
                         <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink">{message.body}</p>
+                        {selectedThreadId && (
+                          <MessageReactions
+                            target={{ kind: 'directMessage', threadId: selectedThreadId }}
+                            messageId={message.id}
+                            reactions={message.reactions}
+                            onReactionsChange={updateMessageReactions}
+                            // Mirrors the composer: the server already told us YOU blocked the peer.
+                            // Any other denial (e.g. their block) comes back from the server.
+                            interactive={!peerBlocked}
+                          />
+                        )}
                       </li>
                     ))}
                   </ul>

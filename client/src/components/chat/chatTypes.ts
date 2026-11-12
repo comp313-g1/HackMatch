@@ -29,6 +29,52 @@ export interface TeamChatChannelView extends ChatChannelView {
   teamId: string;
 }
 
+/**
+ * US-035 / #405–#406 approved reaction codes, in the canonical display order
+ * (docs/04_requirements/us035_rich_chat_policy.md, section 4).
+ */
+export const CHAT_REACTION_CODES = [
+  'thumbs_up',
+  'heart',
+  'laugh',
+  'party',
+  'surprised',
+  'sad',
+  'eyes',
+  'check',
+] as const;
+
+export type ChatReactionCode = (typeof CHAT_REACTION_CODES)[number];
+
+/** Safe server aggregate for one reaction on one message. Never identifies who reacted. */
+export interface ChatReactionSummary {
+  reaction: ChatReactionCode;
+  count: number;
+  reactedByMe: boolean;
+}
+
+/** US-035 / #405: what the server currently offers (GET /api/chat/capabilities). */
+export interface RichChatCapabilities {
+  reactions: { enabled: boolean; allowedReactions: ChatReactionCode[] };
+  typing: { enabled: false };
+  attachments: { enabled: false };
+  voiceVideo: false;
+}
+
+/** Which conversation a reacted message belongs to; selects the #405 route family. */
+export type ChatReactionTarget =
+  | { kind: 'channel'; channelId: string }
+  | { kind: 'team'; teamId: string }
+  | { kind: 'directMessage'; threadId: string };
+
+export interface ChatReactionMutationResult {
+  messageId: string;
+  reaction: ChatReactionCode;
+  reactedByMe: boolean;
+  changed: boolean;
+  reactions: ChatReactionSummary[];
+}
+
 export interface ChatMessageView {
   id: string;
   channelId: string;
@@ -36,6 +82,8 @@ export interface ChatMessageView {
   authorHandle: string | null;
   body: string;
   createdAt: string;
+  /** US-035 / #405: present only while the server's reaction feature is on. */
+  reactions?: ChatReactionSummary[];
 }
 
 export interface CreateChannelInput {
@@ -58,6 +106,8 @@ export interface DirectMessageView {
   authorHandle: string | null;
   body: string;
   createdAt: string;
+  /** US-035 / #405: present only while the server's reaction feature is on. */
+  reactions?: ChatReactionSummary[];
 }
 
 /** US-032 / #389 safe inbox/thread projection. Participant IDs are never rendered by the UI. */

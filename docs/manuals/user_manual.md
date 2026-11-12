@@ -63,7 +63,7 @@ The current application supports:
 - owner-only authenticator-app enrollment, replacement, disable, and recovery-code management for Participants and Platform Administrators; and
 - ADMIN-only content moderation, account enforcement, and a read-only audit log.
 
-The current application does **not** provide a public hackathon directory, hackathon submission, event approval workflow, a "new message" button for starting a direct message from a profile, block or unblock controls, attachments, voice/video, reactions, or typing indicators. Authenticator apps and recovery codes can be set up and managed, but neither is currently accepted at sign-in; every sign-in still uses email OTP.
+The current application does **not** provide a public hackathon directory, hackathon submission, event approval workflow, a "new message" button for starting a direct message from a profile, block or unblock controls, attachments, typing indicators, or voice/video. When message reactions are turned on for the platform, Participants can add or remove one of a fixed set of reactions on forum, team-chat, and direct messages and see how many people chose each one; who reacted is never shown. If reactions are turned off, chat works as usual without them. Authenticator apps and recovery codes can be set up and managed, but neither is currently accepted at sign-in; every sign-in still uses email OTP.
 
 ## 2. Roles and access
 

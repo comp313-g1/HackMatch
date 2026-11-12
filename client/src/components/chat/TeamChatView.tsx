@@ -9,8 +9,10 @@ import {
 import type {
   ChatFieldErrors,
   ChatMessageView,
+  ChatReactionSummary,
   TeamChatChannelView,
 } from './chatTypes';
+import { MessageReactions } from './MessageReactions';
 import { ChatActivityBadge, ChatUnreadStatus } from './ChatUnreadBadge';
 import { useChatUnread } from './ChatUnreadContext';
 
@@ -85,6 +87,13 @@ export function TeamChatView({
   const [readStateError, setReadStateError] = useState<string | null>(null);
   const loadRequestId = useRef(0);
   const sendRequestId = useRef(0);
+
+  // US-035 / #406: a confirmed reaction change updates only that message's reactions.
+  const updateMessageReactions = useCallback(
+    (messageId: string, reactions: ChatReactionSummary[]) =>
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions } : m))),
+    []
+  );
 
   // Never retain private content or a draft for a previously selected team.
   useEffect(() => {
@@ -346,6 +355,12 @@ export function TeamChatView({
                       <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink">
                         {message.body}
                       </p>
+                      <MessageReactions
+                        target={{ kind: 'team', teamId }}
+                        messageId={message.id}
+                        reactions={message.reactions}
+                        onReactionsChange={updateMessageReactions}
+                      />
                     </li>
                   ))}
                 </ul>

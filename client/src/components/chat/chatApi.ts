@@ -1,20 +1,26 @@
 import { authFetch, AuthRequiredError } from '../../config/authFetch';
-import type {
-  ChatChannelView,
-  ChatFieldErrors,
-  ChatMessageView,
-  ChatPrivacyFlags,
-  ChatUnreadSummary,
-  CreateChannelInput,
-  DirectMessageThreadDetail,
-  DirectMessageThreadView,
-  DirectMessageView,
-  PresenceStatus,
-  PresenceView,
-  MarkChatConversationReadInput,
-  MarkChatConversationReadResult,
-  SendMessageInput,
-  TeamChatChannelView,
+import {
+  CHAT_REACTION_CODES,
+  type ChatChannelView,
+  type ChatFieldErrors,
+  type ChatMessageView,
+  type ChatPrivacyFlags,
+  type ChatReactionCode,
+  type ChatReactionMutationResult,
+  type ChatReactionSummary,
+  type ChatReactionTarget,
+  type ChatUnreadSummary,
+  type CreateChannelInput,
+  type DirectMessageThreadDetail,
+  type DirectMessageThreadView,
+  type DirectMessageView,
+  type PresenceStatus,
+  type PresenceView,
+  type MarkChatConversationReadInput,
+  type MarkChatConversationReadResult,
+  type RichChatCapabilities,
+  type SendMessageInput,
+  type TeamChatChannelView,
 } from './chatTypes';
 
 export { AuthRequiredError };
@@ -25,7 +31,9 @@ export class ChatApiError extends Error {
     readonly code: string,
     readonly errors?: ChatFieldErrors,
     readonly submitted?: unknown,
-    message?: string
+    message?: string,
+    /** US-035 / #406: seconds from a 429 Retry-After header (or body), when the server sent one. */
+    readonly retryAfterSeconds?: number
   ) {
     super(message || code);
     this.name = 'ChatApiError';
@@ -38,6 +46,7 @@ async function parseErrorBody(res: Response): Promise<{
   errors?: ChatFieldErrors;
   fieldErrors?: ChatFieldErrors;
   submitted?: unknown;
+  retryAfterSeconds?: unknown;
 }> {
   try {
     return (await res.json()) as {
@@ -46,10 +55,18 @@ async function parseErrorBody(res: Response): Promise<{
       errors?: ChatFieldErrors;
       fieldErrors?: ChatFieldErrors;
       submitted?: unknown;
+      retryAfterSeconds?: unknown;
     };
   } catch {
     return {};
   }
+}
+
+function parseRetryAfter(res: Response, body: { retryAfterSeconds?: unknown }): number | undefined {
+  const header = Number(res.headers?.get?.('Retry-After') ?? NaN);
+  if (Number.isFinite(header) && header > 0) return Math.ceil(header);
+  const fromBody = Number(body.retryAfterSeconds);
+  return Number.isFinite(fromBody) && fromBody > 0 ? Math.ceil(fromBody) : undefined;
 }
 
 function throwFromResponse(
@@ -62,7 +79,8 @@ function throwFromResponse(
     body.code || 'UNKNOWN_ERROR',
     body.fieldErrors || body.errors,
     body.submitted ?? fallbackSubmitted,
-    body.error || `Request failed with status ${res.status}`
+    body.error || `Request failed with status ${res.status}`,
+    res.status === 429 ? parseRetryAfter(res, body) : undefined
   );
 }
 
@@ -428,5 +446,105 @@ export async function markChatConversationRead(
     advanced: data.advanced,
     unreadCount: data.unreadCount,
     unreadMentionCount: data.unreadMentionCount,
+  };
+}
+
+const REACTION_CODE_SET = new Set<string>(CHAT_REACTION_CODES);
+
+function isReactionCode(value: unknown): value is ChatReactionCode {
+  return typeof value === 'string' && REACTION_CODE_SET.has(value);
+}
+
+function invalidReactionResponse(message: string): ChatApiError {
+  return new ChatApiError(502, 'INVALID_RESPONSE', { _form: message }, undefined, message);
+}
+
+/**
+ * US-035 / #406: validates a server reaction aggregate and returns it in the approved order.
+ * Only the safe fields are kept; anything unexpected (unknown code, bad count) is rejected
+ * rather than rendered.
+ */
+export function normalizeReactionSummaries(value: unknown): ChatReactionSummary[] {
+  if (!Array.isArray(value)) throw invalidReactionResponse('The server returned invalid reactions.');
+  const seen = new Set<string>();
+  const summaries = value.map((entry: unknown) => {
+    const row = (entry ?? {}) as Record<string, unknown>;
+    if (
+      !isReactionCode(row.reaction) ||
+      seen.has(row.reaction) ||
+      !Number.isSafeInteger(row.count) ||
+      (row.count as number) < 1 ||
+      typeof row.reactedByMe !== 'boolean'
+    ) {
+      throw invalidReactionResponse('The server returned invalid reactions.');
+    }
+    seen.add(row.reaction);
+    return { reaction: row.reaction, count: row.count as number, reactedByMe: row.reactedByMe };
+  });
+  return summaries.sort(
+    (a, b) => CHAT_REACTION_CODES.indexOf(a.reaction) - CHAT_REACTION_CODES.indexOf(b.reaction)
+  );
+}
+
+/** Loads which rich-chat features the server offers. The server stays authoritative per route. */
+export async function fetchChatCapabilities(): Promise<RichChatCapabilities> {
+  const data = await requestJson<{ capabilities?: { reactions?: { enabled?: unknown; allowedReactions?: unknown } } }>(
+    '/api/chat/capabilities',
+    { method: 'GET' }
+  );
+  const reactions = data.capabilities?.reactions;
+  const enabled = reactions?.enabled === true;
+  const allowed = Array.isArray(reactions?.allowedReactions)
+    ? CHAT_REACTION_CODES.filter((code) => (reactions!.allowedReactions as unknown[]).includes(code))
+    : [];
+  return {
+    reactions: { enabled: enabled && allowed.length > 0, allowedReactions: enabled ? allowed : [] },
+    // Not implemented yet (#407–#410); never reported as available by the client.
+    typing: { enabled: false },
+    attachments: { enabled: false },
+    voiceVideo: false,
+  };
+}
+
+function reactionPath(target: ChatReactionTarget, messageId: string, reaction: ChatReactionCode): string {
+  const tail = `messages/${encodeURIComponent(messageId)}/reactions/${encodeURIComponent(reaction)}`;
+  switch (target.kind) {
+    case 'channel':
+      return `/api/chat/channels/${encodeURIComponent(target.channelId)}/${tail}`;
+    case 'team':
+      return `/api/teams/${encodeURIComponent(target.teamId)}/chat/${tail}`;
+    case 'directMessage':
+      return `/api/direct-messages/threads/${encodeURIComponent(target.threadId)}/${tail}`;
+  }
+}
+
+/**
+ * US-035 / #406: add (`present: true`, PUT) or remove (`present: false`, DELETE) one of the
+ * caller's reactions. Both are idempotent on the server. No body is sent: the server takes the
+ * reactor from the authenticated session. Resolves to the stored aggregate for the message.
+ */
+export async function setChatMessageReaction(
+  target: ChatReactionTarget,
+  messageId: string,
+  reaction: ChatReactionCode,
+  present: boolean
+): Promise<ChatReactionMutationResult> {
+  const data = await requestJson<Record<string, unknown>>(reactionPath(target, messageId, reaction), {
+    method: present ? 'PUT' : 'DELETE',
+  });
+  if (
+    data.messageId !== messageId ||
+    data.reaction !== reaction ||
+    typeof data.reactedByMe !== 'boolean' ||
+    typeof data.changed !== 'boolean'
+  ) {
+    throw invalidReactionResponse('The server returned an invalid reaction response.');
+  }
+  return {
+    messageId,
+    reaction,
+    reactedByMe: data.reactedByMe,
+    changed: data.changed,
+    reactions: normalizeReactionSummaries(data.reactions),
   };
 }
