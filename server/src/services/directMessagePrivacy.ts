@@ -1,5 +1,6 @@
 import type { DirectMessage, DirectMessageThread } from '../db/directMessage.repository.js';
 import type { ChatReactionSummary } from '../db/chatReactionModel.js';
+import type { ChatAttachmentView } from './chatAttachmentViews.js';
 import {
   chatPrivacyFlags,
   isPrivateChatKey,
@@ -95,6 +96,8 @@ export interface DirectMessageView {
   createdAt: string;
   /** US-035 / #405: present only while reactions are enabled; counts and own state only. */
   reactions?: ChatReactionSummary[];
+  /** US-035 / #409: present only while attachments are usable; safe metadata, never URLs. */
+  attachments?: ChatAttachmentView[];
 }
 
 export interface DirectInboxItemView extends DirectThreadView {

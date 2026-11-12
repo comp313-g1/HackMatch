@@ -28,7 +28,23 @@ import { validateReactionParams, type ReactionTarget } from '../validators/chatR
 import { limitTypingSignals, requireTypingEnabled } from '../middleware/richChatTyping.js';
 import { validateTypingSignalBody } from '../validators/chatTyping.validator.js';
 import { openTypingStream } from '../services/typingStream.js';
-import { authorizePublicChannelViewer, signalPublicChannelTyping } from '../services/chatTypingAccess.js';
+import {
+  authorizePublicChannelViewer,
+  findPublicChannelOrThrow,
+  signalPublicChannelTyping,
+} from '../services/chatTypingAccess.js';
+import {
+  attachmentAccessHandler,
+  attachmentUploadHandler,
+  precheckAttachmentRequest,
+  readAttachmentBody,
+  rejectAttachmentIdsWhenUnavailable,
+  requireAttachmentsUsable,
+  resolveAttachmentConversation,
+  scheduleAttachmentMaintenance,
+  validateAttachmentIdParam,
+} from '../middleware/richChatAttachments.js';
+import { contentDisposition, readAttachmentContent } from '../services/chatAttachments.js';
 
 export const chatRouter = Router();
 
@@ -194,6 +210,7 @@ chatRouter.post(
   validateChatChannelIdParam,
   requireJsonObjectBody,
   validateSendMessageBody,
+  rejectAttachmentIdsWhenUnavailable,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     res.setHeader('Cache-Control', 'no-store');
     try {
@@ -202,6 +219,7 @@ chatRouter.post(
         channelId,
         authorId: req.participant!.id,
         body: req.body.body,
+        attachmentIds: req.body.attachmentIds,
       });
       res.status(201).json(buildChatSuccessPayload({ status: 'ok', message }));
     } catch (err) {
@@ -298,3 +316,61 @@ chatRouter.get(
     }
   }
 );
+
+/**
+ * POST /api/chat/channels/:channelId/attachments
+ * US-035 / #409: one streamed multipart `file` per request. Needs current send
+ * access to the public forum before any file bytes are accepted.
+ */
+chatRouter.post(
+  '/channels/:channelId/attachments',
+  ...chatAuthGuard,
+  requireAttachmentsUsable,
+  validateChatChannelIdParam,
+  resolveAttachmentConversation(async (req) => ({
+    scope: 'channel',
+    conversationId: (await findPublicChannelOrThrow(String(req.params.channelId))).id,
+  })),
+  precheckAttachmentRequest,
+  readAttachmentBody,
+  scheduleAttachmentMaintenance,
+  attachmentUploadHandler(buildChatSuccessPayload)
+);
+
+/** GET /api/chat/channels/:channelId/attachments/:attachmentId/access — 60-second download link. */
+chatRouter.get(
+  '/channels/:channelId/attachments/:attachmentId/access',
+  ...chatAuthGuard,
+  requireAttachmentsUsable,
+  validateChatChannelIdParam,
+  validateAttachmentIdParam,
+  attachmentAccessHandler(
+    async (req) => ({
+      scope: 'channel',
+      conversationId: (await findPublicChannelOrThrow(String(req.params.channelId))).id,
+    }),
+    buildChatSuccessPayload
+  )
+);
+
+/**
+ * GET /api/chat/attachments/content?token=…
+ * US-035 / #409: serves the file for a valid, unexpired (60 s) token after re-checking
+ * that the token's viewer can still read the conversation. The token is the only
+ * credential here, so the route has no bearer guard; it is redacted from request logs.
+ */
+chatRouter.get('/attachments/content', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  try {
+    const content = await readAttachmentContent(req.query.token);
+    res.status(200);
+    res.setHeader('Content-Type', content.mimeType === 'text/plain' ? 'text/plain; charset=utf-8' : content.mimeType);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', contentDisposition(content.filename, content.inline));
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+    res.setHeader('Content-Length', String(content.bytes.length));
+    res.end(Buffer.from(content.bytes));
+  } catch (err) {
+    handleChatError(err, res, next);
+  }
+});

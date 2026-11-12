@@ -3,7 +3,7 @@ import { isPublicChatChannel } from '../db/chatModel.js';
 import { participantsRepository } from '../db/participants.repository.js';
 import { profileRepository } from '../db/profile.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
-import type { Participant } from '../db/types.js';
+import type { ChatChannel, Participant } from '../db/types.js';
 import { ChatServiceError } from './chat.js';
 import { typingHub, type TypingConversation } from './chatTyping.js';
 import { authorizeDirectThreadAccess, isEligibleDirectMessageParticipant } from './directMessageAccess.js';
@@ -20,19 +20,34 @@ import { peerVisiblePresenceStatus } from './presence.js';
 const channelNotFound = () => new ChatServiceError(404, 'CHANNEL_NOT_FOUND', 'Chat channel not found.');
 const teamChannelNotFound = () => new ChatServiceError(404, 'TEAM_CHANNEL_NOT_FOUND', 'Team channel not found.');
 
-async function findPublicChannelOrThrow(channelId: string): Promise<void> {
+/** Public forum only; a private team channel is indistinguishable from a missing one. Shared with #409 uploads. */
+export async function findPublicChannelOrThrow(channelId: string): Promise<ChatChannel> {
   const channel = await chatRepository.findChannelById(channelId.trim().toLowerCase());
-  // A private team channel is indistinguishable from a missing one, as on the message routes.
   if (!channel || !isPublicChatChannel(channel)) throw channelNotFound();
+  return channel;
 }
 
-async function findTeamChannelOrThrow(teamId: string): Promise<void> {
+/** The team's existing private channel; never provisions a missing one. Shared with #409 uploads. */
+export async function findTeamChannelOrThrow(teamId: string): Promise<ChatChannel> {
   const id = teamId.trim().toLowerCase();
   const channel = await chatRepository.findChannelByTeamId(id);
-  // Unlike opening the chat, typing never provisions a missing channel.
   if (!channel || channel.channel_type !== 'team' || channel.team_id?.toLowerCase() !== id) {
     throw teamChannelNotFound();
   }
+  return channel;
+}
+
+/**
+ * Send rules a team channel adds beyond requireConfirmedTeamMember: the channel exists and
+ * the team is not disbanded (read-only), as for messages. Shared with #409 uploads.
+ */
+export async function assertTeamChannelWritable(teamId: string): Promise<ChatChannel> {
+  const channel = await findTeamChannelOrThrow(teamId);
+  const team = await teamsRepository.findTeamById(teamId.trim().toLowerCase());
+  if (!team || team.recruitment_status === 'Disbanded') {
+    throw new ChatServiceError(403, 'TEAM_CHANNEL_READ_ONLY', 'This team channel is read-only.');
+  }
+  return channel;
 }
 
 /** Fresh account state for a delivery-time re-check. */
@@ -67,11 +82,7 @@ export async function signalPublicChannelTyping(sender: Participant, channelId: 
 
 /** Caller already passed requireConfirmedTeamMember. A disbanded team is read-only, as for messages. */
 export async function signalTeamTyping(sender: Participant, teamId: string, typing: boolean): Promise<void> {
-  await findTeamChannelOrThrow(teamId);
-  const team = await teamsRepository.findTeamById(teamId.trim().toLowerCase());
-  if (!team || team.recruitment_status === 'Disbanded') {
-    throw new ChatServiceError(403, 'TEAM_CHANNEL_READ_ONLY', 'This team channel is read-only.');
-  }
+  await assertTeamChannelWritable(teamId);
   await applySignal(sender, { conversationType: 'team', conversationId: teamId }, typing);
 }
 

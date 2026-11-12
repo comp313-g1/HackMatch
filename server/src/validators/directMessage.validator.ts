@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { sanitizeSubmittedDirectMessageDraft } from '../services/directMessagePrivacy.js';
 import { UUID_REGEX } from './team.validator.js';
+import { parseAttachmentIds } from './chatAttachment.validator.js';
 import {
   CHAT_MESSAGE_BODY_MAX_LENGTH,
   isChatMessageBodyTooLong,
@@ -8,7 +9,7 @@ import {
 } from '../db/chatModel.js';
 
 const ALLOWED_KEYS = new Set(['participantId']);
-const SEND_MESSAGE_KEYS = new Set(['body']);
+const SEND_MESSAGE_KEYS = new Set(['body', 'attachmentIds']);
 
 /**
  * US-032 / #386: body of POST /api/direct-messages/threads is exactly `{ participantId: <uuid> }`.
@@ -122,7 +123,7 @@ export const validateDmThreadIdParam: RequestHandler = (
  */
 export function validateSendMessageInput(raw: unknown): {
   errors: Record<string, string>;
-  sanitized: { body: string } | null;
+  sanitized: { body: string; attachmentIds?: string[] } | null;
   submitted: unknown;
 } {
   const submitted = raw;
@@ -152,14 +153,17 @@ export function validateSendMessageInput(raw: unknown): {
   } else if (isChatMessageBodyTooLong(record.body)) {
     errors.body = `body must be at most ${CHAT_MESSAGE_BODY_MAX_LENGTH} characters.`;
   }
+  const attachments = parseAttachmentIds(record.attachmentIds);
+  if ('error' in attachments) errors.attachmentIds = attachments.error;
 
   if (Object.keys(errors).length > 0) {
     return { errors, sanitized: null, submitted };
   }
 
+  const ids = 'ids' in attachments ? attachments.ids : [];
   return {
     errors: {},
-    sanitized: { body: bodyNormalized! },
+    sanitized: { body: bodyNormalized!, ...(ids.length > 0 ? { attachmentIds: ids } : {}) },
     submitted,
   };
 }

@@ -27,6 +27,8 @@ import {
 import type { Participant } from '../db/types.js';
 import { ChatServiceError } from './chat.js';
 import { withChatReactionSummaries, withEmptyChatReactions } from './chatReactionSummaries.js';
+import { chatAttachmentRepository } from '../db/chatAttachment.repository.js';
+import { describeAttachmentSendError, withChatAttachmentSummaries } from './chatAttachmentViews.js';
 import {
   toDirectInboxItemView,
   toDirectMessageView,
@@ -351,11 +353,14 @@ export async function getDmThread(
 
   const callerId = input.participantId.trim();
   // US-035 / #405: one batched aggregate query for the whole thread, only when enabled.
-  const messages = await withChatReactionSummaries(
+  const messages = await withChatAttachmentSummaries(
     'directMessage',
-    callerId,
-    sortedMessages.map((message) =>
-      toDirectMessageView(message, callerId, handles.get(message.author_id) ?? null)
+    await withChatReactionSummaries(
+      'directMessage',
+      callerId,
+      sortedMessages.map((message) =>
+        toDirectMessageView(message, callerId, handles.get(message.author_id) ?? null)
+      )
     )
   );
 
@@ -403,6 +408,8 @@ export async function sendDmMessage(
     threadId: string;
     authorId: string;
     body: string;
+    /** US-035 / #409: uploads to link in the same transaction as the message. */
+    attachmentIds?: string[];
   },
   deps: DirectMessageServiceDeps = {}
 ): Promise<DirectMessageView> {
@@ -451,19 +458,30 @@ export async function sendDmMessage(
 
   let createdMessage: DirectMessage;
   try {
-    createdMessage = await dmRepo.createMessage({
-      thread_id: thread.id,
-      author_id: input.authorId.trim(),
-      body: normalizedBody,
-    });
+    createdMessage =
+      input.attachmentIds && input.attachmentIds.length > 0
+        ? await chatAttachmentRepository.sendDirectMessage({
+            participantId: input.authorId.trim(),
+            threadId: thread.id,
+            body: normalizedBody,
+            attachmentIds: input.attachmentIds,
+          })
+        : await dmRepo.createMessage({
+            thread_id: thread.id,
+            author_id: input.authorId.trim(),
+            body: normalizedBody,
+          });
   } catch (err) {
+    const described = describeAttachmentSendError(err);
+    if (described) throw new DirectMessageServiceError(described.status, described.code, described.message);
     throw mapDirectMessageWriteError(err) ?? err;
   }
 
   const authorProfile = await profileRepo.findProfileByParticipantId(
     input.authorId.trim()
   );
-  return withEmptyChatReactions(
-    toDirectMessageView(createdMessage, input.authorId.trim(), authorProfile?.handle ?? null)
-  );
+  const [view] = await withChatAttachmentSummaries('directMessage', [
+    toDirectMessageView(createdMessage, input.authorId.trim(), authorProfile?.handle ?? null),
+  ]);
+  return withEmptyChatReactions(view!);
 }

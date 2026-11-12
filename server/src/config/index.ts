@@ -40,6 +40,7 @@ export interface ServerConfig {
   richChat: {
     reactionsEnabled: boolean;
     typingEnabled: boolean;
+    attachmentsEnabled: boolean;
   };
 }
 
@@ -73,6 +74,7 @@ export const config: ServerConfig = {
   richChat: {
     reactionsEnabled: process.env.RICH_CHAT_REACTIONS_ENABLED === 'true',
     typingEnabled: process.env.RICH_CHAT_TYPING_ENABLED === 'true',
+    attachmentsEnabled: process.env.RICH_CHAT_ATTACHMENTS_ENABLED === 'true',
   },
 };
 

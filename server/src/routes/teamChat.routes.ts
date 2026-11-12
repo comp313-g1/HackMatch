@@ -20,7 +20,23 @@ import { validateReactionParams, type ReactionTarget } from '../validators/chatR
 import { limitTypingSignals, requireTypingEnabled } from '../middleware/richChatTyping.js';
 import { validateTypingSignalBody } from '../validators/chatTyping.validator.js';
 import { openTypingStream } from '../services/typingStream.js';
-import { authorizeTeamViewer, signalTeamTyping } from '../services/chatTypingAccess.js';
+import {
+  assertTeamChannelWritable,
+  authorizeTeamViewer,
+  findTeamChannelOrThrow,
+  signalTeamTyping,
+} from '../services/chatTypingAccess.js';
+import {
+  attachmentAccessHandler,
+  attachmentUploadHandler,
+  precheckAttachmentRequest,
+  readAttachmentBody,
+  rejectAttachmentIdsWhenUnavailable,
+  requireAttachmentsUsable,
+  resolveAttachmentConversation,
+  scheduleAttachmentMaintenance,
+  validateAttachmentIdParam,
+} from '../middleware/richChatAttachments.js';
 
 /**
  * US-031 / #381 / FR-090 — private team channel, mounted at /api/teams/:teamId/chat.
@@ -89,6 +105,7 @@ teamChatRouter.post(
   ...teamChatGuard,
   requireJsonObjectBody,
   validateSendMessageBody,
+  rejectAttachmentIdsWhenUnavailable,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     res.setHeader('Cache-Control', 'no-store');
     try {
@@ -96,6 +113,7 @@ teamChatRouter.post(
         teamId: teamIdOf(req),
         authorId: req.participant!.id,
         body: req.body.body,
+        attachmentIds: req.body.attachmentIds,
       });
       res.status(201).json(buildChatSuccessPayload({ status: 'ok', message }));
     } catch (err) {
@@ -188,4 +206,38 @@ teamChatRouter.get(
       handleError(err, res, next);
     }
   }
+);
+
+/**
+ * POST /api/teams/:teamId/chat/attachments
+ * US-035 / #409: confirmed members of a live team only; a disbanded team is read-only.
+ */
+teamChatRouter.post(
+  '/attachments',
+  ...participantAuthGuard,
+  requireAttachmentsUsable,
+  validateTeamIdParams,
+  requireConfirmedTeamMember,
+  resolveAttachmentConversation(async (req) => ({
+    scope: 'channel',
+    conversationId: (await assertTeamChannelWritable(teamIdOf(req))).id,
+  })),
+  precheckAttachmentRequest,
+  readAttachmentBody,
+  scheduleAttachmentMaintenance,
+  attachmentUploadHandler(buildChatSuccessPayload)
+);
+
+/** GET /api/teams/:teamId/chat/attachments/:attachmentId/access — read access (history stays readable). */
+teamChatRouter.get(
+  '/attachments/:attachmentId/access',
+  ...participantAuthGuard,
+  requireAttachmentsUsable,
+  validateTeamIdParams,
+  requireConfirmedTeamMember,
+  validateAttachmentIdParam,
+  attachmentAccessHandler(
+    async (req) => ({ scope: 'channel', conversationId: (await findTeamChannelOrThrow(teamIdOf(req))).id }),
+    buildChatSuccessPayload
+  )
 );

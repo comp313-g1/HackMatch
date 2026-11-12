@@ -32,6 +32,17 @@ import { limitTypingSignals, requireTypingEnabled } from '../middleware/richChat
 import { validateTypingSignalBody } from '../validators/chatTyping.validator.js';
 import { openTypingStream } from '../services/typingStream.js';
 import { authorizeDirectMessageViewer, signalDirectMessageTyping } from '../services/chatTypingAccess.js';
+import {
+  attachmentAccessHandler,
+  attachmentUploadHandler,
+  precheckAttachmentRequest,
+  readAttachmentBody,
+  rejectAttachmentIdsWhenUnavailable,
+  requireAttachmentsUsable,
+  resolveAttachmentConversation,
+  scheduleAttachmentMaintenance,
+  validateAttachmentIdParam,
+} from '../middleware/richChatAttachments.js';
 
 export const directMessageRouter = Router();
 
@@ -178,6 +189,7 @@ directMessageRouter.post(
   requireDirectThreadSendAccess,
   requireJsonObjectBody,
   validateSendMessageBody,
+  rejectAttachmentIdsWhenUnavailable,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     res.setHeader('Cache-Control', 'no-store');
     try {
@@ -185,6 +197,7 @@ directMessageRouter.post(
         threadId: threadIdOf(req),
         authorId: req.participant!.id,
         body: req.body.body,
+        attachmentIds: req.body.attachmentIds,
       });
       res.status(201).json(buildDirectMessageSuccessPayload({ status: 'ok', message }));
     } catch (err) {
@@ -317,4 +330,33 @@ directMessageRouter.get(
     const access = authorizeDirectMessageViewer(req.participant!, threadIdOf(req));
     openTypingStream(req, res, { participantId: req.participant!.id, ...access });
   }
+);
+
+/**
+ * POST /api/direct-messages/threads/:threadId/attachments
+ * US-035 / #409: needs SEND access (participant, eligible peer, no block either way).
+ */
+directMessageRouter.post(
+  '/threads/:threadId/attachments',
+  ...directMessageAuthGuard,
+  requireAttachmentsUsable,
+  requireDirectThreadSendAccess,
+  resolveAttachmentConversation(async (req) => ({ scope: 'directMessage', conversationId: threadIdOf(req).toLowerCase() })),
+  precheckAttachmentRequest,
+  readAttachmentBody,
+  scheduleAttachmentMaintenance,
+  attachmentUploadHandler(buildDirectMessageSuccessPayload)
+);
+
+/** GET /api/direct-messages/threads/:threadId/attachments/:attachmentId/access — read access, as for history. */
+directMessageRouter.get(
+  '/threads/:threadId/attachments/:attachmentId/access',
+  ...directMessageAuthGuard,
+  requireAttachmentsUsable,
+  requireDirectThreadParticipant,
+  validateAttachmentIdParam,
+  attachmentAccessHandler(
+    async (req) => ({ scope: 'directMessage', conversationId: threadIdOf(req).toLowerCase() }),
+    buildDirectMessageSuccessPayload
+  )
 );

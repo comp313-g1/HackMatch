@@ -4,6 +4,7 @@ import {
   startNotificationRealtimeBridge,
   type NotificationRealtimeBridge,
 } from './services/notificationRealtime.js';
+import { areAttachmentsUsable, runAttachmentMaintenance } from './services/chatAttachments.js';
 
 // Validate environment variables strictly at process startup
 validateEnv();
@@ -20,10 +21,19 @@ try {
   console.warn('[SERVER] Notification Realtime bridge not started:', err);
 }
 
+// US-035 / #409: expire unsent uploads (24 h) and delete storage objects whose
+// metadata is gone. Bounded work per run; uploads also trigger it opportunistically.
+const ATTACHMENT_MAINTENANCE_MS = 15 * 60_000;
+const attachmentMaintenance = setInterval(() => {
+  if (areAttachmentsUsable()) void runAttachmentMaintenance().catch(() => undefined);
+}, ATTACHMENT_MAINTENANCE_MS);
+attachmentMaintenance.unref();
+
 // Graceful shutdown handling
 function handleShutdown(signal: string) {
   console.log(`[SERVER] Received ${signal}. Closing HTTP server...`);
   void notificationBridge?.stop().catch(() => undefined);
+  clearInterval(attachmentMaintenance);
   server.close(() => {
     console.log('[SERVER] HTTP server closed gracefully.');
     process.exit(0);

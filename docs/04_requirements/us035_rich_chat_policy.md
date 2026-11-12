@@ -4,7 +4,7 @@
 
 **Story / requirement:** [US-035](../02_user_stories/user_stories.md#us-035) / [FR-093](./functional_nonfunctional_requirements.md#fr-093)
 
-**Status:** Approved design contract for Iteration 2, implemented by tasks #405–#411. **Implemented so far:** message reactions, server-side persistence and API (#405) and accessible React reaction controls and summaries (#406); typing indicators, the server and realtime backend (#407) and the React indicators and realtime cleanup (#408). **Still pending:** attachments (#409–#410) and the broad test task (#411). Voice/video stays deferred.
+**Status:** Approved design contract for Iteration 2, implemented by tasks #405–#411. **Implemented so far:** message reactions, server-side persistence and API (#405) and accessible React reaction controls and summaries (#406); typing indicators, the server and realtime backend (#407) and the React indicators and realtime cleanup (#408); secure attachment upload, private storage, association, authorized access, and cleanup on the server (#409). **Still pending:** the attachment React composer/download experience (#410) and the broad final test matrix (#411). Voice/video stays deferred.
 
 **Last reviewed:** November 12, 2026
 
@@ -102,11 +102,11 @@ The message body rules do not change. A message with attachments still needs a 1
 
 ### Upload, storage, and access
 
-1. **Upload path.** Files go through the authenticated Express API as a dedicated streamed multipart request, one file per request, with a hard byte cap. They never travel as JSON or base64, and the global `express.json()` limit is not raised. The upload is bound to the caller and to one conversation, and the send-access guard runs before any byte is stored.
+1. **Upload path.** Files go through the authenticated Express API as a dedicated streamed multipart request (`file` field), one file per request, with a hard byte cap enforced as bytes arrive. They never travel as JSON or base64, and the global `express.json()` limit is not raised. The upload is bound to the caller and to one conversation, and the send-access guard runs before any byte is retained or stored.
 2. **Attach.** A message send may reference up to 5 of the caller's own pending uploads for the **same** conversation. Uploads that belong to someone else, belong to another conversation, are already attached, or have expired are rejected. Message insert and attachment linking happen in one transaction.
 3. **Storage.** A **private** Supabase Storage bucket is accessed only with the server's service role. Object keys are opaque, server-generated UUID paths that contain no filename, participant id, or conversation name. There is no public bucket and no browser Supabase client.
 4. **Metadata.** `chat_message_attachments` and `direct_message_attachments` mirror the mention-table pattern (message FK `ON DELETE CASCADE`, RLS on, service-role only). Each row holds the uploader, the conversation bound at upload, the opaque storage key, the sanitized display name, the detected type, the byte size, the scan status, and timestamps.
-5. **Download.** An authorized download request re-checks read access and the scan rule below. It then returns a signed URL that **expires after 60 seconds**. URLs are never stored, cached (`no-store`), or logged. Objects are stored with their detected type. PDF and text are always delivered as downloads (`Content-Disposition: attachment`), never rendered inline. If the storage provider's signed URL cannot guarantee that header and `X-Content-Type-Options: nosniff`, the server streams the file itself with those headers instead.
+5. **Download.** An authorized access request re-checks read access and the scan rule below. The implemented path returns a server-signed application URL that **expires after 60 seconds**; when redeemed, the server re-checks current read access and proxies bytes from private storage. URLs are never stored, cached (`no-store`), or logged, and no permanent public/storage URL is exposed. Objects are stored with their detected type. PDF and text are always delivered as downloads (`Content-Disposition: attachment`), never rendered inline; responses use `X-Content-Type-Options: nosniff` and a restrictive content-security policy.
 6. **Transport and at-rest protection** follow NR-006 (HTTPS only; provider-managed storage encryption).
 
 ### Malware scanning decision
@@ -121,7 +121,7 @@ The project has **no malware-scanning facility today**, and this contract does n
 ## 7. Retention and deletion
 
 - Rich-chat data follows its message's lifecycle. Reactions and attachment metadata cascade with the message. Team-channel history protection still applies, and nothing in US-035 adds a message delete API.
-- Database cascades do not remove storage objects. Any path that deletes attachment rows (channel deletion, the `0062` demo reset, account deletion processing under FR-078, pending-upload expiry) must also delete the matching objects. An object whose row is gone must never stay downloadable.
+- Database cascades do not remove storage objects. Migration `0068` queues opaque object keys whenever an attachment row is deleted. A bounded maintenance pass expires unattached uploads after 24 hours (and incomplete reservations after 15 minutes), removes queued private objects, and retains failed deletions for retry. It runs opportunistically after uploads and on the server's 15-minute maintenance interval; this is not an external scheduler. An object whose row is gone is private and has no metadata/token path, so it is not downloadable while cleanup is retried.
 - Turning a feature flag off hides and blocks the feature but **does not delete data**.
 - Typing state is never stored, so it needs no retention rule.
 - No separate legal or backup retention period is set here. That decision belongs to [R-06](./functional_nonfunctional_requirements.md#policy-register) and [NR-023](./functional_nonfunctional_requirements.md#nr-023), and until it is approved, environments use synthetic data.
@@ -158,7 +158,7 @@ Text chat (US-030–US-034) must keep working whatever happens to rich-chat feat
 | Typing signals | 40 / participant / minute; client ≥ 2 s apart; 6 s expiry | In-memory |
 | Uploads | 20 / participant / rolling hour | Database rolling window (`reportRateLimiter` style) |
 | Attachment size, count, and quota | 10 MB, 5 per message, 100 MB per participant | Server validation and database totals |
-| Signed download URL | 60 s lifetime, issued per authorized request | Storage provider signing |
+| Signed download URL | 60 s lifetime, issued per authorized request | Application-signed token; server-proxied private object |
 | SSE streams | Existing 5-per-participant cap, unchanged | `notificationStream` |
 
 In-memory limits reset on restart and are per instance. Persisted features (uploads) use database-backed limits. Every rejection returns `429 RATE_LIMITED` with `Retry-After` and no extra data.
