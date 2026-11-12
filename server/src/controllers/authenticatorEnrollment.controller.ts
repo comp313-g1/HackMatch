@@ -108,6 +108,15 @@ function sendSafeEnrollmentError(res: Response, error: unknown): void {
       : new AuthenticatorEnrollmentError('AUTHENTICATOR_ENROLLMENT_UNAVAILABLE', 503);
   const response = SAFE_ERROR_RESPONSES[normalized.code];
 
+  if (response.status >= 500) {
+    // #270: operators still see service failures, but only the safe error code —
+    // never the underlying error (which may carry SQL text or ciphertext) or request data.
+    console.warn(
+      '[AUTHENTICATOR] operation failed',
+      JSON.stringify({ code: normalized.code, requestId: res.req?.id || 'unknown' })
+    );
+  }
+
   res.status(response.status).json({
     error: response.error,
     code: normalized.code,

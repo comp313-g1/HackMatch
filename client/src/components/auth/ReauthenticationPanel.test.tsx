@@ -96,6 +96,32 @@ describe('ReauthenticationPanel (US-029 / #269)', () => {
     expect(JSON.stringify({ ...localStorage, ...sessionStorage })).not.toContain('Wrong-Pass-1');
   });
 
+  it('#270: never logs, persists, or URL-encodes the password and hides Firebase internals', async () => {
+    const lines: string[] = [];
+    const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((method) =>
+      vi.spyOn(console, method).mockImplementation((...args: unknown[]) => {
+        lines.push(args.map(String).join(' '));
+      })
+    );
+    vi.mocked(reauthenticateWithPassword).mockRejectedValueOnce(
+      Object.assign(new Error('Firebase: Error (auth/wrong-password). identitytoolkit key=AIza-internal'), {
+        code: 'auth/wrong-password',
+        customData: { email: 'owner@example.com' },
+      })
+    );
+    renderPanel();
+    fireEvent.change(screen.getByLabelText(/current password/i), { target: { value: 'Leak-Check-Pass-9' } });
+    fireEvent.click(screen.getByRole('button', { name: /verify password/i }));
+    const alert = await screen.findByTestId('reauthentication-error');
+
+    expect(alert.textContent).not.toMatch(/firebase|identitytoolkit|AIza|auth\//i);
+    expect(lines.join('\n')).not.toContain('Leak-Check-Pass-9');
+    expect(JSON.stringify({ ...localStorage, ...sessionStorage })).not.toContain('Leak-Check-Pass-9');
+    expect(window.location.href).not.toContain('Leak-Check-Pass-9');
+    expect(document.body.innerHTML).not.toContain('Leak-Check-Pass-9');
+    spies.forEach((spy) => spy.mockRestore());
+  });
+
   it('shows loading, then requires the email code before returning to the operation', async () => {
     let resolveFirebase: () => void = () => {};
     vi.mocked(reauthenticateWithPassword).mockReturnValueOnce(

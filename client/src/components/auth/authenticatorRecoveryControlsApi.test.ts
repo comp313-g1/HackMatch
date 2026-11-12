@@ -176,6 +176,47 @@ describe('authenticator recovery-control API client (US-029 / #269)', () => {
     });
   });
 
+  it('#270: never surfaces server internals (stack, SQL, raw network errors) to the UI', async () => {
+    vi.mocked(authFetch).mockResolvedValueOnce(
+      json(
+        {
+          error: 'Internal Server Error',
+          message: 'relation "authenticator_recovery_codes" violates constraint',
+          stack: 'Error: at replace_authenticator_recovery_codes (db.ts:12)',
+          code_verifier: 'v'.repeat(43),
+        },
+        500
+      )
+    );
+    const serverFailure = await generateRecoveryCodes(null).catch((error) => error);
+    expect(serverFailure).toBeInstanceOf(AuthenticatorEnrollmentApiError);
+    expect(serverFailure.message).toBe('Internal Server Error');
+    expect(JSON.stringify({ ...serverFailure, message: serverFailure.message })).not.toMatch(
+      /relation|constraint|stack|db\.ts|verifier|vvvv/
+    );
+
+    vi.mocked(authFetch).mockResolvedValueOnce(
+      new Response('<html>502 upstream SELECT * FROM authenticator_enrollments</html>', { status: 502 })
+    );
+    const htmlFailure = await getRecoveryCodeStatus().catch((error) => error);
+    expect(htmlFailure.message).toBe('Request failed with status 502.');
+
+    vi.mocked(authFetch).mockRejectedValueOnce(new TypeError('fetch failed: ECONNRESET 10.0.0.5:5432'));
+    const networkFailure = await disableAuthenticator().catch((error) => error);
+    expect(networkFailure).toMatchObject({ code: 'NETWORK_ERROR', retryable: true });
+    expect(networkFailure.message).not.toMatch(/ECONNRESET|10\.0\.0\.5|5432/);
+  });
+
+  it('#270: sends recovery and authenticator requests without secrets in the URL', async () => {
+    vi.mocked(authFetch).mockResolvedValue(json(generatedResponse, 201));
+    await generateRecoveryCodes(BATCH);
+    const [url, init] = vi.mocked(authFetch).mock.calls[0]!;
+    expect(url).toBe('/api/auth/mfa/authenticator/recovery-codes');
+    expect(String(url)).not.toMatch(/[?#]|ABCD/);
+    // The batch id travels only in the JSON body.
+    expect(init?.body).toBe(JSON.stringify({ expectedBatchId: BATCH }));
+  });
+
   it('surfaces the server reauthentication contract as a typed error', async () => {
     vi.mocked(authFetch).mockResolvedValue(
       json({ error: 'Recent reauthentication is required.', code: 'REAUTHENTICATION_REQUIRED' }, 401)
