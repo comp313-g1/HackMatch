@@ -276,3 +276,224 @@ export async function getAuthenticatorEnrollmentStatus(): Promise<AuthenticatorE
   });
   return parseAuthenticatorEnrollmentStatus(body);
 }
+
+/* ------------------------------------------------------------------------ */
+/* US-029 / #269 reauthentication-gated replacement, disable, recovery codes */
+/* ------------------------------------------------------------------------ */
+
+/** Setup material for a replacement; the current factor stays active until confirmation. */
+export interface PendingAuthenticatorReplacement {
+  authenticator: PendingAuthenticatorEnrollment['authenticator'];
+  setup: PendingAuthenticatorEnrollment['setup'];
+  currentAuthenticator: { status: 'active' };
+  availableChallengeMethods: ['authenticator_totp', 'email_otp'];
+  emailOtpFallback: true;
+}
+
+export interface DisabledAuthenticatorResponse {
+  authenticator: { status: 'not_enrolled' };
+  disabledAt: string;
+  availableChallengeMethods: ['email_otp'];
+  emailOtpFallback: true;
+}
+
+export type RecoveryCodeStatus =
+  | { status: 'not_generated'; total: 0; remaining: 0 }
+  | {
+      status: 'generated';
+      batchId: string;
+      total: number;
+      remaining: number;
+      generatedAt: string;
+    };
+
+export interface GeneratedRecoveryCodes {
+  status: 'generated';
+  batchId: string;
+  total: number;
+  remaining: number;
+  generatedAt: string;
+  /** Raw one-time codes: memory only, never stored in browser storage or URLs. */
+  codes: string[];
+}
+
+const RECOVERY_CODE_PATTERN = /^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+export function parseBeginAuthenticatorReplacement(
+  body: unknown
+): PendingAuthenticatorReplacement {
+  if (
+    !isRecord(body) ||
+    !isRecord(body.currentAuthenticator) ||
+    body.currentAuthenticator.status !== 'active' ||
+    !isStringArray(body.availableChallengeMethods) ||
+    body.availableChallengeMethods.length !== 2 ||
+    !body.availableChallengeMethods.includes('authenticator_totp') ||
+    !body.availableChallengeMethods.includes('email_otp')
+  ) {
+    return invalidResponse();
+  }
+  // Reuse the #268 setup validation for the pending factor itself.
+  const pending = parseBeginAuthenticatorEnrollment({
+    ...body,
+    availableChallengeMethods: ['email_otp'],
+  });
+  return {
+    authenticator: pending.authenticator,
+    setup: pending.setup,
+    currentAuthenticator: { status: 'active' },
+    availableChallengeMethods: ['authenticator_totp', 'email_otp'],
+    emailOtpFallback: true,
+  };
+}
+
+export function parseDisableAuthenticator(body: unknown): DisabledAuthenticatorResponse {
+  if (
+    !isRecord(body) ||
+    !isRecord(body.authenticator) ||
+    body.authenticator.status !== 'not_enrolled' ||
+    typeof body.disabledAt !== 'string' ||
+    !Number.isFinite(Date.parse(body.disabledAt)) ||
+    body.emailOtpFallback !== true ||
+    !isStringArray(body.availableChallengeMethods) ||
+    body.availableChallengeMethods.length !== 1 ||
+    body.availableChallengeMethods[0] !== 'email_otp'
+  ) {
+    return invalidResponse();
+  }
+  return {
+    authenticator: { status: 'not_enrolled' },
+    disabledAt: body.disabledAt,
+    availableChallengeMethods: ['email_otp'],
+    emailOtpFallback: true,
+  };
+}
+
+function parseRecoveryCodeSummary(value: unknown): RecoveryCodeStatus {
+  if (!isRecord(value)) return invalidResponse();
+  if (value.status === 'not_generated') {
+    return { status: 'not_generated', total: 0, remaining: 0 };
+  }
+  if (
+    value.status !== 'generated' ||
+    typeof value.batchId !== 'string' ||
+    !UUID_PATTERN.test(value.batchId) ||
+    !isCount(value.total) ||
+    !isCount(value.remaining) ||
+    value.remaining > value.total ||
+    typeof value.generatedAt !== 'string' ||
+    !Number.isFinite(Date.parse(value.generatedAt))
+  ) {
+    return invalidResponse();
+  }
+  return {
+    status: 'generated',
+    batchId: value.batchId,
+    total: value.total,
+    remaining: value.remaining,
+    generatedAt: value.generatedAt,
+  };
+}
+
+/** Status never carries codes; any `codes` field is dropped by explicit projection. */
+export function parseRecoveryCodeStatus(body: unknown): RecoveryCodeStatus {
+  if (!isRecord(body)) return invalidResponse();
+  return parseRecoveryCodeSummary(body.recoveryCodes);
+}
+
+export function parseGeneratedRecoveryCodes(body: unknown): GeneratedRecoveryCodes {
+  if (!isRecord(body) || !isRecord(body.recoveryCodes)) return invalidResponse();
+  const summary = parseRecoveryCodeSummary(body.recoveryCodes);
+  const codes = body.recoveryCodes.codes;
+  if (
+    summary.status !== 'generated' ||
+    !isStringArray(codes) ||
+    codes.length === 0 ||
+    codes.length !== summary.total ||
+    new Set(codes).size !== codes.length ||
+    !codes.every((code) => RECOVERY_CODE_PATTERN.test(code))
+  ) {
+    return invalidResponse();
+  }
+  return { ...summary, codes: [...codes] };
+}
+
+export interface ConfirmedAuthenticatorReplacement {
+  authenticator: { status: 'active'; activatedAt: string };
+  /** Fresh set issued in the same transaction that revoked the previous one. Shown once. */
+  recoveryCodes: GeneratedRecoveryCodes;
+  availableChallengeMethods: ['authenticator_totp', 'email_otp'];
+  emailOtpFallback: true;
+}
+
+export function parseConfirmAuthenticatorReplacement(
+  body: unknown
+): ConfirmedAuthenticatorReplacement {
+  if (!isRecord(body)) return invalidResponse();
+  const active = parseConfirmAuthenticatorEnrollment(body);
+  const recoveryCodes = parseGeneratedRecoveryCodes({ recoveryCodes: body.recoveryCodes });
+  return {
+    authenticator: active.authenticator,
+    recoveryCodes,
+    availableChallengeMethods: ['authenticator_totp', 'email_otp'],
+    emailOtpFallback: true,
+  };
+}
+
+export async function confirmAuthenticatorReplacement(
+  enrollmentId: string,
+  code: string
+): Promise<ConfirmedAuthenticatorReplacement> {
+  const body = await enrollmentRequest('/api/auth/mfa/authenticator/replacement/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enrollmentId, code }),
+  });
+  return parseConfirmAuthenticatorReplacement(body);
+}
+
+export async function beginAuthenticatorReplacement(): Promise<PendingAuthenticatorReplacement> {
+  const body = await enrollmentRequest('/api/auth/mfa/authenticator/replacement', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  return parseBeginAuthenticatorReplacement(body);
+}
+
+export async function disableAuthenticator(): Promise<DisabledAuthenticatorResponse> {
+  const body = await enrollmentRequest('/api/auth/mfa/authenticator/disable', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  return parseDisableAuthenticator(body);
+}
+
+export async function getRecoveryCodeStatus(): Promise<RecoveryCodeStatus> {
+  const body = await enrollmentRequest('/api/auth/mfa/authenticator/recovery-codes', {
+    method: 'GET',
+  });
+  return parseRecoveryCodeStatus(body);
+}
+
+/**
+ * Generates (or regenerates) the owner's recovery set. `expectedBatchId` is the
+ * batch this view last saw (null = none) so a concurrent change elsewhere is
+ * rejected instead of silently invalidating codes another session displays.
+ */
+export async function generateRecoveryCodes(
+  expectedBatchId: string | null
+): Promise<GeneratedRecoveryCodes> {
+  const body = await enrollmentRequest('/api/auth/mfa/authenticator/recovery-codes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expectedBatchId }),
+  });
+  return parseGeneratedRecoveryCodes(body);
+}

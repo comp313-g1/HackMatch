@@ -37,7 +37,7 @@ function messageOf(error: unknown): string {
   return String((error as { message: unknown }).message);
 }
 
-function mapStorageError(error: unknown): AuthenticatorEnrollmentError {
+export function mapStorageError(error: unknown): AuthenticatorEnrollmentError {
   if (error instanceof AuthenticatorEnrollmentError) return error;
   if (error instanceof TotpEncryptionConfigurationError) {
     return new AuthenticatorEnrollmentError('AUTHENTICATOR_CONFIGURATION_ERROR', 503);
@@ -164,6 +164,15 @@ export function createPersistentAuthenticatorEnrollmentProvider(
         }
         if (!row.pending_expires_at || Date.parse(row.pending_expires_at) <= now().getTime()) {
           throw new AuthenticatorEnrollmentError('AUTHENTICATOR_ENROLLMENT_EXPIRED', 410);
+        }
+        // #269: a pending row beside an active factor is a replacement, which must
+        // be confirmed through the replacement flow so recovery codes rotate with it.
+        const active = await repository.findActiveByParticipantId(owner.participantId);
+        if (active && active.id !== enrollmentId) {
+          throw new AuthenticatorEnrollmentError(
+            'AUTHENTICATOR_REPLACEMENT_CONFIRMATION_REQUIRED',
+            409
+          );
         }
 
         secret = getProtector().decrypt(protectedSecretOf(row), {

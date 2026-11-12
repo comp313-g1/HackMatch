@@ -28,6 +28,46 @@ export function validateBeginAuthenticatorEnrollment(
   next();
 }
 
+const BATCH_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * #269 recovery-code generation. Only the caller's view of the current batch is
+ * accepted (null = "I have none"), so a regeneration racing another session is
+ * rejected as stale instead of silently invalidating codes shown elsewhere.
+ */
+export function validateGenerateRecoveryCodes(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const body = req.body ?? {};
+  const fail = (message: string) =>
+    res.status(400).json({
+      error: 'Validation failed',
+      code: 'VALIDATION_ERROR',
+      errors: { expectedBatchId: message },
+    });
+
+  if (!isObjectBody(body)) {
+    fail('expectedBatchId must be null or the current recovery-code batch id.');
+    return;
+  }
+  const extraFields = Object.keys(body).filter((field) => field !== 'expectedBatchId');
+  if (extraFields.length > 0 || !('expectedBatchId' in body)) {
+    fail('Only expectedBatchId is accepted.');
+    return;
+  }
+  const expected = body.expectedBatchId;
+  if (expected !== null && (typeof expected !== 'string' || !BATCH_ID_PATTERN.test(expected))) {
+    fail('expectedBatchId must be null or the current recovery-code batch id.');
+    return;
+  }
+
+  req.body = { expectedBatchId: expected === null ? null : expected.toLowerCase() };
+  next();
+}
+
 export function validateConfirmAuthenticatorEnrollment(
   req: Request,
   res: Response,

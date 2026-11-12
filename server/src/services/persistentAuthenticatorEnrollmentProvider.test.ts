@@ -180,6 +180,28 @@ describe('persistent authenticator enrollment provider (US-029 / #267)', () => {
     expect(repository.activateCalls).toBe(1);
   });
 
+  it('refuses to finish a #269 replacement through the plain confirm path (recovery codes must rotate)', async () => {
+    const repository = new MemoryRepository();
+    const provider = providerWith(repository);
+    await provider.begin(owner);
+    await provider.confirm(owner, ENROLLMENT_ID, _totpCodeForTest(SECRET, NOW));
+    // Model a replacement pending row beside the active factor.
+    repository.rows.set(RESTARTED_ENROLLMENT_ID, {
+      ...repository.rows.get(ENROLLMENT_ID)!,
+      id: RESTARTED_ENROLLMENT_ID,
+      status: 'Pending',
+      pending_expires_at: '2026-11-11T18:10:00.000Z',
+      activated_at: null,
+    });
+
+    await expect(
+      provider.confirm(owner, RESTARTED_ENROLLMENT_ID, _totpCodeForTest(SECRET, NOW))
+    ).rejects.toMatchObject({ code: 'AUTHENTICATOR_REPLACEMENT_CONFIRMATION_REQUIRED', status: 409 });
+    expect(repository.activateCalls).toBe(1);
+    expect(repository.rows.get(ENROLLMENT_ID)?.status).toBe('Active');
+    expect(repository.rows.get(RESTARTED_ENROLLMENT_ID)?.status).toBe('Pending');
+  });
+
   it('preserves pending state after a wrong code and supports a valid retry', async () => {
     const repository = new MemoryRepository();
     const provider = providerWith(repository);

@@ -32,7 +32,12 @@ export type AuthenticatorEnrollmentErrorCode =
   | 'AUTHENTICATOR_ENROLLMENT_STALE'
   | 'INVALID_AUTHENTICATOR_CODE'
   | 'AUTHENTICATOR_ENROLLMENT_UNAVAILABLE'
-  | 'AUTHENTICATOR_CONFIGURATION_ERROR';
+  | 'AUTHENTICATOR_CONFIGURATION_ERROR'
+  // #269 replacement/disable and recovery-code controls.
+  | 'AUTHENTICATOR_NOT_ACTIVE'
+  | 'AUTHENTICATOR_REPLACEMENT_CONFIRMATION_REQUIRED'
+  | 'RECOVERY_CODES_STALE'
+  | 'RECOVERY_CODES_UNAVAILABLE';
 
 export class AuthenticatorEnrollmentError extends Error {
   constructor(

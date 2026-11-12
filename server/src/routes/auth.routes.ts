@@ -38,11 +38,17 @@ import { requireRecentAuthentication } from '../middleware/requireRecentAuthenti
 import {
   validateBeginAuthenticatorEnrollment,
   validateConfirmAuthenticatorEnrollment,
+  validateGenerateRecoveryCodes,
 } from '../validators/authenticatorEnrollment.validator.js';
 import {
   beginAuthenticatorEnrollment,
+  beginAuthenticatorReplacement,
   confirmAuthenticatorEnrollment,
+  confirmAuthenticatorReplacement,
+  disableAuthenticator,
+  generateRecoveryCodes,
   getAuthenticatorEnrollmentStatus,
+  getRecoveryCodeStatus,
   restartAuthenticatorEnrollment,
 } from '../controllers/authenticatorEnrollment.controller.js';
 
@@ -177,6 +183,47 @@ authRouter.post(
   ...requireAuthenticatorOwner,
   validateConfirmAuthenticatorEnrollment,
   confirmAuthenticatorEnrollment
+);
+
+/**
+ * US-029 / #269 reauthentication-gated controls. The same owner chain applies,
+ * so a stale primary sign-in returns REAUTHENTICATION_REQUIRED and the client
+ * must complete Firebase reauthentication plus a fresh email OTP. A replacement
+ * is confirmed only through /replacement/confirm, whose single transaction
+ * retires the previous factor, revokes its recovery set, and stores a fresh one.
+ */
+authRouter.post(
+  '/mfa/authenticator/replacement',
+  ...requireAuthenticatorOwner,
+  validateBeginAuthenticatorEnrollment,
+  beginAuthenticatorReplacement
+);
+
+authRouter.post(
+  '/mfa/authenticator/replacement/confirm',
+  ...requireAuthenticatorOwner,
+  validateConfirmAuthenticatorEnrollment,
+  confirmAuthenticatorReplacement
+);
+
+authRouter.post(
+  '/mfa/authenticator/disable',
+  ...requireAuthenticatorOwner,
+  validateBeginAuthenticatorEnrollment,
+  disableAuthenticator
+);
+
+authRouter.get(
+  '/mfa/authenticator/recovery-codes',
+  ...requireAuthenticatorOwner,
+  getRecoveryCodeStatus
+);
+
+authRouter.post(
+  '/mfa/authenticator/recovery-codes',
+  ...requireAuthenticatorOwner,
+  validateGenerateRecoveryCodes,
+  generateRecoveryCodes
 );
 
 /**

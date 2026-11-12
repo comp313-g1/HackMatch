@@ -8,6 +8,13 @@ import {
   type AuthenticatorEnrollmentErrorCode,
   type AuthenticatorOwnerContext,
 } from '../services/authenticatorEnrollment.js';
+import {
+  beginAuthenticatorReplacement as beginReplacement,
+  confirmAuthenticatorReplacement as confirmReplacement,
+  disableAuthenticator as disableActiveAuthenticator,
+  generateRecoveryCodes as generateCodes,
+  getRecoveryCodeStatus as getCodeStatus,
+} from '../services/authenticatorRecoveryControls.js';
 
 const SAFE_ERROR_RESPONSES: Record<
   AuthenticatorEnrollmentErrorCode,
@@ -46,6 +53,23 @@ const SAFE_ERROR_RESPONSES: Record<
     status: 503,
     error: 'Authenticator enrollment is temporarily unavailable. Please contact support if the problem continues.',
     retryable: false,
+  },
+  AUTHENTICATOR_NOT_ACTIVE: {
+    status: 409,
+    error: 'There is no active authenticator for this account.',
+  },
+  AUTHENTICATOR_REPLACEMENT_CONFIRMATION_REQUIRED: {
+    status: 409,
+    error: 'This code confirms a replacement authenticator. Finish the replacement to receive new recovery codes.',
+  },
+  RECOVERY_CODES_STALE: {
+    status: 409,
+    error: 'Your recovery codes were changed in another session. Review the latest status before generating new codes.',
+  },
+  RECOVERY_CODES_UNAVAILABLE: {
+    status: 503,
+    error: 'Recovery codes could not be generated. Your existing codes were not changed. Please try again.',
+    retryable: true,
   },
 };
 
@@ -138,6 +162,78 @@ export async function confirmAuthenticatorEnrollment(req: Request, res: Response
   try {
     const result = await confirmEnrollment(owner, req.body.enrollmentId, req.body.code);
     res.status(200).json(result);
+  } catch (error: unknown) {
+    sendSafeEnrollmentError(res, error);
+  }
+}
+
+/** #269: begins a replacement while the current factor remains active. */
+export async function beginAuthenticatorReplacement(req: Request, res: Response): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  const owner = ownerFromRequest(req, res);
+  if (!owner) return;
+
+  try {
+    const result = await beginReplacement(owner);
+    res.status(201).json(result);
+  } catch (error: unknown) {
+    sendSafeEnrollmentError(res, error);
+  }
+}
+
+/** #269: activates the replacement and returns its fresh recovery set exactly once. */
+export async function confirmAuthenticatorReplacement(req: Request, res: Response): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+  const owner = ownerFromRequest(req, res);
+  if (!owner) return;
+
+  try {
+    const result = await confirmReplacement(owner, req.body.enrollmentId, req.body.code);
+    res.status(200).json(result);
+  } catch (error: unknown) {
+    sendSafeEnrollmentError(res, error);
+  }
+}
+
+/** #269: retires the owner's active factor; email OTP stays mandatory. */
+export async function disableAuthenticator(req: Request, res: Response): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  const owner = ownerFromRequest(req, res);
+  if (!owner) return;
+
+  try {
+    const result = await disableActiveAuthenticator(owner);
+    res.status(200).json(result);
+  } catch (error: unknown) {
+    sendSafeEnrollmentError(res, error);
+  }
+}
+
+/** #269: count/timestamp summary only — never codes or verifiers. */
+export async function getRecoveryCodeStatus(req: Request, res: Response): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  const owner = ownerFromRequest(req, res);
+  if (!owner) return;
+
+  try {
+    const result = await getCodeStatus(owner);
+    res.status(200).json(result);
+  } catch (error: unknown) {
+    sendSafeEnrollmentError(res, error);
+  }
+}
+
+/** #269: returns a new raw recovery set to the owner exactly once. */
+export async function generateRecoveryCodes(req: Request, res: Response): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+  const owner = ownerFromRequest(req, res);
+  if (!owner) return;
+
+  try {
+    const result = await generateCodes(owner, req.body.expectedBatchId);
+    res.status(201).json(result);
   } catch (error: unknown) {
     sendSafeEnrollmentError(res, error);
   }
