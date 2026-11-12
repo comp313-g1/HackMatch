@@ -24,6 +24,16 @@ export interface IMfaRepository {
     now?: Date
   ): Promise<MfaChallenge | null>;
   createAttempt(data: CreateMfaAttemptDTO): Promise<MfaAttempt>;
+  /**
+   * #271: inserts a failed attempt row under a per-participant advisory lock
+   * (migration 0066) before the code is compared, so concurrent verifications
+   * are ordered and the five-attempt limit cannot be raced.
+   */
+  reserveAttempt(data: Omit<CreateMfaAttemptDTO, 'success'>): Promise<MfaAttempt>;
+  /** Marks a reserved attempt as the successful verification (resets the FR-010 cycle). */
+  markAttemptSucceeded(attemptId: string, participantId: string): Promise<void>;
+  /** Removes a reservation whose code was never actually evaluated against a live challenge. */
+  discardAttempt(attemptId: string, participantId: string): Promise<void>;
   getRecentAttempts(participantId: string, limit?: number): Promise<MfaAttempt[]>;
   countRecentChallenges(participantId: string, since: Date | string): Promise<number>;
 }
@@ -202,6 +212,54 @@ export const mfaRepository: IMfaRepository = {
     return record as MfaAttempt;
   },
 
+  async reserveAttempt(data: Omit<CreateMfaAttemptDTO, 'success'>): Promise<MfaAttempt> {
+    if (!data.participant_id || typeof data.participant_id !== 'string' || data.participant_id.trim() === '') {
+      throw new Error('participant_id is required');
+    }
+
+    const client = getSupabaseClient();
+    const { data: rows, error } = await client.rpc('reserve_mfa_verification_attempt', {
+      p_participant: data.participant_id,
+      p_challenge: data.challenge_id ?? null,
+      p_ip_address: data.ip_address ?? null,
+    });
+
+    if (error) throw error;
+    const row = (rows as Array<{ attempt_id: string; attempted_at: string }> | null)?.[0];
+    if (!row) throw new Error('MFA attempt reservation returned no row');
+    return {
+      id: String(row.attempt_id),
+      participant_id: data.participant_id,
+      challenge_id: data.challenge_id ?? null,
+      success: false,
+      ip_address: data.ip_address ?? null,
+      created_at: String(row.attempted_at),
+    };
+  },
+
+  async markAttemptSucceeded(attemptId: string, participantId: string): Promise<void> {
+    if (!attemptId || !participantId) throw new Error('attemptId and participantId are required');
+    const client = getSupabaseClient();
+    const { error } = await client
+      .from('mfa_attempts')
+      .update({ success: true })
+      .eq('id', attemptId)
+      .eq('participant_id', participantId);
+    if (error) throw error;
+  },
+
+  async discardAttempt(attemptId: string, participantId: string): Promise<void> {
+    if (!attemptId || !participantId) throw new Error('attemptId and participantId are required');
+    const client = getSupabaseClient();
+    const { error } = await client
+      .from('mfa_attempts')
+      .delete()
+      .eq('id', attemptId)
+      .eq('participant_id', participantId)
+      .eq('success', false);
+    if (error) throw error;
+  },
+
   async getRecentAttempts(participantId: string, limit: number = 10): Promise<MfaAttempt[]> {
     if (!participantId || typeof participantId !== 'string' || participantId.trim() === '') {
       throw new Error('participant_id is required');
@@ -248,5 +306,6 @@ export const invalidatePendingChallenges = mfaRepository.invalidatePendingChalle
 export const markChallengeConsumed = mfaRepository.markChallengeConsumed.bind(mfaRepository);
 export const tryConsumeChallenge = mfaRepository.tryConsumeChallenge.bind(mfaRepository);
 export const createAttempt = mfaRepository.createAttempt.bind(mfaRepository);
+export const reserveAttempt = mfaRepository.reserveAttempt.bind(mfaRepository);
 export const getRecentAttempts = mfaRepository.getRecentAttempts.bind(mfaRepository);
 export const countRecentChallenges = mfaRepository.countRecentChallenges.bind(mfaRepository);

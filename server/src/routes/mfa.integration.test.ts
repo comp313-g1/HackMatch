@@ -261,10 +261,42 @@ describe('US-004 MFA Integration Suite (OTP Lifecycle & Account Lockout)', () =>
       return attempt;
     });
 
+    // #271: models reserve_mfa_verification_attempt (0066) — serialized failure row
+    // with a strictly increasing timestamp, later marked successful or discarded.
+    let lastAttemptMs = 0;
+    vi.spyOn(mfaRepository, 'reserveAttempt').mockImplementation(async (data) => {
+      lastAttemptMs = Math.max(lastAttemptMs + 1, Date.now());
+      const attempt: MfaAttempt = {
+        id: `attempt-${attempts.length + 1}`,
+        participant_id: data.participant_id,
+        challenge_id: data.challenge_id ?? null,
+        success: false,
+        ip_address: data.ip_address ?? null,
+        created_at: new Date(lastAttemptMs).toISOString(),
+      };
+      attempts.push(attempt);
+      return attempt;
+    });
+    vi.spyOn(mfaRepository, 'markAttemptSucceeded').mockImplementation(async (attemptId, participantId) => {
+      const attempt = attempts.find((a) => a.id === attemptId && a.participant_id === participantId);
+      if (attempt) attempt.success = true;
+    });
+    vi.spyOn(mfaRepository, 'discardAttempt').mockImplementation(async (attemptId, participantId) => {
+      attempts = attempts.filter(
+        (a) => !(a.id === attemptId && a.participant_id === participantId && !a.success)
+      );
+    });
+
     vi.spyOn(mfaRepository, 'getRecentAttempts').mockImplementation(async (participantId, limit = 10) => {
       return attempts
-        .filter((a) => a.participant_id === participantId)
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .map((attempt, index) => ({ attempt, index }))
+        .filter(({ attempt }) => attempt.participant_id === participantId)
+        .sort(
+          (a, b) =>
+            new Date(b.attempt.created_at).getTime() - new Date(a.attempt.created_at).getTime() ||
+            b.index - a.index
+        )
+        .map(({ attempt }) => attempt)
         .slice(0, limit);
     });
 
