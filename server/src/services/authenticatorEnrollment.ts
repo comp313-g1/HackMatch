@@ -5,9 +5,8 @@ import type { ParticipantRole } from '../db/types.js';
  *
  * HackMatch keeps Firebase Authentication as the primary identity provider and
  * owns the second-factor policy in the application.  The provider implemented
- * by #267 will persist pending/active TOTP credentials securely.  This file is
- * intentionally storage-agnostic so #266 cannot accidentally introduce
- * plaintext or in-memory production secrets.
+ * by #267 persists pending/active TOTP credentials securely. This contract
+ * remains storage-agnostic so encrypted storage details cannot enter API DTOs.
  *
  * Approved lifecycle:
  * not_enrolled -> pending -> active. A pending enrollment that expires, is
@@ -113,18 +112,24 @@ export interface ConfirmAuthenticatorEnrollmentResult {
   emailOtpFallback: true;
 }
 
-const unavailableProvider: AuthenticatorEnrollmentProvider = {
-  async begin() {
-    throw new AuthenticatorEnrollmentError('AUTHENTICATOR_ENROLLMENT_UNAVAILABLE', 503);
+const persistentProvider: AuthenticatorEnrollmentProvider = {
+  async begin(owner) {
+    const { persistentAuthenticatorEnrollmentProvider } = await import(
+      './persistentAuthenticatorEnrollmentProvider.js'
+    );
+    return persistentAuthenticatorEnrollmentProvider.begin(owner);
   },
-  async confirm() {
-    throw new AuthenticatorEnrollmentError('AUTHENTICATOR_ENROLLMENT_UNAVAILABLE', 503);
+  async confirm(owner, enrollmentId, code) {
+    const { persistentAuthenticatorEnrollmentProvider } = await import(
+      './persistentAuthenticatorEnrollmentProvider.js'
+    );
+    return persistentAuthenticatorEnrollmentProvider.confirm(owner, enrollmentId, code);
   },
 };
 
-let enrollmentProvider: AuthenticatorEnrollmentProvider = unavailableProvider;
+let enrollmentProvider: AuthenticatorEnrollmentProvider = persistentProvider;
 
-/** Test/provider seam. Production remains fail-closed until #267 installs protected storage. */
+/** Test/provider seam; production uses #267 protected PostgreSQL persistence. */
 export function _setAuthenticatorEnrollmentProvider(
   provider: AuthenticatorEnrollmentProvider
 ): void {
@@ -132,7 +137,7 @@ export function _setAuthenticatorEnrollmentProvider(
 }
 
 export function _resetAuthenticatorEnrollmentProvider(): void {
-  enrollmentProvider = unavailableProvider;
+  enrollmentProvider = persistentProvider;
 }
 
 function normalizeProviderError(error: unknown): AuthenticatorEnrollmentError {

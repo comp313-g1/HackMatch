@@ -105,10 +105,17 @@ describe('authenticator enrollment service contract (US-029 / #266)', () => {
     });
   });
 
-  it('fails closed until #267 installs protected credential storage', async () => {
-    await expect(beginAuthenticatorEnrollment(owner)).rejects.toMatchObject({
-      code: 'AUTHENTICATOR_ENROLLMENT_UNAVAILABLE',
-      status: 503,
-    });
+  it('fails closed when #267 protected-storage configuration is missing', async () => {
+    const previous = process.env.TOTP_ENCRYPTION_KEY_BASE64;
+    delete process.env.TOTP_ENCRYPTION_KEY_BASE64;
+    try {
+      await expect(beginAuthenticatorEnrollment(owner)).rejects.toMatchObject({
+        code: 'AUTHENTICATOR_CONFIGURATION_ERROR',
+        status: 503,
+      });
+    } finally {
+      if (previous === undefined) delete process.env.TOTP_ENCRYPTION_KEY_BASE64;
+      else process.env.TOTP_ENCRYPTION_KEY_BASE64 = previous;
+    }
   });
 });
