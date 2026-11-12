@@ -1415,6 +1415,8 @@ These stories govern user abuse reporting, administrative moderation, account en
 3. Attachments, if ever allowed, must enforce HTTPS/safe MIME limits and virus/size policy TBD.
 4. No May-Have item is required for MVP acceptance of US-030.
 
+**Design approval (#404):** The [US-035 rich-chat policy contract](../04_requirements/us035_rich_chat_policy.md) approves reactions, typing indicators, and restricted attachments for Iteration 2, defers voice/video, and replaces the "virus/size policy TBD" in criterion 3 with concrete limits and an explicit malware-scanning rule.
+
 **Priority:** Low
 
 **Complexity/Effort Estimate:** Large (when approved)
