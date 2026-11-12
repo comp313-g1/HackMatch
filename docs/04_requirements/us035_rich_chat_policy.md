@@ -4,7 +4,7 @@
 
 **Story / requirement:** [US-035](../02_user_stories/user_stories.md#us-035) / [FR-093](./functional_nonfunctional_requirements.md#fr-093)
 
-**Status:** Approved design contract for Iteration 2, implemented by tasks #405–#411. **Implemented so far:** message reactions, server-side persistence and API (#405) and accessible React reaction controls and summaries (#406); the typing-indicator server and realtime backend (#407). **Still pending:** the React typing-indicator UI (#408), attachments (#409–#410), and the broad test task (#411). Voice/video stays deferred.
+**Status:** Approved design contract for Iteration 2, implemented by tasks #405–#411. **Implemented so far:** message reactions, server-side persistence and API (#405) and accessible React reaction controls and summaries (#406); typing indicators, the server and realtime backend (#407) and the React indicators and realtime cleanup (#408). **Still pending:** attachments (#409–#410) and the broad test task (#411). Voice/video stays deferred.
 
 **Last reviewed:** November 12, 2026
 

@@ -9,6 +9,7 @@ import {
   type ChatReactionMutationResult,
   type ChatReactionSummary,
   type ChatReactionTarget,
+  type ChatConversationTarget,
   type ChatUnreadSummary,
   type CreateChannelInput,
   type DirectMessageThreadDetail,
@@ -497,10 +498,12 @@ export async function fetchChatCapabilities(): Promise<RichChatCapabilities> {
   const allowed = Array.isArray(reactions?.allowedReactions)
     ? CHAT_REACTION_CODES.filter((code) => (reactions!.allowedReactions as unknown[]).includes(code))
     : [];
+  const typing = (data.capabilities as { typing?: { enabled?: unknown } } | undefined)?.typing;
   return {
     reactions: { enabled: enabled && allowed.length > 0, allowedReactions: enabled ? allowed : [] },
-    // Not implemented yet (#407–#410); never reported as available by the client.
-    typing: { enabled: false },
+    // US-035 / #407–#408: straight from the server flag; only an exact true enables it.
+    typing: { enabled: typing?.enabled === true },
+    // Not implemented yet (#409–#410); never reported as available by the client.
     attachments: { enabled: false },
     voiceVideo: false,
   };
@@ -547,4 +550,34 @@ export async function setChatMessageReaction(
     changed: data.changed,
     reactions: normalizeReactionSummaries(data.reactions),
   };
+}
+
+/** US-035 / #408: the route segment for one conversation, shared by typing signals and streams. */
+export function conversationBasePath(target: ChatConversationTarget): string {
+  switch (target.kind) {
+    case 'channel':
+      return `/api/chat/channels/${encodeURIComponent(target.channelId)}`;
+    case 'team':
+      return `/api/teams/${encodeURIComponent(target.teamId)}/chat`;
+    case 'directMessage':
+      return `/api/direct-messages/threads/${encodeURIComponent(target.threadId)}`;
+  }
+}
+
+export function conversationIdOf(target: ChatConversationTarget): string {
+  return target.kind === 'channel' ? target.channelId : target.kind === 'team' ? target.teamId : target.threadId;
+}
+
+/**
+ * US-035 / #408: tell the server the caller is typing (true) or stopped (false) in this
+ * conversation. The body is exactly `{ typing }`: never draft text, message text, or any
+ * identity. The server takes the typist from the session and may silently drop the signal
+ * (for example when the caller's presence is Invisible).
+ */
+export async function signalChatTyping(target: ChatConversationTarget, typing: boolean): Promise<void> {
+  await requestJson<unknown>(`${conversationBasePath(target)}/typing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ typing }),
+  });
 }

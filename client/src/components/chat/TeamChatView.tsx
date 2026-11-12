@@ -13,6 +13,8 @@ import type {
   TeamChatChannelView,
 } from './chatTypes';
 import { MessageReactions } from './MessageReactions';
+import { useConversationTyping } from './useConversationTyping';
+import { TypingIndicator } from './TypingIndicator';
 import { ChatActivityBadge, ChatUnreadStatus } from './ChatUnreadBadge';
 import { useChatUnread } from './ChatUnreadContext';
 
@@ -94,6 +96,9 @@ export function TeamChatView({
       setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions } : m))),
     []
   );
+
+  // US-035 / #408: typing indicators only while this team's chat is open and authorized.
+  const typing = useConversationTyping(channel ? { kind: 'team', teamId } : null);
 
   // Never retain private content or a draft for a previously selected team.
   useEffect(() => {
@@ -192,6 +197,7 @@ export function TeamChatView({
       if (requestId !== sendRequestId.current) return;
       setMessages((current) => [...current, message]);
       setDraft('');
+      typing.onMessageSent();
       setFieldErrors({});
       setSendSuccess('Message sent.');
       if (unreadEnabled) void refreshUnread();
@@ -372,13 +378,18 @@ export function TeamChatView({
                 className="space-y-2 border-t border-cream-200 pt-4"
                 data-testid="team-chat-composer"
               >
+                <TypingIndicator enabled={typing.enabled} typists={typing.typists} />
                 <label htmlFor="team-chat-message" className="block text-sm font-medium text-forest-900">
                   Message
                 </label>
                 <textarea
                   id="team-chat-message"
                   value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
+                  onChange={(event) => {
+                    setDraft(event.target.value);
+                    typing.onComposerChange(event.target.value);
+                  }}
+                  onBlur={typing.onComposerBlur}
                   disabled={sending}
                   rows={3}
                   maxLength={MESSAGE_MAX_LENGTH}

@@ -4,7 +4,8 @@ import { fetchChatCapabilities } from './chatApi';
 import type { ChatReactionCode } from './chatTypes';
 
 /**
- * US-035 / #406 — one session-scoped answer to "may this session use reactions?".
+ * US-035 / #406, #408 — one session-scoped answer to "may this session use
+ * reactions / typing indicators?".
  *
  * The server decides (GET /api/chat/capabilities); the browser never reads the
  * feature flag itself. Everything here lives in React memory only and is thrown
@@ -22,6 +23,12 @@ export interface ChatReactionCapabilityValue {
   markReactionsUnavailable: () => void;
   /** A reaction route answered 429: pause reaction changes for this many seconds. */
   noteRateLimited: (retryAfterSeconds: number) => void;
+  /** #408: true only after the server confirmed typing indicators for this session. */
+  typingEnabled: boolean;
+  /** A typing route answered FEATURE_DISABLED: stop typing signals and streams for this session. */
+  markTypingUnavailable: () => void;
+  /** The current session key, so session-scoped effects restart on an account change. Never rendered or sent. */
+  sessionKey: string | null;
 }
 
 const disabledValue: ChatReactionCapabilityValue = {
@@ -30,6 +37,9 @@ const disabledValue: ChatReactionCapabilityValue = {
   rateLimitedUntil: null,
   markReactionsUnavailable: () => undefined,
   noteRateLimited: () => undefined,
+  typingEnabled: false,
+  markTypingUnavailable: () => undefined,
+  sessionKey: null,
 };
 
 const ChatCapabilitiesContext = createContext<ChatReactionCapabilityValue>(disabledValue);
@@ -52,6 +62,9 @@ export function ChatCapabilitiesProvider({
   const [allowedReactions, setAllowedReactions] = useState<ChatReactionCode[]>([]);
   const [reactionsEnabled, setReactionsEnabled] = useState(false);
   const [rateLimitedUntil, setRateLimitedUntil] = useState<number | null>(null);
+  const [typingEnabled, setTypingEnabled] = useState(false);
+  /** The session the capability answer belongs to; any other session sees "disabled". */
+  const [answeredFor, setAnsweredFor] = useState<string | null>(null);
   const requestId = useRef(0);
 
   useEffect(() => {
@@ -60,6 +73,8 @@ export function ChatCapabilitiesProvider({
     setReactionsEnabled(false);
     setAllowedReactions([]);
     setRateLimitedUntil(null);
+    setTypingEnabled(false);
+    setAnsweredFor(null);
     if (!enabled || !sessionKey) return;
 
     fetchChatCapabilities()
@@ -67,6 +82,8 @@ export function ChatCapabilitiesProvider({
         if (current !== requestId.current) return;
         setReactionsEnabled(capabilities.reactions.enabled);
         setAllowedReactions(capabilities.reactions.allowedReactions);
+        setTypingEnabled(capabilities.typing.enabled);
+        setAnsweredFor(sessionKey);
       })
       .catch(() => {
         // Fail closed: no reaction controls; text chat is unaffected.
@@ -85,6 +102,8 @@ export function ChatCapabilitiesProvider({
     setAllowedReactions([]);
   }, []);
 
+  const markTypingUnavailable = useCallback(() => setTypingEnabled(false), []);
+
   const noteRateLimited = useCallback((retryAfterSeconds: number) => {
     const seconds =
       Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0 ? retryAfterSeconds : DEFAULT_RATE_LIMIT_SECONDS;
@@ -93,10 +112,32 @@ export function ChatCapabilitiesProvider({
 
   const value = useMemo<ChatReactionCapabilityValue>(
     () =>
-      enabled && sessionKey
-        ? { reactionsEnabled, allowedReactions, rateLimitedUntil, markReactionsUnavailable, noteRateLimited }
+      // Atomic on an account switch: the previous session's answer is never exposed,
+      // not even for the one render before the reset effect runs.
+      enabled && sessionKey && answeredFor === sessionKey
+        ? {
+            reactionsEnabled,
+            allowedReactions,
+            rateLimitedUntil,
+            markReactionsUnavailable,
+            noteRateLimited,
+            typingEnabled,
+            markTypingUnavailable,
+            sessionKey,
+          }
         : disabledValue,
-    [enabled, sessionKey, reactionsEnabled, allowedReactions, rateLimitedUntil, markReactionsUnavailable, noteRateLimited]
+    [
+      enabled,
+      sessionKey,
+      reactionsEnabled,
+      allowedReactions,
+      rateLimitedUntil,
+      markReactionsUnavailable,
+      noteRateLimited,
+      typingEnabled,
+      markTypingUnavailable,
+      answeredFor,
+    ]
   );
 
   return <ChatCapabilitiesContext.Provider value={value}>{children}</ChatCapabilitiesContext.Provider>;
@@ -105,3 +146,6 @@ export function ChatCapabilitiesProvider({
 export function useChatReactionCapability(): ChatReactionCapabilityValue {
   return useContext(ChatCapabilitiesContext);
 }
+
+/** Same session-scoped value; the name used by non-reaction features (#408 typing). */
+export const useChatCapabilities = useChatReactionCapability;

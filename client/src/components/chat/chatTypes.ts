@@ -56,7 +56,7 @@ export interface ChatReactionSummary {
 /** US-035 / #405: what the server currently offers (GET /api/chat/capabilities). */
 export interface RichChatCapabilities {
   reactions: { enabled: boolean; allowedReactions: ChatReactionCode[] };
-  typing: { enabled: false };
+  typing: { enabled: boolean };
   attachments: { enabled: false };
   voiceVideo: false;
 }
@@ -66,6 +66,18 @@ export type ChatReactionTarget =
   | { kind: 'channel'; channelId: string }
   | { kind: 'team'; teamId: string }
   | { kind: 'directMessage'; threadId: string };
+
+/** The conversation a typing signal or typing stream belongs to (US-035 / #408). */
+export type ChatConversationTarget = ChatReactionTarget;
+
+/** US-035 / #407 typing stream event. The handle is display data only, never an authority. */
+export interface ChatTypingEvent {
+  conversationType: ChatConversationTarget['kind'];
+  conversationId: string;
+  typist: { handle: string | null };
+  typing: boolean;
+  expiresAt?: string;
+}
 
 export interface ChatReactionMutationResult {
   messageId: string;

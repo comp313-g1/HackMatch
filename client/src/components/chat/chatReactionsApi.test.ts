@@ -105,7 +105,7 @@ describe('setChatMessageReaction (US-035 / #406)', () => {
 describe('fetchChatCapabilities', () => {
   beforeEach(() => vi.mocked(authFetch).mockReset());
 
-  it('reads reactions from the server and never reports unimplemented features', async () => {
+  it('reads reactions and typing from the server and never reports unimplemented features', async () => {
     vi.mocked(authFetch).mockResolvedValueOnce(
       json({
         capabilities: {
@@ -120,10 +120,18 @@ describe('fetchChatCapabilities', () => {
     expect(vi.mocked(authFetch)).toHaveBeenCalledWith('/api/chat/capabilities', { method: 'GET' });
     expect(capabilities).toEqual({
       reactions: { enabled: true, allowedReactions: [...CHAT_REACTION_CODES] },
-      typing: { enabled: false },
+      // #408: typing now follows the server flag (it was hardcoded off in #406).
+      typing: { enabled: true },
       attachments: { enabled: false },
       voiceVideo: false,
     });
+  });
+
+  it('treats anything but an exact true as typing disabled', async () => {
+    for (const typing of [{ enabled: false }, { enabled: 'true' }, {}, undefined]) {
+      vi.mocked(authFetch).mockResolvedValueOnce(json({ capabilities: { reactions: { enabled: false }, typing } }));
+      expect((await fetchChatCapabilities()).typing).toEqual({ enabled: false });
+    }
   });
 
   it('treats a disabled or malformed answer as no reactions', async () => {

@@ -20,6 +20,8 @@ import type {
   DirectMessageView,
 } from './chatTypes';
 import { MessageReactions } from './MessageReactions';
+import { useConversationTyping } from './useConversationTyping';
+import { TypingIndicator } from './TypingIndicator';
 import { ChatActivityBadge } from './ChatUnreadBadge';
 import { useChatUnread } from './ChatUnreadContext';
 
@@ -131,6 +133,11 @@ export function DirectMessagesView({
     (messageId: string, reactions: ChatReactionSummary[]) =>
       setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions } : m))),
     []
+  );
+
+  // US-035 / #408: typing indicators for the open conversation only.
+  const typing = useConversationTyping(
+    selectedThreadId && selectedThread ? { kind: 'directMessage', threadId: selectedThreadId } : null
   );
 
   const loadInbox = useCallback(async (): Promise<void> => {
@@ -290,6 +297,7 @@ export function DirectMessagesView({
   const updateDraft = (value: string): void => {
     if (!selectedThreadId) return;
     setDrafts((current) => ({ ...current, [selectedThreadId]: value }));
+    typing.onComposerChange(value);
   };
 
   const handleSend = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
@@ -321,6 +329,7 @@ export function DirectMessagesView({
         sortMessages([...current.filter((message) => message.id !== sent.id), sent])
       );
       setDrafts((current) => ({ ...current, [selectedThreadId]: '' }));
+      typing.onMessageSent();
       setFieldErrors({});
       setSendSuccess('Message sent.');
       setThreads((current) =>
@@ -645,11 +654,13 @@ export function DirectMessagesView({
                       You have blocked this participant. Unblock them to send messages.
                     </p>
                   )}
+                  <TypingIndicator enabled={typing.enabled} typists={typing.typists} />
                   <label htmlFor="dm-message-body" className="block text-sm font-medium text-forest-900">Message</label>
                   <textarea
                     id="dm-message-body"
                     value={draft}
                     onChange={(event) => updateDraft(event.target.value)}
+                    onBlur={typing.onComposerBlur}
                     disabled={sending || peerBlocked}
                     rows={3}
                     maxLength={MESSAGE_MAX_LENGTH}
