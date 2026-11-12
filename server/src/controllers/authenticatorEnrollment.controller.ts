@@ -1,0 +1,116 @@
+import type { Request, Response } from 'express';
+import {
+  AuthenticatorEnrollmentError,
+  beginAuthenticatorEnrollment as beginEnrollment,
+  confirmAuthenticatorEnrollment as confirmEnrollment,
+  type AuthenticatorEnrollmentErrorCode,
+  type AuthenticatorOwnerContext,
+} from '../services/authenticatorEnrollment.js';
+
+const SAFE_ERROR_RESPONSES: Record<
+  AuthenticatorEnrollmentErrorCode,
+  { status: number; error: string; retryable?: boolean }
+> = {
+  AUTHENTICATOR_ALREADY_ACTIVE: {
+    status: 409,
+    error: 'An authenticator is already active for this account.',
+  },
+  AUTHENTICATOR_ENROLLMENT_PENDING: {
+    status: 409,
+    error: 'An authenticator enrollment is already pending for this account.',
+  },
+  AUTHENTICATOR_ENROLLMENT_NOT_PENDING: {
+    status: 409,
+    error: 'There is no pending authenticator enrollment to confirm.',
+  },
+  AUTHENTICATOR_ENROLLMENT_EXPIRED: {
+    status: 410,
+    error: 'The authenticator enrollment has expired. Start enrollment again.',
+  },
+  AUTHENTICATOR_ENROLLMENT_STALE: {
+    status: 409,
+    error: 'This authenticator enrollment is no longer current. Start enrollment again.',
+  },
+  INVALID_AUTHENTICATOR_CODE: {
+    status: 401,
+    error: 'The authenticator code is incorrect or expired.',
+  },
+  AUTHENTICATOR_ENROLLMENT_UNAVAILABLE: {
+    status: 503,
+    error: 'Authenticator enrollment is temporarily unavailable. Please try again later.',
+    retryable: true,
+  },
+  AUTHENTICATOR_CONFIGURATION_ERROR: {
+    status: 503,
+    error: 'Authenticator enrollment is temporarily unavailable. Please contact support if the problem continues.',
+    retryable: false,
+  },
+};
+
+function ownerFromRequest(req: Request, res: Response): AuthenticatorOwnerContext | null {
+  const participant = req.participant;
+  const firebaseUser = req.firebaseUser;
+  const role = req.authRole;
+
+  if (!participant || !firebaseUser || !role || participant.firebase_uid !== firebaseUser.uid) {
+    res.status(403).json({
+      error: 'This account is not eligible to manage an authenticator.',
+      code: 'AUTHENTICATOR_ENROLLMENT_FORBIDDEN',
+    });
+    return null;
+  }
+
+  if (!participant.is_verified) {
+    res.status(403).json({
+      error: 'Email verification is required before authenticator enrollment.',
+      code: 'EMAIL_NOT_VERIFIED',
+    });
+    return null;
+  }
+
+  return {
+    participantId: participant.id,
+    firebaseUid: firebaseUser.uid,
+    role,
+  };
+}
+
+function sendSafeEnrollmentError(res: Response, error: unknown): void {
+  const normalized =
+    error instanceof AuthenticatorEnrollmentError
+      ? error
+      : new AuthenticatorEnrollmentError('AUTHENTICATOR_ENROLLMENT_UNAVAILABLE', 503);
+  const response = SAFE_ERROR_RESPONSES[normalized.code];
+
+  res.status(response.status).json({
+    error: response.error,
+    code: normalized.code,
+    ...(response.retryable !== undefined ? { retryable: response.retryable } : {}),
+  });
+}
+
+export async function beginAuthenticatorEnrollment(req: Request, res: Response): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  const owner = ownerFromRequest(req, res);
+  if (!owner) return;
+
+  try {
+    const result = await beginEnrollment(owner);
+    res.status(201).json(result);
+  } catch (error: unknown) {
+    sendSafeEnrollmentError(res, error);
+  }
+}
+
+export async function confirmAuthenticatorEnrollment(req: Request, res: Response): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  const owner = ownerFromRequest(req, res);
+  if (!owner) return;
+
+  try {
+    const result = await confirmEnrollment(owner, req.body.enrollmentId, req.body.code);
+    res.status(200).json(result);
+  } catch (error: unknown) {
+    sendSafeEnrollmentError(res, error);
+  }
+}

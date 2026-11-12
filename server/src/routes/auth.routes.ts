@@ -33,6 +33,16 @@ import { requireMfa } from '../middleware/requireMfa.js';
 import { requireSessionCookie } from '../middleware/requireSessionCookie.js';
 import { requireCsrfIfCookieSession } from '../middleware/requireCsrf.js';
 import { requireActiveAccount } from '../middleware/requireActiveAccount.js';
+import { requireRole } from '../middleware/requireRole.js';
+import { requireRecentAuthentication } from '../middleware/requireRecentAuthentication.js';
+import {
+  validateBeginAuthenticatorEnrollment,
+  validateConfirmAuthenticatorEnrollment,
+} from '../validators/authenticatorEnrollment.validator.js';
+import {
+  beginAuthenticatorEnrollment,
+  confirmAuthenticatorEnrollment,
+} from '../controllers/authenticatorEnrollment.controller.js';
 
 export const authRouter = Router();
 
@@ -124,6 +134,34 @@ authRouter.post(
     }
     return verifyMfaOtp(req, res, next);
   }
+);
+
+/**
+ * US-029 / #266 owner-only contract for standards-based TOTP enrollment.
+ * A current email-MFA-complete session and recent primary authentication are
+ * required. Protected secret storage is supplied by #267; until then the
+ * provider fails closed with AUTHENTICATOR_ENROLLMENT_UNAVAILABLE.
+ */
+const requireAuthenticatorOwner = [
+  requireFirebaseAuth,
+  requireActiveAccount,
+  requireMfa,
+  requireRole('PART', 'ADMIN'),
+  requireRecentAuthentication,
+];
+
+authRouter.post(
+  '/mfa/authenticator/enrollment',
+  ...requireAuthenticatorOwner,
+  validateBeginAuthenticatorEnrollment,
+  beginAuthenticatorEnrollment
+);
+
+authRouter.post(
+  '/mfa/authenticator/enrollment/confirm',
+  ...requireAuthenticatorOwner,
+  validateConfirmAuthenticatorEnrollment,
+  confirmAuthenticatorEnrollment
 );
 
 /**
