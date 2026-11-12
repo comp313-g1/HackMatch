@@ -17,6 +17,10 @@ import { buildChatSuccessPayload } from '../services/chatPrivacy.js';
 import { setTeamChannelMessageReaction } from '../services/chatReactions.js';
 import { limitReactionMutations, requireReactionsEnabled } from '../middleware/richChatReactions.js';
 import { validateReactionParams, type ReactionTarget } from '../validators/chatReaction.validator.js';
+import { limitTypingSignals, requireTypingEnabled } from '../middleware/richChatTyping.js';
+import { validateTypingSignalBody } from '../validators/chatTyping.validator.js';
+import { openTypingStream } from '../services/typingStream.js';
+import { authorizeTeamViewer, signalTeamTyping } from '../services/chatTypingAccess.js';
 
 /**
  * US-031 / #381 / FR-090 — private team channel, mounted at /api/teams/:teamId/chat.
@@ -144,4 +148,44 @@ teamChatRouter.delete(
   '/messages/:messageId/reactions/:reaction',
   ...teamReactionChain,
   teamReactionHandler(false)
+);
+
+/**
+ * POST /api/teams/:teamId/chat/typing   body: { "typing": true | false }
+ * US-035 / #407: confirmed members of a live team only; a disbanded team is read-only.
+ */
+teamChatRouter.post(
+  '/typing',
+  ...participantAuthGuard,
+  requireTypingEnabled,
+  validateTeamIdParams,
+  validateTypingSignalBody,
+  limitTypingSignals,
+  requireConfirmedTeamMember,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      await signalTeamTyping(req.participant!, teamIdOf(req), req.body.typing);
+      res.status(200).json({ status: 'ok' });
+    } catch (err) {
+      handleError(err, res, next);
+    }
+  }
+);
+
+/** GET /api/teams/:teamId/chat/typing/stream — SSE typing events for this team's channel. */
+teamChatRouter.get(
+  '/typing/stream',
+  ...participantAuthGuard,
+  requireTypingEnabled,
+  validateTeamIdParams,
+  requireConfirmedTeamMember,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const access = await authorizeTeamViewer(req.participant!, teamIdOf(req));
+      openTypingStream(req, res, { participantId: req.participant!.id, ...access });
+    } catch (err) {
+      handleError(err, res, next);
+    }
+  }
 );

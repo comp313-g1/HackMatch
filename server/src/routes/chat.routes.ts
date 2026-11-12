@@ -25,6 +25,10 @@ import { getRichChatCapabilities } from '../services/chatCapabilities.js';
 import { setPublicChannelMessageReaction } from '../services/chatReactions.js';
 import { limitReactionMutations, requireReactionsEnabled } from '../middleware/richChatReactions.js';
 import { validateReactionParams, type ReactionTarget } from '../validators/chatReaction.validator.js';
+import { limitTypingSignals, requireTypingEnabled } from '../middleware/richChatTyping.js';
+import { validateTypingSignalBody } from '../validators/chatTyping.validator.js';
+import { openTypingStream } from '../services/typingStream.js';
+import { authorizePublicChannelViewer, signalPublicChannelTyping } from '../services/chatTypingAccess.js';
 
 export const chatRouter = Router();
 
@@ -250,4 +254,47 @@ chatRouter.delete(
   '/channels/:channelId/messages/:messageId/reactions/:reaction',
   ...publicReactionChain,
   publicReactionHandler(false)
+);
+
+/**
+ * POST /api/chat/channels/:channelId/typing   body: { "typing": true | false }
+ * US-035 / #407: the caller is typing (or stopped) in this public forum. Ephemeral;
+ * nothing is stored. Always 200 { status: 'ok' } once accepted, including when the
+ * caller is Invisible (nothing is published then).
+ */
+chatRouter.post(
+  '/channels/:channelId/typing',
+  ...chatAuthGuard,
+  requireTypingEnabled,
+  validateChatChannelIdParam,
+  validateTypingSignalBody,
+  limitTypingSignals,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      await signalPublicChannelTyping(req.participant!, String(req.params.channelId), req.body.typing);
+      res.status(200).json({ status: 'ok' });
+    } catch (err) {
+      handleChatError(err, res, next);
+    }
+  }
+);
+
+/**
+ * GET /api/chat/channels/:channelId/typing/stream
+ * US-035 / #407: SSE stream of typing events for this one public forum.
+ */
+chatRouter.get(
+  '/channels/:channelId/typing/stream',
+  ...chatAuthGuard,
+  requireTypingEnabled,
+  validateChatChannelIdParam,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const access = await authorizePublicChannelViewer(req.participant!, String(req.params.channelId));
+      openTypingStream(req, res, { participantId: req.participant!.id, ...access });
+    } catch (err) {
+      handleChatError(err, res, next);
+    }
+  }
 );
