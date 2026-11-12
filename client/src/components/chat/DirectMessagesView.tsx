@@ -14,11 +14,14 @@ import {
   type DirectMessageOpenRequest,
 } from './directMessageLauncher';
 import type {
+  ChatAttachmentView,
   ChatFieldErrors,
   ChatReactionSummary,
   DirectMessageThreadView,
   DirectMessageView,
 } from './chatTypes';
+import { AttachmentComposer } from './AttachmentComposer';
+import { MessageAttachments } from './MessageAttachments';
 import { MessageReactions } from './MessageReactions';
 import { useConversationTyping } from './useConversationTyping';
 import { TypingIndicator } from './TypingIndicator';
@@ -103,6 +106,9 @@ export function DirectMessagesView({
   const [threadAccessDenied, setThreadAccessDenied] = useState(false);
 
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [pendingAttachmentsByThread, setPendingAttachmentsByThread] = useState<
+    Record<string, ChatAttachmentView[]>
+  >({});
   const [fieldErrors, setFieldErrors] = useState<ChatFieldErrors>({});
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
@@ -124,6 +130,18 @@ export function DirectMessagesView({
   const handledOpenRequestId = useRef<number | null>(null);
 
   const draft = selectedThreadId ? drafts[selectedThreadId] ?? '' : '';
+  const pendingAttachments = selectedThreadId ? pendingAttachmentsByThread[selectedThreadId] ?? [] : [];
+  const setPendingAttachments = useCallback<React.Dispatch<React.SetStateAction<ChatAttachmentView[]>>>(
+    (updater) => {
+      if (!selectedThreadId) return;
+      setPendingAttachmentsByThread((current) => {
+        const prev = current[selectedThreadId] ?? [];
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        return { ...current, [selectedThreadId]: next };
+      });
+    },
+    [selectedThreadId]
+  );
   // #433: true only when YOU blocked the other person (the server never reveals their block).
   const peerBlocked = selectedThread?.youBlockedPeer === true;
 
@@ -320,15 +338,19 @@ export function DirectMessagesView({
     }
 
     const submittedDraft = draft;
+    const attachmentIds = pendingAttachments.map((attachment) => attachment.id);
+    const payload =
+      attachmentIds.length > 0 ? { body: submittedDraft, attachmentIds } : { body: submittedDraft };
     const requestId = ++sendRequestId.current;
     setSending(true);
     try {
-      const sent = await sendDirectMessage(selectedThreadId, { body: submittedDraft });
+      const sent = await sendDirectMessage(selectedThreadId, payload);
       if (requestId !== sendRequestId.current) return;
       setMessages((current) =>
         sortMessages([...current.filter((message) => message.id !== sent.id), sent])
       );
       setDrafts((current) => ({ ...current, [selectedThreadId]: '' }));
+      setPendingAttachmentsByThread((current) => ({ ...current, [selectedThreadId]: [] }));
       typing.onMessageSent();
       setFieldErrors({});
       setSendSuccess('Message sent.');
@@ -633,6 +655,12 @@ export function DirectMessagesView({
                         </div>
                         <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink">{message.body}</p>
                         {selectedThreadId && (
+                          <MessageAttachments
+                            target={{ kind: 'directMessage', threadId: selectedThreadId }}
+                            attachments={message.attachments}
+                          />
+                        )}
+                        {selectedThreadId && (
                           <MessageReactions
                             target={{ kind: 'directMessage', threadId: selectedThreadId }}
                             messageId={message.id}
@@ -673,6 +701,12 @@ export function DirectMessagesView({
                   {fieldErrors.body && <p id="dm-message-error" role="alert" className="text-xs text-red-700">{fieldErrors.body}</p>}
                   {sendError && <p role="alert" className="text-xs text-red-700">{sendError}</p>}
                   {sendSuccess && <p role="status" className="text-xs text-forest-800">{sendSuccess}</p>}
+                  <AttachmentComposer
+                    target={{ kind: 'directMessage', threadId: selectedThreadId }}
+                    pendingAttachments={pendingAttachments}
+                    onPendingAttachmentsChange={setPendingAttachments}
+                    disabled={sending || peerBlocked}
+                  />
                   <button type="submit" disabled={sending || peerBlocked} className={primaryButtonClass}>
                     {sending ? 'Sending…' : 'Send message'}
                   </button>

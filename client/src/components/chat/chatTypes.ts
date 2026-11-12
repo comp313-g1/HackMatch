@@ -53,11 +53,66 @@ export interface ChatReactionSummary {
   reactedByMe: boolean;
 }
 
+/** US-035 / #409–#410 approved attachment MIME types (docs/04_requirements/us035_rich_chat_policy.md, section 6). */
+export const CHAT_ATTACHMENT_MIME_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'application/pdf',
+  'text/plain',
+] as const;
+
+export type ChatAttachmentMimeType = (typeof CHAT_ATTACHMENT_MIME_TYPES)[number];
+
+export const CHAT_ATTACHMENT_SCAN_STATUSES = [
+  'not_scanned',
+  'pending',
+  'clean',
+  'infected',
+  'scan_failed',
+] as const;
+
+export type ChatAttachmentScanStatus = (typeof CHAT_ATTACHMENT_SCAN_STATUSES)[number];
+
+export type ChatAttachmentStatus = 'pending' | 'attached';
+
+/** Matches server/src/services/chatAttachmentViews.ts (#409). */
+export interface ChatAttachmentView {
+  id: string;
+  filename: string;
+  mimeType: ChatAttachmentMimeType;
+  sizeBytes: number;
+  scanStatus: ChatAttachmentScanStatus;
+  status: ChatAttachmentStatus;
+  downloadable: boolean;
+}
+
+export interface ChatAttachmentAccessView {
+  url: string;
+  expiresAt: string;
+}
+
+/** Matches server/src/services/chatCapabilities.ts (#409). */
+export interface ChatAttachmentLimits {
+  maxBytes: number;
+  maxPerMessage: number;
+  allowedTypes: ChatAttachmentMimeType[];
+  malwareScanning: 'not_available';
+}
+
+export const DEFAULT_CHAT_ATTACHMENT_LIMITS: ChatAttachmentLimits = {
+  maxBytes: 10 * 1024 * 1024,
+  maxPerMessage: 5,
+  allowedTypes: [...CHAT_ATTACHMENT_MIME_TYPES],
+  malwareScanning: 'not_available',
+};
+
 /** US-035 / #405: what the server currently offers (GET /api/chat/capabilities). */
 export interface RichChatCapabilities {
   reactions: { enabled: boolean; allowedReactions: ChatReactionCode[] };
   typing: { enabled: boolean };
-  attachments: { enabled: false };
+  attachments: { enabled: boolean; limits?: ChatAttachmentLimits };
   voiceVideo: false;
 }
 
@@ -96,6 +151,8 @@ export interface ChatMessageView {
   createdAt: string;
   /** US-035 / #405: present only while the server's reaction feature is on. */
   reactions?: ChatReactionSummary[];
+  /** US-035 / #409–#410: present only when attachments are enabled and attached. */
+  attachments?: ChatAttachmentView[];
 }
 
 export interface CreateChannelInput {
@@ -105,6 +162,7 @@ export interface CreateChannelInput {
 
 export interface SendMessageInput {
   body: string;
+  attachmentIds?: string[];
 }
 
 /**
@@ -120,6 +178,8 @@ export interface DirectMessageView {
   createdAt: string;
   /** US-035 / #405: present only while the server's reaction feature is on. */
   reactions?: ChatReactionSummary[];
+  /** US-035 / #409–#410: present only when attachments are enabled and attached. */
+  attachments?: ChatAttachmentView[];
 }
 
 /** US-032 / #389 safe inbox/thread projection. Participant IDs are never rendered by the UI. */

@@ -1,6 +1,15 @@
 import { authFetch, AuthRequiredError } from '../../config/authFetch';
 import {
+  CHAT_ATTACHMENT_MIME_TYPES,
+  CHAT_ATTACHMENT_SCAN_STATUSES,
   CHAT_REACTION_CODES,
+  DEFAULT_CHAT_ATTACHMENT_LIMITS,
+  type ChatAttachmentAccessView,
+  type ChatAttachmentLimits,
+  type ChatAttachmentMimeType,
+  type ChatAttachmentScanStatus,
+  type ChatAttachmentStatus,
+  type ChatAttachmentView,
   type ChatChannelView,
   type ChatFieldErrors,
   type ChatMessageView,
@@ -158,6 +167,11 @@ export async function createChatChannel(
   return data.channel;
 }
 
+function withNormalizedMessageAttachments<T extends { attachments?: unknown }>(message: T): T {
+  if (message.attachments === undefined) return message;
+  return { ...message, attachments: normalizeAttachmentViews(message.attachments) };
+}
+
 export async function listChatMessages(
   channelId: string
 ): Promise<ChatMessageView[]> {
@@ -165,7 +179,7 @@ export async function listChatMessages(
     `/api/chat/channels/${encodeURIComponent(channelId)}/messages`,
     { method: 'GET' }
   );
-  return data.messages ?? [];
+  return (data.messages ?? []).map(withNormalizedMessageAttachments);
 }
 
 export async function sendChatMessage(
@@ -181,7 +195,7 @@ export async function sendChatMessage(
     },
     input
   );
-  return data.message;
+  return withNormalizedMessageAttachments(data.message);
 }
 
 /** Opens the persisted private channel for one confirmed team member (US-031 / #381). */
@@ -222,7 +236,7 @@ export async function listTeamChatMessages(
       'Could not load team messages. Please try again.'
     );
   }
-  return data.messages;
+  return data.messages.map(withNormalizedMessageAttachments);
 }
 
 export async function sendTeamChatMessage(
@@ -247,7 +261,7 @@ export async function sendTeamChatMessage(
       'Could not send message. Your draft has been kept.'
     );
   }
-  return data.message;
+  return withNormalizedMessageAttachments(data.message);
 }
 
 /** Lists the authenticated participant's safe direct-message inbox (US-032 / #389). */
@@ -311,7 +325,10 @@ export async function getDirectMessageThread(
       'Could not load this conversation. Please try again.'
     );
   }
-  return data;
+  return {
+    ...data,
+    messages: data.messages.map(withNormalizedMessageAttachments),
+  };
 }
 
 /** Sends a text message while retaining the submitted draft in any API error. */
@@ -337,7 +354,7 @@ export async function sendDirectMessage(
       'Could not send message. Your draft has been kept.'
     );
   }
-  return data.message;
+  return withNormalizedMessageAttachments(data.message);
 }
 
 async function changeDirectMessageBlock(participantId: string, method: 'PUT' | 'DELETE'): Promise<boolean> {
@@ -487,24 +504,136 @@ export function normalizeReactionSummaries(value: unknown): ChatReactionSummary[
   );
 }
 
+const ATTACHMENT_MIME_SET = new Set<string>(CHAT_ATTACHMENT_MIME_TYPES);
+const ATTACHMENT_SCAN_STATUS_SET = new Set<string>(CHAT_ATTACHMENT_SCAN_STATUSES);
+
+function isAttachmentMimeType(value: unknown): value is ChatAttachmentMimeType {
+  return typeof value === 'string' && ATTACHMENT_MIME_SET.has(value);
+}
+
+function isAttachmentScanStatus(value: unknown): value is ChatAttachmentScanStatus {
+  return typeof value === 'string' && ATTACHMENT_SCAN_STATUS_SET.has(value);
+}
+
+function isAttachmentStatus(value: unknown): value is ChatAttachmentStatus {
+  return value === 'pending' || value === 'attached';
+}
+
+function invalidAttachmentResponse(message: string): ChatApiError {
+  return new ChatApiError(502, 'INVALID_RESPONSE', { _form: message }, undefined, message);
+}
+
+function normalizeAttachmentEntry(entry: unknown): ChatAttachmentView {
+  const row = (entry ?? {}) as Record<string, unknown>;
+  if (
+    typeof row.id !== 'string' ||
+    row.id.trim().length === 0 ||
+    typeof row.filename !== 'string' ||
+    row.filename.trim().length === 0 ||
+    row.filename.length > 255 ||
+    !isAttachmentMimeType(row.mimeType) ||
+    typeof row.sizeBytes !== 'number' ||
+    !Number.isSafeInteger(row.sizeBytes) ||
+    row.sizeBytes < 1 ||
+    row.sizeBytes > DEFAULT_CHAT_ATTACHMENT_LIMITS.maxBytes ||
+    !isAttachmentScanStatus(row.scanStatus) ||
+    !isAttachmentStatus(row.status) ||
+    typeof row.downloadable !== 'boolean'
+  ) {
+    throw invalidAttachmentResponse('The server returned invalid attachment metadata.');
+  }
+
+  return {
+    id: row.id.trim(),
+    filename: row.filename.trim(),
+    mimeType: row.mimeType,
+    sizeBytes: row.sizeBytes,
+    scanStatus: row.scanStatus,
+    status: row.status,
+    downloadable:
+      row.downloadable &&
+      row.status === 'attached' &&
+      (row.scanStatus === 'not_scanned' || row.scanStatus === 'clean'),
+  };
+}
+
+/**
+ * US-035 / #410: validates attachment metadata from the server and keeps only safe
+ * allowlisted fields (never storage keys, uploader ids, or raw URLs).
+ */
+export function normalizeAttachmentViews(value: unknown): ChatAttachmentView[] {
+  if (!Array.isArray(value)) {
+    throw invalidAttachmentResponse('The server returned invalid attachments.');
+  }
+  const seen = new Set<string>();
+  return value.map((entry) => {
+    const normalized = normalizeAttachmentEntry(entry);
+    if (seen.has(normalized.id)) {
+      throw invalidAttachmentResponse('The server returned duplicate attachments.');
+    }
+    seen.add(normalized.id);
+    return normalized;
+  });
+}
+
+function parseAttachmentLimits(rawAttachments: Record<string, unknown> | undefined): ChatAttachmentLimits | undefined {
+  if (!rawAttachments) return undefined;
+  const source =
+    rawAttachments.limits && typeof rawAttachments.limits === 'object'
+      ? (rawAttachments.limits as Record<string, unknown>)
+      : rawAttachments;
+
+  const hasAnyLimit =
+    Array.isArray(source.allowedTypes) ||
+    typeof source.maxBytes === 'number' ||
+    typeof source.maxPerMessage === 'number' ||
+    source.malwareScanning === 'not_available';
+
+  if (!hasAnyLimit) return undefined;
+
+  const allowedTypes = Array.isArray(source.allowedTypes)
+    ? CHAT_ATTACHMENT_MIME_TYPES.filter((mime) => (source.allowedTypes as unknown[]).includes(mime))
+    : [...DEFAULT_CHAT_ATTACHMENT_LIMITS.allowedTypes];
+
+  const positiveIntOrDefault = (candidate: unknown, fallback: number): number =>
+    typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate > 0 ? candidate : fallback;
+
+  return {
+    allowedTypes: allowedTypes.length > 0 ? allowedTypes : [...DEFAULT_CHAT_ATTACHMENT_LIMITS.allowedTypes],
+    maxBytes: positiveIntOrDefault(source.maxBytes, DEFAULT_CHAT_ATTACHMENT_LIMITS.maxBytes),
+    maxPerMessage: positiveIntOrDefault(source.maxPerMessage, DEFAULT_CHAT_ATTACHMENT_LIMITS.maxPerMessage),
+    malwareScanning: 'not_available',
+  };
+}
+
 /** Loads which rich-chat features the server offers. The server stays authoritative per route. */
 export async function fetchChatCapabilities(): Promise<RichChatCapabilities> {
-  const data = await requestJson<{ capabilities?: { reactions?: { enabled?: unknown; allowedReactions?: unknown } } }>(
-    '/api/chat/capabilities',
-    { method: 'GET' }
-  );
+  const data = await requestJson<{
+    capabilities?: {
+      reactions?: { enabled?: unknown; allowedReactions?: unknown };
+      typing?: { enabled?: unknown };
+      attachments?: Record<string, unknown>;
+    };
+  }>('/api/chat/capabilities', { method: 'GET' });
   const reactions = data.capabilities?.reactions;
   const enabled = reactions?.enabled === true;
   const allowed = Array.isArray(reactions?.allowedReactions)
     ? CHAT_REACTION_CODES.filter((code) => (reactions!.allowedReactions as unknown[]).includes(code))
     : [];
-  const typing = (data.capabilities as { typing?: { enabled?: unknown } } | undefined)?.typing;
+  const typing = data.capabilities?.typing;
+  const rawAttachments = data.capabilities?.attachments;
+  const attachmentsEnabled = rawAttachments?.enabled === true;
+  const attachmentLimits = attachmentsEnabled ? parseAttachmentLimits(rawAttachments) : undefined;
   return {
     reactions: { enabled: enabled && allowed.length > 0, allowedReactions: enabled ? allowed : [] },
     // US-035 / #407–#408: straight from the server flag; only an exact true enables it.
     typing: { enabled: typing?.enabled === true },
-    // Not implemented yet (#409–#410); never reported as available by the client.
-    attachments: { enabled: false },
+    // US-035 / #409–#410: straight from the server flag; only an exact true enables it.
+    attachments: attachmentsEnabled
+      ? attachmentLimits
+        ? { enabled: true, limits: attachmentLimits }
+        : { enabled: true }
+      : { enabled: false },
     voiceVideo: false,
   };
 }
@@ -580,4 +709,76 @@ export async function signalChatTyping(target: ChatConversationTarget, typing: b
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ typing }),
   });
+}
+
+/**
+ * US-035 / #410: upload one pending attachment to an authorized conversation using
+ * multipart/form-data (`file` field, #409). Keeps only safe normalized metadata.
+ */
+export async function uploadChatAttachment(
+  target: ChatConversationTarget,
+  file: File
+): Promise<ChatAttachmentView> {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  const data = await requestJson<Record<string, unknown>>(`${conversationBasePath(target)}/attachments`, {
+    method: 'POST',
+    body: form,
+  });
+  return normalizeAttachmentEntry(data.attachment ?? data);
+}
+
+/**
+ * US-035 / #410: request a 60-second signed download link for an attached file (#409).
+ * Re-checks conversation read access and scan state on the server.
+ */
+export async function requestChatAttachmentAccess(
+  target: ChatConversationTarget,
+  attachmentId: string
+): Promise<ChatAttachmentAccessView> {
+  const path = `${conversationBasePath(target)}/attachments/${encodeURIComponent(attachmentId)}/access`;
+  const data = await requestJson<Record<string, unknown>>(path, { method: 'GET' });
+  const raw = (data.access ?? data) as Record<string, unknown>;
+
+  if (
+    typeof raw.url !== 'string' ||
+    !raw.url.startsWith('/api/chat/attachments/content') ||
+    typeof raw.expiresAt !== 'string' ||
+    raw.expiresAt.trim().length === 0
+  ) {
+    throw invalidAttachmentResponse('The server returned an invalid attachment download response.');
+  }
+
+  return {
+    url: raw.url,
+    expiresAt: raw.expiresAt,
+  };
+}
+
+/**
+ * US-035 / #410: fetch attachment bytes from the signed `/api/chat/attachments/content`
+ * endpoint so URLs stay strictly on the API origin and expiry/access denials propagate.
+ */
+export async function fetchAttachmentContentBlob(accessUrl: string): Promise<Blob> {
+  if (!accessUrl.startsWith('/api/chat/attachments/content')) {
+    throw invalidAttachmentResponse('Refused non-API attachment download URL.');
+  }
+  let res: Response;
+  try {
+    res = await authFetch(accessUrl, { method: 'GET' });
+  } catch (err: unknown) {
+    if (err instanceof AuthRequiredError) throw err;
+    throw new ChatApiError(
+      0,
+      'NETWORK',
+      { _form: 'Network error. Please try again.' },
+      undefined,
+      'Network error. Please try again.'
+    );
+  }
+  if (!res.ok) {
+    const body = await parseErrorBody(res);
+    throwFromResponse(res, body);
+  }
+  return await res.blob();
 }

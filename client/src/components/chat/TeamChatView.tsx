@@ -7,11 +7,14 @@ import {
   sendTeamChatMessage,
 } from './chatApi';
 import type {
+  ChatAttachmentView,
   ChatFieldErrors,
   ChatMessageView,
   ChatReactionSummary,
   TeamChatChannelView,
 } from './chatTypes';
+import { AttachmentComposer } from './AttachmentComposer';
+import { MessageAttachments } from './MessageAttachments';
 import { MessageReactions } from './MessageReactions';
 import { useConversationTyping } from './useConversationTyping';
 import { TypingIndicator } from './TypingIndicator';
@@ -82,6 +85,7 @@ export function TeamChatView({
   const [accessDenied, setAccessDenied] = useState(false);
 
   const [draft, setDraft] = useState('');
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachmentView[]>([]);
   const [fieldErrors, setFieldErrors] = useState<ChatFieldErrors>({});
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
@@ -111,6 +115,7 @@ export function TeamChatView({
     setLoadError(null);
     setAccessDenied(false);
     setDraft('');
+    setPendingAttachments([]);
     setFieldErrors({});
     setSendError(null);
     setSendSuccess(null);
@@ -191,12 +196,16 @@ export function TeamChatView({
 
     setSending(true);
     const requestId = ++sendRequestId.current;
+    const attachmentIds = pendingAttachments.map((attachment) => attachment.id);
+    const payload =
+      attachmentIds.length > 0 ? { body: draft, attachmentIds } : { body: draft };
     try {
-      // Keep the exact local draft until the server confirms success.
-      const message = await sendTeamChatMessage(teamId, { body: draft });
+      // Keep the exact local draft and pending attachments until the server confirms success.
+      const message = await sendTeamChatMessage(teamId, payload);
       if (requestId !== sendRequestId.current) return;
       setMessages((current) => [...current, message]);
       setDraft('');
+      setPendingAttachments([]);
       typing.onMessageSent();
       setFieldErrors({});
       setSendSuccess('Message sent.');
@@ -361,6 +370,10 @@ export function TeamChatView({
                       <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink">
                         {message.body}
                       </p>
+                      <MessageAttachments
+                        target={{ kind: 'team', teamId }}
+                        attachments={message.attachments}
+                      />
                       <MessageReactions
                         target={{ kind: 'team', teamId }}
                         messageId={message.id}
@@ -416,6 +429,12 @@ export function TeamChatView({
                     {sendSuccess}
                   </p>
                 )}
+                <AttachmentComposer
+                  target={{ kind: 'team', teamId }}
+                  pendingAttachments={pendingAttachments}
+                  onPendingAttachmentsChange={setPendingAttachments}
+                  disabled={sending}
+                />
                 <button type="submit" disabled={sending} className={primaryButtonClass}>
                   {sending ? 'Sending…' : 'Send message'}
                 </button>

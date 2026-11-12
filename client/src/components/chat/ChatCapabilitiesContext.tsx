@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components -- provider and its matching hook are one API. */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchChatCapabilities } from './chatApi';
-import type { ChatReactionCode } from './chatTypes';
+import type { ChatAttachmentLimits, ChatReactionCode } from './chatTypes';
 
 /**
  * US-035 / #406, #408 — one session-scoped answer to "may this session use
@@ -27,6 +27,12 @@ export interface ChatReactionCapabilityValue {
   typingEnabled: boolean;
   /** A typing route answered FEATURE_DISABLED: stop typing signals and streams for this session. */
   markTypingUnavailable: () => void;
+  /** #410: true only after the server confirmed attachments for this session. */
+  attachmentsEnabled: boolean;
+  /** Server-reported attachment limits for this session, or null when omitted/disabled. */
+  attachmentLimits: ChatAttachmentLimits | null;
+  /** An attachment route answered FEATURE_DISABLED: hide attachment controls for this session. */
+  markAttachmentsUnavailable: () => void;
   /** The current session key, so session-scoped effects restart on an account change. Never rendered or sent. */
   sessionKey: string | null;
 }
@@ -39,6 +45,9 @@ const disabledValue: ChatReactionCapabilityValue = {
   noteRateLimited: () => undefined,
   typingEnabled: false,
   markTypingUnavailable: () => undefined,
+  attachmentsEnabled: false,
+  attachmentLimits: null,
+  markAttachmentsUnavailable: () => undefined,
   sessionKey: null,
 };
 
@@ -63,6 +72,8 @@ export function ChatCapabilitiesProvider({
   const [reactionsEnabled, setReactionsEnabled] = useState(false);
   const [rateLimitedUntil, setRateLimitedUntil] = useState<number | null>(null);
   const [typingEnabled, setTypingEnabled] = useState(false);
+  const [attachmentsEnabled, setAttachmentsEnabled] = useState(false);
+  const [attachmentLimits, setAttachmentLimits] = useState<ChatAttachmentLimits | null>(null);
   /** The session the capability answer belongs to; any other session sees "disabled". */
   const [answeredFor, setAnsweredFor] = useState<string | null>(null);
   const requestId = useRef(0);
@@ -74,6 +85,8 @@ export function ChatCapabilitiesProvider({
     setAllowedReactions([]);
     setRateLimitedUntil(null);
     setTypingEnabled(false);
+    setAttachmentsEnabled(false);
+    setAttachmentLimits(null);
     setAnsweredFor(null);
     if (!enabled || !sessionKey) return;
 
@@ -83,6 +96,8 @@ export function ChatCapabilitiesProvider({
         setReactionsEnabled(capabilities.reactions.enabled);
         setAllowedReactions(capabilities.reactions.allowedReactions);
         setTypingEnabled(capabilities.typing.enabled);
+        setAttachmentsEnabled(capabilities.attachments.enabled);
+        setAttachmentLimits(capabilities.attachments.enabled ? (capabilities.attachments.limits ?? null) : null);
         setAnsweredFor(sessionKey);
       })
       .catch(() => {
@@ -104,6 +119,11 @@ export function ChatCapabilitiesProvider({
 
   const markTypingUnavailable = useCallback(() => setTypingEnabled(false), []);
 
+  const markAttachmentsUnavailable = useCallback(() => {
+    setAttachmentsEnabled(false);
+    setAttachmentLimits(null);
+  }, []);
+
   const noteRateLimited = useCallback((retryAfterSeconds: number) => {
     const seconds =
       Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0 ? retryAfterSeconds : DEFAULT_RATE_LIMIT_SECONDS;
@@ -123,6 +143,9 @@ export function ChatCapabilitiesProvider({
             noteRateLimited,
             typingEnabled,
             markTypingUnavailable,
+            attachmentsEnabled,
+            attachmentLimits,
+            markAttachmentsUnavailable,
             sessionKey,
           }
         : disabledValue,
@@ -136,6 +159,9 @@ export function ChatCapabilitiesProvider({
       noteRateLimited,
       typingEnabled,
       markTypingUnavailable,
+      attachmentsEnabled,
+      attachmentLimits,
+      markAttachmentsUnavailable,
       answeredFor,
     ]
   );

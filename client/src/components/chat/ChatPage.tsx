@@ -11,12 +11,15 @@ import {
 } from './chatApi';
 import {
   PRESENCE_STATUSES,
+  type ChatAttachmentView,
   type ChatChannelView,
   type ChatFieldErrors,
   type ChatMessageView,
   type ChatReactionSummary,
   type PresenceStatus,
 } from './chatTypes';
+import { AttachmentComposer } from './AttachmentComposer';
+import { MessageAttachments } from './MessageAttachments';
 import { MessageReactions } from './MessageReactions';
 import { useConversationTyping } from './useConversationTyping';
 import { TypingIndicator } from './TypingIndicator';
@@ -113,6 +116,7 @@ export function ChatPage({
   const [messagesError, setMessagesError] = useState<string | null>(null);
 
   const [messageDraft, setMessageDraft] = useState('');
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachmentView[]>([]);
   const [messageErrors, setMessageErrors] = useState<ChatFieldErrors>({});
   const [messageFormError, setMessageFormError] = useState<string | null>(null);
   const [messageSuccess, setMessageSuccess] = useState<string | null>(null);
@@ -176,6 +180,7 @@ export function ChatPage({
   }, []);
 
   useEffect(() => {
+    setPendingAttachments([]);
     if (!selectedChannelId) {
       setMessages([]);
       setMessagesError(null);
@@ -332,12 +337,17 @@ export function ChatPage({
     }
 
     setSending(true);
-    const payload = { body: messageDraft.trim() };
+    const attachmentIds = pendingAttachments.map((attachment) => attachment.id);
+    const payload =
+      attachmentIds.length > 0
+        ? { body: messageDraft.trim(), attachmentIds }
+        : { body: messageDraft.trim() };
 
     try {
       const message = await sendChatMessage(selectedChannelId, payload);
       setMessages((prev) => [...prev, message]);
       setMessageDraft('');
+      setPendingAttachments([]);
       typing.onMessageSent();
       setMessageErrors({});
       setMessageSuccess('Message sent.');
@@ -730,6 +740,10 @@ export function ChatPage({
                       <p className="mt-1 text-sm text-ink whitespace-pre-wrap break-words">
                         {message.body}
                       </p>
+                      <MessageAttachments
+                        target={{ kind: 'channel', channelId: selectedChannelId }}
+                        attachments={message.attachments}
+                      />
                       <MessageReactions
                         target={{ kind: 'channel', channelId: selectedChannelId }}
                         messageId={message.id}
@@ -782,6 +796,12 @@ export function ChatPage({
                       {messageSuccess}
                     </p>
                   )}
+                  <AttachmentComposer
+                    target={{ kind: 'channel', channelId: selectedChannelId }}
+                    pendingAttachments={pendingAttachments}
+                    onPendingAttachmentsChange={setPendingAttachments}
+                    disabled={sending}
+                  />
                   <button type="submit" className={primaryBtnClass} disabled={sending}>
                     {sending ? 'Sending…' : 'Send message'}
                   </button>
