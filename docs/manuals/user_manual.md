@@ -4,9 +4,9 @@ This manual explains how to use the current HackMatch web application. It is wri
 
 | Item | Current manual scope |
 |---|---|
-| Version | 5.2 — Issue #430 update for completed user stories through US-034 |
-| Covers | Registration, email verification, sign-in, email OTP, password recovery, profiles, hackathon history and experience badges, Looking for Team, team discovery, candidate directory search, recruitment, requests, roster locking, notifications, private team workspace, team manifest export, abuse reporting, forums chat, private team chat, direct messages, chat unread/mention indicators, chat moderation, and ADMIN screens (moderation, accounts, audit log) |
-| Does not cover | Removed hackathon-directory workflows (US-008–US-010), authenticator-app 2FA (US-029, future), starting a brand-new direct message from a profile or card (not available yet), blocking and unblocking controls, or other unimplemented features |
+| Version | 5.3 — Issue #446 update for completed US-029 authenticator enrollment and management |
+| Covers | Registration, email verification, sign-in, email OTP, authenticator-app enrollment and management, password recovery, profiles, hackathon history and experience badges, Looking for Team, team discovery, candidate directory search, recruitment, requests, roster locking, notifications, private team workspace, team manifest export, abuse reporting, forums chat, private team chat, direct messages, chat unread/mention indicators, chat moderation, and ADMIN screens (moderation, accounts, audit log) |
+| Does not cover | Removed hackathon-directory workflows (US-008–US-010), authenticator-code or recovery-code redemption at sign-in (not implemented), starting a brand-new direct message from a profile or card (not available yet), blocking and unblocking controls, or other unimplemented features |
 | Sources checked | Current React components, Express routes and access middleware, tests, User Stories, requirements, and real application captures |
 
 > **Current-scope note:** Team formation is presented as a platform-wide workflow. Users do not choose a hackathon before creating, finding, or joining a team. A few current screens and older real captures still contain words such as “event” or “hackathon”; those are transitional interface or internal-compatibility terms, not a user-facing event-directory workflow.
@@ -17,7 +17,7 @@ This manual explains how to use the current HackMatch web application. It is wri
 2. [Roles and access](#2-roles-and-access)
 3. [Getting started and navigation](#3-getting-started-and-navigation)
 4. [Create and verify an account](#4-create-and-verify-an-account)
-5. [Sign in and complete email OTP](#5-sign-in-and-complete-email-otp)
+5. [Sign in, email OTP, and authenticator settings](#5-sign-in-email-otp-and-authenticator-settings)
 6. [Recover a password](#6-recover-a-password)
 7. [Create or update a Participant profile](#7-create-or-update-a-participant-profile)
 8. [Set Looking-for-Team availability](#8-set-looking-for-team-availability)
@@ -59,10 +59,11 @@ The current application supports:
 - participant presence, shared forums, and text messages;
 - a private team chat for the confirmed members of a team;
 - one-to-one direct messages between Participants;
-- persistent unread-message and `@mention` indicators for accessible chat conversations; and
+- persistent unread-message and `@mention` indicators for accessible chat conversations;
+- owner-only authenticator-app enrollment, replacement, disable, and recovery-code management for Participants and Platform Administrators; and
 - ADMIN-only content moderation, account enforcement, and a read-only audit log.
 
-The current application does **not** provide a public hackathon directory, hackathon submission, event approval workflow, a "new message" button for starting a direct message from a profile, block or unblock controls, attachments, voice/video, reactions, typing indicators, or authenticator-app two-factor sign-in.
+The current application does **not** provide a public hackathon directory, hackathon submission, event approval workflow, a "new message" button for starting a direct message from a profile, block or unblock controls, attachments, voice/video, reactions, or typing indicators. Authenticator apps and recovery codes can be set up and managed, but neither is currently accepted at sign-in; every sign-in still uses email OTP.
 
 ## 2. Roles and access
 
@@ -132,7 +133,7 @@ For Google or GitHub, the optional consent checkbox controls whether HackMatch m
 
 **Expected result:** The account is a verified `PART`; protected features remain unavailable until sign-in and OTP are complete.
 
-## 5. Sign in and complete email OTP
+## 5. Sign in, email OTP, and authenticator settings
 
 **Purpose:** Establish a fully authenticated HackMatch session.
 
@@ -154,11 +155,52 @@ Important restrictions:
 
 - A code expires after 10 minutes.
 - Five incorrect OTP attempts cause a 15-minute OTP lock.
+- Attempts made during the lock are rejected. After the lock expires, sign in again with the primary account method when prompted before requesting or verifying another code.
 - Primary credential failures are also rate-limited; follow the displayed retry guidance.
 - OAuth does not bypass OTP.
 - A suspended account cannot start or renew a protected session.
 
 **Expected result:** The full navigation appears and protected features become available according to the account role.
+
+### Set up an authenticator app
+
+The same owner-only setup is available to signed-in Participants (`PART`) and Platform Administrators (`ADMIN`). An ADMIN can configure only their own account, never another person's authenticator.
+
+1. Open the account-name menu and select **Profile**.
+2. In the **Authenticator app** card, select **Set up authenticator app**.
+3. If HackMatch asks you to verify your identity, complete the primary Firebase method linked to the account (password, Google, or GitHub), then complete the emailed verification-code step. HackMatch returns to the requested action once.
+4. Scan the displayed QR code with a standards-compatible app such as Google Authenticator or Microsoft Authenticator. If scanning is unavailable, choose manual setup in the app and enter the displayed manual key.
+5. Enter the current six-digit **Authenticator code** and select **Confirm authenticator**.
+
+The setup remains **Confirmation required** until the server accepts the code. An incorrect but well-formed code can be retried while the setup is valid; it does not activate or replace an authenticator. Expired or stale setup material must be restarted.
+
+QR and manual setup material is sensitive. Do not share it or save it in messages, screenshots, or public notes.
+
+### Resume safely after a refresh
+
+Refreshing or leaving the page never activates a pending setup. The general status check intentionally does not return the previous QR code or manual key. If the card later shows **Authenticator setup is pending**, select **Restart authenticator setup**. HackMatch cancels the obsolete pending setup and displays fresh owner-only QR/manual material; the old enrollment can no longer activate.
+
+### Manage an active authenticator and recovery codes
+
+When the card shows **Active**, the following owner-only controls are available:
+
+- **Generate recovery codes** creates 10 codes. They are displayed once; save them in a secure place such as a password manager. **Regenerate recovery codes** replaces the current set only after the new set is created successfully.
+- **Replace authenticator app** starts a pending replacement. The current authenticator and current recovery codes remain unchanged if the replacement fails, is cancelled, or expires. After a code from the new app is confirmed, the old authenticator is retired, the old recovery-code set is revoked, and a fresh set of 10 recovery codes is shown once.
+- **Turn off authenticator app** requires identity verification, retires the active authenticator, cancels a pending replacement, and revokes current recovery codes. Email verification codes remain available.
+
+Enrollment, replacement, recovery-code changes, and disable never remove email OTP. Sensitive actions can require the two-step identity check described above. Cancelling or failing that check leaves the current authenticator and recovery codes unchanged.
+
+> **Current sign-in boundary:** Authenticator codes and recovery codes are not yet accepted on the sign-in screen. Recovery codes are generated and managed for the implemented authenticator lifecycle, but cannot currently be redeemed. Email OTP remains required for every sign-in and is also used during authenticator reauthentication.
+
+### Loading, failure, and retry behavior
+
+The card shows progress while it checks status, starts or restarts setup, confirms a code, or generates recovery codes. Wait for the current action to finish rather than selecting it again.
+
+- If an authenticator is already active, the card shows **Active** and management controls instead of exposing its setup key.
+- A wrong six-digit code leaves valid pending setup available for another attempt. An expired, cancelled, or replaced enrollment requires a fresh setup.
+- A network or server error shows a safe message and a retry/status action. It does not silently activate, replace, or disable an authenticator.
+- A failed replacement leaves the old authenticator and recovery set unchanged. A failed recovery-code regeneration leaves the previous set current.
+- If access, account state, or recent verification is no longer valid, complete the requested sign-in/verification step. Setup and status from another account are never reused.
 
 ## 6. Recover a password
 
@@ -721,6 +763,18 @@ Visitors receive anonymized previews. Select **Sign in to apply**, complete sign
 ### Why am I seeing “Verification pending”?
 
 Primary sign-in succeeded but email OTP is incomplete. Select **Enter code**, use the newest 6-digit code, or select **Resend code**. After five incorrect codes, wait for the displayed lock period.
+
+### Why does authenticator setup say it is pending after a refresh?
+
+For security, the Profile page does not reload an earlier QR code or manual key. Select **Restart authenticator setup** to cancel the obsolete pending setup and receive fresh setup material. The old enrollment cannot be confirmed afterward.
+
+### Why must I verify my identity to manage the authenticator?
+
+Authenticator setup, replacement, disable, and recovery-code changes require a recent primary sign-in and current email OTP. Follow **Verify identity to manage authenticator** using the password or linked Google/GitHub method, then enter the emailed code. HackMatch retries the original action once after both steps succeed.
+
+### Can I sign in with my authenticator or a recovery code?
+
+Not yet. The current feature supports setup, confirmation, replacement, disable, and recovery-code management. Email OTP remains the required sign-in factor. Keep any generated recovery codes private even though sign-in redemption is not implemented.
 
 ### Why can’t I enable Looking for Team?
 

@@ -2,9 +2,9 @@
 
 **Audience:** project administrators, maintainers, developers, and technical reviewers
 
-**Repository baseline:** `US-034/chat-read-cursors` branch (migrations through `0061`, Issue #430 update)
+**Repository baseline:** `US-029/authenticator-enrollment-design` branch (migrations through `0066`, Issue #446 update)
 
-**Last reviewed:** November 10, 2026
+**Last reviewed:** November 12, 2026
 
 This manual describes how the current HackMatch implementation is configured, operated, secured, tested, and maintained. It complements the end-user [User Manual](./user_manual.md), the [engineering diagram index](../diagrams/README.md), and the detailed [demo seed guide](../../db-seed/README.md).
 
@@ -34,7 +34,7 @@ This manual describes how the current HackMatch implementation is configured, op
 
 ## 1. System overview
 
-HackMatch is a web application for participant profiles, platform-wide teammate discovery, team recruitment, invitations, applications, roster management, notifications, a private team workspace and manifest export, abuse reporting, administration (including chat moderation, account enforcement, and audit review), participant forums chat, a private team chat, and one-to-one direct messages.
+HackMatch is a web application for participant profiles, platform-wide teammate discovery, team recruitment, invitations, applications, roster management, notifications, a private team workspace and manifest export, abuse reporting, owner-only authenticator enrollment/management, administration (including chat moderation, account enforcement, and audit review), participant forums chat, a private team chat, and one-to-one direct messages.
 
 The current user-facing architecture is **Event-Free**:
 
@@ -55,7 +55,7 @@ HackMatch uses a three-tier web architecture with two external managed services.
 | React/Vite client | Browser UI, Firebase client sign-in, route-level experience, form validation, and calls to `/api` |
 | Express/Node server | Authentication verification, MFA, authorization, validation, privacy projection, domain services, administration, and database access |
 | Firebase Authentication | Primary identity, email/password and federated providers, verified-email state, ID tokens, custom role/MFA claims, password reset, and refresh-token revocation |
-| Supabase/PostgreSQL | Application accounts, profiles, team/recruitment data, MFA challenge records, notifications, moderation/enforcement records, and chat data |
+| Supabase/PostgreSQL | Application accounts, profiles, team/recruitment data, MFA challenge records, encrypted authenticator enrollment state, recovery-code verifiers, notifications, moderation/enforcement records, and chat data |
 | SMTP provider | Delivery of verification and six-digit MFA messages; a development-only Ethereal transport is available when production SMTP is not configured |
 
 The browser authenticates through Firebase and ordinarily sends a Firebase ID token to the Express API. The server verifies the token with Firebase Admin, then resolves the corresponding PostgreSQL `participants` row and applies role, verification, active-account, MFA, and resource-ownership checks. Database service-role credentials remain server-side.
@@ -128,6 +128,7 @@ Variables prefixed with `VITE_` are compiled into browser code. They must not co
 | Firebase REST | `FIREBASE_WEB_API_KEY` | Used by server-side Firebase Identity Toolkit flows |
 | SMTP | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Production MFA delivery fails closed if SMTP is unavailable |
 | OTP controls | `OTP_RATE_LIMIT_COOLDOWN_MS`, `OTP_RATE_LIMIT_MAX_PER_HOUR`, `OTP_RATE_LIMIT_STRICT` | Optional overrides for challenge issuance limits |
+| Authenticator secrets | `TOTP_ENCRYPTION_KEY_BASE64`, `TOTP_ENCRYPTION_KEY_VERSION` | Server-only 32-byte Base64 key and version for AES-256-GCM TOTP protection; the same master key is domain-separated with HKDF for recovery-code HMAC verifiers |
 
 Production startup rejects missing core Supabase and Firebase Admin settings. Use a randomly generated, high-entropy `SESSION_SECRET` of at least the length described in the example file.
 
@@ -258,24 +259,81 @@ An optional `--uid` targets an existing exact Firebase UID, and `--demote` chang
 
 ## 9. Email OTP and MFA
 
-HackMatch implements application-level email OTP after Firebase primary authentication.
+Firebase remains the primary identity provider. HackMatch owns the application MFA/session state around that identity: email OTP is the current sign-in factor, while US-029 adds owner-only TOTP enrollment and management. TOTP and recovery-code **redemption at sign-in are not implemented**; every interactive login still completes email OTP.
+
+### Email OTP and lock policy
 
 1. The server confirms the Firebase identity and active account.
-2. A cryptographically random six-digit code is created.
-3. Only a SHA-256 hash is stored in `mfa_challenges`; attempts are recorded in `mfa_attempts`.
-4. The code is delivered by SMTP and expires after 10 minutes.
-5. A newly issued challenge invalidates previous pending challenges for that participant.
-6. Five consecutive invalid submissions create a 15-minute lock.
-7. Successful verification writes an `mfa_auth_time` custom claim tied to the current Firebase primary `auth_time`.
-8. The client refreshes its ID token before calling protected routes.
+2. A cryptographically random six-digit code is created. Only its SHA-256 hash is stored in `mfa_challenges`; verification records use `mfa_attempts`.
+3. SMTP delivers the code, which expires after 10 minutes. A newly issued challenge invalidates previous pending challenges for that participant.
+4. Migration `0066_serialize_mfa_verification_attempts.sql` adds `reserve_mfa_verification_attempt`. It takes a participant-scoped advisory transaction lock, reserves the comparison attempt, and assigns a strictly ordered timestamp before the hash comparison.
+5. Consecutive incorrect comparisons 1–4 return the safe validation response. The fifth locks verification for 15 minutes; later attempts during the lock are rejected before any OTP comparison. The lock survives resend.
+6. Missing, expired, consumed, or foreign challenges and infrastructure failures are discarded rather than counted as wrong-code attempts. A successful comparison changes the reserved attempt to successful and resets the consecutive-failure count.
+7. After an expired lock, a Firebase `auth_time` older than the lock end receives `FRESH_AUTH_REQUIRED`; the user must complete primary authentication again. The same policy applies when email OTP is used for a sensitive US-029 reauthentication.
+8. Successful verification writes an `mfa_auth_time` custom claim tied to the current Firebase primary `auth_time`; the client refreshes its ID token before protected requests.
 
-A new primary login changes `auth_time`, so an old MFA claim cannot satisfy the new session. Resend and issuance are rate limited. Defaults are stricter in production; optional environment variables can tune the cooldown and hourly cap.
+A new primary login changes `auth_time`, so an old MFA claim cannot satisfy the new session. Resend and issuance are rate limited. In non-production, Nodemailer may use an Ethereal transport and log a preview location, but never the OTP. Production delivery fails closed when SMTP is unavailable. Demo provisioning never writes `mfa_auth_time`.
 
-In non-production, when SMTP is not configured, Nodemailer may use an Ethereal transport and emit a preview location in server logs. The OTP itself is not logged. Production must use a controlled SMTP provider and fails closed when mail cannot be delivered.
+### Authenticator architecture and authorization (US-029 / #266)
 
-Demo account provisioning verifies account records but never writes `mfa_auth_time`; normal interactive sign-in still requires the OTP workflow.
+US-029 uses an application-owned, standards-compatible TOTP factor around Firebase—not Firebase MFA as a second source of truth. Both `PART` and `ADMIN` accounts have canonical rows in `participants`; `participants.firebase_uid` resolves the authenticated owner, and all authenticator/recovery rows reference `participants.id`. There is no route accepting an arbitrary target participant. An ADMIN has no cross-account support bypass.
 
-See the [MFA login sequence](../diagrams/US-004/US-004-mfa-login-sequence.png) and [challenge state diagram](../diagrams/US-004/US-004-mfa-challenge-state.png).
+All `/api/auth/mfa/authenticator/*` routes apply `requireFirebaseAuth`, `requireActiveAccount`, `requireMfa`, `requireRole('PART', 'ADMIN')`, and `requireRecentAuthentication`. The final guard requires a valid Firebase `auth_time` within 10 minutes and adds `Cache-Control: no-store`. Suspended, deactivated, unsupported-role, stale-auth, and incomplete-current-MFA callers fail before owner data is returned.
+
+The safe lifecycle states are `Pending`, `Active`, `Canceled`, `Expired`, and `Retired`. A generated secret is only `Pending`; activation requires a valid current six-digit TOTP. The standard is SHA-1, six digits, a 30-second period, and an accepted verification window of the current step plus one adjacent step on either side. A pending enrollment expires after 10 minutes.
+
+| Operation | Endpoint | Authoritative behavior |
+|---|---|---|
+| Status | `GET /api/auth/mfa/authenticator/enrollment` | Returns only owner-safe status/timestamps and available-method metadata; never setup or storage material |
+| Begin | `POST /api/auth/mfa/authenticator/enrollment` | Creates one encrypted `Pending` enrollment and returns the QR/manual setup material once to the authenticated owner |
+| Restart | `POST /api/auth/mfa/authenticator/enrollment/restart` | Atomically cancels the existing pending row and creates fresh pending material |
+| Confirm | `POST /api/auth/mfa/authenticator/enrollment/confirm` | Verifies the pending owner, expiry, and TOTP before atomic activation; refuses to complete a replacement |
+| Replace | `POST /api/auth/mfa/authenticator/replacement` and `/replacement/confirm` | Keeps the old factor active while pending, then atomically rotates the factor and recovery set after successful verification |
+| Disable | `POST /api/auth/mfa/authenticator/disable` | Retires the active factor, cancels pending replacement, and revokes recovery codes without changing email OTP |
+| Recovery codes | `GET`/`POST /api/auth/mfa/authenticator/recovery-codes` | Returns an owner-safe summary or atomically generates/regenerates a set after stale-batch validation |
+
+### Protected storage and transaction model (#267)
+
+Migration `0063_create_authenticator_enrollments.sql` creates `authenticator_enrollments` with owner FK `participant_id`, opaque UUID `id`, AES fields (`secret_ciphertext`, `secret_iv`, `secret_auth_tag`, `encryption_key_version`), lifecycle timestamps, and status/lifecycle checks. Partial unique indexes `uq_authenticator_enrollments_pending_participant` and `uq_authenticator_enrollments_active_participant` enforce at most one `Pending` and one `Active` row per participant; `idx_authenticator_enrollments_pending_expiry` supports pending-expiry work.
+
+The Node service encrypts each TOTP secret before persistence using AES-256-GCM, a random 12-byte IV, and a 16-byte authentication tag. Additional authenticated data binds the participant ID, enrollment ID, key version, and `hackmatch:totp:v1` domain. The 32-byte key comes only from `TOTP_ENCRYPTION_KEY_BASE64`; `TOTP_ENCRYPTION_KEY_VERSION` defaults to `v1`. PostgreSQL never stores plaintext TOTP secrets, the key is not stored in a row, and decryption is limited to setup/confirmation service calls that require it.
+
+`begin_authenticator_enrollment` and `activate_authenticator_enrollment` use participant-scoped advisory transaction locks. They recheck ownership/status/expiry under lock, terminalize expired rows, and preserve the one-pending/one-active constraints. Migration `0064_restart_pending_authenticator_enrollment.sql` adds `restart_authenticator_enrollment`: under the same lock it marks the old pending row `Canceled`, creates a fresh encrypted pending row, and makes the old enrollment ID permanently stale. Restart and activation therefore cannot race to reactivate replaced material.
+
+The table has RLS enabled, no browser policies, revoked `PUBLIC`/`anon`/`authenticated` access, and service-role-only table/RPC privileges. Privileged functions use a fixed `search_path`.
+
+### QR, confirmation, and ephemeral client state (#268)
+
+`AuthenticatorEnrollmentCard` is shared by `PART` and `ADMIN` on the signed-in Profile view. It renders the server-provided `otpauthUri` locally as an SVG through `qrcode.react`; no external QR service receives it. The response also supplies the manual Base32 setup key, safe issuer/account label, algorithm, digits, period, enrollment ID, and expiry.
+
+The QR URI, manual key, and confirmation code remain component-local and are cleared on completion, cancellation, unmount, sign-out, or account identity change. They are not written to local storage, session storage, URLs, analytics, or logs. The status endpoint is deliberately secret-free. After a refresh it can report `Pending` without setup material, and the UI offers **Restart authenticator setup** rather than recovering the old secret.
+
+Confirmation accepts exactly six decimal digits client-side and server-side. A wrong code does not mutate pending or active state; stale/expired enrollment returns a safe restart path. Activation occurs only after server verification and the database transition succeeds.
+
+### Reauthentication and management controls (#269)
+
+Sensitive actions follow this server-authoritative sequence:
+
+1. The original request returns `REAUTHENTICATION_REQUIRED` when Firebase `auth_time` is stale.
+2. The client reauthenticates through the account's current Firebase password or linked Google/GitHub provider. It does not set timestamps itself.
+3. The retried action can return `MFA_REQUIRED`; the existing email OTP challenge is completed and the refreshed token aligns `mfa_auth_time` with the new `auth_time`.
+4. The account-bound queued operation retries once. Cancellation, sign-out, or account change clears the queued operation and sensitive client state.
+
+Migration `0065_add_authenticator_recovery_controls.sql` creates `authenticator_recovery_codes` and the atomic replacement/disable/regeneration RPCs. Each set contains 10 `XXXX-XXXX-XXXX` codes generated with Node `crypto.randomInt` from a 32-symbol alphabet (60 bits per code). Raw values are returned once only. PostgreSQL stores owner-bound HMAC-SHA256 verifiers, not plaintext codes; the verifier key is derived from the configured master key by HKDF-SHA256 with domain `hackmatch:recovery-code-verifier:v1`. Rows carry `batch_id`, `verifier_key_version`, `created_at`, `used_at`, and `revoked_at`; `uq_authenticator_recovery_codes_participant_verifier` prevents a verifier from duplicating for one owner, while `idx_authenticator_recovery_codes_current` supports owner-scoped current-set summaries. Stale-batch checks prevent an older client from replacing a newer set.
+
+During replacement the old authenticator and recovery set remain valid while the new row is `Pending`. The replacement code is verified before mutation. A single `activate_authenticator_replacement` transaction then marks the old authenticator `Retired`, makes the new one `Active`, revokes the old batch, persists a fresh batch, and returns the new raw codes once. Wrong code, cancel, expiry, or storage failure leaves the old factor and batch unchanged. The normal first-enrollment confirmation route rejects replacement rows so rotation cannot be bypassed.
+
+Disable requires the same owner/recent-auth/current-MFA chain. `disable_authenticator` retires the active row, cancels a pending replacement, and revokes active recovery codes atomically. Email OTP remains unchanged.
+
+Recovery-code generation and lifecycle management are implemented, but recovery-code redemption at sign-in is not. Likewise, an active authenticator is represented in method metadata but the current login screen does not redeem TOTP. Email OTP remains the actual sign-in factor and fallback.
+
+### Privacy and operational hardening (#270)
+
+Authenticator responses are owner-projected and `no-store`. Setup material appears only in successful begin/restart/replacement responses; raw recovery codes appear only on successful generation or replacement. Status and confirmation responses omit TOTP secrets, QR URIs, manual keys, ciphertext, IVs, tags, verifiers, key versions, email, Firebase UID, and internal participant IDs.
+
+Request logging redacts password, OTP/TOTP, setup, recovery, ciphertext, IV/tag, token, and secret-like keys; any `otpauth:` value is redacted regardless of field name. Logged paths omit query strings, queries/bodies are sanitized, raw request bodies are never logged, malformed-body errors never include raw input, bearer tokens are omitted, and operational errors expose only safe correlatable summaries. Browser roles cannot read the authenticator/recovery tables or execute the privileged functions. Setup/recovery material is never persisted in browser storage or URLs.
+
+Architecture diagrams: [management use case](../diagrams/US-029/US-029-authenticator-management-use-case.png), [enrollment and activation](../diagrams/US-029/US-029-authenticator-enrollment-sequence.png), [reauthentication](../diagrams/US-029/US-029-reauthentication-sequence.png), [lifecycle](../diagrams/US-029/US-029-authenticator-lifecycle-state.png), [authorization/privacy](../diagrams/US-029/US-029-authenticator-access-flow.png), and [persistence model](../diagrams/US-029/US-029-authenticator-data-model.png). The earlier [email-MFA login sequence](../diagrams/US-004/US-004-mfa-login-sequence.png) and [challenge state](../diagrams/US-004/US-004-mfa-challenge-state.png) remain applicable.
 
 ## 10. Supabase and PostgreSQL
 
@@ -299,7 +357,7 @@ Review migration diffs and the selected Supabase target before applying any chan
 
 | Area | Tables |
 |---|---|
-| Accounts/authentication | `participants`, `provider_identities`, `mfa_challenges`, `mfa_attempts` |
+| Accounts/authentication | `participants`, `provider_identities`, `mfa_challenges`, `mfa_attempts`, `authenticator_enrollments` (0063–0064), `authenticator_recovery_codes` (0065), and serialized MFA-attempt reservation (0066) |
 | Profiles | `participant_profiles`, `participant_skills`, `participant_portfolios`, `participant_hackathon_history` (0043) |
 | Team compatibility/availability | `events`, `event_availability` |
 | Recruitment | `teams`, `team_memberships`, `team_vacancies`, `team_requests` |
@@ -704,6 +762,8 @@ GitHub Actions uses Node 22 and runs dependency installation, commit-message val
 |---|---|
 | US-016 reverse eligibility, query, scoring, authorization, and server contract | `npm run test --prefix server -- src/services/teamRecommendationEligibility.test.ts src/services/teamRecommendationScoring.test.ts src/services/teamRecommendations.test.ts src/db/teamRecommendations.repository.test.ts src/routes/teamRecommendations.routes.test.ts src/routes/teamRecommendations.permissions.routes.test.ts src/routes/teamRecommendations.integration.test.ts` |
 | US-016 React states, API contract, and application integration | `npm run test --prefix client -- src/components/recommendations src/App.test.tsx` |
+| US-029 server enrollment, storage, lifecycle, privacy, email-OTP policy, and PGlite integration | `npm run test:us029 --prefix server` |
+| US-029 React enrollment, reauthentication, recovery controls, isolation, and journey | `npm run test:us029 --prefix client` |
 | US-031 team channel (model, repository, services, routes, real-SQL lifecycle) | `npm run test:us031 --prefix server` |
 | US-032 direct messages (threads, blocks, access, privacy, routes, real SQL) | `npm run test:us032 --prefix server` |
 | US-033 moderation target/report/privacy/audit server coverage | `npm run test --prefix server -- src/validators/moderation.validator.test.ts src/services/moderationChatTargets.test.ts src/services/moderationCases.privacy.test.ts src/services/moderationReports.test.ts src/services/moderationDecisions.test.ts src/routes/moderation.routes.test.ts src/routes/moderation.decide.routes.test.ts src/routes/moderation.actionRecords.routes.test.ts src/routes/reports.routes.test.ts` |
@@ -712,6 +772,10 @@ GitHub Actions uses Node 22 and runs dependency installation, commit-message val
 | US-034 React badge coverage | `npm run test --prefix client -- src/components/chat` |
 
 The real-SQL tests run migrations on an in-process PostgreSQL (PGlite, a server dev dependency), so they need no external database.
+
+The #272 US-029 suites exercise first enrollment, encrypted persistence, confirmation and wrong-code retry, expiry, refresh-safe restart, concurrent confirmation, replacement rollback and atomic recovery-code rotation, recovery-code generation/regeneration, disable, recent-authentication recovery, and coexistence with the real email-OTP service. They cover both `PART` and `ADMIN`, cross-account denial, owner-safe projections, log redaction, migration-chain compatibility through `0066`, and the React setup/management journey. The lifecycle tests use real PostgreSQL-compatible SQL through PGlite rather than mocked repository outcomes.
+
+These are integration-style/full-path tests, not live external-service end-to-end tests. Firebase Admin token verification, Firebase client reauthentication, email transport, Supabase network/PostgREST, and the server contract used by the React journey remain mocked. The suites do not claim authenticator-TOTP or recovery-code login redemption coverage because those paths are not implemented.
 
 Issue #442 validation on November 11, 2026 ran the US-016 commands above: the focused server selection passed **158 tests in 7 files**, and the client recommendation/application selection passed **146 tests in 4 files**. The client run retained existing React `act(...)` warnings from unrelated landing-page cases in `App.test.tsx`; no test failed.
 
@@ -747,6 +811,7 @@ Current controls include:
 - Helmet headers, restricted CORS, request IDs, sanitized logging, and centralized safe error responses;
 - password-policy enforcement and anti-enumeration password-reset responses;
 - hashed OTP storage, challenge expiry/invalidation, attempt locking, and issuance limits;
+- AES-256-GCM TOTP protection, owner-bound HMAC-only recovery-code persistence, no-store owner projections, and secret-safe request/error logging for US-029;
 - Supabase service-role isolation on the server;
 - server-generated privacy projections for visitor/profile/recruitment/admin/chat responses;
 - count-only chat activity responses, service-role-only cursor/mention functions, and current-access filtering before unread data is returned;
@@ -799,6 +864,10 @@ Operational rules:
 | ADMIN navigation exists but API denies access | Firebase claim and stored role differ, MFA is stale, or active-account check fails | Reconcile role deliberately, revoke tokens, then repeat sign-in and OTP |
 | OTP does not arrive | SMTP configuration/transport failed, address is wrong, rate limit is active, or development Ethereal preview is being used | Inspect sanitized server logs; verify SMTP variables; wait for cooldown; never log or paste the OTP into source control |
 | MFA tables unavailable | Database migrations are incomplete | Check migration status and apply the ordered migrations to the correct target |
+| Authenticator setup is unavailable or returns `AUTHENTICATOR_CONFIGURATION_ERROR` | `TOTP_ENCRYPTION_KEY_BASE64` is missing/malformed, its version is invalid, or migrations 0063–0066 are incomplete | Validate the server-only 32-byte Base64 key and version, check migration status, and restart the server; never print the key or protected row data |
+| Authenticator card reports a pending setup after refresh | The secret-free status endpoint can see the pending row, but sensitive QR/manual material was correctly cleared from React | Use **Restart authenticator setup**; do not query ciphertext or return the old secret from status |
+| Authenticator action returns `REAUTHENTICATION_REQUIRED` or `MFA_REQUIRED` | Firebase primary authentication or the current-session email-MFA claim is too old | Complete the in-place primary reauthentication and email OTP; the owner-bound action retries once |
+| Replacement or recovery-code update reports stale state | Another tab/action replaced the pending enrollment or recovery batch | Refresh the owner-safe status and start again. Do not bypass the expected enrollment/batch ID checks |
 | Password reset succeeds but session is rejected | Expected refresh-token revocation/MFA invalidation occurred | Sign in with the new password and complete OTP again |
 | Seed rejects target | Firebase project ID or Supabase host does not exactly match expected guards, or remote access is disabled | Correct the expected identifiers; do not disable guards merely to force a run |
 | Seed reports UID/email collision | Deterministic UID and normalized email resolve to different accounts | Stop and resolve ownership manually; do not overwrite an unrelated identity |
@@ -828,7 +897,7 @@ Operational rules:
 - Direct messages (US-032) have a back end, inbox/conversation screens, and US-034 unread/mention tracking for existing threads, but no UI to start a new conversation and no block/unblock endpoint or screen (the block rule is enforced against `participant_blocks` only).
 - US-033 supports ADMIN cases for `chat_channel`/`chat_message` and participant reports for visible `chat_messages`, but the participant React UI has no **Report message** control. Direct-message rows are not supported moderation targets, and chat cases currently support dismissal only.
 - The audit retention period is not yet approved, so no record is marked "Past retention" by default.
-- US-029 (authenticator-app two-factor authentication) is future scope; every sign-in uses email OTP.
+- US-029 implements owner-only authenticator enrollment and management, replacement/disable, and recovery-code generation/rotation. Authenticator-TOTP and recovery-code redemption at sign-in are not implemented; every sign-in still uses email OTP.
 - The diagram index was produced through repository audits and may lag very recent implementation changes; current source, migrations, and tests govern operations when a status label differs.
 - The development database and deterministic demo identities are shared resources. Coordinate seed, reset, migration, and destructive account operations.
 - The older branch quality baseline in [Testing and continuous integration](#16-testing-and-continuous-integration) predates recent work; re-measure before quoting it.
