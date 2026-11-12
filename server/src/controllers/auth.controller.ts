@@ -34,7 +34,10 @@ import {
   _setMfaOtpEmailSender as _setIssueMfaOtpEmailSender,
   _resetMfaOtpEmailSender as _resetIssueMfaOtpEmailSender,
 } from '../services/issueMfaOtp.js';
-import { verifyMfaOtpForParticipant } from '../services/verifyMfaOtp.js';
+import {
+  reserveVerificationAttempt,
+  verifyMfaOtpForParticipant,
+} from '../services/verifyMfaOtp.js';
 
 export type MfaOtpEmailSender = (email: string, otp: string) => Promise<void>;
 
@@ -136,7 +139,9 @@ export async function issueMfaChallenge(
       return;
     }
 
-    const issued = await issueMfaOtpForParticipant(participant);
+    // US-004-T6 (aligned in #271 with /mfa/send): pass auth_time so a sign-in that
+    // predates an expired lock must authenticate again before a new code is issued.
+    const issued = await issueMfaOtpForParticipant(participant, firebaseUser.auth_time);
     if (!issued.ok) {
       if (issued.retryAfter != null) {
         res.setHeader('Retry-After', String(issued.retryAfter));
@@ -1479,79 +1484,89 @@ export async function verifyMfaOtp(
       return;
     }
 
-    const isCodeMatch = verifyOtpHash(rawOtp, challenge.otp_hash);
-    const now = Date.now();
-    const isExpired = now >= Date.parse(challenge.expires_at);
+    const clientIp = (req.ip || (req.headers['x-forwarded-for'] as string) || '').split(',')[0].trim() || null;
 
-    // 4. Code matches hash but challenge has reached/exceeded 10m expiry (US-004 AC 1 / US-004-T2)
-    if (isExpired && isCodeMatch) {
-      res.status(400).json({
-        error: 'Verification code has expired. Please request a new code.',
-        code: 'OTP_EXPIRED',
+    // #271: claim a serialized comparison slot (recorded as a failure) before comparing.
+    const slot = await reserveVerificationAttempt(participant.id, challenge.id, clientIp);
+    if (!slot.ok) {
+      if (slot.retryAfter != null) res.setHeader('Retry-After', String(slot.retryAfter));
+      res.status(423).json({
+        error: 'Account temporarily locked due to too many failed OTP attempts. Please wait 15 minutes before trying again.',
+        code: 'ACCOUNT_LOCKED',
+        ...(slot.retryAfter != null ? { retryAfter: slot.retryAfter } : {}),
       });
       return;
     }
 
-    const clientIp = (req.ip || (req.headers['x-forwarded-for'] as string) || '').split(',')[0].trim() || null;
+    try {
+      const isCodeMatch = verifyOtpHash(rawOtp, challenge.otp_hash);
+      const now = Date.now();
+      const isExpired = now >= Date.parse(challenge.expires_at);
 
-    // 5. Code does not match (or expired code without matching hash)
-    if (!isCodeMatch) {
-      // Record failed attempt
-      await mfaRepository.createAttempt({
-        participant_id: participant.id,
-        challenge_id: challenge.id,
-        success: false,
-        ip_address: clientIp,
-      });
-
-      // Check if this failure triggered a 15-minute account lockout (5th attempt)
-      const postAttemptLockout = await evaluateAccountLockout(participant.id);
-      if (postAttemptLockout.locked) {
-        await mfaRepository.invalidatePendingChallenges(participant.id);
-        res.status(423).json({
-          error: 'Account temporarily locked due to too many failed OTP attempts. Please wait 15 minutes before trying again.',
-          code: 'ACCOUNT_LOCKED',
-          retryAfter: postAttemptLockout.retryAfterSeconds,
+      // 4. Code matches hash but challenge has reached/exceeded 10m expiry (US-004 AC 1 / US-004-T2)
+      if (isExpired && isCodeMatch) {
+        await slot.settle('discard');
+        res.status(400).json({
+          error: 'Verification code has expired. Please request a new code.',
+          code: 'OTP_EXPIRED',
         });
         return;
       }
 
-      // Calculate remaining attempts before lockout (1..4)
-      const recentAttempts = await mfaRepository.getRecentAttempts(participant.id, 5);
-      let consecutiveFailures = 0;
-      for (const a of recentAttempts) {
-        if (a.success) break;
-        consecutiveFailures++;
+      // 5. Code does not match (or expired code without matching hash)
+      if (!isCodeMatch) {
+        // The reserved failed attempt stands.
+        await slot.settle('failure');
+
+        // Check if this failure triggered a 15-minute account lockout (5th attempt)
+        const postAttemptLockout = await evaluateAccountLockout(participant.id);
+        if (postAttemptLockout.locked) {
+          await mfaRepository.invalidatePendingChallenges(participant.id);
+          res.status(423).json({
+            error: 'Account temporarily locked due to too many failed OTP attempts. Please wait 15 minutes before trying again.',
+            code: 'ACCOUNT_LOCKED',
+            retryAfter: postAttemptLockout.retryAfterSeconds,
+          });
+          return;
+        }
+
+        // Calculate remaining attempts before lockout (1..4)
+        const recentAttempts = await mfaRepository.getRecentAttempts(participant.id, 5);
+        let consecutiveFailures = 0;
+        for (const a of recentAttempts) {
+          if (a.success) break;
+          consecutiveFailures++;
+        }
+        const remainingAttempts = Math.max(0, 5 - consecutiveFailures);
+
+        res.status(400).json({
+          error: 'Invalid verification code. Please try again.',
+          code: 'INVALID_OTP',
+          remainingAttempts,
+        });
+        return;
       }
-      const remainingAttempts = Math.max(0, 5 - consecutiveFailures);
 
-      res.status(400).json({
-        error: 'Invalid verification code. Please try again.',
-        code: 'INVALID_OTP',
-        remainingAttempts,
-      });
-      return;
+      // 6. Valid OTP & unexpired challenge: consume atomically (FR-010 / NR-008)
+      try {
+        await mfaRepository.markChallengeConsumed(challenge.id);
+      } catch {
+        // Row was already consumed or invalidated concurrently (replay collision trap)
+        await slot.settle('discard');
+        res.status(400).json({
+          error: 'No active verification code found or code has expired. Please request a new code.',
+          code: 'INVALID_OR_EXPIRED_OTP',
+        });
+        return;
+      }
+
+      // Mark the reserved attempt successful (resets failure counter per FR-010)
+      await slot.settle('success');
+    } catch (slotErr: unknown) {
+      // Infrastructure errors are not incorrect codes; never let them count.
+      await slot.settle('discard').catch(() => undefined);
+      throw slotErr;
     }
-
-    // 6. Valid OTP & unexpired challenge: consume atomically (FR-010 / NR-008)
-    try {
-      await mfaRepository.markChallengeConsumed(challenge.id);
-    } catch {
-      // Row was already consumed or invalidated concurrently (replay collision trap)
-      res.status(400).json({
-        error: 'No active verification code found or code has expired. Please request a new code.',
-        code: 'INVALID_OR_EXPIRED_OTP',
-      });
-      return;
-    }
-
-    // Record successful attempt (resets failure counter per FR-010)
-    await mfaRepository.createAttempt({
-      participant_id: participant.id,
-      challenge_id: challenge.id,
-      success: true,
-      ip_address: clientIp,
-    });
 
     // 7. Update Firebase custom claims with mfa_auth_time matching auth_time
     await markMfaComplete(decodedToken.uid, decodedToken.auth_time);

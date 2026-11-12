@@ -28,6 +28,11 @@ export interface ServerConfig {
     pass?: string;
     from?: string;
   };
+  /** Server-only AES-256-GCM key used to protect application-owned TOTP secrets. */
+  totpEncryption: {
+    keyBase64?: string;
+    keyVersion: string;
+  };
 }
 
 export const config: ServerConfig = {
@@ -53,6 +58,10 @@ export const config: ServerConfig = {
     pass: process.env.SMTP_PASS,
     from: process.env.SMTP_FROM,
   },
+  totpEncryption: {
+    keyBase64: process.env.TOTP_ENCRYPTION_KEY_BASE64,
+    keyVersion: process.env.TOTP_ENCRYPTION_KEY_VERSION || 'v1',
+  },
 };
 
 /**
@@ -69,6 +78,7 @@ export function validateEnv(): void {
       'FIREBASE_PROJECT_ID',
       'FIREBASE_CLIENT_EMAIL',
       'FIREBASE_PRIVATE_KEY',
+      'TOTP_ENCRYPTION_KEY_BASE64',
     ];
     const missing = requiredInProd.filter((key) => !process.env[key]);
     if (missing.length > 0) {

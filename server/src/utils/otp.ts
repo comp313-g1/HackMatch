@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { mfaRepository } from '../db/mfa.repository.js';
-import type { MfaChallenge } from '../db/types.js';
+import type { MfaAttempt, MfaChallenge } from '../db/types.js';
 
 export const OTP_EXPIRY_SECONDS = 600; // 10 minutes (FR-009 / US-004 AC 1)
 export const LOCKOUT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes (FR-010 / NR-008)
@@ -79,6 +79,18 @@ export async function evaluateAccountLockout(
 
   // Retrieve up to 20 recent attempts for this participant (ordered created_at DESC)
   const recentAttempts = await mfaRepository.getRecentAttempts(participantId, 20);
+  return evaluateLockoutFromAttempts(recentAttempts, now);
+}
+
+/**
+ * Pure FR-010 lock evaluation over attempts ordered newest first. Shared by
+ * evaluateAccountLockout and the #271 reservation check so both apply the
+ * identical five-attempt / 15-minute policy.
+ */
+export function evaluateLockoutFromAttempts(
+  recentAttempts: MfaAttempt[] | null | undefined,
+  now = Date.now()
+): AccountLockoutStatus {
   if (!recentAttempts || recentAttempts.length === 0) {
     return { locked: false };
   }
@@ -134,6 +146,25 @@ export async function evaluateAccountLockout(
   }
 
   return { locked: false };
+}
+
+/**
+ * #271: evaluates the lock using only attempts recorded BEFORE a reserved
+ * attempt. Reservations are serialized and ordered in PostgreSQL (0066), so a
+ * caller whose reservation follows five consecutive failures — including
+ * concurrent reservations still in flight — is locked and must not compare.
+ * If the reservation is not among the fetched rows (50+ newer attempts), the
+ * whole window is evaluated, which is already at or past the limit.
+ */
+export async function evaluateLockoutBeforeAttempt(
+  participantId: string,
+  attemptId: string,
+  now = Date.now()
+): Promise<AccountLockoutStatus> {
+  const recentAttempts = (await mfaRepository.getRecentAttempts(participantId, 50)) ?? [];
+  const index = recentAttempts.findIndex((attempt) => attempt.id === attemptId);
+  const earlier = index === -1 ? recentAttempts : recentAttempts.slice(index + 1);
+  return evaluateLockoutFromAttempts(earlier, now);
 }
 
 /**

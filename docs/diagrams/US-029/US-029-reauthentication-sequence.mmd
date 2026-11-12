@@ -1,0 +1,64 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","actorBkg":"#e8f1ff","actorBorder":"#3b82f6","actorTextColor":"#172554","signalColor":"#374151","signalTextColor":"#1f2937","activationBkgColor":"#eef4ff","activationBorderColor":"#5b8def","labelBoxBkgColor":"#f9fafb","labelBoxBorderColor":"#9ca3af","labelTextColor":"#1f2937","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"wrap":true,"diagramMarginX":24,"diagramMarginY":12,"actorMargin":30,"width":168,"height":58,"boxMargin":8,"messageMargin":17,"noteMargin":8}}}%%
+sequenceDiagram
+    autonumber
+    title HackMatch — US-029: Reauthentication for Sensitive Changes — Sequence Diagram
+    actor OWNER as PART or ADMIN Owner
+    participant UI as React Card + ReauthenticationPanel
+    participant FB as Firebase Auth
+    participant API as Express Auth API + Guards
+    participant OTP as Email OTP Service
+    participant DB as PostgreSQL / Supabase
+
+    OWNER->>UI: Start sensitive action (setup, restart, replace, regenerate, or disable)
+    UI->>API: Original protected request
+    API->>API: Recent-auth check on Firebase auth_time (≤ 600 s)
+    API-->>UI: 401 REAUTHENTICATION_REQUIRED, nothing changed
+    UI->>UI: Keep intended action in memory and show Verify identity
+
+    alt Owner cancels
+        UI-->>OWNER: Verification cancelled, no changes made
+    else Step 1 — primary sign-in
+        OWNER->>UI: Enter current password or choose linked provider
+        UI->>FB: Reauthenticate the signed-in user
+        alt Wrong password, mismatched account, or popup closed
+            FB-->>UI: Firebase error
+            UI-->>OWNER: Safe message, password field cleared
+        else Primary sign-in confirmed
+            FB-->>UI: New ID token with a new auth_time
+            Note over UI,API: mfa_auth_time no longer matches, so protected routes return MFA_REQUIRED
+            UI->>API: POST /api/auth/mfa/challenge
+            API->>OTP: Issue code (lock and fresh-auth checks)
+            OTP->>DB: Store hashed 10-minute challenge
+            OTP-->>OWNER: Email 6-digit code
+            OWNER->>UI: Enter email code (Step 2)
+            UI->>API: POST /api/auth/mfa/verify
+            API->>DB: Reserve serialized attempt before comparing
+            alt Already locked or five earlier failures
+                DB-->>API: Reject without comparing the OTP
+                API-->>UI: 423 ACCOUNT_LOCKED with retry time
+                UI-->>OWNER: 15-minute lock, action never retried
+            else Comparison slot reserved (attempts 1–5)
+                API->>API: Compare code with the stored challenge hash
+                alt Code incorrect
+                    API->>DB: Keep reserved attempt as failed
+                    alt Fifth failed attempt
+                        API->>DB: Invalidate pending challenges
+                        API-->>UI: 423 ACCOUNT_LOCKED with retry time
+                    else Attempts 1–4
+                        API-->>UI: Safe invalid-code response
+                    end
+                else Code accepted
+                    API->>DB: Consume challenge and mark attempt successful
+                    API->>FB: Set mfa_auth_time = new auth_time
+                    API-->>UI: Verified
+                    UI->>FB: Force-refresh ID token
+                    UI->>API: Retry the original request once
+                    API->>API: Server re-checks recent auth and MFA
+                    API-->>UI: Action result
+                    UI-->>OWNER: Return to the authenticator flow
+                end
+            end
+        end
+    end
+
+    Note over UI,DB: Locked attempts are rejected before comparison. After 15 minutes, an auth_time older than the lock end returns FRESH_AUTH_REQUIRED.

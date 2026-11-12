@@ -97,6 +97,17 @@ describe('POST /api/auth/mfa/verify (US-004 S1-P1-11)', () => {
       created_at: new Date().toISOString(),
     } as MfaAttempt);
     vi.spyOn(mfaRepository, 'invalidatePendingChallenges').mockResolvedValue(0);
+    // #271 serialized attempt reservation (0066).
+    vi.spyOn(mfaRepository, 'reserveAttempt').mockResolvedValue({
+      id: 'att-reserved',
+      participant_id: participant.id,
+      challenge_id: activeChallenge.id,
+      success: false,
+      ip_address: null,
+      created_at: new Date().toISOString(),
+    } as MfaAttempt);
+    vi.spyOn(mfaRepository, 'markAttemptSucceeded').mockResolvedValue(undefined);
+    vi.spyOn(mfaRepository, 'discardAttempt').mockResolvedValue(undefined);
   });
 
   it('happy path: valid OTP consumes challenge and sets MFA claim', async () => {

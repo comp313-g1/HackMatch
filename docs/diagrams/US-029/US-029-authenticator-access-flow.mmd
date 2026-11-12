@@ -1,0 +1,60 @@
+---
+title: "HackMatch — US-029: Authenticator Authorization and Privacy — Activity Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":42,"rankSpacing":54,"padding":14}}}%%
+flowchart TB
+    START(["Request an authenticator or<br/>recovery-code operation"]):::identity
+    AUTH{"Valid Firebase ID token?"}:::decision
+    ACCOUNT{"Active account?<br/>Not suspended or deactivated"}:::decision
+    MFA{"Current-session MFA?<br/>mfa_auth_time equals auth_time"}:::decision
+    ROLE{"PART or ADMIN role claim?"}:::decision
+    RECENT{"Primary sign-in within<br/>the last 10 minutes?"}:::decision
+    OWNER{"Verified owner resolved from<br/>Firebase UID → participants row?"}:::decision
+    BODY{"Body free of participant or<br/>account targeting fields?"}:::decision
+    SCOPE["Run operation for the resolved owner only<br/>Database functions recheck eligibility"]:::auth
+    FOREIGN["Foreign enrollment or batch id<br/>Same response as a nonexistent id"]:::internal
+    SAFE["Return safe projection<br/>Status, counts, timestamps"]:::success
+    ONCE["One-time setup material or recovery codes<br/>Only from begin, restart, replace, or generate"]:::success
+
+    DENY_401["401 Authentication required"]:::denied
+    DENY_ACCOUNT["403 Account suspended"]:::denied
+    DENY_MFA["403 MFA required<br/>Complete email OTP"]:::denied
+    DENY_ROLE["403 Invalid role claim"]:::denied
+    REAUTH["401 Reauthentication required<br/>Firebase sign-in + email OTP, then retry"]:::denied
+    DENY_OWNER["403 Email not verified or not eligible<br/>ADMIN has no cross-account bypass"]:::denied
+    DENY_BODY["400 Validation error<br/>Submitted ids are not echoed"]:::denied
+    NO_STORE["All responses use no-store<br/>No secrets, ciphertext, verifiers, SQL, or stacks<br/>Logs redact codes, keys, passwords, tokens"]:::internal
+
+    START --> AUTH
+    AUTH -->|"Yes"| ACCOUNT
+    AUTH -->|"No / visitor"| DENY_401
+    ACCOUNT -->|"Yes"| MFA
+    ACCOUNT -->|"No"| DENY_ACCOUNT
+    MFA -->|"Yes"| ROLE
+    MFA -->|"No"| DENY_MFA
+    ROLE -->|"Yes"| RECENT
+    ROLE -->|"No"| DENY_ROLE
+    RECENT -->|"Yes"| BODY
+    RECENT -->|"No"| REAUTH
+    BODY -->|"Yes"| OWNER
+    BODY -->|"No"| DENY_BODY
+    OWNER -->|"Yes"| SCOPE
+    OWNER -->|"No"| DENY_OWNER
+    SCOPE --> SAFE
+    SCOPE --> ONCE
+    FOREIGN -.-> SCOPE
+
+    DENY_401 --> NO_STORE
+    DENY_ACCOUNT --> NO_STORE
+    DENY_MFA --> NO_STORE
+    DENY_ROLE --> NO_STORE
+    REAUTH --> NO_STORE
+    DENY_OWNER --> NO_STORE
+    DENY_BODY --> NO_STORE
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef auth fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;

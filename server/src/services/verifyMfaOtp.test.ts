@@ -60,6 +60,17 @@ describe('verifyMfaOtpForParticipant (US-004 AC 2 / FR-010 / S1-P1-11)', () => {
     } as MfaAttempt);
     vi.spyOn(mfaRepository, 'invalidatePendingChallenges').mockResolvedValue(0);
     vi.spyOn(mfaClaim, 'markMfaComplete').mockResolvedValue(undefined);
+    // #271 serialized attempt reservation (0066): reserved as a failure first.
+    vi.spyOn(mfaRepository, 'reserveAttempt').mockResolvedValue({
+      id: 'att-reserved',
+      participant_id: participant.id,
+      challenge_id: activeChallenge.id,
+      success: false,
+      ip_address: null,
+      created_at: new Date().toISOString(),
+    } as MfaAttempt);
+    vi.spyOn(mfaRepository, 'markAttemptSucceeded').mockResolvedValue(undefined);
+    vi.spyOn(mfaRepository, 'discardAttempt').mockResolvedValue(undefined);
   });
 
   it('happy path: atomically consumes matching OTP, records success, sets MFA claim', async () => {
@@ -76,12 +87,14 @@ describe('verifyMfaOtpForParticipant (US-004 AC 2 / FR-010 / S1-P1-11)', () => {
       activeChallenge.id,
       hashOtp(otp)
     );
-    expect(mfaRepository.createAttempt).toHaveBeenCalledWith({
+    // The attempt is reserved before comparison, then recorded as the success.
+    expect(mfaRepository.reserveAttempt).toHaveBeenCalledWith({
       participant_id: participant.id,
       challenge_id: activeChallenge.id,
-      success: true,
       ip_address: '127.0.0.1',
     });
+    expect(mfaRepository.markAttemptSucceeded).toHaveBeenCalledWith('att-reserved', participant.id);
+    expect(mfaRepository.discardAttempt).not.toHaveBeenCalled();
     expect(mfaClaim.markMfaComplete).toHaveBeenCalledWith('fb-uid-1', authTime);
   });
 
@@ -103,9 +116,10 @@ describe('verifyMfaOtpForParticipant (US-004 AC 2 / FR-010 / S1-P1-11)', () => {
       status: 401,
       code: 'INVALID_OTP',
     });
-    expect(mfaRepository.createAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({ success: false })
-    );
+    // The reserved failure row is kept (neither marked successful nor discarded).
+    expect(mfaRepository.reserveAttempt).toHaveBeenCalledTimes(1);
+    expect(mfaRepository.markAttemptSucceeded).not.toHaveBeenCalled();
+    expect(mfaRepository.discardAttempt).not.toHaveBeenCalled();
     expect(mfaClaim.markMfaComplete).not.toHaveBeenCalled();
   });
 
@@ -127,6 +141,8 @@ describe('verifyMfaOtpForParticipant (US-004 AC 2 / FR-010 / S1-P1-11)', () => {
 
     expect(result).toMatchObject({ ok: false, status: 400, code: 'OTP_CONSUMED' });
     expect(mfaClaim.markMfaComplete).not.toHaveBeenCalled();
+    // Losing a consume race is not an incorrect code: the reservation is removed.
+    expect(mfaRepository.discardAttempt).toHaveBeenCalledWith('att-reserved', participant.id);
   });
 
   it('expired challenge: invalidates pending and returns OTP_EXPIRED', async () => {
@@ -241,6 +257,7 @@ describe('verifyMfaOtpForParticipant (US-004 AC 2 / FR-010 / S1-P1-11)', () => {
       .mockResolvedValueOnce(activeChallenge);
     vi.spyOn(mfaRepository, 'getRecentAttempts')
       .mockResolvedValueOnce([]) // pre-check unlocked
+      .mockResolvedValueOnce(priorFails.slice().reverse() as MfaAttempt[]) // #271: 4 failures precede the reservation
       .mockResolvedValueOnce([
         {
           id: 'att-5',

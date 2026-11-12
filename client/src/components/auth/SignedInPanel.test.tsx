@@ -8,6 +8,10 @@ vi.mock('./logout', () => ({
   logout: vi.fn(),
 }));
 
+vi.mock('./AuthenticatorEnrollmentCard', () => ({
+  AuthenticatorEnrollmentCard: () => <div data-testid="authenticator-enrollment-card" />,
+}));
+
 const mockLogout = vi.mocked(logout);
 
 describe('SignedInPanel', () => {

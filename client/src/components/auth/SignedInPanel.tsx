@@ -12,6 +12,7 @@ import type {
   HackathonHistoryItem,
   ExperienceBadge,
 } from '../profile/hackathonHistoryValidation';
+import { AuthenticatorEnrollmentCard } from './AuthenticatorEnrollmentCard';
 
 export interface SignedInPanelProps {
   email: string | null;
@@ -41,6 +42,7 @@ export function SignedInPanel({
     role?: string;
     accountStatus?: string;
   } | null>(null);
+  const [securityResetVersion, setSecurityResetVersion] = useState(0);
 
   const tokenGetter =
     getIdToken || (auth.currentUser ? () => auth.currentUser!.getIdToken() : undefined);
@@ -83,6 +85,8 @@ export function SignedInPanel({
 
   const handleSignOut = async () => {
     if (signingOut) return;
+    // Clear owner-only QR/manual enrollment material even if network logout later fails.
+    setSecurityResetVersion((version) => version + 1);
     setSigningOut(true);
     setError(null);
     try {
@@ -160,6 +164,10 @@ export function SignedInPanel({
           </button>
         </div>
       </div>
+
+      <AuthenticatorEnrollmentCard
+        identityKey={`${email ?? 'signed-in-account'}:${securityResetVersion}`}
+      />
 
       {showProfileSection && (
         <div className="max-w-md w-full mx-auto space-y-4">

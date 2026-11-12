@@ -29,8 +29,23 @@ describe('Server Configuration & validateEnv', () => {
     delete process.env.FIREBASE_PROJECT_ID;
     delete process.env.FIREBASE_CLIENT_EMAIL;
     delete process.env.FIREBASE_PRIVATE_KEY;
+    delete process.env.TOTP_ENCRYPTION_KEY_BASE64;
 
     const { validateEnv } = await import('./index.js');
     expect(() => validateEnv()).toThrowError(/\[CRITICAL\] Missing required production environment variables/);
+  });
+
+  it('includes the protected TOTP key in the production requirements', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.SESSION_SECRET = 'test-session-secret';
+    process.env.SUPABASE_URL = 'https://example.supabase.co';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-key';
+    process.env.FIREBASE_PROJECT_ID = 'firebase-project';
+    process.env.FIREBASE_CLIENT_EMAIL = 'firebase@example.test';
+    process.env.FIREBASE_PRIVATE_KEY = 'private-key';
+    delete process.env.TOTP_ENCRYPTION_KEY_BASE64;
+
+    const { validateEnv } = await import('./index.js');
+    expect(() => validateEnv()).toThrow(/TOTP_ENCRYPTION_KEY_BASE64/);
   });
 });

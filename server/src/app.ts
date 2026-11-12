@@ -4,7 +4,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { config } from './config/index.js';
 import { requestIdMiddleware } from './middleware/requestId.js';
-import { requestLoggerMiddleware } from './middleware/requestLogger.js';
+import { describeErrorForLog, requestLoggerMiddleware } from './middleware/requestLogger.js';
 import { healthRouter } from './routes/health.routes.js';
 import { authRouter } from './routes/auth.routes.js';
 import { actionsRouter } from './routes/actions.routes.js';
@@ -81,8 +81,10 @@ app.use((_req: Request, res: Response) => {
 });
 
 // Centralized error handler
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[SERVER ERROR]', err);
+app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+  // #270: never print the raw error object — body-parser errors carry the request body.
+  const safeError = describeErrorForLog(err);
+  console.error('[SERVER ERROR]', JSON.stringify({ requestId: req.id || 'unknown', ...safeError }));
   const errWithStatus = err as Error & { status?: number; statusCode?: number };
   const status = errWithStatus.status || errWithStatus.statusCode || 500;
   const isDev = config.nodeEnv === 'development';
@@ -90,6 +92,6 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 
   res.status(status).json({
     error: defaultError,
-    ...(isDev ? { message: err.message, stack: err.stack } : {}),
+    ...(isDev ? { message: safeError.message, stack: safeError.stack } : {}),
   });
 });

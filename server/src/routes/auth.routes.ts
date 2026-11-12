@@ -33,6 +33,24 @@ import { requireMfa } from '../middleware/requireMfa.js';
 import { requireSessionCookie } from '../middleware/requireSessionCookie.js';
 import { requireCsrfIfCookieSession } from '../middleware/requireCsrf.js';
 import { requireActiveAccount } from '../middleware/requireActiveAccount.js';
+import { requireRole } from '../middleware/requireRole.js';
+import { requireRecentAuthentication } from '../middleware/requireRecentAuthentication.js';
+import {
+  validateBeginAuthenticatorEnrollment,
+  validateConfirmAuthenticatorEnrollment,
+  validateGenerateRecoveryCodes,
+} from '../validators/authenticatorEnrollment.validator.js';
+import {
+  beginAuthenticatorEnrollment,
+  beginAuthenticatorReplacement,
+  confirmAuthenticatorEnrollment,
+  confirmAuthenticatorReplacement,
+  disableAuthenticator,
+  generateRecoveryCodes,
+  getAuthenticatorEnrollmentStatus,
+  getRecoveryCodeStatus,
+  restartAuthenticatorEnrollment,
+} from '../controllers/authenticatorEnrollment.controller.js';
 
 export const authRouter = Router();
 
@@ -124,6 +142,88 @@ authRouter.post(
     }
     return verifyMfaOtp(req, res, next);
   }
+);
+
+/**
+ * US-029 / #266 owner-only contract for standards-based TOTP enrollment.
+ * A current email-MFA-complete session and recent primary authentication are
+ * required. #267 supplies protected secret storage; the GET status response
+ * added for #268 is owner-scoped and never returns setup or storage material.
+ */
+const requireAuthenticatorOwner = [
+  requireFirebaseAuth,
+  requireActiveAccount,
+  requireMfa,
+  requireRole('PART', 'ADMIN'),
+  requireRecentAuthentication,
+];
+
+authRouter.get(
+  '/mfa/authenticator/enrollment',
+  ...requireAuthenticatorOwner,
+  getAuthenticatorEnrollmentStatus
+);
+
+authRouter.post(
+  '/mfa/authenticator/enrollment',
+  ...requireAuthenticatorOwner,
+  validateBeginAuthenticatorEnrollment,
+  beginAuthenticatorEnrollment
+);
+
+authRouter.post(
+  '/mfa/authenticator/enrollment/restart',
+  ...requireAuthenticatorOwner,
+  validateBeginAuthenticatorEnrollment,
+  restartAuthenticatorEnrollment
+);
+
+authRouter.post(
+  '/mfa/authenticator/enrollment/confirm',
+  ...requireAuthenticatorOwner,
+  validateConfirmAuthenticatorEnrollment,
+  confirmAuthenticatorEnrollment
+);
+
+/**
+ * US-029 / #269 reauthentication-gated controls. The same owner chain applies,
+ * so a stale primary sign-in returns REAUTHENTICATION_REQUIRED and the client
+ * must complete Firebase reauthentication plus a fresh email OTP. A replacement
+ * is confirmed only through /replacement/confirm, whose single transaction
+ * retires the previous factor, revokes its recovery set, and stores a fresh one.
+ */
+authRouter.post(
+  '/mfa/authenticator/replacement',
+  ...requireAuthenticatorOwner,
+  validateBeginAuthenticatorEnrollment,
+  beginAuthenticatorReplacement
+);
+
+authRouter.post(
+  '/mfa/authenticator/replacement/confirm',
+  ...requireAuthenticatorOwner,
+  validateConfirmAuthenticatorEnrollment,
+  confirmAuthenticatorReplacement
+);
+
+authRouter.post(
+  '/mfa/authenticator/disable',
+  ...requireAuthenticatorOwner,
+  validateBeginAuthenticatorEnrollment,
+  disableAuthenticator
+);
+
+authRouter.get(
+  '/mfa/authenticator/recovery-codes',
+  ...requireAuthenticatorOwner,
+  getRecoveryCodeStatus
+);
+
+authRouter.post(
+  '/mfa/authenticator/recovery-codes',
+  ...requireAuthenticatorOwner,
+  validateGenerateRecoveryCodes,
+  generateRecoveryCodes
 );
 
 /**
