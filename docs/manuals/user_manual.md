@@ -4,9 +4,9 @@ This manual explains how to use the current HackMatch web application. It is wri
 
 | Item | Current manual scope |
 |---|---|
-| Version | 5.3 — Issue #446 update for completed US-029 authenticator enrollment and management |
-| Covers | Registration, email verification, sign-in, email OTP, authenticator-app enrollment and management, password recovery, profiles, hackathon history and experience badges, Looking for Team, team discovery, candidate directory search, recruitment, requests, roster locking, notifications, private team workspace, team manifest export, abuse reporting, forums chat, private team chat, direct messages, chat unread/mention indicators, chat moderation, and ADMIN screens (moderation, accounts, audit log) |
-| Does not cover | Removed hackathon-directory workflows (US-008–US-010), authenticator-code or recovery-code redemption at sign-in (not implemented), starting a brand-new direct message from a profile or card (not available yet), blocking and unblocking controls, or other unimplemented features |
+| Version | 5.4 — Issue #451 update for completed US-035 rich chat interactions (reactions, typing indicators, and restricted file attachments) |
+| Covers | Registration, email verification, sign-in, email OTP, authenticator-app enrollment and management, password recovery, profiles, hackathon history and experience badges, Looking for Team, team discovery, candidate directory search, recruitment, requests, roster locking, notifications, private team workspace, team manifest export, abuse reporting, forums chat, private team chat, direct messages, chat unread/mention indicators, message reactions, typing indicators, restricted chat file attachments, chat moderation, and ADMIN screens (moderation, accounts, audit log) |
+| Does not cover | Removed hackathon-directory workflows (US-008–US-010), authenticator-code or recovery-code redemption at sign-in (not implemented), starting a brand-new direct message from a profile or card (not available yet), blocking and unblocking controls, attachment-only messages, malware scanning of attachments (no scanner exists yet), voice or video (deferred), or other unimplemented features |
 | Sources checked | Current React components, Express routes and access middleware, tests, User Stories, requirements, and real application captures |
 
 > **Current-scope note:** Team formation is presented as a platform-wide workflow. Users do not choose a hackathon before creating, finding, or joining a team. A few current screens and older real captures still contain words such as “event” or “hackathon”; those are transitional interface or internal-compatibility terms, not a user-facing event-directory workflow.
@@ -60,10 +60,11 @@ The current application supports:
 - a private team chat for the confirmed members of a team;
 - one-to-one direct messages between Participants;
 - persistent unread-message and `@mention` indicators for accessible chat conversations;
+- message reactions, typing indicators, and restricted file attachments in forums, team chat, and direct messages, when the platform has turned each feature on;
 - owner-only authenticator-app enrollment, replacement, disable, and recovery-code management for Participants and Platform Administrators; and
 - ADMIN-only content moderation, account enforcement, and a read-only audit log.
 
-The current application does **not** provide a public hackathon directory, hackathon submission, event approval workflow, a "new message" button for starting a direct message from a profile, block or unblock controls, attachments, or voice/video. When message reactions are turned on for the platform, Participants can add or remove one of a fixed set of reactions on forum, team-chat, and direct messages and see how many people chose each one; who reacted is never shown. When typing indicators are turned on, a short line above the message box (for example, "avery is typing…") shows who is writing in the conversation you have open; it disappears a few seconds after they stop, and others never see what you type. Others do not see you typing while your status is Invisible. If either feature is turned off, chat works as usual without it. Authenticator apps and recovery codes can be set up and managed, but neither is currently accepted at sign-in; every sign-in still uses email OTP.
+The current application does **not** provide a public hackathon directory, hackathon submission, event approval workflow, a "new message" button for starting a direct message from a profile, block or unblock controls, attachment-only messages, malware scanning of attachments, or voice/video. Message reactions, typing indicators, and file attachments are optional chat features that the platform turns on or off; see [Reactions, typing indicators, and attachments](#reactions-typing-indicators-and-attachments). When a feature is off, chat works as usual without it. Authenticator apps and recovery codes can be set up and managed, but neither is currently accepted at sign-in; every sign-in still uses email OTP.
 
 ## 2. Roles and access
 
@@ -468,9 +469,9 @@ Locking is permanent in the current workflow. It cancels remaining pending appli
 
 The bell refreshes by itself about every 30 seconds, and sooner when a live connection is available, so new alerts appear without reloading. When there are no alerts the list shows an empty state. If an alert's target is no longer available you see **That notification is no longer available.** A temporary network problem shows a message with a way to retry and does not lose your list.
 
-![Placeholder: notification bell with unread badge and open dropdown](../assets/wireframes/US-021-notification-bell-dropdown.png)
+![HackMatch notification bell with unread badge and open dropdown](../assets/screenshots/US-021-notification-bell-dropdown.png)
 
-*Figure 11 — Placeholder: replace with a capture of the Notifications bell, unread badge, and dropdown.*
+*Figure 11 — The Notifications bell, unread badge, dropdown, and mark-read actions.*
 
 **Expected result:** Unread count drops as you read alerts, and each alert takes you to the screen where you can act.
 
@@ -495,9 +496,9 @@ Your **experience badge** is calculated from the number of records and is labell
 
 The badge recalculates when you add or remove a record. Signed-in Participants can see permitted history and links on a profile; Visitors cannot. Links must start with `https://`, and validation errors keep what you typed.
 
-![Placeholder: Hackathon History section with records and badge](../assets/wireframes/US-007-hackathon-history.png)
+![HackMatch Hackathon History section with a self-reported record and badge](../assets/screenshots/US-007-hackathon-history.png)
 
-*Figure 12 — Placeholder: replace with a capture of the Hackathon History section and badge.*
+*Figure 12 — A self-reported hackathon record and the resulting experience badge.*
 
 ## 16. Search the candidate directory
 
@@ -517,9 +518,9 @@ The badge recalculates when you add or remove a record. Signed-in Participants c
 
 Cards show only permitted fields (handle, role, self-reported badge, skills). People who are already confirmed members are not listed. If nothing matches you see **No candidates match your criteria.** After an invitation is sent, your filters and results stay in place so you can continue searching.
 
-![Placeholder: Candidate Directory Search and Filter panel](../assets/wireframes/US-014-candidate-directory-search.png)
+![HackMatch Candidate Directory Search and Filter panel with results](../assets/screenshots/US-014-candidate-directory-search.png)
 
-*Figure 13 — Placeholder: replace with a capture of the candidate search filters and results.*
+*Figure 13 — Candidate search filters and the participant-safe matching results.*
 
 ## 17. Use the private team workspace
 
@@ -536,9 +537,9 @@ Cards show only permitted fields (handle, role, self-reported badge, skills). Pe
 
 If a teammate saved the note after you opened it, your save is refused with **This note was updated by another teammate. Review the latest revision before saving.** Review the latest version, re-apply your change, and save again. Nothing is overwritten silently.
 
-![Placeholder: Private Coordination Workspace](../assets/wireframes/US-023-private-coordination-workspace.png)
+![HackMatch Private Coordination Workspace for a locked team](../assets/screenshots/US-023-private-coordination-workspace.png)
 
-*Figure 14 — Placeholder: replace with a capture of the workspace links, note editor, and revisions.*
+*Figure 14 — The locked team's private workspace, confirmed teammates, shared links, and note editor.*
 
 ## 18. Export the team manifest
 
@@ -556,9 +557,9 @@ If a teammate saved the note after you opened it, your save is refused with **Th
 
 The checksum is an integrity check only. It does not prove when the team formed or that an event organizer approved it. If the manifest cannot be loaded you see **Manifest Export Unavailable** with the reason.
 
-![Placeholder: Team manifest export and verification card](../assets/wireframes/US-024-team-manifest-export.png)
+![HackMatch team manifest export and verification card](../assets/screenshots/US-024-team-manifest-export.png)
 
-*Figure 15 — Placeholder: replace with a capture of the export buttons and checksum verification.*
+*Figure 15 — The locked-roster manifest, export formats, and checksum verification control.*
 
 ## 19. Report abusive content
 
@@ -589,9 +590,9 @@ Normal chat access remains authoritative:
 
 A report never gives the reporter access to another Participant's reports, Administrator notes, moderation evidence, action records, internal moderation metadata, or unrelated chat history. Participant report-list and report-detail requests are denied.
 
-![Placeholder: Report abusive content modal](../assets/wireframes/US-025-report-abuse-modal.png)
+![HackMatch Report Team Listing dialog](../assets/screenshots/US-025-report-abuse-modal.png)
 
-*Figure 16 — Placeholder: replace with a capture of the report window and the receipt confirmation.*
+*Figure 16 — The participant-safe report window with category and optional context controls.*
 
 ## 20. Use chat and forums
 
@@ -624,7 +625,136 @@ Unread and mention indicators include only conversations the signed-in Participa
 
 Current limits are 120 characters for a forum title, 2,000 for its description, and 4,000 for a message. Validation and request failures preserve drafts. Messages show the author handle, UTC-backed timestamp rendered for the viewer, and content; chat responses do not expose account email, passwords, OTPs, or OTP hashes.
 
-Forums are shared: every verified active Participant can read and post in them. For a private conversation use your team's chat ([§21](#21-use-the-private-team-chat)) or a direct message ([§22](#22-use-direct-messages)). Reactions, typing indicators, attachments, and voice/video are not available.
+Forums are shared: every verified active Participant can read and post in them. For a private conversation use your team's chat ([§21](#21-use-the-private-team-chat)) or a direct message ([§22](#22-use-direct-messages)). Reactions, typing indicators, and attachments are described below. Voice and video calls, voice messages, and screen sharing are not available; they are deferred to a later release.
+
+### Reactions, typing indicators, and attachments
+
+These three features work the same way in forums, private team chat ([§21](#21-use-the-private-team-chat)), and direct messages ([§22](#22-use-direct-messages)). Each can be on or off independently, depending on how the HackMatch platform is configured. HackMatch checks this when chat opens:
+
+- if a feature is off, its controls do not appear and chat works normally without it;
+- turning one feature off does not affect text messages or the other features; and
+- you cannot turn a feature on yourself. If you expected a feature and do not see it, contact the project team.
+
+Each feature follows the conversation's normal rules. You can use them only where you may read and send messages. In a team channel that is read-only or a direct message where you cannot send, you can still see existing reactions and attachments, but you cannot add new ones.
+
+#### Message reactions
+
+Reactions let you respond to a message without writing a reply.
+
+1. Find the reaction row under a message. Each reaction already used on the message appears as a small button showing its emoji and how many people chose it.
+2. To add a reaction, select **Add reaction** (the ＋🙂 button). The **Choose a reaction** picker opens.
+3. Select one of the eight available reactions: 👍 **Thumbs up**, ❤️ **Heart**, 😂 **Laugh**, 🎉 **Party**, 😮 **Surprised**, 😢 **Sad**, 👀 **Eyes**, or ✅ **Check mark**. The picker closes and the count updates.
+4. To add a reaction that someone else already used, select that reaction's button in the row.
+5. To remove your reaction, select its button again (or choose it again in the picker).
+
+Reactions you have chosen are shown with a darker border and bold text. You can use several different reactions on the same message, but each reaction only once.
+
+Reactions show **counts only**. HackMatch never shows a list of who reacted, only the number of people and whether you are one of them. Reactions do not send notifications, do not change unread or `@mention` badges, do not mark anything as read, and do not change the order of messages.
+
+![HackMatch reaction picker opened beneath a team-chat message](../assets/screenshots/US-035-reaction-picker.png)
+
+*Figure 17a — The eight-reaction picker opened through the message's **Add reaction** control.*
+
+While a change is being saved, that message's reaction buttons pause briefly. If a change fails, a short message appears under the reactions and the previous counts come back. Common messages:
+
+| Situation | What you see |
+|---|---|
+| More than 30 reaction changes in one minute | **Reaction limit reached. Try again in _N_ seconds.** Reaction buttons pause until then |
+| The team channel is read-only (team disbanded) | **This team channel is read-only.** |
+| You cannot send in this direct message | **You cannot react in this conversation.** |
+| The message is no longer available | **This message is no longer available.** |
+| Your session ended | **Please sign in again to react.** |
+
+#### Typing indicators
+
+When someone else is writing in the conversation you have open, a short line appears just above the message box:
+
+- **alex_7 is typing…**
+- **alex_7 and sam are typing…** (two or three people are named)
+- **Several people are typing…** (four or more)
+
+The line disappears when the person sends their message, clears their message box, or leaves it, and on its own a few seconds after they stop typing. Typing indicators are live and temporary. They are not saved, are not part of the message history, and are not shown again after you reload the page, reopen the conversation, or reconnect.
+
+Other people see only that you are typing, never what you type. HackMatch does not send your draft text while you write. You never see your own typing indicator. While your presence status is **Invisible**, nobody sees you typing.
+
+Typing indicators can be missing if the feature is turned off or the live connection is temporarily unavailable. No error is shown in that case, and sending and reading messages work normally.
+
+![HackMatch direct-message conversation showing a live typing indicator](../assets/screenshots/US-035-typing-indicator.png)
+
+*Figure 17b — A genuine two-participant typing event displayed above the direct-message composer.*
+
+#### File attachments
+
+You can attach files to a chat message when attachments are available. An attachment always goes with a normal text message: **a message must still contain some text**. Sending only a file, with an empty message box, is not supported.
+
+> **Malware warning:** HackMatch does **not** scan attachments for malware. It checks that each file really is one of the approved formats and is within the size limit, but that is not a virus check. Every attachment is labelled **Not scanned for malware**. Download and open only files you trust, from people you trust.
+
+**Where attachments are available.** No malware scanner has been approved yet, so attachments are currently turned on only in local, test, and demonstration environments that use sample data. On the live platform, attachments stay switched off until an approved scanner is added, and the **Attach file** button does not appear. This is a platform safety setting that you cannot change.
+
+**Approved formats and limits**
+
+| Rule | Limit |
+|---|---|
+| File types | PNG, JPEG, GIF, WebP, PDF, and plain-text (UTF-8) TXT |
+| Size | 10 MB per file |
+| Files per message | Up to 5 |
+| Uploads | 20 per Participant per rolling hour |
+| Storage | 100 MB of attachments per Participant |
+
+**Attach files to a message**
+
+1. Open the conversation and type your message in the message box.
+2. Below the message box, select **Attach file**. The note beside it repeats the limits and says **Uploaded files are not scanned for malware.**
+3. Choose one or more files. Each file uploads as soon as you choose it, and **Uploading _file name_…** appears while it does. The counter shows how many files are attached, for example **2/5 attached**.
+4. Uploaded files appear in the **Pending attachments** list with the file name, type, size, and a **Not scanned for malware** label.
+5. To take a file off this message, select **Remove** beside it.
+6. Select **Send message**. The message and its attachments are sent together. The list clears after a successful send.
+
+![HackMatch team-chat composer with a pending image attachment](../assets/screenshots/US-035-attachment-composer.png)
+
+*Figure 17c — A pending image attachment with its type, size, remove action, and **Not scanned for malware** warning.*
+
+A removed or unsent file is not shared with anyone. It still counts toward your hourly upload limit and your storage until HackMatch deletes it automatically within 24 hours. Opening a different conversation clears the **Pending attachments** list, and those files are not sent.
+
+**Preview and download attachments**
+
+Attachments appear under their message with the file name, type, size, and the **Not scanned for malware** label.
+
+- Select **Download** to save a file. The button shows **Downloading…** while it works.
+- For images (PNG, JPEG, GIF, and WebP), select **Preview** to show the image under the message, and **Hide preview** to close it. PDF and TXT files can only be downloaded, not opened in the chat.
+
+![HackMatch sent image attachment with preview and download controls](../assets/screenshots/US-035-sent-attachment.png)
+
+*Figure 17d — A sent image preview with participant-facing metadata, download control, and the unchanged malware warning.*
+
+Each preview or download first checks that you can still read the conversation, then uses a link that expires after about a minute. HackMatch never gives out a permanent public web address for a file. If you lose access to a conversation, you can no longer download its files.
+
+**If an attachment fails**
+
+When an upload or download fails, a message appears, and your text and any files already in the list are kept.
+
+| Situation | What you see |
+|---|---|
+| Wrong file type | **File "_name_" is not an approved type (PNG, JPEG, GIF, WebP, PDF, or UTF-8 TXT).** A file whose contents do not match its name is also refused |
+| File too large | **File "_name_" exceeds the 10 MB size limit.** |
+| Empty file | **Empty files cannot be attached.** |
+| File type and name disagree | **File "_name_" does not match its declared file type.** |
+| A sixth file for one message | **You can attach up to 5 files per message.** The **Attach file** button is unavailable at 5 |
+| 20 uploads in the last hour | **Attachment upload limit reached. Try again in _N_ seconds.** |
+| 100 MB storage used | **You have used your 100 MB attachment storage.** |
+| File storage temporarily unavailable | **Attachment storage is currently unavailable. You can still send your text message.** |
+| A download link expired or the file is gone | **Attachment not found or its download link has expired.** Select **Download** again |
+| Your session ended | **Please sign in again to upload attachments.** or **…to download attachments.** |
+
+If the platform turns attachments off while you are using chat, the attachment controls disappear and your text message can still be sent.
+
+#### Accessibility
+
+- Reaction buttons are ordinary buttons you can reach with **Tab** and use with **Enter** or **Space**. Each one announces its name, count, and whether you chose it, for example "Heart, 3 reactions, you reacted". **Add reaction** announces whether the picker is open.
+- When the picker opens, focus moves to its first reaction. **Escape** closes it and returns focus to **Add reaction**.
+- The typing line is a polite status. Screen readers announce it only when someone starts or stops typing, and it never moves focus. It has no animation and does not rely on color.
+- **Attach file** is linked to the note describing the limits and the malware warning. Upload progress is announced as a status, and errors are announced as alerts.
+- **Remove**, **Preview**, and **Download** buttons include the file name in their label, and image previews use the file name as their alternative text.
 
 ## 21. Use the private team chat
 
@@ -655,9 +785,11 @@ What you will see in other situations:
 
 Messages show handles only. Account emails, contact details, and presence are never shown.
 
-![Placeholder: Team chat panel on the team page](../assets/wireframes/US-031-team-chat.png)
+When the platform has them turned on, reactions, typing indicators, and file attachments also work in team chat, for confirmed members only; see [Reactions, typing indicators, and attachments](#reactions-typing-indicators-and-attachments). In a disbanded team's read-only channel you can see existing reactions and attachments but cannot add new ones.
 
-*Figure 19 — Placeholder: replace with a capture of the Team chat panel with a few messages.*
+![HackMatch private team-chat panel on a locked team page](../assets/screenshots/US-031-team-chat.png)
+
+*Figure 19 — A private team message, composer, attachment controls, and link to the locked-team workspace.*
 
 ## 22. Use direct messages
 
@@ -687,11 +819,13 @@ What you will see in other situations:
 
 Direct messages show handles only. Account emails, full names, contact details, presence, and passwords are never included, and someone who is not part of a conversation cannot find out whether it exists.
 
+When the platform has them turned on, reactions, typing indicators, and file attachments also work in direct messages; see [Reactions, typing indicators, and attachments](#reactions-typing-indicators-and-attachments). They follow the same sending rules as messages. If you cannot send in a conversation, you also cannot react, signal typing, or attach files there, but you can still see and download existing attachments while you can read the conversation.
+
 **Starting a new conversation.** A conversation appears in your inbox once it exists. The current screen has no "message this person" button on profiles or candidate cards yet, so you cannot start a brand-new conversation from the interface today. Existing conversations can be opened and continued as described above.
 
-![Placeholder: Direct messages inbox and conversation](../assets/wireframes/US-032-direct-messages.png)
+![HackMatch Direct messages inbox and open conversation](../assets/screenshots/US-032-direct-messages.png)
 
-*Figure 20 — Placeholder: replace with a capture of the inbox and an open conversation.*
+*Figure 20 — The direct-message inbox, selected participant, message composer, and attachment controls.*
 
 ## 23. Administrator screens
 
@@ -738,9 +872,9 @@ Suspension revokes access, hides recruitment visibility, and cancels affected pe
 
 Records older than the configured retention period are labelled **Past retention** for review; they are never changed or removed here. Personal details are shown in the reduced form required by the privacy policy. Participants and Visitors cannot open the audit log.
 
-![Placeholder: ADMIN audit log with filters and pagination](../assets/wireframes/US-028-admin-audit-log.png)
+![HackMatch ADMIN audit log with filters and current empty state](../assets/screenshots/US-028-admin-audit-log.png)
 
-*Figure 18 — Placeholder: replace with a capture of the audit table, filters, and pagination.*
+*Figure 18 — ADMIN-only audit filters and the current empty-record state.*
 
 ## 24. Profile menu, session, and sign out
 
@@ -832,6 +966,26 @@ Starting a brand-new direct message from a profile is not available yet. Convers
 
 Block and unblock controls are not available in the interface yet. If someone is sending abusive messages, use the report option described in [§19](#19-report-abusive-content) and contact the project team.
 
+### Why don't I see reactions, a typing line, or **Attach file**?
+
+Each of these features is turned on or off by the platform, and you cannot change that setting. Attachments in particular stay off on the live platform until an approved malware scanner exists. They are available only in local, test, and demonstration environments. Text chat works normally either way. A typing line also appears only while someone else is actively typing in the conversation you have open.
+
+### Why was my file rejected?
+
+Files must be PNG, JPEG, GIF, WebP, PDF, or UTF-8 TXT, at most 10 MB, and their contents must match their file name. You can attach up to 5 files per message and upload 20 files per hour, with 100 MB of attachment storage in total. The message on screen names the rule that applied, and your text is kept.
+
+### Can I send a file without any text?
+
+No. Attachments go with a normal message, so type at least some text before selecting **Send message**.
+
+### Are attachments checked for viruses?
+
+No. HackMatch checks the file format and size but does not scan files for malware. Every attachment is labelled **Not scanned for malware**. Only download and open files you trust.
+
+### Can other people see who reacted or what I am typing?
+
+No. Reactions show only counts and whether you reacted yourself. Typing indicators show only that someone is typing, never the text, and nobody sees you typing while your status is **Invisible**.
+
 ### What happens when a form fails?
 
 The current forms are designed to keep valid entered values or drafts when validation, network, or server errors occur. Correct the highlighted field or use **Retry**/**Refresh** where offered.
@@ -842,13 +996,11 @@ The current user workflow is platform-wide and does not include a hackathon dire
 
 ## 26. Screenshot coverage
 
-This manual embeds 10 genuine captures and 9 labelled placeholders from the current feature implementations under [`docs/assets/wireframes/`](../assets/wireframes/README.md). Demo account emails and authentication values are hidden. No screenshot contains passwords, OTP values, tokens, or environment secrets.
+This manual embeds 23 genuine captures from the current feature implementations: 10 established captures under [`docs/assets/wireframes/`](../assets/wireframes/README.md) and 13 current browser captures under [`docs/assets/screenshots/`](../assets/screenshots/README.md). The current manual has no missing screenshot placeholders.
 
-The browser-control helper was unavailable during this Issue #353 update, so no screenshot was fabricated or replaced. The embedded captures accurately show the documented workflow panels; some retain the previous header labels (**Browse Events**, **Browse Teams**, separate **Applications**/**Invitations**, or a top-level **Chat** link). The current code has consolidated those destinations into **Open teams**, **Requests**, and the floating **Open chat** button as described in §3.
+The newer captures use neutral demo accounts and the actual running HackMatch application. They include live notification, profile-history, candidate-directory, private-workspace, manifest, reporting, ADMIN audit, team-chat, direct-message, reaction, typing, and attachment states. The typing figure came from two authenticated browser sessions using the real typing stream. The attachment figures came from the real upload, message association, preview, and authorization paths and deliberately retain the **Not scanned for malware** warning.
 
-**Placeholders (Issues #419 and #420).** Figures 11–16 and 18–20 point to files that do not exist yet: `US-021-notification-bell-dropdown.png`, `US-007-hackathon-history.png`, `US-014-candidate-directory-search.png`, `US-023-private-coordination-workspace.png`, `US-024-team-manifest-export.png`, `US-025-report-abuse-modal.png`, `US-028-admin-audit-log.png`, `US-031-team-chat.png`, and `US-032-direct-messages.png`. Capture each with demo accounts only (no real emails, OTPs, or tokens), save it in `docs/assets/wireframes/` under the same name, and the image will appear.
-
-Additional real captures for empty, locked, recommendation, application-list, moderation, and account-enforcement states remain available in the same wireframes folder.
+No capture contains passwords, OTP values, tokens, environment secrets, or private account email addresses. Additional real captures for empty, locked, recommendation, application-list, moderation, and account-enforcement states remain available in the wireframes folder.
 
 ---
 

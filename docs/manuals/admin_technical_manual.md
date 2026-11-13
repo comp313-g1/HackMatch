@@ -2,7 +2,7 @@
 
 **Audience:** project administrators, maintainers, developers, and technical reviewers
 
-**Repository baseline:** `US-029/authenticator-enrollment-design` branch (migrations through `0067`, Issue #446 update)
+**Repository baseline:** `US-035/rich-chat-interactions` branch (migrations through `0068`, Issue #451 update for completed US-035 rich chat interactions)
 
 **Last reviewed:** November 12, 2026
 
@@ -34,7 +34,7 @@ This manual describes how the current HackMatch implementation is configured, op
 
 ## 1. System overview
 
-HackMatch is a web application for participant profiles, platform-wide teammate discovery, team recruitment, invitations, applications, roster management, notifications, a private team workspace and manifest export, abuse reporting, owner-only authenticator enrollment/management, administration (including chat moderation, account enforcement, and audit review), participant forums chat, a private team chat, and one-to-one direct messages.
+HackMatch is a web application for participant profiles, platform-wide teammate discovery, team recruitment, invitations, applications, roster management, notifications, a private team workspace and manifest export, abuse reporting, owner-only authenticator enrollment/management, administration (including chat moderation, account enforcement, and audit review), participant forums chat, a private team chat, one-to-one direct messages, and flag-controlled rich-chat interactions (message reactions, typing indicators, and restricted file attachments).
 
 The current user-facing architecture is **Event-Free**:
 
@@ -55,7 +55,8 @@ HackMatch uses a three-tier web architecture with two external managed services.
 | React/Vite client | Browser UI, Firebase client sign-in, route-level experience, form validation, and calls to `/api` |
 | Express/Node server | Authentication verification, MFA, authorization, validation, privacy projection, domain services, administration, and database access |
 | Firebase Authentication | Primary identity, email/password and federated providers, verified-email state, ID tokens, custom role/MFA claims, password reset, and refresh-token revocation |
-| Supabase/PostgreSQL | Application accounts, profiles, team/recruitment data, MFA challenge records, encrypted authenticator enrollment state, recovery-code verifiers, notifications, moderation/enforcement records, and chat data |
+| Supabase/PostgreSQL | Application accounts, profiles, team/recruitment data, MFA challenge records, encrypted authenticator enrollment state, recovery-code verifiers, notifications, moderation/enforcement records, and chat data, including reaction and attachment metadata |
+| Supabase Storage | Private `chat-attachments` bucket holding US-035 attachment bytes under opaque keys; reached only through the server's service role, never by the browser |
 | SMTP provider | Delivery of verification and six-digit MFA messages; a development-only Ethereal transport is available when production SMTP is not configured |
 
 The browser authenticates through Firebase and ordinarily sends a Firebase ID token to the Express API. The server verifies the token with Firebase Admin, then resolves the corresponding PostgreSQL `participants` row and applies role, verification, active-account, MFA, and resource-ownership checks. Database service-role credentials remain server-side.
@@ -129,6 +130,7 @@ Variables prefixed with `VITE_` are compiled into browser code. They must not co
 | SMTP | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Production MFA delivery fails closed if SMTP is unavailable |
 | OTP controls | `OTP_RATE_LIMIT_COOLDOWN_MS`, `OTP_RATE_LIMIT_MAX_PER_HOUR`, `OTP_RATE_LIMIT_STRICT` | Optional overrides for challenge issuance limits |
 | Authenticator secrets | `TOTP_ENCRYPTION_KEY_BASE64`, `TOTP_ENCRYPTION_KEY_VERSION` | Server-only 32-byte Base64 key and version for AES-256-GCM TOTP protection; the same master key is domain-separated with HKDF for recovery-code HMAC verifiers |
+| Rich chat (US-035) | `RICH_CHAT_REACTIONS_ENABLED`, `RICH_CHAT_TYPING_ENABLED`, `RICH_CHAT_ATTACHMENTS_ENABLED` | Default `false`. Read once at startup; only the exact string `true` enables a flag. Attachments additionally stay unavailable whenever `NODE_ENV=production`, because no malware scanner exists (see [Rich chat interactions](#rich-chat-interactions-us-035)) |
 
 Production startup rejects missing core Supabase and Firebase Admin settings. Use a randomly generated, high-entropy `SESSION_SECRET` of at least the length described in the example file.
 
@@ -367,6 +369,7 @@ Review migration diffs and the selected Supabase target before applying any chan
 | Chat | `chat_channels` (public forums and, since 0051, private team channels via `channel_type` and `team_id`), `chat_messages`; presence is stored on `participants` |
 | Chat activity (US-034) | `chat_channel_read_cursors`, `direct_message_read_cursors`, `chat_message_mentions`, and `direct_message_mentions` (migrations 0058–0061); separate from `participant_notifications` |
 | Direct messages | `direct_message_threads` (0053, activity column added in 0055), `direct_messages` (0055), `participant_blocks` (0054) |
+| Rich chat (US-035) | `chat_message_reactions` and `direct_message_reactions` (`0067_create_chat_message_reactions.sql`); `chat_message_attachments`, `direct_message_attachments`, and the `chat_attachment_object_deletions` cleanup queue, plus the private `chat-attachments` Storage bucket (`0068_create_chat_message_attachments.sql`). Typing state has no table |
 | Legacy compatibility | `pending_event_submissions` and event-oriented columns retained by the physical schema |
 
 `moderation_cases.target_id`, `moderation_reports.target_id`, and `event_action_records.target_id` are polymorphic identifiers interpreted with their target type. Migration `0056` adds the `chat_channel` and `chat_message` case types, and migration `0057` adds `chat_message` participant reports. These identifiers intentionally are not physical foreign keys to the chat tables; the application and report-validation trigger resolve the correct table from `target_type`.
@@ -544,7 +547,7 @@ Suspension updates PostgreSQL state, cancels relevant pending requests, hides op
 
 The React page is **Admin ▾ → Audit log**. Append-only means ordinary application actors cannot alter records; it does not make the underlying storage tamper-proof against someone with database-owner access.
 
-![Placeholder: ADMIN audit log](../assets/wireframes/US-028-admin-audit-log.png)
+![HackMatch ADMIN audit log filters and current empty state](../assets/screenshots/US-028-admin-audit-log.png)
 
 There is no current unsuspend/reactivate endpoint in the ADMIN API. Do not promise reactivation through the UI.
 
@@ -574,17 +577,7 @@ Channel titles and descriptions are required and validated. Message bodies must 
 
 Public forums have no channel-membership persistence or join/leave mechanism: every verified active `PART` passes the same global-channel access gate. Private team channels (below) are gated by team membership instead. There is also no implemented peer-presence directory; `Invisible` is filtered by helper logic, but broader peer visibility policy remains undefined.
 
-US-033 moderation/report integration is implemented for `chat_channels` and `chat_messages`; it does not make the ADMIN interface a general chat browser, and direct-message rows are outside the current target contract. US-034 unread/mention tracking is implemented for public and team channels plus direct-message threads as described below. US-035 message reactions are implemented (#405 server, migration `0067`; #406 React): persistence, add/remove API, aggregates in message responses, and accessible reaction controls and summaries in the forum, team-chat, and direct-message views. They are behind `RICH_CHAT_REACTIONS_ENABLED` (off by default); the client shows them only when `GET /api/chat/capabilities` reports them enabled. Typing indicators are implemented (#407 server and realtime backend; #408 React): authorized typing signals and one typing stream for the open forum, team chat, or direct-message thread, held in memory only and expiring after 6 seconds, behind `RICH_CHAT_TYPING_ENABLED` (off by default). The client shows them only when `GET /api/chat/capabilities` reports them enabled, closes the stream on navigation, sign-out, or account change, and keeps text chat working if typing fails. The attachment server/storage layer is implemented by #409 as described below; its React composer, previews, and download controls remain pending #410, and #411 still owns the broad final US-035 test matrix. Voice/video remains deferred. The approved scope, limits, and server-side flags are defined in the [US-035 rich-chat policy contract](../04_requirements/us035_rich_chat_policy.md).
-
-#### Secure attachment server and storage controls (US-035 / #409)
-
-`POST /api/chat/channels/:channelId/attachments`, `POST /api/teams/:teamId/chat/attachments`, and `POST /api/direct-messages/threads/:threadId/attachments` accept one streamed multipart `file` after the existing PART/MFA/active/verified and conversation send guards. ADMIN has no chat bypass. The server ignores the client content type, identifies PNG, JPEG, GIF, WebP, PDF, or UTF-8 plain text from bytes, requires a matching safe extension, sanitizes the display filename, and enforces the exact 10 MB boundary. Message validation still requires nonblank text. A send may atomically associate up to five caller-owned pending uploads from that same conversation; migration `0068_create_chat_message_attachments.sql` enforces ownership, status, conversation binding, and the five-item maximum under a per-message advisory lock.
-
-`chat_message_attachments` and `direct_message_attachments` hold server-only metadata and an opaque UUID storage key. `reserve_chat_attachment_upload` serializes reservations per participant and enforces one shared 20-upload rolling-hour bucket plus a 100 MB total across pending and attached public/team/DM uploads. Rows use RLS with no browser policies; attachment tables and privileged functions are revoked from `anon`/`authenticated`, service-role functions have fixed `search_path`, and the private `chat-attachments` Supabase bucket is created without public access. Partial failures discard inaccessible reservations; deletion triggers enqueue object keys in `chat_attachment_object_deletions`. Bounded maintenance expires unattached uploads after 24 hours and incomplete reservations after 15 minutes, processes the queue every 15 minutes and opportunistically after uploads, and leaves failed object deletes queued for retry. PostgreSQL cascade removes metadata, not external bytes.
-
-An authorized attachment-access request returns an application-signed relative URL valid for 60 seconds, not a permanent provider URL or storage key. Redemption re-loads the attachment, re-checks the token viewer's current public/team/DM read permission, retrieves the object with the service role, and proxies it with `no-store`, `nosniff`, restrictive CSP, and safe `Content-Disposition`; PDF and text are forced downloads. Random, foreign, stale, cross-conversation, and inaccessible attachment IDs use privacy-safe not-found/authorization behavior.
-
-No malware scanner exists. Byte/MIME validation is not scanning: every current upload is explicitly `not_scanned`, never “clean.” `RICH_CHAT_ATTACHMENTS_ENABLED` defaults off, and the server additionally refuses attachment availability in `production` while no approved scanner exists. Consequently `GET /api/chat/capabilities` reports attachments enabled only in a flag-enabled local/test/synthetic-data environment, labels malware scanning `not_available`, and continues to report reactions and typing from their independent flags and `voiceVideo: false`. Plain text chat remains available when attachment storage or the attachment flag is unavailable.
+US-033 moderation/report integration is implemented for `chat_channels` and `chat_messages`; it does not make the ADMIN interface a general chat browser, and direct-message rows are outside the current target contract. US-034 unread/mention tracking is implemented for public and team channels plus direct-message threads as described below. US-035 rich chat interactions (#404–#411) are implemented for all three conversation types and are described in [Rich chat interactions](#rich-chat-interactions-us-035) at the end of this section. Voice/video remains deferred.
 
 ### Private team channels (US-031)
 
@@ -702,7 +695,152 @@ After a forum, team channel, or DM loads, the client marks the newest loaded mes
 
 ![Participant chat thread](../assets/wireframes/US-030-chat-message-thread.png)
 
-See the [core chat sequence](../diagrams/US-030/US-030-core-chat-sequence.png) and [presence/access flow](../diagrams/US-030/US-030-presence-access-flow.png). The central diagram index still describes US-030 from its earlier specification-only audit; current migrations and source code supersede that status note.
+See the [core chat sequence](../diagrams/US-030/US-030-core-chat-sequence.png) and [presence/access flow](../diagrams/US-030/US-030-presence-access-flow.png). The central diagram index records US-030 as implemented following the #450 repository audit.
+
+### Rich chat interactions (US-035)
+
+US-035 adds three optional features to public forums (US-030), private team channels (US-031), and direct messages (US-032). Voice/video is deferred. The approved scope, limits, and flag rules are in the [US-035 rich-chat policy contract](../04_requirements/us035_rich_chat_policy.md). Where this manual and the code differ, the code and its tests govern.
+
+| Feature | Tasks | Persistence and delivery | Why |
+|---|---|---|---|
+| Message reactions | #405 server, #406 React | PostgreSQL rows (`0067`); aggregates returned in message responses and reaction mutations | Reactions are conversation content that must survive reloads, like messages |
+| Typing indicators | #407 server, #408 React | In-process server memory only; delivered over a per-conversation SSE stream | Advisory, short-lived state; persisting it would only create privacy risk and history nobody needs |
+| File attachments | #409 server, #410 React | PostgreSQL metadata (`0068`) plus bytes in a private Supabase Storage bucket; server-proxied downloads | Files are large binary objects that need private storage, quotas, and access control separate from message rows |
+| Voice/video | none (deferred) | none | Needs its own story with security, privacy, and capacity review |
+
+#411 completed the test matrix across all three features.
+
+Diagrams: [use case](../diagrams/US-035/US-035-rich-chat-use-case.png), [authorization and privacy](../diagrams/US-035/US-035-rich-chat-authorization-flow.png), [reaction sequence](../diagrams/US-035/US-035-reaction-sequence.png), [typing sequence](../diagrams/US-035/US-035-typing-indicator-sequence.png), [attachment sequence](../diagrams/US-035/US-035-attachment-sequence.png), [data model](../diagrams/US-035/US-035-rich-chat-data-model.png), and [attachment lifecycle](../diagrams/US-035/US-035-attachment-lifecycle-state.png).
+
+#### Feature flags and the capabilities endpoint
+
+| Variable | Default | Controls |
+|---|---|---|
+| `RICH_CHAT_REACTIONS_ENABLED` | `false` | Reaction reads in message responses and reaction changes |
+| `RICH_CHAT_TYPING_ENABLED` | `false` | Typing signals and typing streams |
+| `RICH_CHAT_ATTACHMENTS_ENABLED` | `false` | Uploads, attachment metadata, and downloads, subject to the production gate below |
+
+- The server reads the flags once at startup in `server/src/config/index.ts`; only the exact string `true` enables a flag. Restart the server after changing one.
+- Every rich-chat route checks its own flag on the server. When a flag is off, the route returns `404 FEATURE_DISABLED`, changes nothing, and message responses omit that feature's fields.
+- There are no `VITE_` rich-chat flags. React asks `GET /api/chat/capabilities` (same PART chat guard as other chat routes, `no-store`) and shows only what the server reports. The response contains `reactions` (enabled plus the allowed reaction codes), `typing` (enabled), `attachments` (enabled plus `maxBytes`, `maxPerMessage`, `allowedTypes`, and `malwareScanning: 'not_available'`), and `voiceVideo: false`. If the request fails, the client treats every feature as off. If any route later answers `FEATURE_DISABLED`, the client hides that feature for the session.
+- The features are independent. Turning one off, or a failure in its storage or delivery, never disables text chat or the other features.
+- Voice/video has no flag. There is no code to enable, and the capabilities response always reports `voiceVideo: false`.
+- Turning a flag off hides and blocks the feature but does not delete existing reaction or attachment data.
+
+#### Message reactions (#405–#406)
+
+| Conversation | Add (`PUT`) and remove (`DELETE`) |
+|---|---|
+| Public forum | `/api/chat/channels/:channelId/messages/:messageId/reactions/:reaction` |
+| Team channel | `/api/teams/:teamId/chat/messages/:messageId/reactions/:reaction` |
+| Direct message | `/api/direct-messages/threads/:threadId/messages/:messageId/reactions/:reaction` |
+
+- **Access.** Each route runs the conversation's existing guard chain, and changing a reaction needs **send** access. That means a current confirmed member for team channels (a disbanded channel answers `TEAM_CHANNEL_READ_ONLY`), and the DM send-access guard for direct messages (block and peer eligibility). Denials use the same status and code as the matching message routes. Only verified active `PART` accounts are accepted. `ADMIN` has no chat access and no reaction bypass.
+- **Fixed set.** The codes are `thumbs_up`, `heart`, `laugh`, `party`, `surprised`, `sad`, `eyes`, and `check`. Any other value returns `400 VALIDATION_ERROR`, and `is_approved_chat_reaction` enforces the same set in a database `CHECK`. React renders emoji from a fixed client table keyed by code, never from stored text.
+- **Semantics.** There is one row per (message, participant, reaction), so a participant may use several different codes on a message. Add and remove are idempotent: adding an existing reaction or removing a missing one succeeds without error. The reacting participant always comes from the authenticated session; no participant id is accepted from the client.
+- **Response.** Mutations and message lists return only an aggregate per code: `reaction`, `count`, and `reactedByMe`. No list of who reacted, and no other reactor identity, is ever returned.
+- **No side effects.** Reactions create no `participant_notifications`, do not change US-034 unread or mention counts or read cursors, and do not update `last_message_at` or message order. They are not US-033 moderation targets.
+- **Rate limit.** 30 mutation requests (add or remove, idempotent repeats included) per participant per rolling minute, shared across all conversations. Excess requests return `429 RATE_LIMITED` with `Retry-After`. Requests rejected earlier (invalid input, feature disabled, unauthenticated) do not use the budget. The limiter is in memory, so it is per server instance and resets on restart. The client pauses reaction controls until `Retry-After` passes.
+- **Storage.** `set_chat_message_reaction`, `set_direct_message_reaction`, `summarize_chat_message_reactions`, and `summarize_direct_message_reactions` are service-role functions. Reaction rows cascade with their message and participant.
+
+#### Typing indicators (#407–#408)
+
+| Conversation | Signal (`POST`) | Stream (`GET`, SSE) |
+|---|---|---|
+| Public forum | `/api/chat/channels/:channelId/typing` | `/api/chat/channels/:channelId/typing/stream` |
+| Team channel | `/api/teams/:teamId/chat/typing` | `/api/teams/:teamId/chat/typing/stream` |
+| Direct message | `/api/direct-messages/threads/:threadId/typing` | `/api/direct-messages/threads/:threadId/typing/stream` |
+
+- **Payload.** The signal body is exactly `{ "typing": true | false }`. Any other field, including a draft, is rejected with `400 VALIDATION_ERROR`, and the body is cleared before logging. Events carry only the conversation, the typist's handle, and the typing flag. Draft text, length, and keystrokes are never sent, stored, or logged. The typist identity is derived on the server.
+- **Access.** Signals need send access to the conversation. Streams need read access when they open. Only `PART` accounts are accepted; `ADMIN` has no bypass.
+- **Delivery.** Each stream covers one conversation. Before **every** event is delivered, the server re-checks that recipient's current read access, so a viewer who loses access stops receiving events and is disconnected. The sender never receives their own events. An `Invisible` participant's signal is accepted (`200`) but nothing is published.
+- **Expiry and persistence.** Typing state lives only in an in-process hub. The server expires an indicator 6 seconds after the last signal. Nothing is written to PostgreSQL, notification rows, or logs, and there is no history. Stream events have no `id:` and are never replayed, so a reconnect starts empty. In a multi-instance deployment, indicators reach only viewers connected to the same instance. This is accepted degradation for an advisory feature.
+- **Stream limits.** Typing streams reuse the notification stream's transport rules: a 25-second heartbeat, a 15-minute maximum lifetime (after which the client reconnects and re-authenticates), and a 3-second retry hint. They use their own cap of 5 open typing streams per participant, so they cannot exhaust notification streams; beyond that they return `429 TOO_MANY_STREAMS`. Typing does not use `/api/notifications/stream`.
+- **Rate limit.** 40 typing signals per participant per rolling minute, in memory and shared across conversations. Excess signals return `429 RATE_LIMITED` with `Retry-After`.
+- **Client (#408).** `useConversationTyping` opens one stream for the conversation on screen and sends `typing: true` at most once every 2 seconds. When the composer becomes blank, loses focus, sends, or the conversation changes, it sends a best-effort `typing: false`. It hides each indicator 6 seconds after the last event, even if a stop signal is lost. Navigation, sign-out, and account change close the stream and discard state. `FEATURE_DISABLED` turns typing off for the session, `429` pauses signals, and other failures are dropped without affecting the composer or text chat.
+
+#### File attachments (#409–#410)
+
+| Conversation | Upload (`POST`, multipart) | Access link (`GET`) |
+|---|---|---|
+| Public forum | `/api/chat/channels/:channelId/attachments` | `/api/chat/channels/:channelId/attachments/:attachmentId/access` |
+| Team channel | `/api/teams/:teamId/chat/attachments` | `/api/teams/:teamId/chat/attachments/:attachmentId/access` |
+| Direct message | `/api/direct-messages/threads/:threadId/attachments` | `/api/direct-messages/threads/:threadId/attachments/:attachmentId/access` |
+
+The access link is redeemed at `GET /api/chat/attachments/content?token=…`.
+
+**Upload.**
+
+- Each request carries exactly one `multipart/form-data` part named `file`. Busboy parses it as a stream, and it never travels as JSON or base64 (the global `express.json()` limit is unchanged).
+- The PART chat guards and the conversation's **send** guard run before any byte is retained.
+- The 10 MB (10,485,760-byte) limit is enforced exactly, while bytes arrive.
+- The server ignores the browser-declared content type. It identifies PNG, JPEG, GIF, WebP, or PDF from the leading bytes. For `text/plain` it requires valid UTF-8 with no NUL or disallowed control bytes. The file extension must match the detected type, and anything else returns `415 ATTACHMENT_TYPE_NOT_ALLOWED`.
+- The display filename is sanitized (path components, control characters, and bidirectional-override characters removed; at most 255 characters) and is never used as a storage path.
+- Bytes are stored under an opaque, server-generated UUID key containing no filename, participant, or conversation data. The key is never returned to the client.
+
+**Limits.**
+
+- 5 attachments per message.
+- 20 uploads per participant per rolling hour, in one bucket shared across forums, team channels, and DMs. The count is database-backed, and the limit returns `429 RATE_LIMITED` with `Retry-After`.
+- 100 MB stored per participant, counting `uploading`, `pending`, and `attached` files (`413 ATTACHMENT_QUOTA_EXCEEDED`).
+- `reserve_chat_attachment_upload` serializes reservations per participant with an advisory lock, so concurrent uploads cannot exceed the limits.
+
+**Association.**
+
+- A message send may include `attachmentIds` (up to 5). The message body must still be 1–4,000 nonblank characters; attachment-only messages are not implemented.
+- `send_chat_message_with_attachments` and `send_direct_message_with_attachments` insert the message and link the attachments in **one transaction** under a per-message advisory lock. The link triggers reject attachments that belong to another participant, belong to another conversation, are already attached, or have expired.
+- The React composer (#410) uploads each chosen file immediately and lists it as pending until the send succeeds. On any error it keeps the text draft and the files already staged. Removing a staged file only drops it from the send; the unattached upload then expires through maintenance.
+
+**Download.**
+
+- The access route re-checks current **read** access and the scan rule. It returns an application-signed relative URL that expires after **60 seconds**. Neither a provider URL nor the storage key is ever exposed.
+- The content route has no bearer guard, because the token is the credential, and the token is redacted from request logs. On redemption the server re-loads the attachment, re-checks the token viewer's current read access, reads the object with the service role, and proxies the bytes.
+- Responses send `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff`, a restrictive `Content-Security-Policy` (`default-src 'none'`, sandboxed), and an RFC 5987 `Content-Disposition`. Raster images are served `inline` for preview; PDF and text are always `attachment`.
+- Random, foreign, stale, cross-conversation, and inaccessible attachment ids return privacy-safe not-found or authorization responses. The client fetches each preview or download as a blob and revokes object URLs when finished.
+
+**Storage.**
+
+- `supabaseAttachmentStore` writes to the private `chat-attachments` Supabase Storage bucket, which migration `0068` creates without public access and with a 10 MB file-size limit. Only the server's service role can access it.
+- PostgreSQL holds metadata only (uploader, conversation, opaque key, sanitized display name, detected type, size, status, scan status, timestamps), never file contents.
+- `MemoryAttachmentStore` exists only for tests and local runs.
+- Storage failures return `503 ATTACHMENT_STORAGE_UNAVAILABLE`, while plain text messages keep working.
+
+**Lifecycle.**
+
+Upload status values are `uploading` (reserved, counted against quota), `pending` (bytes stored, waiting to be sent), and `attached` (linked to one message).
+
+- If a storage or database step fails after the reservation, compensation deletes the reservation row, and its delete trigger queues any partially stored object for removal. If that discard also fails, the stuck `uploading` reservation expires after 15 minutes. A partial upload is never accessible.
+- Database cascades (message, channel, thread, or account deletion) remove **metadata only**. A trigger on each attachment table queues the object key in `chat_attachment_object_deletions`.
+- `expire_chat_attachment_uploads` and the maintenance pass remove `uploading` reservations older than 15 minutes and unattached `pending` uploads older than 24 hours. They then delete queued objects from Storage and leave failed deletions queued for retry.
+- Maintenance runs every 15 minutes in the server process and opportunistically after uploads. It is not an external scheduler.
+- An object whose metadata row is gone has no token path, so it cannot be downloaded while cleanup retries.
+
+#### Malware scanning and the production gate
+
+- **HackMatch has no malware scanner.** Signature-based type detection, the type allowlist, size limits, inline-preview limits, and forced download headers reduce risk, but they are **not** malware scanning.
+- Every upload is stored with `scan_status = 'not_scanned'`, and the UI labels each file **Not scanned for malware**. No response, UI text, log, or document may describe an attachment as scanned, clean, or safe. The `scan_status` constraint also allows the reserved values `pending`, `clean`, `infected`, and `scan_failed` for a future scanner, but the current code never writes them.
+- `areAttachmentsUsable()` requires `RICH_CHAT_ATTACHMENTS_ENABLED=true` **and** a non-production `NODE_ENV`. With `NODE_ENV=production`, attachments stay unavailable even when the flag is `true`: the capabilities response reports them disabled, attachment routes answer `404 FEATURE_DISABLED`, and existing `not_scanned` files are not downloadable. Setting the flag alone is therefore not enough to enable production attachments. Use them only in local, test, or synthetic-data demonstration environments.
+- Enabling attachments where real participants' files are stored requires an approved scanner integration first. That work is deferred and would need its own approved change. The intended direction in the policy contract is: upload into private storage as `pending` → scan → download only when `clean`; `infected` files are deleted, and `pending` or `scan_failed` files are never downloadable. No scanner product, configuration variable, or integration exists in the code today.
+
+#### Authorization and privacy
+
+Rich-chat operations inherit the conversation's existing rules and never widen them. Reading reaction aggregates or attachment metadata needs read access. Reacting, signalling typing, and uploading or attaching need send access. Downloading needs read access, re-checked when the link is issued and again when it is redeemed.
+
+| Conversation | Rules inherited |
+|---|---|
+| Public forum | Verified active `PART` with current MFA. Team channels look missing on public routes (`404 CHANNEL_NOT_FOUND`) |
+| Team channel | Current `Confirmed` membership. A disbanded team's channel is read-only, so existing reactions and attachments stay readable but nothing new can be added. Removed, released, and non-members get the same `403 FORBIDDEN_NOT_TEAM_MEMBER` |
+| Direct message | Thread participation for reads. Sends additionally need an eligible peer and no block in either direction (`DM_PEER_UNAVAILABLE`, `DM_BLOCKED_BY_YOU`). Missing and foreign threads both return `403 FORBIDDEN_NOT_THREAD_PARTICIPANT`, and existing history stays readable when sending is blocked |
+| `ADMIN` | No general chat access and no reaction, typing, or attachment bypass. US-033 moderation evidence projects only the targeted channel or message, and includes no reactions, typing data, or attachment files |
+
+Privacy guarantees:
+
+- No typing draft text is transmitted or stored.
+- No reactor identity list is exposed.
+- Storage keys are never participant-facing and are not an authorization mechanism.
+- Download links are short-lived, issued per request, and checked against current access.
+- Logs may record ids, counts, sizes, detected types, outcomes, and error codes, but never file bytes, filenames, tokens, signed URLs, or message or draft text.
+- All rich-chat responses use allowlisted projections and `Cache-Control: no-store`.
 
 ## 15. Demo seed tooling
 
@@ -780,6 +918,8 @@ GitHub Actions uses Node 22 and runs dependency installation, commit-message val
 | US-033 ADMIN moderation UI coverage | `npm run test --prefix client -- src/components/moderation` |
 | US-034 cursor/unread/mention/mark-read server coverage | `npm run test --prefix server -- src/db/chatReadCursors.sql.integration.test.ts src/db/chatUnreadCounts.sql.integration.test.ts src/db/chatMentionMetadata.sql.integration.test.ts src/db/chatMarkRead.sql.integration.test.ts src/db/chatUnreadMentionAccuracy.sql.integration.test.ts src/db/chatRead.repository.test.ts src/db/chatUnread.repository.test.ts src/services/chatRead.test.ts src/services/chatUnread.test.ts src/routes/chatRead.routes.test.ts src/routes/chatUnread.routes.test.ts` |
 | US-034 React badge coverage | `npm run test --prefix client -- src/components/chat` |
+| US-035 flags, migrations, reactions, typing, attachments, scan gate, storage, limits, and routes | `npm run test:us035 --prefix server` |
+| US-035 React reactions, typing, attachment composer, preview/download, and failure states | `npm run test:us035 --prefix client` |
 
 The real-SQL tests run migrations on an in-process PostgreSQL (PGlite, a server dev dependency), so they need no external database.
 
@@ -794,6 +934,20 @@ The #397 suites cover successful ADMIN channel/message cases, PART and visitor d
 Issue #425 documentation validation on November 10, 2026 ran the commands above: the focused server selection passed **103 tests in 9 files**, and the client moderation selection passed **70 tests in 10 files**.
 
 Issue #403 validation on November 10, 2026 ran the US-034 focused suites above: the server selection passed **77 tests in 11 files**, and the React chat selection passed **51 tests in 5 files**. The tests cover unread increments, own-message exclusion, deterministic mention categorization and deduplication, cursor/mention clearing, refresh persistence, lost-access privacy, same-timestamp message ordering, concurrent newer/older mark-read requests, and session-isolated accessible badges. Compatibility selections passed **476 US-021 tests** (11 skipped) and **146 US-030/US-031/US-032 authorization tests**. The complete branch suites passed **3,393 server tests** (59 skipped, 1 todo) and **1,352 client tests**.
+
+The US-035 suites (completed by #411) cover:
+
+- flag-off `404 FEATURE_DISABLED` with no side effects;
+- capability responses, including `voiceVideo: false` and the production attachment gate;
+- denial shapes for visitors, ineligible accounts, `ADMIN`, team non-members, foreign DM threads, and blocked pairs;
+- the fixed reaction set, idempotency, aggregates, cascade, rate limit, and absence of unread/notification side effects;
+- typing expiry, per-delivery authorization, sender exclusion, Invisible suppression, no persistence, and no replay;
+- attachment signature detection, spoofed extension and content-type rejection, size/count/hourly/quota limits, cross-owner and cross-conversation rejection, 60-second link expiry, access re-checks, `not_scanned` labelling, and storage cleanup;
+- storage or realtime failure leaving text chat and drafts intact.
+
+Database behavior uses real SQL through PGlite; Supabase Storage, Firebase, and network transport are mocked.
+
+Issue #451 documentation validation on November 12, 2026 ran the US-035 commands above: the server selection passed **457 tests in 16 files**, and the client selection passed **113 tests in 9 files**.
 
 ### Earlier branch validation baseline (October 23, 2026)
 
@@ -826,6 +980,7 @@ Current controls include:
 - server-generated privacy projections for visitor/profile/recruitment/admin/chat responses;
 - count-only chat activity responses, service-role-only cursor/mention functions, and current-access filtering before unread data is returned;
 - chat moderation projections that query only the targeted channel/message, redact secret-like text, and never return unrelated conversation history;
+- US-035 rich chat that inherits each conversation's read/send rules: count-only reaction aggregates, memory-only typing state with no draft text and per-delivery authorization, and attachments limited to allowlisted, byte-verified types. Attachments are held in a private bucket under opaque keys and served through 60-second, re-authorized, server-proxied links with `no-store`, `nosniff`, and a sandboxed CSP. They are honestly labelled `not_scanned` and unavailable under `NODE_ENV=production` while no malware scanner exists;
 - suspension checks across protected workflows; and
 - exact-ID, target-guarded, redacted demo seed/reset behavior.
 
@@ -856,6 +1011,14 @@ Operational rules:
 3. Ask the affected user to sign out and sign in again.
 4. Require email OTP again; do not seed or manually forge `mfa_auth_time`.
 5. Inspect pending team requests and owned-team visibility after suspension.
+
+### Before enabling rich-chat features
+
+1. Confirm migrations `0067` and `0068` are applied to the target. For attachments, confirm the private `chat-attachments` bucket exists and is not public.
+2. Set only the needed `RICH_CHAT_*` variables to `true` in the server environment and restart the server. Never add `VITE_` equivalents.
+3. Enable attachments only in local, test, or synthetic-data demo environments. Under `NODE_ENV=production` they stay off regardless of the flag. Do not change that gate without an approved malware scanner.
+4. Sign in as a demo `PART`, then check `GET /api/chat/capabilities` and one conversation of each type.
+5. To withdraw a feature, set its flag to `false` and restart. Existing reaction and attachment data is kept but hidden.
 
 ### Before a demo
 
@@ -894,6 +1057,15 @@ Operational rules:
 | Notification bell does not update live | Live stream unavailable | The client falls back to polling every 30 seconds; check `/api/notifications/stream` and the server logs |
 | Chat badges show `!` or **Could not refresh chat activity** | `GET /api/chat/unread-counts` failed, the session is no longer eligible, or storage returned an invalid result | Retry from the chat activity status; inspect only sanitized server logs and verify migrations 0058–0061. Last confirmed counts are intentionally retained on refresh failure |
 | Messages load but unread badges do not clear | `POST /api/chat/read` failed, the newest message no longer belongs to the conversation, or access changed during advancement | Preserve the badge, verify the Participant still has channel/thread access, and inspect the safe mark-read code. Do not update cursor tables by hand |
+| Reactions, typing, or **Attach file** never appear | The matching `RICH_CHAT_*` flag is not exactly `true`, the server was not restarted, or `GET /api/chat/capabilities` failed (the client then treats all features as off) | Check the server environment and the capabilities response for a demo `PART`; text chat is unaffected |
+| Attachments are off although `RICH_CHAT_ATTACHMENTS_ENABLED=true` | `NODE_ENV=production`; the malware gate keeps attachments unavailable without an approved scanner | Expected. Do not bypass the gate. Use a local, test, or synthetic-data environment |
+| Rich-chat route returns `404 FEATURE_DISABLED` | The feature's flag is off (or, for attachments, the production gate applies) | Expected fail-closed behavior; no data was changed |
+| Reaction or upload returns `429 RATE_LIMITED` | 30 reaction changes per minute or 20 uploads per hour exceeded | Wait for `Retry-After`. Reaction limits are per server instance and reset on restart; upload limits are database-backed |
+| Typing stream returns `429 TOO_MANY_STREAMS` | The participant already has 5 open typing streams | Close other chat tabs; streams also end after 15 minutes |
+| Typing indicators are missing between some users | Feature off, sender is `Invisible`, recipient lost read access, or the users are connected to different server instances (in-process delivery) | Expected advisory behavior; nothing is persisted to inspect |
+| Upload or download returns `503 ATTACHMENT_STORAGE_UNAVAILABLE` | Supabase Storage is unreachable, or the `chat-attachments` bucket or service-role access is misconfigured | Check Storage status and bucket configuration in sanitized logs. Text messages still send |
+| Upload returns `415 ATTACHMENT_TYPE_NOT_ALLOWED` or `413 ATTACHMENT_QUOTA_EXCEEDED` | The detected bytes are not an approved type or do not match the extension, or the 100 MB participant quota is used | Expected validation. Unattached uploads free quota when they expire after 24 hours |
+| Attachment objects remain in Storage after rows are deleted | `chat_attachment_object_deletions` contains entries whose removal failed | Maintenance retries every 15 minutes. Inspect Storage availability. Do not delete queue rows or objects by hand without confirming they are orphaned |
 | Build or type-check fails | A dependency, generated output, or source/test typing changed after the documented validation run | Run the client and server commands separately, inspect the first current error, and do not rely on the historical October baseline below |
 
 ## 20. Known implementation constraints
@@ -903,7 +1075,8 @@ Operational rules:
 - Team capacity defaults to four in the current product design, while physical event bounds and current validators can permit configured sizes outside that default.
 - New MFA challenge creation and some ADMIN moderation/account-enforcement workflows consist of sequential cross-service or multi-write operations rather than a single distributed transaction. Retry only after inspecting resulting state.
 - ADMIN account enforcement supports suspension and deletion processing, but not unsuspension/reactivation through the current API.
-- Public chat is global to verified active participants. Peer presence discovery policy remains undefined. Typing indicators (#407–#408), message reactions (#405–#406), and the secure attachment server/storage layer (#409) are available only while their independent server flags are on (scope approved in the [US-035 policy contract](../04_requirements/us035_rich_chat_policy.md)). Attachment React controls remain pending #410; there is no approved malware scanner, so unscanned attachments are restricted to flag-enabled local/test/synthetic-data environments and are never described as clean. Private team channels (US-031) are implemented end to end except automatic provisioning: nothing creates a team's channel when the team is created, so a team has no chat until a channel is provisioned. US-034 badges update on initial load and relevant chat actions; they do not add realtime message delivery or constant per-channel polling.
+- Public chat is global to verified active participants. Peer presence discovery policy remains undefined. Private team channels (US-031) are implemented end to end except automatic provisioning: nothing creates a team's channel when the team is created, so a team has no chat until a channel is provisioned. US-034 badges update on initial load and relevant chat actions; they do not add realtime message delivery or constant per-channel polling.
+- US-035 reactions, typing indicators, and attachments (#405–#411) are available only while their independent server flags are on (scope approved in the [US-035 policy contract](../04_requirements/us035_rich_chat_policy.md)). There is no approved malware scanner, so attachments are `not_scanned`, never described as clean, and unavailable under `NODE_ENV=production`. Attachment-only messages are not supported. Typing delivery is in-process and reaches only viewers on the same server instance, and the reaction and typing rate limits are per instance and reset on restart. Voice/video is deferred.
 - Direct messages (US-032) have a back end, inbox/conversation screens, and US-034 unread/mention tracking for existing threads, but no UI to start a new conversation and no block/unblock endpoint or screen (the block rule is enforced against `participant_blocks` only).
 - US-033 supports ADMIN cases for `chat_channel`/`chat_message` and participant reports for visible `chat_messages`, but the participant React UI has no **Report message** control. Direct-message rows are not supported moderation targets, and chat cases currently support dismissal only.
 - The audit retention period is not yet approved, so no record is marked "Past retention" by default.
