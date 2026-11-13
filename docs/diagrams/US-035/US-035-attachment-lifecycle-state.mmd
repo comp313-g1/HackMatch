@@ -1,0 +1,38 @@
+---
+title: "HackMatch — US-035: Attachment Lifecycle and Storage Cleanup — State Diagram"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f3e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":38,"rankSpacing":50,"padding":14}}}%%
+flowchart TB
+    REQUEST["Upload by a PART<br/>with send access"]:::identity
+    REFUSED["Refused, no row created<br/>Type, size, hourly limit,<br/>or quota"]:::denied
+    UPLOADING["status 'uploading'<br/>Reserved, counts<br/>toward quota"]:::transition
+    PENDING["status 'pending'<br/>Object stored, staged<br/>for the next message"]:::transition
+    ATTACHED["status 'attached'<br/>Linked to one message<br/>Current readers only"]:::success
+    DELETED["Row deleted<br/>Trigger queues<br/>its storage_key"]:::denied
+    QUEUED["Deletion queue entry<br/>Object not downloadable"]:::internal
+    REMOVED["Object removed,<br/>queue entry deleted"]:::success
+    RETRY["Removal failed<br/>Retried next run"]:::warning
+
+    REQUEST -->|"Checks fail"| REFUSED
+    REQUEST -->|"Checks pass"| UPLOADING
+    UPLOADING -->|"Bytes stored, row marked"| PENDING
+    UPLOADING -->|"Step failed, or<br/>stuck 15 minutes"| DELETED
+    PENDING -->|"Sent with text,<br/>max 5 per message"| ATTACHED
+    PENDING -->|"Unsent after 24 h"| DELETED
+    ATTACHED -->|"Message, channel, or<br/>account deleted"| DELETED
+    DELETED --> QUEUED
+    QUEUED -->|"Maintenance run"| REMOVED
+    QUEUED --> RETRY
+    RETRY --> QUEUED
+
+    SCAN["scan_status is always 'not_scanned'<br/>No scanner exists, so attachments<br/>are off in production. Scanning<br/>('clean', 'infected') is deferred"]:::internal
+    CASCADE["Cascades delete metadata only<br/>Maintenance (every 15 minutes<br/>and after uploads) removes bytes"]:::internal
+    SCAN -.-> UPLOADING
+    CASCADE -.-> DELETED
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef transition fill:#fff7d6,stroke:#d4a72c,color:#3f3300,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef warning fill:#fff7d6,stroke:#d4a72c,color:#3f3300,stroke-width:1.5px,stroke-dasharray:5 3;

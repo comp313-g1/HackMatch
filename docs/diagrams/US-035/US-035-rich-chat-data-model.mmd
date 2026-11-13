@@ -1,0 +1,113 @@
+---
+title: "HackMatch — US-035: Reaction and Attachment Persistence Model"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","tertiaryColor":"#f1e8ff","fontFamily":"Arial, sans-serif"},"er":{"useMaxWidth":true,"diagramPadding":24,"layoutDirection":"LR","minEntityWidth":245,"minEntityHeight":75,"entityPadding":14,"stroke":"#4b5563","fill":"#ffffff","fontSize":14}}}%%
+erDiagram
+    direction LR
+
+    PARTICIPANTS ||--o{ CHAT_MESSAGE_REACTIONS : reacts
+    PARTICIPANTS ||--o{ CHAT_MESSAGE_ATTACHMENTS : uploads
+    CHAT_MESSAGES ||--o{ CHAT_MESSAGE_REACTIONS : "cascade on delete"
+    CHAT_CHANNELS ||--o{ CHAT_MESSAGE_ATTACHMENTS : "uploaded for"
+    CHAT_MESSAGES |o--o{ CHAT_MESSAGE_ATTACHMENTS : "links up to 5"
+    DIRECT_MESSAGES ||--o{ DIRECT_MESSAGE_REACTIONS : "cascade on delete"
+    DIRECT_MESSAGE_THREADS ||--o{ DIRECT_MESSAGE_ATTACHMENTS : "uploaded for"
+    DIRECT_MESSAGES |o--o{ DIRECT_MESSAGE_ATTACHMENTS : "links up to 5"
+    CHAT_MESSAGE_ATTACHMENTS ||--|| STORAGE_OBJECT : "bytes by storage_key (no FK)"
+    DIRECT_MESSAGE_ATTACHMENTS ||--|| STORAGE_OBJECT : "bytes by storage_key (no FK)"
+    CHAT_ATTACHMENT_OBJECT_DELETIONS |o--|| STORAGE_OBJECT : "maintenance removes"
+
+    PARTICIPANTS["participants"] {
+        uuid id PK
+        string role "Only PART uses chat"
+    }
+
+    CHAT_CHANNELS["chat_channels"] {
+        uuid id PK
+        string channel_type "public or team"
+        uuid team_id
+    }
+
+    CHAT_MESSAGES["chat_messages"] {
+        uuid id PK
+        uuid channel_id FK
+        uuid author_id FK
+        text body "1 to 4,000 chars, still required"
+    }
+
+    DIRECT_MESSAGE_THREADS["direct_message_threads"] {
+        uuid id PK
+        uuid participant_low_id FK
+        uuid participant_high_id FK
+    }
+
+    DIRECT_MESSAGES["direct_messages"] {
+        uuid id PK
+        uuid thread_id FK
+        uuid author_id FK
+        text body "1 to 4,000 chars, still required"
+    }
+
+    CHAT_MESSAGE_REACTIONS["chat_message_reactions (0067)"] {
+        uuid message_id PK, FK
+        uuid participant_id PK, FK
+        string reaction PK "8 approved codes"
+        datetime created_at
+    }
+
+    DIRECT_MESSAGE_REACTIONS["direct_message_reactions (0067)"] {
+        uuid message_id PK, FK
+        uuid participant_id PK, FK
+        string reaction PK "8 approved codes"
+        datetime created_at
+    }
+
+    CHAT_MESSAGE_ATTACHMENTS["chat_message_attachments (0068)"] {
+        uuid id PK
+        uuid uploader_id FK
+        uuid channel_id FK
+        uuid message_id FK "Null until sent"
+        string storage_key UK "Opaque UUID"
+        string display_name "Sanitized, max 255"
+        string mime_type "Detected from bytes"
+        int size_bytes "1 to 10,485,760"
+        string status "uploading pending attached"
+        string scan_status "not_scanned today"
+        datetime created_at
+        datetime attached_at
+    }
+
+    DIRECT_MESSAGE_ATTACHMENTS["direct_message_attachments (0068)"] {
+        uuid id PK
+        uuid uploader_id FK
+        uuid thread_id FK
+        uuid message_id FK "Null until sent"
+        string storage_key UK "Opaque UUID"
+        string display_name "Sanitized, max 255"
+        string mime_type "Detected from bytes"
+        int size_bytes "1 to 10,485,760"
+        string status "uploading pending attached"
+        string scan_status "not_scanned today"
+        datetime created_at
+        datetime attached_at
+    }
+
+    CHAT_ATTACHMENT_OBJECT_DELETIONS["chat_attachment_object_deletions (0068)"] {
+        string storage_key PK "Queued by any row delete"
+        datetime enqueued_at
+        datetime last_attempt_at "Retry marker"
+    }
+
+    STORAGE_OBJECT["chat-attachments bucket object (Supabase Storage, not PostgreSQL)"] {
+        string key "Opaque UUID, private"
+        binary bytes "Service role only, no public URL"
+    }
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554
+    classDef chat fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64
+    classDef persistence fill:#e8f7ed,stroke:#3a9b5f,color:#123d24
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#374151
+    class PARTICIPANTS identity
+    class CHAT_CHANNELS,CHAT_MESSAGES,DIRECT_MESSAGE_THREADS,DIRECT_MESSAGES chat
+    class CHAT_MESSAGE_REACTIONS,DIRECT_MESSAGE_REACTIONS,CHAT_MESSAGE_ATTACHMENTS,DIRECT_MESSAGE_ATTACHMENTS persistence
+    class CHAT_ATTACHMENT_OBJECT_DELETIONS,STORAGE_OBJECT internal

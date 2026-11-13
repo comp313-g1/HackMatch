@@ -11,7 +11,7 @@ sequenceDiagram
 
     OWNER->>UI: Start sensitive action (setup, restart, replace, regenerate, or disable)
     UI->>API: Original protected request
-    API->>API: Recent-auth check on Firebase auth_time (≤ 600 s)
+    API->>API: Recent-auth check:<br/>Firebase auth_time within 600 s
     API-->>UI: 401 REAUTHENTICATION_REQUIRED, nothing changed
     UI->>UI: Keep intended action in memory and show Verify identity
 

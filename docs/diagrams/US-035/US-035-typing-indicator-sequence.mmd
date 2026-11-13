@@ -1,0 +1,38 @@
+---
+title: "HackMatch — US-035: Realtime Typing Indicator Sequence"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f1e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"diagramMarginX":25,"diagramMarginY":18,"actorMargin":34,"width":165,"height":60,"boxMargin":8,"messageMargin":24,"noteMargin":10}}}%%
+sequenceDiagram
+    autonumber
+    actor Typist as Typing PART
+    participant Composer as Composer (useConversationTyping)
+    participant API as Typing routes
+    participant Hub as TypingHub (server memory)
+    participant Indicator as Viewer's TypingIndicator
+    actor Viewer as Viewing PART
+
+    Viewer->>Indicator: Open a forum, team chat, or DM
+    Indicator->>API: GET …/typing/stream (bearer token, read guard)
+    API->>Hub: Subscribe this viewer to this one conversation
+    API-->>Indicator: ready with typingExpiryMs 6000, no earlier state
+
+    Typist->>Composer: Type in the message box
+    Composer->>API: POST …/typing with only { typing: true }, at most every 2 s
+    API->>API: Auth, typing enabled, 40 signals per minute, send guard
+    API->>Hub: Signal for the session's participant (Invisible: nothing published)
+    Hub->>Hub: Start or refresh this typist's 6-second expiry
+    Hub->>Hub: Recheck each viewer's read access, skip the sender
+    Hub-->>Indicator: SSE typing event with handle, typing true, expiresAt
+    Indicator-->>Viewer: "avery is typing…" (polite status)
+    Indicator->>Indicator: Hide locally 6 s after the event arrives
+
+    alt Message sent, box cleared, blur, or conversation left
+        Composer->>API: Best-effort { typing: false }
+        Hub-->>Indicator: typing false, entry removed at once
+    else No stop arrives (tab closed, network lost)
+        Hub->>Hub: Expire after 6 s and publish typing false
+    else Viewer lost read access
+        Hub-->>Indicator: Close the stream, event not delivered
+    end
+
+    Note over Composer,Indicator: No database writes, no draft text, no history. Navigation or account change closes<br/>the stream and clears state, and a reconnect starts empty. Typing failures never block sending.

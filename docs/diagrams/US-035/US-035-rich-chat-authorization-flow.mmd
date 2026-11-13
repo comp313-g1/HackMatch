@@ -1,0 +1,73 @@
+---
+title: "HackMatch — US-035: Rich-Chat Authorization and Privacy — Activity Flow"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":42,"rankSpacing":54,"padding":14}}}%%
+flowchart TB
+    START(["Reaction, typing, or attachment request"]):::identity
+    AUTH{"Authenticated session<br/>with current MFA?"}:::decision
+    ACCOUNT{"Verified active PART?<br/>Not suspended or deactivated"}:::decision
+    FLAG{"Feature usable<br/>on this server?"}:::decision
+    CONV{"Which conversation?"}:::decision
+
+    PUB{"Existing public forum?"}:::decision
+    TEAM{"Current Confirmed<br/>member of the team?"}:::decision
+    TEAM_LIVE{"Team not Disbanded?"}:::decision
+    DM{"Participant of<br/>the DM thread?"}:::decision
+    DM_SEND{"Eligible peer and<br/>no block either way?"}:::decision
+    LIMIT{"Within this<br/>participant's limits?"}:::decision
+
+    WRITE["React, signal typing, upload,<br/>or send with attachments<br/>Caller taken from the session<br/>Database functions recheck send rules"]:::auth
+    VIEW["Open a typing stream or a 60-second file link<br/>Typing: read access rechecked before every event<br/>File: read access rechecked when the link is used"]:::auth
+    SAFE["Safe projections only<br/>Reaction counts and own state, typist handle,<br/>file name, type, size, and scan status"]:::success
+
+    DENY_401["401 Authentication required"]:::denied
+    DENY_ACCOUNT["403 Account or role denial<br/>ADMIN has no chat or rich-chat bypass"]:::denied
+    DENY_FLAG["404 Feature disabled, text chat keeps working<br/>Attachments also stay off under<br/>NODE_ENV=production (no malware scanner)"]:::denied
+    DENY_PUB["404 Channel not found<br/>A private team channel looks missing"]:::denied
+    DENY_TEAM["403 Generic membership denial<br/>Missing team looks the same"]:::denied
+    DENY_DM["403 Not a thread participant<br/>Missing thread looks the same"]:::denied
+    DENY_READONLY["403 Team channel is read-only"]:::denied
+    DENY_PEER["403 Cannot send in this conversation<br/>Only the person who blocked is told why"]:::denied
+    DENY_LIMIT["429 with Retry-After, or 413 over quota<br/>30 reaction changes/min, 40 typing signals/min,<br/>20 uploads/hour, 100 MB stored"]:::denied
+    NEVER["Never returned or logged<br/>Who reacted, draft text, storage keys,<br/>file bytes, file names, tokens"]:::internal
+
+    START --> AUTH
+    AUTH -->|"Yes"| ACCOUNT
+    AUTH -->|"No"| DENY_401
+    ACCOUNT -->|"Yes"| FLAG
+    ACCOUNT -->|"No"| DENY_ACCOUNT
+    FLAG -->|"Yes"| CONV
+    FLAG -->|"No"| DENY_FLAG
+
+    CONV -->|"Public forum"| PUB
+    CONV -->|"Team chat"| TEAM
+    CONV -->|"Direct message"| DM
+
+    PUB -->|"No"| DENY_PUB
+    PUB -->|"Yes, read"| VIEW
+    PUB -->|"Yes, change"| LIMIT
+
+    TEAM -->|"No"| DENY_TEAM
+    TEAM -->|"Yes, read"| VIEW
+    TEAM -->|"Yes, change"| TEAM_LIVE
+    TEAM_LIVE -->|"Yes"| LIMIT
+    TEAM_LIVE -->|"No"| DENY_READONLY
+
+    DM -->|"No"| DENY_DM
+    DM -->|"Yes, read"| VIEW
+    DM -->|"Yes, change"| DM_SEND
+    DM_SEND -->|"Yes"| LIMIT
+    DM_SEND -->|"No"| DENY_PEER
+
+    LIMIT -->|"Yes"| WRITE
+    LIMIT -->|"No"| DENY_LIMIT
+    WRITE --> SAFE
+    VIEW --> SAFE
+    SAFE -.-> NEVER
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef auth fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;

@@ -13,7 +13,7 @@ sequenceDiagram
 
     Member->>UI: Open locked-team manifest
     UI->>API: GET /api/teams/:teamId/manifest
-    API->>API: Require active verified PART
+    API->>API: Require Firebase, MFA, active verified PART
     API->>Service: Export requested format
     Service->>Repos: Load team, memberships, event, profiles
     Repos->>DB: Query current records

@@ -16,7 +16,7 @@ erDiagram
 
     PARTICIPANTS["participants"] {
         uuid id PK
-        string role "PART / ADMIN"
+        string role "Account role PART or ADMIN"
         boolean is_verified
         boolean is_suspended
         boolean is_deactivated
@@ -38,7 +38,7 @@ erDiagram
         uuid team_id FK
         uuid participant_id FK
         string status "Confirmed required"
-        string team_role
+        string role "Owner or Member, exported as teamRole"
     }
 
     TEAM_ROSTER_MANIFESTS["team_roster_manifests"] {

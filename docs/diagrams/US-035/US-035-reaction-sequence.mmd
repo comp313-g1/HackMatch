@@ -1,0 +1,34 @@
+---
+title: "HackMatch — US-035: Message Reaction Add and Remove Sequence"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f1e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"diagramMarginX":25,"diagramMarginY":18,"actorMargin":34,"width":165,"height":60,"boxMargin":8,"messageMargin":24,"noteMargin":10}}}%%
+sequenceDiagram
+    autonumber
+    actor Part as Active verified PART
+    participant UI as MessageReactions (React)
+    participant API as Forum, team chat, or DM route
+    participant Service as Reaction service
+    participant DB as PostgreSQL (0067 functions)
+
+    Note over UI,DB: Message lists already carry reaction counts from one batched summary per list.
+    Part->>UI: Choose an approved reaction (pill or picker)
+    UI->>UI: Show optimistic change and pause only this message
+    UI->>API: PUT to add or DELETE to remove …/reactions/:code (no body)
+    API->>API: Firebase, MFA, active, verified PART
+    API->>API: Reactions enabled, approved code, 30 changes per minute
+    API->>API: Conversation send guard (forum, team member, DM send access)
+    API->>Service: Caller from session, message, reaction code
+    Service->>DB: set_chat_message_reaction or set_direct_message_reaction
+    DB->>DB: Recheck send rules, then insert-if-absent or delete
+    DB-->>Service: changed true or false (repeat is a no-op)
+    Service->>DB: Summarize this message
+    DB-->>Service: count and reactedByMe per code
+    Service-->>UI: Stored aggregate in the approved order
+    UI-->>Part: Replace the optimistic change with server counts
+
+    alt Feature off, message gone, denied, rate-limited, or server error
+        API-->>UI: 404 FEATURE_DISABLED, safe 403/404, 429 with Retry-After, or 5xx
+        UI-->>Part: Restore confirmed counts and show a short message, no automatic retry
+    end
+
+    Note over UI,DB: Responses never list who reacted. Reactions create no notifications,<br/>change no unread counts, and are not pushed in realtime.

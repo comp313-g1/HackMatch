@@ -10,7 +10,7 @@ flowchart LR
         B -- Yes --> C{Team exists?}:::decision
         C -- No --> Y[Safe not-found response]:::denied
         C -- Yes --> D{Team is Locked<br/>and locked_at is present?}:::decision
-        D -- No --> Z[WORKSPACE_TEAM_NOT_LOCKED]:::denied
+        D -- No --> Z["403 WORKSPACE_<br/>TEAM_NOT_<br/>LOCKED"]:::denied
         D -- Yes --> E{Confirmed membership?}:::decision
         E -- No --> X
         E -- Yes --> F{Requested operation}:::decision
