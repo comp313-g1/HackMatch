@@ -6,7 +6,7 @@ This manual explains how to use the current HackMatch web application. It is wri
 |---|---|
 | Version | 5.4 — Issue #451 update for completed US-035 rich chat interactions (reactions, typing indicators, and restricted file attachments) |
 | Covers | Registration, email verification, sign-in, email OTP, authenticator-app enrollment and management, password recovery, profiles, hackathon history and experience badges, Looking for Team, team discovery, candidate directory search, recruitment, requests, roster locking, notifications, private team workspace, team manifest export, abuse reporting, forums chat, private team chat, direct messages, chat unread/mention indicators, message reactions, typing indicators, restricted chat file attachments, chat moderation, and ADMIN screens (moderation, accounts, audit log) |
-| Does not cover | Removed hackathon-directory workflows (US-008–US-010), authenticator-code or recovery-code redemption at sign-in (not implemented), starting a brand-new direct message from a profile or card (not available yet), blocking and unblocking controls, attachment-only messages, malware scanning of attachments (no scanner exists yet), voice or video (deferred), or other unimplemented features |
+| Does not cover | Removed hackathon-directory workflows (US-008–US-010), authenticator-code or recovery-code redemption at sign-in (not implemented), attachment-only messages, malware scanning of attachments (no scanner exists yet), voice or video (deferred), or other unimplemented features |
 | Sources checked | Current React components, Express routes and access middleware, tests, User Stories, requirements, and real application captures |
 
 > **Current-scope note:** Team formation is presented as a platform-wide workflow. Users do not choose a hackathon before creating, finding, or joining a team. A few current screens and older real captures still contain words such as “event” or “hackathon”; those are transitional interface or internal-compatibility terms, not a user-facing event-directory workflow.
@@ -64,7 +64,7 @@ The current application supports:
 - owner-only authenticator-app enrollment, replacement, disable, and recovery-code management for Participants and Platform Administrators; and
 - ADMIN-only content moderation, account enforcement, and a read-only audit log.
 
-The current application does **not** provide a public hackathon directory, hackathon submission, event approval workflow, a "new message" button for starting a direct message from a profile, block or unblock controls, attachment-only messages, malware scanning of attachments, or voice/video. Message reactions, typing indicators, and file attachments are optional chat features that the platform turns on or off; see [Reactions, typing indicators, and attachments](#reactions-typing-indicators-and-attachments). When a feature is off, chat works as usual without it. Authenticator apps and recovery codes can be set up and managed, but neither is currently accepted at sign-in; every sign-in still uses email OTP.
+The current application does **not** provide a public hackathon directory, hackathon submission, event approval workflow, attachment-only messages, malware scanning of attachments, or voice/video. Message reactions, typing indicators, and file attachments are optional chat features that the platform turns on or off; see [Reactions, typing indicators, and attachments](#reactions-typing-indicators-and-attachments). When a feature is off, chat works as usual without it. Authenticator apps and recovery codes can be set up and managed, but neither is currently accepted at sign-in; every sign-in still uses email OTP.
 
 ## 2. Roles and access
 
@@ -812,7 +812,7 @@ What you will see in other situations:
 | A conversation has no messages yet | **No messages yet. Start the conversation below.** |
 | You are not one of the two people in a conversation, or it does not exist | **Direct-message access denied. This private conversation is not available.** No messages are shown |
 | The other person is suspended, deactivated, or unverified | You can read the conversation but cannot send. A message says you cannot send messages in it |
-| You blocked the other person | You can read but not send; the message says **You have blocked this participant** |
+| You blocked the other person | You can read but not send; the message says **You have blocked this participant. Unblock them to send messages.** |
 | The other person blocked you | You can read but not send. The message does not say why, so it looks the same as an unavailable person |
 | The message is empty or over 4,000 characters | **Message is required.** or a length message; your text stays in the box |
 | The server could not be reached | **Could not send message. Your draft has been kept.** |
@@ -821,7 +821,23 @@ Direct messages show handles only. Account emails, full names, contact details, 
 
 When the platform has them turned on, reactions, typing indicators, and file attachments also work in direct messages; see [Reactions, typing indicators, and attachments](#reactions-typing-indicators-and-attachments). They follow the same sending rules as messages. If you cannot send in a conversation, you also cannot react, signal typing, or attach files there, but you can still see and download existing attachments while you can read the conversation.
 
-**Starting a new conversation.** A conversation appears in your inbox once it exists. The current screen has no "message this person" button on profiles or candidate cards yet, so you cannot start a brand-new conversation from the interface today. Existing conversations can be opened and continued as described above.
+**Starting a new conversation.** Select **Message** to start a conversation with someone, or to continue one you already have. As a team owner, you see **Message** on:
+
+- candidate profile cards in the [candidate directory](#16-search-the-candidate-directory);
+- applicant profile cards when you [review applications](#13-review-applications-and-lock-a-roster);
+- your team's roster, beside each member other than you.
+
+Selecting **Message** opens the chat panel on the **Direct messages** tab and shows **Opening conversation…**. HackMatch then opens your conversation with that person. If you already have one, it opens that conversation instead of starting a new one. If the conversation cannot be opened, you see **You cannot message this participant right now.** without a reason, or **You cannot send a direct message to yourself.** The chat panel itself has no separate "new message" button.
+
+**Blocking and unblocking.** To block someone, open your conversation with them, select **Block** at the top, and confirm with **Block participant** (or select **Cancel**). The confirmation explains that neither of you will be able to send messages in the conversation until you unblock them. After blocking, you see **Participant blocked.** and the button changes to **Unblock**. Select **Unblock** to remove the block; you then see **Participant unblocked.** If either action fails, you see **Could not block this participant. Please try again.** or **Could not unblock this participant. Please try again.**, and your draft is kept.
+
+While a block is in place:
+
+- Neither of you can send messages, react, show typing, or attach files in that conversation. You can both still read it.
+- The other person is not told that you blocked them. They see the same neutral message as for an unavailable participant.
+- **Message** cannot start a conversation between you two.
+
+Blocking does not delete messages or report anyone. To report abuse, use [§19](#19-report-abusive-content).
 
 ![HackMatch Direct messages inbox and open conversation](../assets/screenshots/US-032-direct-messages.png)
 
@@ -958,13 +974,13 @@ Only active confirmed members of that team can open it. Check that you were not 
 
 The other person may be suspended, deactivated, unverified, or may have blocked you, or you may have blocked them. You can still read the conversation. Messages must also be between 1 and 4,000 characters.
 
-### Why is there no button to message someone from their profile?
+### How do I start a direct message with someone?
 
-Starting a brand-new direct message from a profile is not available yet. Conversations that already exist appear under **Direct messages** in the chat panel.
+As a team owner, select **Message** on their profile card in the candidate directory, on their application, or beside them in your team roster; see [§22](#22-use-direct-messages). This opens the chat panel on the **Direct messages** tab with your conversation with them, or a new one. Conversations you already have are always listed under **Direct messages** in the chat panel.
 
 ### How do I stop messages from someone?
 
-Block and unblock controls are not available in the interface yet. If someone is sending abusive messages, use the report option described in [§19](#19-report-abusive-content) and contact the project team.
+Open your conversation with them, select **Block**, and confirm with **Block participant**. Neither of you can send messages in that conversation until you select **Unblock**. The other person is not told that you blocked them. If someone is sending abusive messages, also use the report option described in [§19](#19-report-abusive-content).
 
 ### Why don't I see reactions, a typing line, or **Attach file**?
 

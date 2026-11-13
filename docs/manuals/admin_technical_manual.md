@@ -639,13 +639,22 @@ Access and denial behavior:
 Privacy projection (US-032 #390, `directMessagePrivacy`):
 
 - Responses are built from an explicit allowlist: thread id, the other participant's id and handle, last-message time, created/updated times, and for messages the id, thread id, `fromMe`, author handle, body, and time. The author is shown by handle and `fromMe`, not by account id.
-- A second scrub removes credentials, OTPs, tokens, account email, full name, institution, Firebase UID, the raw `participant_low_id` and `participant_high_id` columns, presence status, shared contact handles, role, verification and suspension state, and any block state. Rejected drafts are echoed with those keys shown as `[redacted]`.
+- A second scrub removes credentials, OTPs, tokens, account email, full name, institution, Firebase UID, the raw `participant_low_id` and `participant_high_id` columns, presence status, shared contact handles, role, verification and suspension state, and any block state. The one exception is `youBlockedPeer`: the single-conversation view and the block/unblock responses include it so the client can show **Unblock**. It reflects only the caller's own block. Whether the other person blocked the caller is never exposed. Rejected drafts are echoed with those keys shown as `[redacted]`.
 - Every response carries privacy flags (credentials, OTPs, emails, presence, contact details: all `false`) and `Cache-Control: no-store`.
 
 Operational notes:
 
-- `participant_blocks` is enforced but **no endpoint or screen creates a block yet**, so blocks can only be added directly in the database by an authorized operator. Plan a block/unblock feature before relying on this rule.
-- There is no screen or button that starts a new conversation (the `openDirectMessageThread` client helper exists but no UI calls it). Existing conversations participate in the US-034 unread and mention system below.
+- **Block and unblock (#433).** Both routes go through the same DM authentication guard and are answered with `Cache-Control: no-store`. They change only `participant_blocks`; no messages are deleted.
+  - `PUT /api/direct-messages/blocks/:participantId` adds the caller's block. It is idempotent and returns `{ "youBlockedPeer": true }`. Blocking yourself returns `400 CANNOT_BLOCK_SELF`. A missing or non-`PART` target, including `ADMIN`, returns `404 PEER_NOT_AVAILABLE`. A non-UUID id returns `400 VALIDATION_ERROR`.
+  - `DELETE /api/direct-messages/blocks/:participantId` removes only the caller's own block. It always returns `{ "youBlockedPeer": false }`, whether or not that block or participant exists, so nothing can be probed.
+  - In `DirectMessagesView`, the conversation header shows **Block**, with a **Block participant** confirmation, or **Unblock** once blocked.
+  - Once blocked, the send-access rules above apply in both directions. Sending, reacting, typing, and attachments are refused, and opening a new thread returns `404 PEER_NOT_AVAILABLE`. Existing history stays readable.
+- **Message launcher (#432).** `App` supplies `DirectMessageLauncherProvider` (`client/src/components/chat/directMessageLauncher.ts`).
+  - **Message** buttons call `openDirectMessage(participantId)`. They appear in `CandidateProfileCard` (candidate directory and owner application review) and `TeamRosterPanel` (non-owner members in the owner's team workspace).
+  - The app then opens the chat panel on the **Direct messages** tab. `DirectMessagesView` calls `POST /api/direct-messages/threads` (`openDirectMessageThread`) to open or continue the conversation and loads it.
+  - A failed open shows a neutral message that never states why the person is unavailable.
+  - Screens rendered outside the provider show no **Message** button, and the chat panel itself has no separate new-message control.
+- Direct-message conversations participate in the US-034 unread and mention system below.
 - Run the story's tests with `npm run test:us032 --prefix server`.
 
 ### Chat unread counts, mentions, and read state (US-034)
@@ -1077,7 +1086,13 @@ Operational rules:
 - ADMIN account enforcement supports suspension and deletion processing, but not unsuspension/reactivation through the current API.
 - Public chat is global to verified active participants. Peer presence discovery policy remains undefined. Private team channels (US-031) are implemented end to end except automatic provisioning: nothing creates a team's channel when the team is created, so a team has no chat until a channel is provisioned. US-034 badges update on initial load and relevant chat actions; they do not add realtime message delivery or constant per-channel polling.
 - US-035 reactions, typing indicators, and attachments (#405–#411) are available only while their independent server flags are on (scope approved in the [US-035 policy contract](../04_requirements/us035_rich_chat_policy.md)). There is no approved malware scanner, so attachments are `not_scanned`, never described as clean, and unavailable under `NODE_ENV=production`. Attachment-only messages are not supported. Typing delivery is in-process and reaches only viewers on the same server instance, and the reaction and typing rate limits are per instance and reset on restart. Voice/video is deferred.
-- Direct messages (US-032) have a back end, inbox/conversation screens, and US-034 unread/mention tracking for existing threads, but no UI to start a new conversation and no block/unblock endpoint or screen (the block rule is enforced against `participant_blocks` only).
+- Direct messages (US-032) have:
+  - a back end and inbox/conversation screens;
+  - **Message** launchers on the owner's candidate-directory cards, application-review cards and team roster (#432);
+  - participant block/unblock (#433);
+  - US-034 unread/mention tracking.
+
+  A **Message** entry point exists only on those owner-side screens.
 - US-033 supports ADMIN cases for `chat_channel`/`chat_message` and participant reports for visible `chat_messages`, but the participant React UI has no **Report message** control. Direct-message rows are not supported moderation targets, and chat cases currently support dismissal only.
 - The audit retention period is not yet approved, so no record is marked "Past retention" by default.
 - US-029 implements owner-only authenticator enrollment and management, replacement/disable, and recovery-code generation/rotation. Authenticator-TOTP and recovery-code redemption at sign-in are not implemented; every sign-in still uses email OTP.
