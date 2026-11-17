@@ -43,6 +43,8 @@ const SENSITIVE_KEY_FRAGMENTS = [
   'entrykey',
   'privatekey',
   'apikey',
+  'api-key',
+  'api_key',
   'key_version',
   'keyversion',
 ];

@@ -57,7 +57,7 @@ HackMatch uses a three-tier web architecture with two external managed services.
 | Firebase Authentication | Primary identity, email/password and federated providers, verified-email state, ID tokens, custom role/MFA claims, password reset, and refresh-token revocation |
 | Supabase/PostgreSQL | Application accounts, profiles, team/recruitment data, MFA challenge records, encrypted authenticator enrollment state, recovery-code verifiers, notifications, moderation/enforcement records, and chat data, including reaction and attachment metadata |
 | Supabase Storage | Private `chat-attachments` bucket holding US-035 attachment bytes under opaque keys; reached only through the server's service role, never by the browser |
-| SMTP provider | Delivery of verification and six-digit MFA messages; a development-only Ethereal transport is available when production SMTP is not configured |
+| Email provider | Delivery of six-digit MFA OTP messages via Brevo HTTPS API (`443`, for hosts blocking outbound SMTP such as Render Free tier) or SMTP; a development-only Ethereal transport is available when neither is configured |
 
 The browser authenticates through Firebase and ordinarily sends a Firebase ID token to the Express API. The server verifies the token with Firebase Admin, then resolves the corresponding PostgreSQL `participants` row and applies role, verification, active-account, MFA, and resource-ownership checks. Database service-role credentials remain server-side.
 
@@ -76,7 +76,7 @@ Versions below are taken from the current package manifests; caret-prefixed pack
 | Server | Express 4.21, TypeScript 5.7, `tsx`, Helmet 8, CORS, cookie-parser |
 | Identity | Firebase JavaScript SDK 13 and Firebase Admin SDK 14.5 |
 | Database | Supabase JavaScript SDK 2.117, PostgreSQL, Supabase CLI 2.120 |
-| Email | Nodemailer 10.1 with SMTP or development Ethereal transport |
+| Email | Brevo HTTPS API (port `443` via `fetch`) or Nodemailer 10.1 with SMTP / development Ethereal transport |
 | Testing | Vitest 3, Testing Library, jsdom, Supertest 7, V8 coverage |
 | Quality/CI | ESLint 9, TypeScript compiler, Husky, lint-staged, commitlint, GitHub Actions |
 
@@ -127,7 +127,7 @@ Variables prefixed with `VITE_` are compiled into browser code. They must not co
 | Supabase | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | The service-role key is server-only and bypasses RLS |
 | Firebase Admin | `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | `FIREBASE_PRIVATE_KEY` may contain escaped newlines; never expose these values to the client |
 | Firebase REST | `FIREBASE_WEB_API_KEY` | Used by server-side Firebase Identity Toolkit flows |
-| SMTP | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Production MFA delivery fails closed if SMTP is unavailable |
+| Email / SMTP | `BREVO_API_KEY`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | `BREVO_API_KEY` + verified `SMTP_FROM` sends over HTTPS (`443`) and takes precedence over `SMTP_HOST` (required on Render Free tier, which blocks SMTP ports `25`/`465`/`587`); production MFA delivery fails closed when neither is configured |
 | OTP controls | `OTP_RATE_LIMIT_COOLDOWN_MS`, `OTP_RATE_LIMIT_MAX_PER_HOUR`, `OTP_RATE_LIMIT_STRICT` | Optional overrides for challenge issuance limits |
 | Authenticator secrets | `TOTP_ENCRYPTION_KEY_BASE64`, `TOTP_ENCRYPTION_KEY_VERSION` | Server-only 32-byte Base64 key and version for AES-256-GCM TOTP protection; the same master key is domain-separated with HKDF for recovery-code HMAC verifiers |
 | Rich chat (US-035) | `RICH_CHAT_REACTIONS_ENABLED`, `RICH_CHAT_TYPING_ENABLED`, `RICH_CHAT_ATTACHMENTS_ENABLED` | Default `false`. Read once at startup; only the exact string `true` enables a flag. Attachments additionally stay unavailable whenever `NODE_ENV=production`, because no malware scanner exists (see [Rich chat interactions](#rich-chat-interactions-us-035)) |
@@ -267,14 +267,14 @@ Firebase remains the primary identity provider. HackMatch owns the application M
 
 1. The server confirms the Firebase identity and active account.
 2. A cryptographically random six-digit code is created. Only its SHA-256 hash is stored in `mfa_challenges`; verification records use `mfa_attempts`.
-3. SMTP delivers the code, which expires after 10 minutes. A newly issued challenge invalidates previous pending challenges for that participant.
+3. The Brevo HTTPS API (when `BREVO_API_KEY` and a verified `SMTP_FROM` are set) or SMTP delivers the code, which expires after 10 minutes. A newly issued challenge invalidates previous pending challenges for that participant.
 4. Migration `0066_serialize_mfa_verification_attempts.sql` adds `reserve_mfa_verification_attempt`. It takes a participant-scoped advisory transaction lock, reserves the comparison attempt, and assigns a strictly ordered timestamp before the hash comparison.
 5. Consecutive incorrect comparisons 1–4 return the safe validation response. The fifth locks verification for 15 minutes; later attempts during the lock are rejected before any OTP comparison. The lock survives resend.
 6. Missing, expired, consumed, or foreign challenges and infrastructure failures are discarded rather than counted as wrong-code attempts. A successful comparison changes the reserved attempt to successful and resets the consecutive-failure count.
 7. After an expired lock, a Firebase `auth_time` older than the lock end receives `FRESH_AUTH_REQUIRED`; the user must complete primary authentication again. The same policy applies when email OTP is used for a sensitive US-029 reauthentication.
 8. Successful verification writes an `mfa_auth_time` custom claim tied to the current Firebase primary `auth_time`; the client refreshes its ID token before protected requests.
 
-A new primary login changes `auth_time`, so an old MFA claim cannot satisfy the new session. Resend and issuance are rate limited. In non-production, Nodemailer may use an Ethereal transport and log a preview location, but never the OTP. Production delivery fails closed when SMTP is unavailable. Demo provisioning never writes `mfa_auth_time`.
+A new primary login changes `auth_time`, so an old MFA claim cannot satisfy the new session. Resend and issuance are rate limited. In non-production, Nodemailer may use an Ethereal transport and log a preview location, but never the OTP. Production delivery fails closed when neither `BREVO_API_KEY` nor SMTP is configured. Demo provisioning never writes `mfa_auth_time`.
 
 ### Authenticator architecture and authorization (US-029 / #266)
 
@@ -1044,7 +1044,7 @@ Operational rules:
 | Server fails at startup | Required production Firebase/Supabase/session variable is absent or malformed | Compare `server/.env` with `server/.env.example`; check escaped newlines in `FIREBASE_PRIVATE_KEY` |
 | Firebase token accepted but API returns 401/403 | Token is stale/revoked, MFA claim is absent, PostgreSQL account is suspended/deactivated, or role/verification data disagrees | Refresh or sign in again; inspect Firebase disabled/claims state and the matching participant row |
 | ADMIN navigation exists but API denies access | Firebase claim and stored role differ, MFA is stale, or active-account check fails | Reconcile role deliberately, revoke tokens, then repeat sign-in and OTP |
-| OTP does not arrive | SMTP configuration/transport failed, address is wrong, rate limit is active, or development Ethereal preview is being used | Inspect sanitized server logs; verify SMTP variables; wait for cooldown; never log or paste the OTP into source control |
+| OTP does not arrive | Email transport failed (e.g., Render Free tier blocking outbound SMTP ports `25`/`465`/`587` without `BREVO_API_KEY`), `SMTP_FROM` is unverified/`.local`, address is wrong, rate limit is active, or development Ethereal preview is being used | Inspect sanitized server logs; on Render Free set `BREVO_API_KEY` + verified `SMTP_FROM`; verify SMTP variables locally; wait for cooldown; never log or paste the OTP or API key into source control |
 | MFA tables unavailable | Database migrations are incomplete | Check migration status and apply the ordered migrations to the correct target |
 | Authenticator setup is unavailable or returns `AUTHENTICATOR_CONFIGURATION_ERROR` | `TOTP_ENCRYPTION_KEY_BASE64` is missing/malformed, its version is invalid, or migrations 0063–0066 are incomplete | Validate the server-only 32-byte Base64 key and version, check migration status, and restart the server; never print the key or protected row data |
 | Authenticator card reports a pending setup after refresh | The secret-free status endpoint can see the pending row, but sensitive QR/manual material was correctly cleared from React | Use **Restart authenticator setup**; do not query ciphertext or return the old secret from status |
@@ -1083,6 +1083,7 @@ Operational rules:
 - The current client does not require event selection, but some validation/API compatibility fields and UI wording may still mention events or hackathons.
 - Team capacity defaults to four in the current product design, while physical event bounds and current validators can permit configured sizes outside that default.
 - New MFA challenge creation and some ADMIN moderation/account-enforcement workflows consist of sequential cross-service or multi-write operations rather than a single distributed transaction. Retry only after inspecting resulting state.
+- Cloud deployments on Render Free tier block outbound SMTP ports (`25`, `465`, `587`), so production MFA OTP delivery on that tier requires `BREVO_API_KEY` with a verified `SMTP_FROM` address over HTTPS (`443`).
 - ADMIN account enforcement supports suspension and deletion processing, but not unsuspension/reactivation through the current API.
 - Public chat is global to verified active participants. Peer presence discovery policy remains undefined. Private team channels (US-031) are implemented end to end except automatic provisioning: nothing creates a team's channel when the team is created, so a team has no chat until a channel is provisioned. US-034 badges update on initial load and relevant chat actions; they do not add realtime message delivery or constant per-channel polling.
 - US-035 reactions, typing indicators, and attachments (#405–#411) are available only while their independent server flags are on (scope approved in the [US-035 policy contract](../04_requirements/us035_rich_chat_policy.md)). There is no approved malware scanner, so attachments are `not_scanned`, never described as clean, and unavailable under `NODE_ENV=production`. Attachment-only messages are not supported. Typing delivery is in-process and reaches only viewers on the same server instance, and the reaction and typing rate limits are per instance and reset on restart. Voice/video is deferred.

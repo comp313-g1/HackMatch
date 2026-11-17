@@ -19,7 +19,7 @@ export interface ServerConfig {
     clientEmail?: string;
     privateKey?: string;
   };
-  /** Optional SMTP for US-004 MFA OTP emails (FR-009 / FR-084). */
+  /** Optional SMTP / HTTPS email API configuration for US-004 MFA OTP emails (FR-009 / FR-084). */
   smtp: {
     host?: string;
     port: number;
@@ -27,6 +27,7 @@ export interface ServerConfig {
     user?: string;
     pass?: string;
     from?: string;
+    brevoApiKey?: string;
   };
   /** Server-only AES-256-GCM key used to protect application-owned TOTP secrets. */
   totpEncryption: {
@@ -66,6 +67,7 @@ export const config: ServerConfig = {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
     from: process.env.SMTP_FROM,
+    brevoApiKey: process.env.BREVO_API_KEY,
   },
   totpEncryption: {
     keyBase64: process.env.TOTP_ENCRYPTION_KEY_BASE64,
