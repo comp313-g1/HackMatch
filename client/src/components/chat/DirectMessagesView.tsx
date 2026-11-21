@@ -14,10 +14,17 @@ import {
   type DirectMessageOpenRequest,
 } from './directMessageLauncher';
 import type {
+  ChatAttachmentView,
   ChatFieldErrors,
+  ChatReactionSummary,
   DirectMessageThreadView,
   DirectMessageView,
 } from './chatTypes';
+import { AttachmentComposer } from './AttachmentComposer';
+import { MessageAttachments } from './MessageAttachments';
+import { MessageReactions } from './MessageReactions';
+import { useConversationTyping } from './useConversationTyping';
+import { TypingIndicator } from './TypingIndicator';
 import { ChatActivityBadge } from './ChatUnreadBadge';
 import { useChatUnread } from './ChatUnreadContext';
 
@@ -99,6 +106,9 @@ export function DirectMessagesView({
   const [threadAccessDenied, setThreadAccessDenied] = useState(false);
 
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [pendingAttachmentsByThread, setPendingAttachmentsByThread] = useState<
+    Record<string, ChatAttachmentView[]>
+  >({});
   const [fieldErrors, setFieldErrors] = useState<ChatFieldErrors>({});
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
@@ -120,8 +130,33 @@ export function DirectMessagesView({
   const handledOpenRequestId = useRef<number | null>(null);
 
   const draft = selectedThreadId ? drafts[selectedThreadId] ?? '' : '';
+  const pendingAttachments = selectedThreadId ? pendingAttachmentsByThread[selectedThreadId] ?? [] : [];
+  const setPendingAttachments = useCallback<React.Dispatch<React.SetStateAction<ChatAttachmentView[]>>>(
+    (updater) => {
+      if (!selectedThreadId) return;
+      setPendingAttachmentsByThread((current) => {
+        const prev = current[selectedThreadId] ?? [];
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        return { ...current, [selectedThreadId]: next };
+      });
+    },
+    [selectedThreadId]
+  );
   // #433: true only when YOU blocked the other person (the server never reveals their block).
   const peerBlocked = selectedThread?.youBlockedPeer === true;
+
+  // US-035 / #406: a confirmed reaction change updates only that message's reactions;
+  // it never reorders the inbox or touches unread state.
+  const updateMessageReactions = useCallback(
+    (messageId: string, reactions: ChatReactionSummary[]) =>
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions } : m))),
+    []
+  );
+
+  // US-035 / #408: typing indicators for the open conversation only.
+  const typing = useConversationTyping(
+    selectedThreadId && selectedThread ? { kind: 'directMessage', threadId: selectedThreadId } : null
+  );
 
   const loadInbox = useCallback(async (): Promise<void> => {
     const requestId = ++inboxRequestId.current;
@@ -280,6 +315,7 @@ export function DirectMessagesView({
   const updateDraft = (value: string): void => {
     if (!selectedThreadId) return;
     setDrafts((current) => ({ ...current, [selectedThreadId]: value }));
+    typing.onComposerChange(value);
   };
 
   const handleSend = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
@@ -302,15 +338,20 @@ export function DirectMessagesView({
     }
 
     const submittedDraft = draft;
+    const attachmentIds = pendingAttachments.map((attachment) => attachment.id);
+    const payload =
+      attachmentIds.length > 0 ? { body: submittedDraft, attachmentIds } : { body: submittedDraft };
     const requestId = ++sendRequestId.current;
     setSending(true);
     try {
-      const sent = await sendDirectMessage(selectedThreadId, { body: submittedDraft });
+      const sent = await sendDirectMessage(selectedThreadId, payload);
       if (requestId !== sendRequestId.current) return;
       setMessages((current) =>
         sortMessages([...current.filter((message) => message.id !== sent.id), sent])
       );
       setDrafts((current) => ({ ...current, [selectedThreadId]: '' }));
+      setPendingAttachmentsByThread((current) => ({ ...current, [selectedThreadId]: [] }));
+      typing.onMessageSent();
       setFieldErrors({});
       setSendSuccess('Message sent.');
       setThreads((current) =>
@@ -613,6 +654,23 @@ export function DirectMessagesView({
                           </time>
                         </div>
                         <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink">{message.body}</p>
+                        {selectedThreadId && (
+                          <MessageAttachments
+                            target={{ kind: 'directMessage', threadId: selectedThreadId }}
+                            attachments={message.attachments}
+                          />
+                        )}
+                        {selectedThreadId && (
+                          <MessageReactions
+                            target={{ kind: 'directMessage', threadId: selectedThreadId }}
+                            messageId={message.id}
+                            reactions={message.reactions}
+                            onReactionsChange={updateMessageReactions}
+                            // Mirrors the composer: the server already told us YOU blocked the peer.
+                            // Any other denial (e.g. their block) comes back from the server.
+                            interactive={!peerBlocked}
+                          />
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -624,11 +682,13 @@ export function DirectMessagesView({
                       You have blocked this participant. Unblock them to send messages.
                     </p>
                   )}
+                  <TypingIndicator enabled={typing.enabled} typists={typing.typists} />
                   <label htmlFor="dm-message-body" className="block text-sm font-medium text-forest-900">Message</label>
                   <textarea
                     id="dm-message-body"
                     value={draft}
                     onChange={(event) => updateDraft(event.target.value)}
+                    onBlur={typing.onComposerBlur}
                     disabled={sending || peerBlocked}
                     rows={3}
                     maxLength={MESSAGE_MAX_LENGTH}
@@ -641,6 +701,12 @@ export function DirectMessagesView({
                   {fieldErrors.body && <p id="dm-message-error" role="alert" className="text-xs text-red-700">{fieldErrors.body}</p>}
                   {sendError && <p role="alert" className="text-xs text-red-700">{sendError}</p>}
                   {sendSuccess && <p role="status" className="text-xs text-forest-800">{sendSuccess}</p>}
+                  <AttachmentComposer
+                    target={{ kind: 'directMessage', threadId: selectedThreadId }}
+                    pendingAttachments={pendingAttachments}
+                    onPendingAttachmentsChange={setPendingAttachments}
+                    disabled={sending || peerBlocked}
+                  />
                   <button type="submit" disabled={sending || peerBlocked} className={primaryButtonClass}>
                     {sending ? 'Sending…' : 'Send message'}
                   </button>

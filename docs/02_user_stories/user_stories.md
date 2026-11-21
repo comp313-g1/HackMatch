@@ -364,7 +364,7 @@ These stories govern account creation, federated single sign-on, multi-factor cr
 
 **Related Stories:** US-003, US-004
 
-**Iteration 2 tasks:** (7 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+**Iteration 2 tasks:** (9 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
 
 1. Define the approved future authenticator enrollment and fallback design
 2. Add protected TOTP secret enrollment storage
@@ -373,6 +373,8 @@ These stories govern account creation, federated single sign-on, multi-factor cr
 5. Protect secrets from logs and other accounts
 6. Preserve email OTP and the five-attempt/15-minute lock policy
 7. Add Vitest and integration tests for setup failure and activation
+8. Upload the required diagrams
+9. Update user and admin manuals
 
 
 ---
@@ -1415,13 +1417,15 @@ These stories govern user abuse reporting, administrative moderation, account en
 3. Attachments, if ever allowed, must enforce HTTPS/safe MIME limits and virus/size policy TBD.
 4. No May-Have item is required for MVP acceptance of US-030.
 
+**Design approval (#404):** The [US-035 rich-chat policy contract](../04_requirements/us035_rich_chat_policy.md) approves reactions, typing indicators, and restricted attachments for Iteration 2, defers voice/video, and replaces the "virus/size policy TBD" in criterion 3 with concrete limits and an explicit malware-scanning rule.
+
 **Priority:** Low
 
 **Complexity/Effort Estimate:** Large (when approved)
 
 **Related Stories:** US-030, US-031, US-032
 
-**Iteration 2 tasks:** (8 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
+**Iteration 2 tasks:** (18 — from [task disaggregation](../05_sprint_1/task_disaggregation.md))
 
 1. Approve rich-chat scope, security policy, capacity limits, and feature flags
 2. Add message-reaction models and API operations
@@ -1431,4 +1435,13 @@ These stories govern user abuse reporting, administrative moderation, account en
 6. Implement secure attachment upload, scanning, and storage controls
 7. Build attachment composer, preview, download, and failure states
 8. Add tests for rich-chat authorization, privacy, fallback, and limits
-
+9. Upload the required diagrams
+10. Update user and admin manuals
+11. Update stale US-032 direct messaging documentation
+12. Update the task disaggregation list in excel and readme file
+13. Update the wireframes till the current user story
+14. Fix MFA OTP email delivery on Render Free tier via HTTPS API
+15. Cleanup the repo remove unnecessary docs etc.
+16. Fix accessibility gaps across navigation, menus, headings and markup
+17. Fix the .md doc to reflect correct numbers
+18. Sync users story.md with task disaggregation

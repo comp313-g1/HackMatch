@@ -26,7 +26,7 @@ flowchart TB
         direction LR
         VERIFY(["Verify email using<br/>Firebase-managed link"]):::usecase
         REPLACE(["Request a replacement<br/>verification link"]):::usecase
-        GUARD["403<br/>EMAIL_NOT_VERIFIED<br/>Block protected actions<br/>No data change"]:::denied
+        GUARD["403 EMAIL_<br/>NOT_VERIFIED<br/>Block protected actions<br/>No data change"]:::denied
         TEAM["Interactive team-formation features<br/>after sign-in + MFA"]:::team
     end
 

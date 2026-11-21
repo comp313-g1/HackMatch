@@ -19,7 +19,7 @@ flowchart TD
     RESOLVED(["Resolved<br/>Terminal case state"]):::success
     DISCOVERY["Discovery filters exclude<br/>hidden teams and profiles"]:::team
     REPEAT["Repeated decision"]:::decision
-    CLOSED["409 CASE_CLOSED<br/>No second decision"]:::denied
+    CLOSED["409 conflict<br/>CASE_CLOSED<br/>No second decision"]:::denied
     POLY["Polymorphic target_id<br/>Resolved by application logic<br/>No direct target FK"]:::internal
     NONATOMIC["Implementation caveat<br/>Effect, alert, audit, and case close<br/>are not one transaction"]:::danger
 

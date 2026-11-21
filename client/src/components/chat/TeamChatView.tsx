@@ -7,10 +7,17 @@ import {
   sendTeamChatMessage,
 } from './chatApi';
 import type {
+  ChatAttachmentView,
   ChatFieldErrors,
   ChatMessageView,
+  ChatReactionSummary,
   TeamChatChannelView,
 } from './chatTypes';
+import { AttachmentComposer } from './AttachmentComposer';
+import { MessageAttachments } from './MessageAttachments';
+import { MessageReactions } from './MessageReactions';
+import { useConversationTyping } from './useConversationTyping';
+import { TypingIndicator } from './TypingIndicator';
 import { ChatActivityBadge, ChatUnreadStatus } from './ChatUnreadBadge';
 import { useChatUnread } from './ChatUnreadContext';
 
@@ -78,6 +85,7 @@ export function TeamChatView({
   const [accessDenied, setAccessDenied] = useState(false);
 
   const [draft, setDraft] = useState('');
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachmentView[]>([]);
   const [fieldErrors, setFieldErrors] = useState<ChatFieldErrors>({});
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
@@ -85,6 +93,16 @@ export function TeamChatView({
   const [readStateError, setReadStateError] = useState<string | null>(null);
   const loadRequestId = useRef(0);
   const sendRequestId = useRef(0);
+
+  // US-035 / #406: a confirmed reaction change updates only that message's reactions.
+  const updateMessageReactions = useCallback(
+    (messageId: string, reactions: ChatReactionSummary[]) =>
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions } : m))),
+    []
+  );
+
+  // US-035 / #408: typing indicators only while this team's chat is open and authorized.
+  const typing = useConversationTyping(channel ? { kind: 'team', teamId } : null);
 
   // Never retain private content or a draft for a previously selected team.
   useEffect(() => {
@@ -97,6 +115,7 @@ export function TeamChatView({
     setLoadError(null);
     setAccessDenied(false);
     setDraft('');
+    setPendingAttachments([]);
     setFieldErrors({});
     setSendError(null);
     setSendSuccess(null);
@@ -177,12 +196,17 @@ export function TeamChatView({
 
     setSending(true);
     const requestId = ++sendRequestId.current;
+    const attachmentIds = pendingAttachments.map((attachment) => attachment.id);
+    const payload =
+      attachmentIds.length > 0 ? { body: draft, attachmentIds } : { body: draft };
     try {
-      // Keep the exact local draft until the server confirms success.
-      const message = await sendTeamChatMessage(teamId, { body: draft });
+      // Keep the exact local draft and pending attachments until the server confirms success.
+      const message = await sendTeamChatMessage(teamId, payload);
       if (requestId !== sendRequestId.current) return;
       setMessages((current) => [...current, message]);
       setDraft('');
+      setPendingAttachments([]);
+      typing.onMessageSent();
       setFieldErrors({});
       setSendSuccess('Message sent.');
       if (unreadEnabled) void refreshUnread();
@@ -346,6 +370,16 @@ export function TeamChatView({
                       <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink">
                         {message.body}
                       </p>
+                      <MessageAttachments
+                        target={{ kind: 'team', teamId }}
+                        attachments={message.attachments}
+                      />
+                      <MessageReactions
+                        target={{ kind: 'team', teamId }}
+                        messageId={message.id}
+                        reactions={message.reactions}
+                        onReactionsChange={updateMessageReactions}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -357,13 +391,18 @@ export function TeamChatView({
                 className="space-y-2 border-t border-cream-200 pt-4"
                 data-testid="team-chat-composer"
               >
+                <TypingIndicator enabled={typing.enabled} typists={typing.typists} />
                 <label htmlFor="team-chat-message" className="block text-sm font-medium text-forest-900">
                   Message
                 </label>
                 <textarea
                   id="team-chat-message"
                   value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
+                  onChange={(event) => {
+                    setDraft(event.target.value);
+                    typing.onComposerChange(event.target.value);
+                  }}
+                  onBlur={typing.onComposerBlur}
                   disabled={sending}
                   rows={3}
                   maxLength={MESSAGE_MAX_LENGTH}
@@ -390,6 +429,12 @@ export function TeamChatView({
                     {sendSuccess}
                   </p>
                 )}
+                <AttachmentComposer
+                  target={{ kind: 'team', teamId }}
+                  pendingAttachments={pendingAttachments}
+                  onPendingAttachmentsChange={setPendingAttachments}
+                  disabled={sending}
+                />
                 <button type="submit" disabled={sending} className={primaryButtonClass}>
                   {sending ? 'Sending…' : 'Send message'}
                 </button>

@@ -21,6 +21,30 @@ import {
 import { buildChatSuccessPayload } from '../services/chatPrivacy.js';
 import { getParticipantChatUnreadSummary } from '../services/chatUnread.js';
 import { markChatConversationRead } from '../services/chatRead.js';
+import { getRichChatCapabilities } from '../services/chatCapabilities.js';
+import { setPublicChannelMessageReaction } from '../services/chatReactions.js';
+import { limitReactionMutations, requireReactionsEnabled } from '../middleware/richChatReactions.js';
+import { validateReactionParams, type ReactionTarget } from '../validators/chatReaction.validator.js';
+import { limitTypingSignals, requireTypingEnabled } from '../middleware/richChatTyping.js';
+import { validateTypingSignalBody } from '../validators/chatTyping.validator.js';
+import { openTypingStream } from '../services/typingStream.js';
+import {
+  authorizePublicChannelViewer,
+  findPublicChannelOrThrow,
+  signalPublicChannelTyping,
+} from '../services/chatTypingAccess.js';
+import {
+  attachmentAccessHandler,
+  attachmentUploadHandler,
+  precheckAttachmentRequest,
+  readAttachmentBody,
+  rejectAttachmentIdsWhenUnavailable,
+  requireAttachmentsUsable,
+  resolveAttachmentConversation,
+  scheduleAttachmentMaintenance,
+  validateAttachmentIdParam,
+} from '../middleware/richChatAttachments.js';
+import { contentDisposition, readAttachmentContent } from '../services/chatAttachments.js';
 
 export const chatRouter = Router();
 
@@ -48,6 +72,22 @@ function handleChatError(err: unknown, res: Response, next: NextFunction): void 
   }
   next(err);
 }
+
+/**
+ * GET /api/chat/capabilities
+ * US-035 / #405: which rich-chat features the server currently offers. The
+ * server stays authoritative; each rich-chat route checks its own flag.
+ */
+chatRouter.get(
+  '/capabilities',
+  ...chatAuthGuard,
+  (_req: Request, res: Response): void => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json(
+      buildChatSuccessPayload({ status: 'ok', capabilities: getRichChatCapabilities() })
+    );
+  }
+);
 
 /**
  * GET /api/chat/unread-counts
@@ -152,7 +192,7 @@ chatRouter.get(
     res.setHeader('Cache-Control', 'no-store');
     try {
       const channelId = typeof req.params.channelId === 'string' ? req.params.channelId : req.params.channelId[0];
-      const messages = await listChannelMessages(channelId);
+      const messages = await listChannelMessages(channelId, req.participant!.id);
       res.status(200).json(buildChatSuccessPayload({ status: 'ok', messages }));
     } catch (err) {
       handleChatError(err, res, next);
@@ -170,6 +210,7 @@ chatRouter.post(
   validateChatChannelIdParam,
   requireJsonObjectBody,
   validateSendMessageBody,
+  rejectAttachmentIdsWhenUnavailable,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     res.setHeader('Cache-Control', 'no-store');
     try {
@@ -178,6 +219,7 @@ chatRouter.post(
         channelId,
         authorId: req.participant!.id,
         body: req.body.body,
+        attachmentIds: req.body.attachmentIds,
       });
       res.status(201).json(buildChatSuccessPayload({ status: 'ok', message }));
     } catch (err) {
@@ -185,3 +227,150 @@ chatRouter.post(
     }
   }
 );
+
+/**
+ * PUT    /api/chat/channels/:channelId/messages/:messageId/reactions/:reaction  (add)
+ * DELETE /api/chat/channels/:channelId/messages/:messageId/reactions/:reaction  (remove)
+ * US-035 / #405: idempotent; both answer 200 with the caller's final state and the
+ * message's aggregate. Same channel answers as the message routes (a private team
+ * channel is "not found" here).
+ */
+function publicReactionHandler(present: boolean) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const target = res.locals.reactionTarget as ReactionTarget;
+      const result = await setPublicChannelMessageReaction({
+        participant: req.participant!,
+        channelId: String(req.params.channelId),
+        messageId: target.messageId,
+        reaction: target.reaction,
+        present,
+      });
+      res.status(200).json(buildChatSuccessPayload({ status: 'ok', ...result }));
+    } catch (err) {
+      handleChatError(err, res, next);
+    }
+  };
+}
+
+const publicReactionChain = [
+  ...chatAuthGuard,
+  requireReactionsEnabled,
+  validateChatChannelIdParam,
+  validateReactionParams,
+  limitReactionMutations,
+];
+
+chatRouter.put(
+  '/channels/:channelId/messages/:messageId/reactions/:reaction',
+  ...publicReactionChain,
+  publicReactionHandler(true)
+);
+
+chatRouter.delete(
+  '/channels/:channelId/messages/:messageId/reactions/:reaction',
+  ...publicReactionChain,
+  publicReactionHandler(false)
+);
+
+/**
+ * POST /api/chat/channels/:channelId/typing   body: { "typing": true | false }
+ * US-035 / #407: the caller is typing (or stopped) in this public forum. Ephemeral;
+ * nothing is stored. Always 200 { status: 'ok' } once accepted, including when the
+ * caller is Invisible (nothing is published then).
+ */
+chatRouter.post(
+  '/channels/:channelId/typing',
+  ...chatAuthGuard,
+  requireTypingEnabled,
+  validateChatChannelIdParam,
+  validateTypingSignalBody,
+  limitTypingSignals,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      await signalPublicChannelTyping(req.participant!, String(req.params.channelId), req.body.typing);
+      res.status(200).json({ status: 'ok' });
+    } catch (err) {
+      handleChatError(err, res, next);
+    }
+  }
+);
+
+/**
+ * GET /api/chat/channels/:channelId/typing/stream
+ * US-035 / #407: SSE stream of typing events for this one public forum.
+ */
+chatRouter.get(
+  '/channels/:channelId/typing/stream',
+  ...chatAuthGuard,
+  requireTypingEnabled,
+  validateChatChannelIdParam,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const access = await authorizePublicChannelViewer(req.participant!, String(req.params.channelId));
+      openTypingStream(req, res, { participantId: req.participant!.id, ...access });
+    } catch (err) {
+      handleChatError(err, res, next);
+    }
+  }
+);
+
+/**
+ * POST /api/chat/channels/:channelId/attachments
+ * US-035 / #409: one streamed multipart `file` per request. Needs current send
+ * access to the public forum before any file bytes are accepted.
+ */
+chatRouter.post(
+  '/channels/:channelId/attachments',
+  ...chatAuthGuard,
+  requireAttachmentsUsable,
+  validateChatChannelIdParam,
+  resolveAttachmentConversation(async (req) => ({
+    scope: 'channel',
+    conversationId: (await findPublicChannelOrThrow(String(req.params.channelId))).id,
+  })),
+  precheckAttachmentRequest,
+  readAttachmentBody,
+  scheduleAttachmentMaintenance,
+  attachmentUploadHandler(buildChatSuccessPayload)
+);
+
+/** GET /api/chat/channels/:channelId/attachments/:attachmentId/access — 60-second download link. */
+chatRouter.get(
+  '/channels/:channelId/attachments/:attachmentId/access',
+  ...chatAuthGuard,
+  requireAttachmentsUsable,
+  validateChatChannelIdParam,
+  validateAttachmentIdParam,
+  attachmentAccessHandler(
+    async (req) => ({
+      scope: 'channel',
+      conversationId: (await findPublicChannelOrThrow(String(req.params.channelId))).id,
+    }),
+    buildChatSuccessPayload
+  )
+);
+
+/**
+ * GET /api/chat/attachments/content?token=…
+ * US-035 / #409: serves the file for a valid, unexpired (60 s) token after re-checking
+ * that the token's viewer can still read the conversation. The token is the only
+ * credential here, so the route has no bearer guard; it is redacted from request logs.
+ */
+chatRouter.get('/attachments/content', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  try {
+    const content = await readAttachmentContent(req.query.token);
+    res.status(200);
+    res.setHeader('Content-Type', content.mimeType === 'text/plain' ? 'text/plain; charset=utf-8' : content.mimeType);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', contentDisposition(content.filename, content.inline));
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+    res.setHeader('Content-Length', String(content.bytes.length));
+    res.end(Buffer.from(content.bytes));
+  } catch (err) {
+    handleChatError(err, res, next);
+  }
+});

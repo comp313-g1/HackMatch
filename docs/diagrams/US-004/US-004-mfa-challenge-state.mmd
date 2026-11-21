@@ -12,7 +12,7 @@ flowchart TB
     LOCKED["Account locked for 15 minutes<br/>Outstanding challenges invalidated<br/>New challenge/session renewal denied"]:::danger
     LOCKEND["Lock expired<br/>Failure cycle may restart"]:::transition
     CLAIM["Current sign-in MFA claim set<br/>mfa_auth_time equals auth_time"]:::success
-    GAP["Current browser-path gap<br/>Fresh primary auth after lock expiry is not<br/>checked by /mfa/challenge + {code}"]:::warning
+    GAP["Fresh sign-in<br/>required after<br/>the lock ends,<br/>on challenge and<br/>code paths (#271)"]:::internal
     STORE["Persistence detail<br/>mfa_challenges stores state;<br/>mfa_attempts derives failure cycle and lock"]:::internal
 
     NONE -->|Eligible password/OAuth sign-in and successful delivery| PENDING
@@ -23,7 +23,7 @@ flowchart TB
     FAIL -->|Fifth consecutive failure| LOCKED
     LOCKED --> INVALIDATED
     LOCKED -->|15 minutes elapse| LOCKEND
-    LOCKEND -->|Required design: fresh primary auth + new OTP| NONE
+    LOCKEND -->|Fresh primary auth + new OTP| NONE
     PENDING -->|Resend creates replacement| INVALIDATED
     INVALIDATED -->|Replacement delivered, failures unchanged| PENDING
     PENDING -->|Email delivery fails| INVALIDATED

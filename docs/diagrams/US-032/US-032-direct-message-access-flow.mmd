@@ -43,7 +43,7 @@ flowchart TB
     AUTH -->|"Yes"| ACCOUNT
     AUTH -->|"No"| DENY_AUTH
     ACCOUNT -->|"Yes"| OP
-    ACCOUNT -->|"No / ADMIN"| DENY_ACCOUNT
+    ACCOUNT -->|"No / ADMIN caller"| DENY_ACCOUNT
 
     OP -->|"Open"| OPEN
     OP -->|"Inbox"| INBOX

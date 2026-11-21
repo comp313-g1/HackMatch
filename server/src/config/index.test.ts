@@ -48,4 +48,16 @@ describe('Server Configuration & validateEnv', () => {
     const { validateEnv } = await import('./index.js');
     expect(() => validateEnv()).toThrow(/TOTP_ENCRYPTION_KEY_BASE64/);
   });
+
+  it('keeps rich-chat attachments off unless the server flag is exactly true', async () => {
+    for (const value of [undefined, '', 'false', 'TRUE', '1']) {
+      vi.resetModules();
+      if (value === undefined) delete process.env.RICH_CHAT_ATTACHMENTS_ENABLED;
+      else process.env.RICH_CHAT_ATTACHMENTS_ENABLED = value;
+      expect((await import('./index.js')).config.richChat.attachmentsEnabled, String(value)).toBe(false);
+    }
+    vi.resetModules();
+    process.env.RICH_CHAT_ATTACHMENTS_ENABLED = 'true';
+    expect((await import('./index.js')).config.richChat.attachmentsEnabled).toBe(true);
+  });
 });

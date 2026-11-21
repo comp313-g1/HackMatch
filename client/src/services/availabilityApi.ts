@@ -162,5 +162,6 @@ export async function fetchAvailableCandidates(
     status: string;
     candidates: AvailableCandidateCard[];
   }>(res);
-  return data.candidates;
+  // A malformed response must not crash the Find teammates page (it would render blank).
+  return Array.isArray(data.candidates) ? data.candidates : [];
 }

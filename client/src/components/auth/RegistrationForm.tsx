@@ -182,9 +182,9 @@ export function RegistrationForm({
         <div className="w-12 h-12 mx-auto mb-4 bg-forest-50 rounded-full flex items-center justify-center text-forest-700 text-2xl font-bold">
           ✓
         </div>
-        <h3 className="font-display text-xl font-semibold text-center text-forest-900 mb-2">
+        <h2 className="font-display text-xl font-semibold text-center text-forest-900 mb-2">
           Verify Your Email
-        </h3>
+        </h2>
         <p className="text-sm text-ink-muted text-center mb-4">
           A verification link has been sent to{' '}
           <span className="font-semibold text-ink">{registeredEmail}</span>.

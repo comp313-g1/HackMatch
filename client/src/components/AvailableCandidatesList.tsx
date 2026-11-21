@@ -32,9 +32,9 @@ export function AvailableCandidatesList({
     <div className="bg-white rounded-xl border border-cream-200 shadow-sm p-6 sm:p-8">
       <div className="border-b border-cream-200 pb-5 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <h3 className="text-xl font-bold text-forest-900">
+          <h2 className="text-xl font-bold text-forest-900">
             Available Candidates Pool
-          </h3>
+          </h2>
           <p className="mt-1 text-sm text-ink-muted">
             Participants actively looking to join hackathon teams.
           </p>
@@ -82,14 +82,14 @@ export function AvailableCandidatesList({
               >
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <div>
-                    <h4 className="text-base font-bold text-forest-900 inline-flex items-center gap-2">
+                    <h3 className="text-base font-bold text-forest-900 inline-flex items-center gap-2">
                       <span>{candidate.displayName}</span>
                       {isMe && (
                         <span className="px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
                           You
                         </span>
                       )}
-                    </h4>
+                    </h3>
                     {candidate.handle && (
                       <p className="text-xs text-ink-muted font-mono">@{candidate.handle}</p>
                     )}

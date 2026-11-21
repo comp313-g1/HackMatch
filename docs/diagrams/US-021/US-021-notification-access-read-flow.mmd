@@ -34,7 +34,7 @@ flowchart LR
     subgraph READ[Read-state changes]
         direction TB
         J[Mark-one RPC matches notification<br/>and participant IDs]:::domain --> K{Owned row found?}:::decision
-        K -- No or foreign --> L[Same safe NOTIFICATION_NOT_FOUND]:::denied
+        K -- No or foreign --> L["Same safe 404<br/>NOTIFICATION_<br/>NOT_FOUND"]:::denied
         K -- Yes --> M[Set read_at once and return<br/>fresh caller unread count]:::success
         N[Mark-all RPC atomically updates<br/>only caller-owned unread rows]:::domain --> O[Return marked count<br/>and fresh unread count]:::success
     end

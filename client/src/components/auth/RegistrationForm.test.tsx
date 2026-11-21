@@ -266,7 +266,7 @@ describe('RegistrationForm Component (Backend Integration)', () => {
     // Note on R1: The UI informs the user that a verification link was sent,
     // which reflects the target design; actual email dispatch is pending S1-P1-03.
     expect(await screen.findByRole('status')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 3, name: /verify your email/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: /verify your email/i })).toBeInTheDocument();
     expect(screen.getByText(/alice@example.com/i)).toBeInTheDocument();
     expect(screen.getByText(/important security note/i)).toBeInTheDocument();
     expect(onSuccess).toHaveBeenCalledWith('alice@example.com');

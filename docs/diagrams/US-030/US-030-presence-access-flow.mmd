@@ -6,12 +6,12 @@ flowchart TB
     subgraph ACCESS ["Participant chat access"]
         direction LR
         START(["User attempts to access Chat"]):::identity
-        AUTH{"Authenticated?"}:::decision
+        AUTH{"Authenticated with<br/>current MFA?"}:::decision
         PART{"Stored role is PART?"}:::decision
         VERIFIED{"Participant verified?"}:::decision
         ACTIVE{"Active and not suspended?"}:::decision
         ALLOW["Chat access allowed"]:::success
-        DENY_AUTH["Deny access<br/>Authentication required"]:::denied
+        DENY_AUTH["Deny access<br/>Sign-in and MFA required"]:::denied
         DENY_ROLE["Deny participant chat access<br/>PART role required"]:::denied
         DENY_VERIFY["Deny access<br/>Verification required"]:::denied
         DENY_SUSPENDED["Deny access<br/>Account inactive or suspended"]:::denied
@@ -34,8 +34,8 @@ flowchart TB
         IDLE["Idle"]:::presence
         DND["Do Not Disturb"]:::presence
         INVISIBLE["Invisible"]:::presence
-        STORE["Store selected status<br/>Planned participant field"]:::success
-        PEERS["Return to permitted peers<br/>Exact peer policy not yet defined"]:::internal
+        STORE["Store participants.presence_status<br/>Default Invisible"]:::success
+        PEERS["No peer presence directory yet<br/>Peer visibility policy not defined"]:::internal
 
         SELECT --> ONLINE
         SELECT --> IDLE

@@ -19,7 +19,7 @@ export interface ServerConfig {
     clientEmail?: string;
     privateKey?: string;
   };
-  /** Optional SMTP for US-004 MFA OTP emails (FR-009 / FR-084). */
+  /** Optional SMTP / HTTPS email API configuration for US-004 MFA OTP emails (FR-009 / FR-084). */
   smtp: {
     host?: string;
     port: number;
@@ -27,11 +27,21 @@ export interface ServerConfig {
     user?: string;
     pass?: string;
     from?: string;
+    brevoApiKey?: string;
   };
   /** Server-only AES-256-GCM key used to protect application-owned TOTP secrets. */
   totpEncryption: {
     keyBase64?: string;
     keyVersion: string;
+  };
+  /**
+   * US-035 rich-chat feature flags (#404 policy, section 8). Server-authoritative,
+   * read once at startup, and on only for the exact string 'true'.
+   */
+  richChat: {
+    reactionsEnabled: boolean;
+    typingEnabled: boolean;
+    attachmentsEnabled: boolean;
   };
 }
 
@@ -57,10 +67,16 @@ export const config: ServerConfig = {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
     from: process.env.SMTP_FROM,
+    brevoApiKey: process.env.BREVO_API_KEY,
   },
   totpEncryption: {
     keyBase64: process.env.TOTP_ENCRYPTION_KEY_BASE64,
     keyVersion: process.env.TOTP_ENCRYPTION_KEY_VERSION || 'v1',
+  },
+  richChat: {
+    reactionsEnabled: process.env.RICH_CHAT_REACTIONS_ENABLED === 'true',
+    typingEnabled: process.env.RICH_CHAT_TYPING_ENABLED === 'true',
+    attachmentsEnabled: process.env.RICH_CHAT_ATTACHMENTS_ENABLED === 'true',
   },
 };
 

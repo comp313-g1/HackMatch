@@ -113,9 +113,9 @@ export function LookingForTeamPage({
               />
             </svg>
           </div>
-          <h3 className="text-xl font-bold text-forest-900">
+          <h2 className="text-xl font-bold text-forest-900">
             Sign In Required to Access Looking for Team
-          </h3>
+          </h2>
           <p className="text-sm text-ink-muted max-w-md mx-auto">
             Candidate availability profiles and Looking for Team preferences are protected.
             Sign in as a verified participant to declare your availability or view available candidates.

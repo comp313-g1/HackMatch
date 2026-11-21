@@ -22,7 +22,7 @@ flowchart TB
     PUBLIC -. "Distinct route boundary" .-> START
     START --> AUTH
     AUTH -->|"Yes"| ACCOUNT
-    AUTH -->|"No / VISITOR"| DENY_401
+    AUTH -->|"No / VISITOR request"| DENY_401
     ACCOUNT -->|"Yes"| MEMBER
     ACCOUNT -->|"No / ADMIN / restricted PART"| DENY_ACCOUNT
     MEMBER -->|"Yes"| CHANNEL

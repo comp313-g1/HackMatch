@@ -1,0 +1,75 @@
+---
+title: "HackMatch — US-035: Rich Chat Media and Realtime Extras — Use-Case Diagram"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#1f2937","lineColor":"#4b5563","edgeLabelBackground":"#ffffff","fontFamily":"Arial, sans-serif"},"flowchart":{"useMaxWidth":true,"htmlLabels":true,"curve":"basis","nodeSpacing":42,"rankSpacing":58,"padding":14}}}%%
+flowchart TB
+    PART(["Verified active PART<br/>Public forum, team chat, or DM"]):::identity
+    CAPS{"Server capability<br/>for this feature?"}:::decision
+    TEXT["US-030–US-034 text chat<br/>Works unchanged when any feature is off or fails"]:::success
+
+    subgraph REACTIONS ["Message reactions — persisted"]
+        direction LR
+        REACT(["Add or remove one of<br/>8 approved reactions"]):::chat
+        COUNTS(["See counts and<br/>own selection"]):::chat
+        REACT_STORE["PostgreSQL reaction rows<br/>Counts only; never who reacted"]:::success
+        REACT --> REACT_STORE
+        COUNTS --> REACT_STORE
+    end
+
+    subgraph TYPING ["Typing indicators — ephemeral"]
+        direction LR
+        SIGNAL(["Signal typing<br/>Only typing: true or false"]):::chat
+        WATCH(["See who is typing in the<br/>open conversation"]):::chat
+        HUB["Server memory only<br/>6-second expiry, no history<br/>Invisible participants emit nothing"]:::internal
+        SIGNAL --> HUB
+        HUB --> WATCH
+    end
+
+    subgraph ATTACHMENTS ["Restricted attachments — metadata plus private storage"]
+        direction LR
+        UPLOAD(["Upload PNG, JPEG, GIF, WebP,<br/>PDF, or UTF-8 text up to 10 MB"]):::chat
+        SEND(["Send nonblank text with<br/>up to 5 attachments"]):::chat
+        FETCH(["Preview image or download<br/>through a 60-second link"]):::chat
+        META["PostgreSQL metadata<br/>scan_status not_scanned"]:::success
+        BYTES["Private Supabase Storage bytes<br/>Opaque UUID keys, no public URLs"]:::success
+        UPLOAD --> META
+        UPLOAD --> BYTES
+        SEND --> META
+        FETCH --> BYTES
+    end
+
+    VOICE["Voice and video<br/>Deferred: no calls, media servers,<br/>recording, or voice messages"]:::internal
+    GATE["Attachments are off when<br/>NODE_ENV is production<br/>because no malware<br/>scanner exists"]:::warning
+    CAPS_NOTE["GET /api/chat/capabilities<br/>tells React what to show;<br/>every route still checks<br/>its own server flag"]:::internal
+
+    subgraph BOUNDARY ["Access boundary"]
+        direction LR
+        VISITOR(["VISITOR"]):::identity
+        ADMIN(["ADMIN<br/>No chat access, no bypass"]):::identity
+        OUTSIDER(["Non-member, former member,<br/>other thread, or blocked pair"]):::identity
+        DENY["Denied with the existing chat answers<br/>No content, counts, typing, or files"]:::denied
+        VISITOR --> DENY
+        ADMIN --> DENY
+        OUTSIDER --> DENY
+    end
+
+    PART --> CAPS
+    PART --> TEXT
+    CAPS -->|"reactions enabled"| REACTIONS
+    CAPS -->|"typing enabled"| TYPING
+    CAPS -->|"attachments usable"| ATTACHMENTS
+    CAPS -.->|"voiceVideo: false"| VOICE
+    GATE -.-> ATTACHMENTS
+    CAPS_NOTE -.-> CAPS
+
+    classDef identity fill:#e8f1ff,stroke:#3b82f6,color:#172554,stroke-width:1.5px;
+    classDef chat fill:#f1e8ff,stroke:#8b5cf6,color:#3b1d64,stroke-width:1.5px;
+    classDef decision fill:#fff7d6,stroke:#d4a72c,color:#4a3b00,stroke-width:1.5px;
+    classDef success fill:#e8f7ed,stroke:#3a9b5f,color:#123d24,stroke-width:1.5px;
+    classDef denied fill:#ffe8ee,stroke:#d94f70,color:#641c30,stroke-width:1.5px;
+    classDef internal fill:#f3f4f6,stroke:#6b7280,color:#1f2937,stroke-width:1.5px,stroke-dasharray:5 3;
+    classDef warning fill:#fff7d6,stroke:#d4a72c,color:#3f3300,stroke-width:1.5px,stroke-dasharray:5 3;
+    style REACTIONS fill:#fbf8ff,stroke:#9ca3af,stroke-width:1px,color:#374151
+    style TYPING fill:#fafafa,stroke:#9ca3af,stroke-width:1px,color:#374151
+    style ATTACHMENTS fill:#fbf8ff,stroke:#9ca3af,stroke-width:1px,color:#374151
+    style BOUNDARY fill:#fff8f9,stroke:#9ca3af,stroke-width:1px,color:#374151

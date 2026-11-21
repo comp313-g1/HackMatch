@@ -125,7 +125,7 @@ export function MfaGate({
   if (status === 'signed-out') {
     return (
       <div className={cardClass}>
-        <h3 className="font-display text-xl font-semibold text-forest-900 mb-2">You are not signed in</h3>
+        <h2 className="font-display text-xl font-semibold text-forest-900 mb-2">You are not signed in</h2>
         <p className="text-sm text-ink-muted mb-6">Sign in to access your HackMatch account.</p>
         {onNavigateToSignIn && (
           <button type="button" onClick={onNavigateToSignIn} className={primaryButtonClass}>
@@ -195,7 +195,7 @@ export function MfaGate({
 
   return (
     <div className={cardClass}>
-      <h3 className="font-display text-xl font-semibold text-forest-900 mb-2">Email code required</h3>
+      <h2 className="font-display text-xl font-semibold text-forest-900 mb-2">Email code required</h2>
       <p className="text-sm text-ink-muted mb-6">Sign in again to receive a verification code.</p>
       {onNavigateToSignIn && (
         <button type="button" onClick={onNavigateToSignIn} className={primaryButtonClass}>

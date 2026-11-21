@@ -23,6 +23,64 @@ export type MfaOtpEmailSender = (email: string, otp: string) => Promise<void>;
 /** Seconds mirrored in copy so users know the FR-009 lifetime. */
 const OTP_LIFETIME_MINUTES = 10;
 
+export const SMTP_DNS_TIMEOUT_MS = 5_000;
+export const SMTP_CONNECTION_TIMEOUT_MS = 8_000;
+export const SMTP_GREETING_TIMEOUT_MS = 8_000;
+export const SMTP_SOCKET_TIMEOUT_MS = 10_000;
+export const BREVO_API_TIMEOUT_MS = 10_000;
+const BREVO_SEND_URL = 'https://api.brevo.com/v3/smtp/email';
+
+const EMAIL_ADDRESS_PATTERN = /^[^\s@<>"',;]+@[^\s@<>"',;]+\.[^\s@<>"',;]+$/;
+
+/**
+ * Parses an RFC 5322-style `SMTP_FROM` value (`Name <email>` or `email`),
+ * stripping accidental surrounding quotes from dashboard env UIs.
+ */
+export function parseSenderAddress(rawFrom: string): { name?: string; email: string } {
+  let cleaned = rawFrom.trim();
+  if (
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))
+  ) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+
+  let name: string | undefined;
+  let email: string;
+
+  const angleMatch = /^(.*?)\s*<([^<>]+)>\s*$/.exec(cleaned);
+  if (angleMatch) {
+    const rawName = (angleMatch[1] ?? '').trim().replace(/^["']+|["']+$/g, '').trim();
+    name = rawName.length > 0 ? rawName : undefined;
+    email = (angleMatch[2] ?? '').trim();
+  } else {
+    email = cleaned.replace(/^["']+|["']+$/g, '').trim();
+  }
+
+  if (!EMAIL_ADDRESS_PATTERN.test(email)) {
+    throw new Error('Invalid sender email address in SMTP_FROM');
+  }
+
+  return name ? { name, email } : { email };
+}
+
+function sanitizeDispatchErrorDetail(raw: string, apiKey: string, otp: string): string {
+  let cleaned = raw;
+  if (apiKey) {
+    cleaned = cleaned.split(apiKey).join('[REDACTED]');
+  }
+  if (otp) {
+    cleaned = cleaned.split(otp).join('[REDACTED]');
+  }
+  cleaned = cleaned
+    .replace(/xkeysib-[a-zA-Z0-9._-]+/gi, '[REDACTED]')
+    .replace(/\d{6}/g, '[REDACTED]')
+    .replace(/Bearer\s+\S+/gi, 'Bearer [REDACTED]')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned.slice(0, 160);
+}
+
 /**
  * Builds the MFA OTP email body. The OTP appears only in the message payload —
  * callers must not log `text` / `html`.
@@ -49,15 +107,20 @@ export function buildMfaOtpEmail(email: string, otp: string): MfaOtpMailMessage 
   return { to: email, subject, text, html };
 }
 
+function brevoConfigured(): boolean {
+  return Boolean(config.smtp.brevoApiKey?.trim() && config.smtp.from?.trim());
+}
+
 function smtpConfigured(): boolean {
-  return Boolean(config.smtp.host && config.smtp.from);
+  return Boolean(config.smtp.host?.trim() && config.smtp.from?.trim());
 }
 
 /**
  * Delivers an MFA OTP email.
+ * - Brevo HTTPS API (`443`) when `BREVO_API_KEY` + `SMTP_FROM` are set
  * - SMTP when `SMTP_HOST` + `SMTP_FROM` are set
  * - Ethereal preview URL in development/test without SMTP (OTP not logged)
- * - Fails closed in production without SMTP (FR-084)
+ * - Fails closed in production without either transport (FR-084)
  */
 export async function sendMfaOtpEmail(email: string, otp: string): Promise<void> {
   if (!email || typeof email !== 'string' || !email.trim()) {
@@ -67,13 +130,65 @@ export async function sendMfaOtpEmail(email: string, otp: string): Promise<void>
     throw new Error('A 6-digit OTP is required to compose the email');
   }
 
-  const message = buildMfaOtpEmail(email.trim().toLowerCase(), otp);
+  const trimmedOtp = otp.trim();
+  const message = buildMfaOtpEmail(email.trim().toLowerCase(), trimmedOtp);
+
+  if (brevoConfigured()) {
+    const apiKey = config.smtp.brevoApiKey!.trim();
+    const sender = parseSenderAddress(config.smtp.from!);
+    if (sender.email.toLowerCase().endsWith('.local')) {
+      throw new Error(
+        'SMTP_FROM must be a verified sender email address (not a .local placeholder) when BREVO_API_KEY is set'
+      );
+    }
+
+    const res = await fetch(BREVO_SEND_URL, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        'api-key': apiKey,
+      },
+      body: JSON.stringify({
+        sender,
+        to: [{ email: message.to }],
+        subject: message.subject,
+        textContent: message.text,
+        htmlContent: message.html,
+      }),
+      signal: AbortSignal.timeout(BREVO_API_TIMEOUT_MS),
+    });
+
+    if (!res.ok) {
+      const errBody = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      const rawParts: string[] = [];
+      if (typeof errBody.code === 'string' && errBody.code.trim()) {
+        rawParts.push(errBody.code.trim());
+      }
+      if (typeof errBody.message === 'string' && errBody.message.trim()) {
+        rawParts.push(errBody.message.trim());
+      }
+      const detail = sanitizeDispatchErrorDetail(rawParts.join(': '), apiKey, trimmedOtp);
+      throw new Error(
+        `Brevo email dispatch failed (HTTP ${res.status}${detail ? `: ${detail}` : ''})`
+      );
+    }
+
+    if (config.nodeEnv === 'development') {
+      console.info(`[AUTH] MFA OTP email dispatched to ${message.to}`);
+    }
+    return;
+  }
 
   if (smtpConfigured()) {
     const transporter = nodemailer.createTransport({
       host: config.smtp.host,
       port: config.smtp.port,
       secure: config.smtp.secure,
+      dnsTimeout: SMTP_DNS_TIMEOUT_MS,
+      connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+      greetingTimeout: SMTP_GREETING_TIMEOUT_MS,
+      socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
       auth:
         config.smtp.user && config.smtp.pass
           ? { user: config.smtp.user, pass: config.smtp.pass }
@@ -95,7 +210,9 @@ export async function sendMfaOtpEmail(email: string, otp: string): Promise<void>
   }
 
   if (config.nodeEnv === 'production') {
-    throw new Error('SMTP is not configured; cannot dispatch MFA OTP email');
+    throw new Error(
+      'SMTP is not configured (set BREVO_API_KEY or SMTP_HOST with SMTP_FROM); cannot dispatch MFA OTP email'
+    );
   }
 
   // Development / test without SMTP: Ethereal captures the message so the OTP
@@ -105,6 +222,10 @@ export async function sendMfaOtpEmail(email: string, otp: string): Promise<void>
     host: testAccount.smtp.host,
     port: testAccount.smtp.port,
     secure: testAccount.smtp.secure,
+    dnsTimeout: SMTP_DNS_TIMEOUT_MS,
+    connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+    greetingTimeout: SMTP_GREETING_TIMEOUT_MS,
+    socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
     auth: {
       user: testAccount.user,
       pass: testAccount.pass,

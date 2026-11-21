@@ -12,6 +12,7 @@ import {
 } from '../db/chatModel.js';
 import { sanitizeSubmittedChatDraft } from '../services/chatPrivacy.js';
 import { UUID_REGEX } from './team.validator.js';
+import { parseAttachmentIds } from './chatAttachment.validator.js';
 
 export interface ChatFieldErrors {
   title?: string;
@@ -31,6 +32,8 @@ export interface CreateChannelSanitized {
 
 export interface SendMessageSanitized {
   body: string;
+  /** US-035 / #409: present only when the send references uploads. */
+  attachmentIds?: string[];
 }
 
 export interface MarkConversationReadSanitized {
@@ -40,7 +43,7 @@ export interface MarkConversationReadSanitized {
 }
 
 const CREATE_CHANNEL_KEYS = new Set(['title', 'description']);
-const SEND_MESSAGE_KEYS = new Set(['body']);
+const SEND_MESSAGE_KEYS = new Set(['body', 'attachmentIds']);
 const MARK_READ_KEYS = new Set(['conversationType', 'conversationId', 'messageId']);
 
 /**
@@ -161,14 +164,17 @@ export function validateSendMessageInput(raw: unknown): {
   } else if (isChatMessageBodyTooLong(record.body)) {
     errors.body = `body must be at most ${CHAT_MESSAGE_BODY_MAX_LENGTH} characters.`;
   }
+  const attachments = parseAttachmentIds(record.attachmentIds);
+  if ('error' in attachments) errors.attachmentIds = attachments.error;
 
   if (Object.keys(errors).length > 0) {
     return { errors, sanitized: null, submitted };
   }
 
+  const ids = 'ids' in attachments ? attachments.ids : [];
   return {
     errors: {},
-    sanitized: { body: bodyNormalized! },
+    sanitized: { body: bodyNormalized!, ...(ids.length > 0 ? { attachmentIds: ids } : {}) },
     submitted,
   };
 }

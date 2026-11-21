@@ -416,6 +416,56 @@ describe('App Component (View Routing and Integration)', () => {
     expect(screen.queryByTestId('header-verification-pending')).not.toBeInTheDocument();
   });
 
+  it('sets a page title per view and moves focus to the new page heading on navigation (WCAG 2.4.2 / 2.4.3)', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    mockSignedInUser({ mfaComplete: true, role: 'PART', displayName: 'Sahil Gupta' });
+
+    render(<App />);
+    expect(document.title).toBe('Find your hackathon team · HackMatch');
+
+    fireEvent.click(await within(primaryNav()).findByRole('button', { name: /^recommended teams$/i }));
+    const heading = await screen.findByRole('heading', { level: 1, name: /^recommended teams$/i });
+    expect(document.title).toBe('Recommended teams · HackMatch');
+    await waitFor(() => expect(heading).toHaveFocus());
+    expect(heading).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('keeps the URL in sync with the view so the browser Back button works (WCAG 2.4.3)', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    mockSignedInUser({ mfaComplete: true, role: 'PART', displayName: 'Sahil Gupta' });
+
+    render(<App />);
+    fireEvent.click(await within(primaryNav()).findByRole('button', { name: /^requests$/i }));
+    await screen.findByRole('heading', { level: 1, name: /^requests$/i });
+    expect(window.location.search).toBe('?view=requests');
+
+    fireEvent.click(within(primaryNav()).getByRole('button', { name: /^recommended teams$/i }));
+    await screen.findByRole('heading', { level: 1, name: /^recommended teams$/i });
+    expect(window.location.search).toBe('?view=recommended-teams');
+
+    act(() => {
+      window.history.replaceState({}, '', '/?view=requests');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    expect(await screen.findByRole('heading', { level: 1, name: /^requests$/i })).toBeInTheDocument();
+    expect(document.title).toBe('Requests · HackMatch');
+  });
+
+  it('closes the account menu with Escape and returns focus to its button (WCAG 2.1.1)', async () => {
+    window.history.pushState({}, '', '/?view=landing');
+    mockSignedInUser({ mfaComplete: true, role: 'PART', displayName: 'Sahil Gupta' });
+
+    render(<App />);
+    const accountButton = await within(primaryNav()).findByRole('button', { name: 'Sahil Gupta' });
+    fireEvent.keyDown(accountButton, { key: 'ArrowDown' });
+    const menu = await screen.findByRole('menu', { name: /account/i });
+    expect(screen.getByRole('menuitem', { name: /^profile$/i })).toHaveFocus();
+
+    fireEvent.keyDown(menu, { key: 'Escape' });
+    expect(screen.queryByRole('menu', { name: /account/i })).not.toBeInTheDocument();
+    expect(accountButton).toHaveFocus();
+  });
+
   it('offers Recommended teams in the navigation and opens the page from it (US-016 / #156)', async () => {
     window.history.pushState({}, '', '/?view=landing');
     mockSignedInUser({ mfaComplete: true, role: 'PART', displayName: 'Sahil Gupta' });
@@ -673,7 +723,7 @@ describe('App Component (View Routing and Integration)', () => {
     fireEvent.click(await screen.findByRole('button', { name: /notifications, 1 unread/i }));
     fireEvent.click(await screen.findByText('You were invited to Team Rocket'));
 
-    expect(await screen.findByRole('heading', { name: /^requests$/i, level: 2 })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /^requests$/i, level: 1 })).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: /notifications/i })).not.toBeInTheDocument();
     expect(markNotificationRead).toHaveBeenCalledWith('n1');
   });
@@ -940,7 +990,7 @@ describe('App Component (View Routing and Integration)', () => {
     // Account menu → Profile navigates to account view (SignedInPanel)
     fireEvent.click(within(primaryNav()).getByRole('button', { name: /brian/i }));
     fireEvent.click(await screen.findByRole('menuitem', { name: /^profile$/i }));
-    expect(await screen.findByRole('heading', { level: 3, name: /you are signed in/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 2, name: /you are signed in/i })).toBeInTheDocument();
     expect(screen.getByText(/manage technical profile/i)).toBeInTheDocument();
 
     // Clicking My teams in header navigates to MyTeamsPage view

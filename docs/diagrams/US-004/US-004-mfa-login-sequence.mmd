@@ -50,26 +50,32 @@ sequenceDiagram
     alt Missing, invalidated, consumed, or time >= expires_at
         API-->>UI: Explicit invalid/expired/consumed response
     else Challenge is current
-        API->>DB: Atomic compare-and-set consume using challenge ID and OTP hash
-        alt Code is incorrect
-            DB-->>API: No row consumed
-            API->>DB: INSERT failed mfa_attempt
-            alt This is the fifth consecutive failure
-                API->>DB: Invalidate outstanding challenges
-                API-->>UI: 423 locked for 15 minutes
-            else Fewer than five failures
-                API-->>UI: Incorrect-code response, remain pre-MFA
+        API->>DB: Reserve attempt in serialized order (counts as a failure)
+        alt Five consecutive failures already precede it
+            API->>DB: Remove reservation, code never compared
+            API-->>UI: 423 locked for 15 minutes
+        else Slot granted
+            API->>DB: Atomic compare-and-set consume using challenge ID and OTP hash
+            alt Code is incorrect
+                DB-->>API: No row consumed
+                API->>DB: Keep the reserved failed attempt
+                alt This is the fifth consecutive failure
+                    API->>DB: Invalidate outstanding challenges
+                    API-->>UI: 423 locked for 15 minutes
+                else Fewer than five failures
+                    API-->>UI: Incorrect-code response, remain pre-MFA
+                end
+            else Code matches and one consume wins
+                API->>DB: Mark the reserved attempt successful
+                API->>Firebase: Set mfa_auth_time = current auth_time
+                API-->>UI: 200 verified
+                UI->>Firebase: Force-refresh ID token
+                UI->>API: Protected request with current MFA claim
+                API-->>UI: Authorized only if token, active account, MFA, and role pass
+                UI-->>User: Render protected function
             end
-        else Code matches and one consume wins
-            API->>DB: INSERT successful mfa_attempt
-            API->>Firebase: Set mfa_auth_time = current auth_time
-            API-->>UI: 200 verified
-            UI->>Firebase: Force-refresh ID token
-            UI->>API: Protected request with current MFA claim
-            API-->>UI: Authorized only if token, active account, MFA, and role pass
-            UI-->>User: Render protected function
         end
     end
 
-    Note over UI,DB: Current discrepancy: the React challenge/code path does not compare the token auth_time<br/>with the prior lock end after lock expiry, although the alternate send/otp path does.
+    Note over UI,DB: After a lock expires, both the React and legacy paths require a new sign-in (#35;271).<br/>Attempts are reserved in serialized order, so concurrent guesses cannot exceed five.
 

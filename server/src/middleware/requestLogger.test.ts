@@ -91,4 +91,16 @@ describe('Sanitized Logging Middleware (NR-021)', () => {
     expect(sanitized.code).toBe('[REDACTED]');
     expect(sanitized.normalField).toBe('ok');
   });
+
+  it('redacts api-key and api_key headers/fields', () => {
+    const sanitized = sanitizePayload({
+      'api-key': 'xkeysib-secret-1',
+      api_key: 'xkeysib-secret-2',
+      status: 'ok',
+    }) as Record<string, unknown>;
+
+    expect(sanitized['api-key']).toBe('[REDACTED]');
+    expect(sanitized.api_key).toBe('[REDACTED]');
+    expect(sanitized.status).toBe('ok');
+  });
 });

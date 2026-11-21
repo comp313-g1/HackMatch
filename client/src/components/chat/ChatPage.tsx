@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   AuthRequiredError,
   ChatApiError,
@@ -11,11 +11,18 @@ import {
 } from './chatApi';
 import {
   PRESENCE_STATUSES,
+  type ChatAttachmentView,
   type ChatChannelView,
   type ChatFieldErrors,
   type ChatMessageView,
+  type ChatReactionSummary,
   type PresenceStatus,
 } from './chatTypes';
+import { AttachmentComposer } from './AttachmentComposer';
+import { MessageAttachments } from './MessageAttachments';
+import { MessageReactions } from './MessageReactions';
+import { useConversationTyping } from './useConversationTyping';
+import { TypingIndicator } from './TypingIndicator';
 import { DirectMessagesView } from './DirectMessagesView';
 import { ChatActivityBadge, ChatUnreadStatus } from './ChatUnreadBadge';
 import { useChatUnread } from './ChatUnreadContext';
@@ -109,6 +116,7 @@ export function ChatPage({
   const [messagesError, setMessagesError] = useState<string | null>(null);
 
   const [messageDraft, setMessageDraft] = useState('');
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachmentView[]>([]);
   const [messageErrors, setMessageErrors] = useState<ChatFieldErrors>({});
   const [messageFormError, setMessageFormError] = useState<string | null>(null);
   const [messageSuccess, setMessageSuccess] = useState<string | null>(null);
@@ -120,6 +128,19 @@ export function ChatPage({
 
   const selectedChannel =
     channels.find((c) => c.id === selectedChannelId) ?? null;
+
+  // US-035 / #406: a confirmed reaction change updates only that message's reactions.
+  const updateMessageReactions = useCallback(
+    (messageId: string, reactions: ChatReactionSummary[]) =>
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions } : m))),
+    []
+  );
+
+  // US-035 / #408: typing indicators for the open forum only, and only while the Forums
+  // tab is showing (the selected forum survives a switch to Direct messages).
+  const typing = useConversationTyping(
+    chatSection === 'forums' && selectedChannelId ? { kind: 'channel', channelId: selectedChannelId } : null
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -159,6 +180,7 @@ export function ChatPage({
   }, []);
 
   useEffect(() => {
+    setPendingAttachments([]);
     if (!selectedChannelId) {
       setMessages([]);
       setMessagesError(null);
@@ -315,12 +337,18 @@ export function ChatPage({
     }
 
     setSending(true);
-    const payload = { body: messageDraft.trim() };
+    const attachmentIds = pendingAttachments.map((attachment) => attachment.id);
+    const payload =
+      attachmentIds.length > 0
+        ? { body: messageDraft.trim(), attachmentIds }
+        : { body: messageDraft.trim() };
 
     try {
       const message = await sendChatMessage(selectedChannelId, payload);
       setMessages((prev) => [...prev, message]);
       setMessageDraft('');
+      setPendingAttachments([]);
+      typing.onMessageSent();
       setMessageErrors({});
       setMessageSuccess('Message sent.');
       if (unreadEnabled) void refreshUnread();
@@ -712,6 +740,16 @@ export function ChatPage({
                       <p className="mt-1 text-sm text-ink whitespace-pre-wrap break-words">
                         {message.body}
                       </p>
+                      <MessageAttachments
+                        target={{ kind: 'channel', channelId: selectedChannelId }}
+                        attachments={message.attachments}
+                      />
+                      <MessageReactions
+                        target={{ kind: 'channel', channelId: selectedChannelId }}
+                        messageId={message.id}
+                        reactions={message.reactions}
+                        onReactionsChange={updateMessageReactions}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -724,13 +762,18 @@ export function ChatPage({
                   noValidate
                   data-testid="send-message-form"
                 >
+                  <TypingIndicator enabled={typing.enabled} typists={typing.typists} />
                   <label htmlFor="message-body" className="sr-only">
                     Message
                   </label>
                   <textarea
                     id="message-body"
                     value={messageDraft}
-                    onChange={(e) => setMessageDraft(e.target.value)}
+                    onChange={(e) => {
+                      setMessageDraft(e.target.value);
+                      typing.onComposerChange(e.target.value);
+                    }}
+                    onBlur={typing.onComposerBlur}
                     disabled={sending}
                     rows={3}
                     placeholder="Write a message…"
@@ -753,6 +796,12 @@ export function ChatPage({
                       {messageSuccess}
                     </p>
                   )}
+                  <AttachmentComposer
+                    target={{ kind: 'channel', channelId: selectedChannelId }}
+                    pendingAttachments={pendingAttachments}
+                    onPendingAttachmentsChange={setPendingAttachments}
+                    disabled={sending}
+                  />
                   <button type="submit" className={primaryBtnClass} disabled={sending}>
                     {sending ? 'Sending…' : 'Send message'}
                   </button>

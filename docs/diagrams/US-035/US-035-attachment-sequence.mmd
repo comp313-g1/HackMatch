@@ -1,0 +1,50 @@
+---
+title: "HackMatch — US-035: Attachment Upload, Send, and Download Sequence"
+---
+%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryColor":"#e8f1ff","primaryTextColor":"#1f2937","primaryBorderColor":"#3b82f6","lineColor":"#4b5563","secondaryColor":"#f1e8ff","tertiaryColor":"#fff7d6","fontFamily":"Arial, sans-serif"},"sequence":{"useMaxWidth":true,"diagramMarginX":25,"diagramMarginY":18,"actorMargin":34,"width":165,"height":60,"boxMargin":8,"messageMargin":24,"noteMargin":10}}}%%
+sequenceDiagram
+    autonumber
+    actor Part as Active verified PART
+    participant UI as Composer and message attachments
+    participant API as Chat routes
+    participant Service as Attachment service
+    participant DB as PostgreSQL (0068 functions)
+    participant Store as Private Supabase Storage
+
+    Note over Part,Store: Upload
+    Part->>UI: Choose a file (client pre-check of type and size)
+    UI->>API: POST …/attachments, multipart with one file part
+    API->>API: Auth chain, attachments usable, send guard
+    API->>Service: Pre-check 20 uploads per hour and 100 MB quota
+    API->>API: Stream the part and stop above 10 MB
+    Service->>Service: Sanitize name, detect type from bytes, extension must match
+    Service->>DB: reserve_chat_attachment_upload (per-participant lock)
+    DB-->>Service: Row 'uploading', scan_status not_scanned (or limit outcome)
+    Service->>Store: Put bytes under a new opaque UUID key
+    Service->>DB: Mark row 'pending'
+    Service-->>UI: 201 id, filename, type, size, scanStatus
+    UI-->>Part: Staged file labelled "Not scanned for malware"
+
+    Note over Part,Store: Send with the message
+    Part->>UI: Send nonblank text with up to 5 staged files
+    UI->>API: POST …/messages with body and attachmentIds
+    API->>DB: send_chat_message_with_attachments or the DM variant
+    DB->>DB: One transaction: insert message, link own pending uploads
+    DB-->>API: Message row, or the whole send fails
+    API-->>UI: 201 message with attachment metadata, never a URL
+
+    Note over Part,Store: Preview or download
+    Part->>UI: Preview an image or download a file
+    UI->>API: GET …/attachments/:id/access (read guard)
+    API->>Service: Attached, in this conversation, downloadable?
+    Service-->>UI: Link with a 60-second signed token
+    UI->>API: GET /api/chat/attachments/content?token=…
+    API->>Service: Verify signature and expiry, recheck read access
+    Service->>Store: Get bytes by storage key
+    Service-->>UI: Bytes, nosniff, inline image or attachment PDF and text
+    UI-->>Part: Show the preview or save the file, then revoke the local URL
+
+    alt Storage or database step fails during upload
+        Service->>DB: Delete the reservation (its object is queued for removal)
+        Service-->>UI: 503, text draft and other staged files kept
+    end

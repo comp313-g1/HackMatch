@@ -9,6 +9,14 @@ import { profileRepository } from '../db/profile.repository.js';
 import { teamsRepository } from '../db/teams.repository.js';
 import type { ChatChannel, ChatMessage } from '../db/types.js';
 import { scrubPrivateChatFields } from './chatPrivacy.js';
+import type { ChatReactionSummary } from '../db/chatReactionModel.js';
+import { withChatReactionSummaries, withEmptyChatReactions } from './chatReactionSummaries.js';
+import { chatAttachmentRepository } from '../db/chatAttachment.repository.js';
+import {
+  describeAttachmentSendError,
+  withChatAttachmentSummaries,
+  type ChatAttachmentView,
+} from './chatAttachmentViews.js';
 
 /**
  * Safe channel payload (US-030 / #344–#345 / FR-087, FR-089).
@@ -36,6 +44,13 @@ export interface ChatMessageView {
   authorHandle: string | null;
   body: string;
   createdAt: string;
+  /**
+   * US-035 / #405: present only while RICH_CHAT_REACTIONS_ENABLED is on. Counts and the
+   * viewer's own state per approved reaction; never who reacted.
+   */
+  reactions?: ChatReactionSummary[];
+  /** US-035 / #409: present only while attachments are usable; safe metadata, never URLs. */
+  attachments?: ChatAttachmentView[];
 }
 
 export class ChatServiceError extends Error {
@@ -76,6 +91,36 @@ export function toMessageView(
     body: message.body,
     createdAt: message.created_at,
   });
+}
+
+/** US-035 / #409: a send that references uploads links them in the same database transaction. */
+async function createMessageWithOptionalAttachments(input: {
+  channelId: string;
+  authorId: string;
+  body: string;
+  attachmentIds?: string[];
+}): Promise<ChatMessage> {
+  if (!input.attachmentIds || input.attachmentIds.length === 0) {
+    return chatRepository.createMessage({ channel_id: input.channelId, author_id: input.authorId, body: input.body });
+  }
+  try {
+    return await chatAttachmentRepository.sendChannelMessage({
+      participantId: input.authorId,
+      channelId: input.channelId,
+      body: input.body,
+      attachmentIds: input.attachmentIds,
+    });
+  } catch (err) {
+    const described = describeAttachmentSendError(err);
+    if (described) throw new ChatServiceError(described.status, described.code, described.message);
+    throw err;
+  }
+}
+
+/** Adds reaction and attachment fields for a freshly sent message (when those features are on). */
+async function sentMessageView(message: ChatMessage, authorHandle: string | null): Promise<ChatMessageView> {
+  const [withAttachments] = await withChatAttachmentSummaries('channel', [toMessageView(message, authorHandle)]);
+  return withEmptyChatReactions(withAttachments!);
 }
 
 async function resolveAuthorHandles(
@@ -165,27 +210,33 @@ export async function openTeamChannel(teamId: string): Promise<TeamChatChannelVi
   return scrubPrivateChatFields({ ...toChannelView(channel), teamId });
 }
 
-export async function listTeamChannelMessages(teamId: string): Promise<ChatMessageView[]> {
+export async function listTeamChannelMessages(
+  teamId: string,
+  viewerId?: string
+): Promise<ChatMessageView[]> {
   const channel = await findTeamChannelOrThrow(teamId);
   const messages = await chatRepository.listMessagesByChannel(channel.id);
   const handles = await resolveAuthorHandles(messages.map((m) => m.author_id));
-  return messages.map((message) =>
+  const views = messages.map((message) =>
     toMessageView(message, handles.get(message.author_id) ?? null)
   );
+  return withChatAttachmentSummaries('channel', await withChatReactionSummaries('channel', viewerId, views));
 }
 
 export async function sendTeamChannelMessage(input: {
   teamId: string;
   authorId: string;
   body: string;
+  attachmentIds?: string[];
 }): Promise<ChatMessageView> {
   const channel = await findTeamChannelOrThrow(input.teamId);
   let message: ChatMessage;
   try {
-    message = await chatRepository.createMessage({
-      channel_id: channel.id,
-      author_id: input.authorId,
+    message = await createMessageWithOptionalAttachments({
+      channelId: channel.id,
+      authorId: input.authorId,
       body: input.body,
+      attachmentIds: input.attachmentIds,
     });
   } catch (err) {
     // US-031 / #382: the database re-checks membership, team and account state at insert time,
@@ -193,7 +244,7 @@ export async function sendTeamChannelMessage(input: {
     throw mapTeamChannelWriteError(err) ?? err;
   }
   const profile = await profileRepository.findProfileByParticipantId(input.authorId);
-  return toMessageView(message, profile?.handle ?? null);
+  return sentMessageView(message, profile?.handle ?? null);
 }
 
 export async function listChannels(): Promise<ChatChannelView[]> {
@@ -215,7 +266,8 @@ export async function createChannel(input: {
 }
 
 export async function listChannelMessages(
-  channelId: string
+  channelId: string,
+  viewerId?: string
 ): Promise<ChatMessageView[]> {
   const channel = await chatRepository.findChannelById(channelId);
   // US-031 / #378: a private team channel is indistinguishable from a missing one here, so the
@@ -226,29 +278,27 @@ export async function listChannelMessages(
 
   const messages = await chatRepository.listMessagesByChannel(channelId);
   const handles = await resolveAuthorHandles(messages.map((m) => m.author_id));
-  return messages.map((message) =>
+  const views = messages.map((message) =>
     toMessageView(message, handles.get(message.author_id) ?? null)
   );
+  return withChatAttachmentSummaries('channel', await withChatReactionSummaries('channel', viewerId, views));
 }
 
 export async function sendChannelMessage(input: {
   channelId: string;
   authorId: string;
   body: string;
+  attachmentIds?: string[];
 }): Promise<ChatMessageView> {
   const channel = await chatRepository.findChannelById(input.channelId);
   if (!channel || !isPublicChatChannel(channel)) {
     throw new ChatServiceError(404, 'CHANNEL_NOT_FOUND', 'Chat channel not found.');
   }
 
-  const message = await chatRepository.createMessage({
-    channel_id: input.channelId,
-    author_id: input.authorId,
-    body: input.body,
-  });
+  const message = await createMessageWithOptionalAttachments(input);
 
   const profile = await profileRepository.findProfileByParticipantId(input.authorId);
-  return toMessageView(message, profile?.handle ?? null);
+  return sentMessageView(message, profile?.handle ?? null);
 }
 
 export interface TeamChannelBackfillResult {

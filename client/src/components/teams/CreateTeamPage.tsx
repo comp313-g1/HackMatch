@@ -458,7 +458,7 @@ export function CreateTeamPage({ onCancel, onCreated }: CreateTeamPageProps): Re
           {/* Add vacancy controls if under limit */}
           {vacancies.length < maxVacancies && (
             <div className="p-4 rounded-md border border-dashed border-cream-300 bg-cream-50/50 space-y-4">
-              <h4 className="text-sm font-semibold text-ink">Add a Vacancy</h4>
+              <h3 className="text-sm font-semibold text-ink">Add a Vacancy</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="slot-role" className="block text-xs font-medium text-ink mb-1">

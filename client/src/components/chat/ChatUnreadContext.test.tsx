@@ -112,7 +112,8 @@ describe('ChatUnreadProvider and badges (US-034 / #402)', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', {
-        name: /^open chat$/i,
+        // WCAG 2.5.3: the visible badge text is part of the accessible name.
+        name: 'Open chat, 3 unread, @1 mentions',
         description: /3 unread messages including 1 mention/i,
       })
     ).toBeInTheDocument();

@@ -25,6 +25,24 @@ import {
   sendDmMessage,
 } from '../services/directMessages.js';
 import { buildDirectMessageSuccessPayload } from '../services/directMessagePrivacy.js';
+import { setDirectMessageReaction } from '../services/chatReactions.js';
+import { limitReactionMutations, requireReactionsEnabled } from '../middleware/richChatReactions.js';
+import { validateReactionParams, type ReactionTarget } from '../validators/chatReaction.validator.js';
+import { limitTypingSignals, requireTypingEnabled } from '../middleware/richChatTyping.js';
+import { validateTypingSignalBody } from '../validators/chatTyping.validator.js';
+import { openTypingStream } from '../services/typingStream.js';
+import { authorizeDirectMessageViewer, signalDirectMessageTyping } from '../services/chatTypingAccess.js';
+import {
+  attachmentAccessHandler,
+  attachmentUploadHandler,
+  precheckAttachmentRequest,
+  readAttachmentBody,
+  rejectAttachmentIdsWhenUnavailable,
+  requireAttachmentsUsable,
+  resolveAttachmentConversation,
+  scheduleAttachmentMaintenance,
+  validateAttachmentIdParam,
+} from '../middleware/richChatAttachments.js';
 
 export const directMessageRouter = Router();
 
@@ -171,6 +189,7 @@ directMessageRouter.post(
   requireDirectThreadSendAccess,
   requireJsonObjectBody,
   validateSendMessageBody,
+  rejectAttachmentIdsWhenUnavailable,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     res.setHeader('Cache-Control', 'no-store');
     try {
@@ -178,6 +197,7 @@ directMessageRouter.post(
         threadId: threadIdOf(req),
         authorId: req.participant!.id,
         body: req.body.body,
+        attachmentIds: req.body.attachmentIds,
       });
       res.status(201).json(buildDirectMessageSuccessPayload({ status: 'ok', message }));
     } catch (err) {
@@ -230,4 +250,113 @@ directMessageRouter.delete(
       handleDmError(err, res, next);
     }
   }
+);
+
+/**
+ * PUT    /api/direct-messages/threads/:threadId/messages/:messageId/reactions/:reaction  (add)
+ * DELETE /api/direct-messages/threads/:threadId/messages/:messageId/reactions/:reaction  (remove)
+ * US-035 / #405: reacting needs SEND access (thread participant, eligible peer, no block
+ * either way), with the same denial codes as sending a message.
+ */
+function dmReactionHandler(present: boolean) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const target = res.locals.reactionTarget as ReactionTarget;
+      const result = await setDirectMessageReaction({
+        participant: req.participant!,
+        threadId: threadIdOf(req),
+        messageId: target.messageId,
+        reaction: target.reaction,
+        present,
+      });
+      res.status(200).json(buildDirectMessageSuccessPayload({ status: 'ok', ...result }));
+    } catch (err) {
+      handleDmError(err, res, next);
+    }
+  };
+}
+
+const dmReactionChain = [
+  ...directMessageAuthGuard,
+  requireReactionsEnabled,
+  validateReactionParams,
+  limitReactionMutations,
+  requireDirectThreadSendAccess,
+];
+
+directMessageRouter.put(
+  '/threads/:threadId/messages/:messageId/reactions/:reaction',
+  ...dmReactionChain,
+  dmReactionHandler(true)
+);
+
+directMessageRouter.delete(
+  '/threads/:threadId/messages/:messageId/reactions/:reaction',
+  ...dmReactionChain,
+  dmReactionHandler(false)
+);
+
+/**
+ * POST /api/direct-messages/threads/:threadId/typing   body: { "typing": true | false }
+ * US-035 / #407: needs SEND access (thread participant, eligible peer, no block either way),
+ * with the same denial codes as sending a message.
+ */
+directMessageRouter.post(
+  '/threads/:threadId/typing',
+  ...directMessageAuthGuard,
+  requireTypingEnabled,
+  validateTypingSignalBody,
+  limitTypingSignals,
+  requireDirectThreadSendAccess,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      await signalDirectMessageTyping(req.participant!, threadIdOf(req), req.body.typing);
+      res.status(200).json({ status: 'ok' });
+    } catch (err) {
+      handleDmError(err, res, next);
+    }
+  }
+);
+
+/** GET /api/direct-messages/threads/:threadId/typing/stream — SSE typing events for this thread. */
+directMessageRouter.get(
+  '/threads/:threadId/typing/stream',
+  ...directMessageAuthGuard,
+  requireTypingEnabled,
+  requireDirectThreadParticipant,
+  (req: Request, res: Response): void => {
+    const access = authorizeDirectMessageViewer(req.participant!, threadIdOf(req));
+    openTypingStream(req, res, { participantId: req.participant!.id, ...access });
+  }
+);
+
+/**
+ * POST /api/direct-messages/threads/:threadId/attachments
+ * US-035 / #409: needs SEND access (participant, eligible peer, no block either way).
+ */
+directMessageRouter.post(
+  '/threads/:threadId/attachments',
+  ...directMessageAuthGuard,
+  requireAttachmentsUsable,
+  requireDirectThreadSendAccess,
+  resolveAttachmentConversation(async (req) => ({ scope: 'directMessage', conversationId: threadIdOf(req).toLowerCase() })),
+  precheckAttachmentRequest,
+  readAttachmentBody,
+  scheduleAttachmentMaintenance,
+  attachmentUploadHandler(buildDirectMessageSuccessPayload)
+);
+
+/** GET /api/direct-messages/threads/:threadId/attachments/:attachmentId/access — read access, as for history. */
+directMessageRouter.get(
+  '/threads/:threadId/attachments/:attachmentId/access',
+  ...directMessageAuthGuard,
+  requireAttachmentsUsable,
+  requireDirectThreadParticipant,
+  validateAttachmentIdParam,
+  attachmentAccessHandler(
+    async (req) => ({ scope: 'directMessage', conversationId: threadIdOf(req).toLowerCase() }),
+    buildDirectMessageSuccessPayload
+  )
 );

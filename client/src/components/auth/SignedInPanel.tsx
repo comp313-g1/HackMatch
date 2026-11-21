@@ -131,9 +131,9 @@ export function SignedInPanel({
   return (
     <div className="space-y-6">
       <div className="max-w-md w-full mx-auto p-6 bg-white rounded-xl border border-cream-200 shadow-sm">
-        <h3 className="font-display text-xl font-semibold text-forest-900 mb-2">
+        <h2 className="font-display text-xl font-semibold text-forest-900 mb-2">
           You are signed in
-        </h3>
+        </h2>
         <p className="text-sm text-ink-muted mb-6">
           Welcome back{email ? `, ${email}` : ''}. Your session is fully verified.
         </p>
@@ -172,9 +172,10 @@ export function SignedInPanel({
       {showProfileSection && (
         <div className="max-w-md w-full mx-auto space-y-4">
           {loadingProfile ? (
-            <CandidateProfileCard viewerCategory="OWNER" profile={{}} loading />
+            <CandidateProfileCard viewerCategory="OWNER" profile={{}} loading headingLevel={3} />
           ) : profileLoadError ? (
             <CandidateProfileCard
+              headingLevel={3}
               viewerCategory="OWNER"
               profile={{}}
               error={profileLoadError}
@@ -205,6 +206,7 @@ export function SignedInPanel({
           ) : (
             <div className="space-y-4">
               <CandidateProfileCard
+                headingLevel={3}
                 viewerCategory="OWNER"
                 profile={currentProfile || {}}
               />
