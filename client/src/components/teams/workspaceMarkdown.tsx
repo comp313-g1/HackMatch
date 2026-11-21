@@ -91,10 +91,19 @@ export function renderInlineMarkdown(text: string): React.ReactNode[] {
   return nodes;
 }
 
+type HeadingTag = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
+
+/** Shifts a Markdown heading level so embedded notes nest under the page's own headings (WCAG 1.3.1). */
+function headingTag(level: number, offset: number): HeadingTag {
+  return `h${Math.min(6, Math.max(1, level + offset))}` as HeadingTag;
+}
+
 /**
  * Renders sanitized Markdown to safe React JSX elements without dangerouslySetInnerHTML (NR-009).
+ * `headingOffset` demotes Markdown headings (e.g. 3 renders `#` as <h4>) when the note is shown
+ * inside a section that already has its own heading.
  */
-export function renderSafeMarkdown(markdown: string): React.JSX.Element {
+export function renderSafeMarkdown(markdown: string, headingOffset = 0): React.JSX.Element {
   const sanitized = sanitizeMarkdownText(markdown);
   const lines = sanitized.replace(/\r\n/g, '\n').split('\n');
 
@@ -179,12 +188,11 @@ export function renderSafeMarkdown(markdown: string): React.JSX.Element {
     if (trimmed.startsWith('### ')) {
       flushList();
       elements.push(
-        <h3
-          key={`h3-${elements.length}`}
-          className="text-base font-semibold text-ink-900 mt-3 mb-1"
-        >
-          {renderInlineMarkdown(trimmed.slice(4))}
-        </h3>
+        React.createElement(
+          headingTag(3, headingOffset),
+          { key: `h3-${elements.length}`, className: 'text-base font-semibold text-ink-900 mt-3 mb-1' },
+          renderInlineMarkdown(trimmed.slice(4))
+        )
       );
       continue;
     }
@@ -192,12 +200,11 @@ export function renderSafeMarkdown(markdown: string): React.JSX.Element {
     if (trimmed.startsWith('## ')) {
       flushList();
       elements.push(
-        <h2
-          key={`h2-${elements.length}`}
-          className="text-lg font-bold text-ink-900 mt-4 mb-1.5"
-        >
-          {renderInlineMarkdown(trimmed.slice(3))}
-        </h2>
+        React.createElement(
+          headingTag(2, headingOffset),
+          { key: `h2-${elements.length}`, className: 'text-lg font-bold text-ink-900 mt-4 mb-1.5' },
+          renderInlineMarkdown(trimmed.slice(3))
+        )
       );
       continue;
     }
@@ -205,12 +212,11 @@ export function renderSafeMarkdown(markdown: string): React.JSX.Element {
     if (trimmed.startsWith('# ')) {
       flushList();
       elements.push(
-        <h1
-          key={`h1-${elements.length}`}
-          className="text-xl font-bold text-ink-900 mt-4 mb-2"
-        >
-          {renderInlineMarkdown(trimmed.slice(2))}
-        </h1>
+        React.createElement(
+          headingTag(1, headingOffset),
+          { key: `h1-${elements.length}`, className: 'text-xl font-bold text-ink-900 mt-4 mb-2' },
+          renderInlineMarkdown(trimmed.slice(2))
+        )
       );
       continue;
     }

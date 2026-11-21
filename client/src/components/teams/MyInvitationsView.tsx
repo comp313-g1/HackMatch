@@ -163,7 +163,7 @@ export function MyInvitationsView({
           data-testid="invitation-detail-panel"
           aria-label="Invitation details"
         >
-          <h4 className="text-sm font-semibold text-forest-900">Invitation details</h4>
+          <h3 className="text-sm font-semibold text-forest-900">Invitation details</h3>
           <dl className="space-y-1.5">
             <div className="flex gap-2">
               <dt className="font-medium text-ink-muted shrink-0">Team</dt>

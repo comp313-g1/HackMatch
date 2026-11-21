@@ -260,9 +260,9 @@ export function MyInvitationsPanel({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-forest-900 uppercase tracking-wide">
+          <h2 className="text-sm font-semibold text-forest-900 uppercase tracking-wide">
             My Invitations
-          </h3>
+          </h2>
           <p className="text-xs text-ink-muted mt-1">
             Inspect permitted team details for invitations addressed to you. Accept confirms your
             membership; Decline notifies the owner without changing your availability.

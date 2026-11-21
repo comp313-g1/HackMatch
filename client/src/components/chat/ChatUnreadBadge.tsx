@@ -127,11 +127,21 @@ export function ChatNavigationButton({
         ? 'Loading unread chat activity.'
         : 'No unread chat messages.';
 
+  // WCAG 2.5.3 Label in Name: the visible badge text (e.g. "3", "@1") is part of the name.
+  const showBadges = !loading && !failed;
+  const accessibleName = [
+    'Open chat',
+    showBadges && unreadText ? `${unreadText} unread` : null,
+    showBadges && mentionText ? `@${mentionText} mentions` : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label="Open chat"
+      aria-label={accessibleName}
       aria-describedby={activityDescriptionId}
       aria-current={active ? 'page' : undefined}
       className={`fixed bottom-5 left-5 z-50 inline-flex h-14 w-14 items-center justify-center rounded-full shadow-lg focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 ${
@@ -140,7 +150,8 @@ export function ChatNavigationButton({
           : 'bg-forest text-white hover:bg-forest-800'
       }`}
     >
-      <span id={activityDescriptionId} className="sr-only">
+      {/* `hidden` keeps this out of the visible content while aria-describedby still reads it. */}
+      <span id={activityDescriptionId} hidden>
         {activityDescription}
       </span>
       <svg

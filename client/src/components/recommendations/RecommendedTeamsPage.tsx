@@ -192,6 +192,8 @@ export function RecommendedTeamsPage({
 
       {phase === 'loaded' && result && !result.empty ? (
         <div className="space-y-4" data-testid="recommended-teams-results">
+          {/* Keeps heading levels sequential: page h1 → this h2 → team card h3s (WCAG 1.3.1). */}
+          <h2 className="sr-only">Matching teams</h2>
           <p className="text-sm text-ink-muted" data-testid="recommended-teams-count">
             {result.recommendations.length} suggested {result.recommendations.length === 1 ? 'team' : 'teams'}
           </p>

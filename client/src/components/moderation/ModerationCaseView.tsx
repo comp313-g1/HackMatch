@@ -338,15 +338,16 @@ export function ModerationCaseView({
             {c.reason}
           </dd>
         </div>
-        <div className="flex flex-wrap gap-4">
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-ink-muted">Status</dt>
-            <dd data-testid="moderation-case-status">{c.status}</dd>
-          </div>
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-ink-muted">Reports</dt>
-            <dd data-testid="moderation-case-report-count">{c.reportCount}</dd>
-          </div>
+      </dl>
+      {/* Status and report count sit side by side; a <dl> may hold only one <div> level (WCAG 1.3.1). */}
+      <dl className="flex flex-wrap gap-4 text-sm">
+        <div>
+          <dt className="text-xs uppercase tracking-wide text-ink-muted">Status</dt>
+          <dd data-testid="moderation-case-status">{c.status}</dd>
+        </div>
+        <div>
+          <dt className="text-xs uppercase tracking-wide text-ink-muted">Reports</dt>
+          <dd data-testid="moderation-case-report-count">{c.reportCount}</dd>
         </div>
       </dl>
 

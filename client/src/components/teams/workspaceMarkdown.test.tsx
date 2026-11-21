@@ -82,6 +82,18 @@ This is a regular concept paragraph.
       expect(screen.getByText('This is a regular concept paragraph.')).toBeInTheDocument();
     });
 
+    it('demotes headings by headingOffset so notes nest under the page headings (WCAG 1.3.1)', () => {
+      render(renderSafeMarkdown('# Title\n## Section\n### Detail', 3));
+      expect(screen.getByRole('heading', { level: 4, name: 'Title' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 5, name: 'Section' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 6, name: 'Detail' })).toBeInTheDocument();
+    });
+
+    it('never renders a heading level above 6', () => {
+      render(renderSafeMarkdown('### Deep', 5));
+      expect(screen.getByRole('heading', { level: 6, name: 'Deep' })).toBeInTheDocument();
+    });
+
     it('handles empty content gracefully', () => {
       render(renderSafeMarkdown(''));
       expect(screen.getByText('No content.')).toBeInTheDocument();

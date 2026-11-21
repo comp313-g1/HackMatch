@@ -284,7 +284,7 @@ export function AvailabilityPreferencesForm({
   return (
     <div className="bg-white rounded-xl border border-cream-200 shadow-sm p-6 sm:p-8">
       <div className="border-b border-cream-200 pb-5 mb-6">
-        <h3 className="text-xl font-bold text-forest-900">Looking for Team Card</h3>
+        <h2 className="text-xl font-bold text-forest-900">Looking for Team Card</h2>
         <p className="mt-1 text-sm text-ink-muted">
           One form for everything on your Available Candidates card: profile details plus
           availability. Save once to update both.

@@ -48,6 +48,8 @@ export interface CandidateProfileCardProps {
    * profile owner) get a "Message" button that starts or continues a direct message.
    */
   messageParticipantId?: string;
+  /** Heading level for the card title, so it fits the page outline (WCAG 1.3.1). Defaults to 4. */
+  headingLevel?: 2 | 3 | 4 | 5;
 }
 
 export function CandidateProfileCard({
@@ -59,7 +61,9 @@ export function CandidateProfileCard({
   onRequestSignIn,
   onReportProfile,
   messageParticipantId,
+  headingLevel = 4,
 }: CandidateProfileCardProps): React.JSX.Element {
+  const TitleHeading = `h${headingLevel}` as const;
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const dmLauncher = useDirectMessageLauncher();
   const canMessage =
@@ -67,7 +71,8 @@ export function CandidateProfileCard({
     (viewerCategory === 'PART' || viewerCategory === 'CONFIRMED_TEAMMATE');
   if (loading) {
     return (
-      <article
+      // <div> instead of <article>: role="status" is not an allowed role on <article>.
+      <div
         role="status"
         aria-live="polite"
         aria-busy="true"
@@ -75,7 +80,7 @@ export function CandidateProfileCard({
         className="max-w-md w-full p-5 bg-white rounded-xl border border-cream-200 shadow-sm"
       >
         <p className="text-sm font-medium text-ink-muted">Loading candidate profile...</p>
-      </article>
+      </div>
     );
   }
 
@@ -110,9 +115,9 @@ export function CandidateProfileCard({
         className="max-w-md w-full p-5 bg-white rounded-xl border border-cream-200 shadow-sm"
       >
         <div className="flex items-center justify-between gap-2 mb-3">
-          <h4 className="font-display text-base font-semibold text-forest-900">
+          <TitleHeading className="font-display text-base font-semibold text-forest-900">
             Anonymous Participant
-          </h4>
+          </TitleHeading>
           {profile.primaryRole && (
             <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-forest-50 text-forest-800 border border-forest-100">
               {profile.primaryRole}
@@ -169,9 +174,9 @@ export function CandidateProfileCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h4 className="font-display text-lg font-semibold text-forest-900">
+          <TitleHeading className="font-display text-lg font-semibold text-forest-900">
             {profile.displayName || 'Participant'}
-          </h4>
+          </TitleHeading>
           {profile.handle && (
             <p className="text-xs font-medium text-ink-muted">@{profile.handle}</p>
           )}

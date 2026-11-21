@@ -786,7 +786,7 @@ export function PrivateCoordinationWorkspace({
               className="p-4 rounded-lg border border-cream-200 bg-cream-50/40"
               data-testid="workspace-note-preview"
             >
-              {renderSafeMarkdown(workspace.note.content)}
+              {renderSafeMarkdown(workspace.note.content, 3)}
             </div>
           </div>
         )}
@@ -885,7 +885,7 @@ export function PrivateCoordinationWorkspace({
                       className="p-3 mt-2 rounded bg-white border border-cream-200"
                       data-testid={`inspected-revision-content-${rev.version}`}
                     >
-                      {renderSafeMarkdown(rev.content)}
+                      {renderSafeMarkdown(rev.content, 4)}
                     </div>
                   )}
                 </div>

@@ -129,9 +129,9 @@ export function LoginForm({
         aria-live="polite"
         className="max-w-md w-full mx-auto p-6 bg-white rounded-xl border border-cream-200 shadow-sm"
       >
-        <h3 className="font-display text-xl font-semibold text-center text-forest-900 mb-2">
+        <h2 className="font-display text-xl font-semibold text-center text-forest-900 mb-2">
           Password Accepted
-        </h3>
+        </h2>
         <p className="text-sm text-ink-muted text-center mb-4">
           Signed in as <span className="font-semibold text-ink">{signedInEmail}</span>.
         </p>

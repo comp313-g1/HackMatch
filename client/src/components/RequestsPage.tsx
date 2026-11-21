@@ -30,9 +30,9 @@ export function RequestsPage({
   return (
     <section aria-labelledby="requests-heading" className="space-y-6">
       <div>
-        <h2 id="requests-heading" className="text-2xl font-bold text-forest-900">
+        <h1 id="requests-heading" className="text-2xl font-bold text-forest-900">
           Requests
-        </h2>
+        </h1>
         <p className="mt-1 text-sm text-ink-muted">
           Applications you sent and invitations you received, in one place.
         </p>

@@ -34,6 +34,7 @@ import {
   type DirectMessageOpenRequest,
 } from './components/chat/directMessageLauncher';
 import { NotificationBell } from './components/notifications/NotificationBell';
+import { HeaderMenu } from './components/navigation/HeaderMenu';
 import type { NotificationTarget } from './components/notifications/notificationTarget';
 import type { OpenTeamApplyTarget } from './components/teams/openTeamsApi';
 import type { OtpChallenge } from './components/auth/providerSignIn';
@@ -126,6 +127,74 @@ const getInitialView = (): View => {
     return 'chat';
   }
   return 'landing';
+};
+
+/** Per-view document titles (WCAG 2.4.2 Page Titled). */
+const VIEW_TITLES: Record<View, string> = {
+  landing: 'Find your hackathon team',
+  register: 'Create an account',
+  login: 'Sign in',
+  mfa: 'Verification code',
+  verify: 'Verify your email',
+  account: 'Your account',
+  recover: 'Reset password',
+  reset: 'Set a new password',
+  team: 'My teams',
+  'create-team': 'Create a team',
+  looking: 'Find teammates',
+  'browse-teams': 'Open teams',
+  'recommended-teams': 'Recommended teams',
+  requests: 'Requests',
+  moderation: 'Moderation',
+  accounts: 'Account enforcement',
+  audit: 'Audit log',
+  chat: 'Chat',
+};
+
+const viewDocumentTitle = (view: View): string => `${VIEW_TITLES[view]} · HackMatch`;
+
+/** Builds the ?view= URL for a view so Back/Forward and shared links work (WCAG 2.4.3 / 3.2.3). */
+const buildViewSearch = (view: View, teamEventId: string, requestsTab: RequestsTab): string => {
+  const params = new URLSearchParams();
+  if (view === 'requests') {
+    params.set('view', requestsTab === 'invitations' ? 'invitations' : 'requests');
+  } else if (view !== 'landing') {
+    params.set('view', view);
+  }
+  if (view === 'team' && teamEventId) params.set('eventId', teamEventId);
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+};
+
+/**
+ * After a view change, move keyboard/screen-reader focus to the new page's main heading
+ * (falls back to <main>), so the change is announced (WCAG 2.4.3 Focus Order).
+ * Headings that appear after data loads are picked up for up to ~1 second.
+ */
+const focusMainHeading = (): (() => void) => {
+  let attempts = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const tryFocus = () => {
+    const main = document.getElementById('main-content');
+    if (!main) return;
+    const heading = main.querySelector<HTMLElement>('h1');
+    if (heading) {
+      if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
+      heading.setAttribute('data-view-focus-target', 'true');
+      heading.focus({ preventScroll: false });
+      return;
+    }
+    attempts += 1;
+    if (attempts < 10) {
+      timer = setTimeout(tryFocus, 100);
+    } else {
+      main.focus();
+    }
+  };
+  timer = setTimeout(tryFocus, 0);
+  return () => {
+    if (timer) clearTimeout(timer);
+  };
 };
 
 const navLinkClass = (active: boolean) =>
@@ -364,6 +433,55 @@ export function App(): React.JSX.Element {
     return () => document.removeEventListener('mousedown', onPointerDown);
   }, [accountMenuOpen, adminMenuOpen]);
 
+  // WCAG 2.4.2 / 2.4.3 — keep the tab title, URL and focus in sync with the current view.
+  // Last page the title/URL/focus were synced for; starts as the initial page so a first load
+  // (and React StrictMode's repeated effects) never steals focus or rewrites deep links.
+  const syncedPageKey = useRef(`${currentView}|${teamEventId}`);
+  const navigatingFromHistory = useRef(false);
+
+  useEffect(() => {
+    document.title = viewDocumentTitle(currentView);
+  }, [currentView]);
+
+  useEffect(() => {
+    const pageKey = `${currentView}|${teamEventId}`;
+    if (syncedPageKey.current === pageKey) return;
+    syncedPageKey.current = pageKey;
+    if (navigatingFromHistory.current) {
+      navigatingFromHistory.current = false;
+    } else if (typeof window !== 'undefined') {
+      const search = buildViewSearch(currentView, teamEventId, requestsTab);
+      if (window.location.search !== search) {
+        window.history.pushState({ view: currentView }, '', `${window.location.pathname}${search}`);
+      }
+    }
+    return focusMainHeading();
+    // Focus moves only when the page (view or team) changes, not on every tab switch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentView, teamEventId]);
+
+  useEffect(() => {
+    if (currentView !== 'requests' || typeof window === 'undefined') return;
+    const search = buildViewSearch('requests', '', requestsTab);
+    if (window.location.search !== search) {
+      window.history.replaceState({ view: 'requests' }, '', `${window.location.pathname}${search}`);
+    }
+  }, [currentView, requestsTab]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      navigatingFromHistory.current = true;
+      closeMenus();
+      setStatusNotice(null);
+      setApplyTarget(null);
+      setRequestsTab(getInitialRequestsTab());
+      setTeamEventId(new URLSearchParams(window.location.search).get('eventId') ?? '');
+      setCurrentView(getInitialView());
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
   // #355 — full app chrome only after Firebase user + MFA claim; primary auth alone is not a session.
   const sessionReady = Boolean(currentUser) && mfaComplete === true;
   const verificationPending = Boolean(currentUser) && mfaComplete === false;
@@ -462,93 +580,43 @@ export function App(): React.JSX.Element {
                 </button>
 
                 {showAdminNav && (
-                  <div className="relative" data-nav-menu-root="true">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAdminMenuOpen((open) => !open);
-                        setAccountMenuOpen(false);
-                      }}
-                      aria-expanded={adminMenuOpen}
-                      aria-haspopup="menu"
-                      className="text-sm font-semibold rounded-md px-3 py-2 border border-cream-300 text-ink hover:bg-cream-100 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream"
-                    >
-                      Admin ▾
-                    </button>
-                    {adminMenuOpen && (
-                      <div
-                        role="menu"
-                        aria-label="Admin"
-                        className="absolute right-0 mt-2 w-44 rounded-lg border border-cream-200 bg-white shadow-sm p-1 z-50"
-                      >
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={goToModeration}
-                          className="block w-full text-left px-3 py-2 text-sm rounded-md hover:bg-cream-50"
-                        >
-                          Moderation
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={goToAccounts}
-                          className="block w-full text-left px-3 py-2 text-sm rounded-md hover:bg-cream-50"
-                        >
-                          Accounts
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={goToAudit}
-                          className="block w-full text-left px-3 py-2 text-sm rounded-md hover:bg-cream-50"
-                        >
-                          Audit log
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <HeaderMenu
+                    label="Admin"
+                    triggerText="Admin"
+                    open={adminMenuOpen}
+                    onOpenChange={(open) => {
+                      setAdminMenuOpen(open);
+                      if (open) setAccountMenuOpen(false);
+                    }}
+                    triggerClassName="text-sm font-semibold rounded-md px-3 py-2 border border-cream-300 text-ink hover:bg-cream-100 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream"
+                    items={[
+                      { key: 'moderation', label: 'Moderation', onSelect: goToModeration },
+                      { key: 'accounts', label: 'Accounts', onSelect: goToAccounts },
+                      { key: 'audit', label: 'Audit log', onSelect: goToAudit },
+                    ]}
+                  />
                 )}
 
-                <div className="relative ml-1" data-nav-menu-root="true">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAccountMenuOpen((open) => !open);
-                      setAdminMenuOpen(false);
-                    }}
-                    aria-expanded={accountMenuOpen}
-                    aria-haspopup="menu"
-                    className="text-sm font-semibold rounded-md px-3.5 py-2 border border-cream-300 text-ink hover:bg-cream-100 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream"
-                  >
-                    {participantIdentifier} ▾
-                  </button>
-                  {accountMenuOpen && (
-                    <div
-                      role="menu"
-                      aria-label="Account"
-                      className="absolute right-0 mt-2 w-44 rounded-lg border border-cream-200 bg-white shadow-sm p-1 z-50"
-                    >
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={goToAccount}
-                        className="block w-full text-left px-3 py-2 text-sm rounded-md hover:bg-cream-50"
-                      >
-                        Profile
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => void handleHeaderSignOut()}
-                        disabled={signingOut}
-                        className="block w-full text-left px-3 py-2 text-sm rounded-md hover:bg-cream-50 disabled:opacity-50"
-                      >
-                        {signingOut ? 'Signing out...' : 'Sign out'}
-                      </button>
-                    </div>
-                  )}
-                </div>
+                <HeaderMenu
+                  label="Account"
+                  triggerText={participantIdentifier}
+                  open={accountMenuOpen}
+                  onOpenChange={(open) => {
+                    setAccountMenuOpen(open);
+                    if (open) setAdminMenuOpen(false);
+                  }}
+                  containerClassName="relative ml-1"
+                  triggerClassName="text-sm font-semibold rounded-md px-3.5 py-2 border border-cream-300 text-ink hover:bg-cream-100 focus:outline-none focus:ring-2 focus:ring-forest focus:ring-offset-2 focus:ring-offset-cream"
+                  items={[
+                    { key: 'profile', label: 'Profile', onSelect: goToAccount },
+                    {
+                      key: 'sign-out',
+                      label: signingOut ? 'Signing out...' : 'Sign out',
+                      onSelect: () => void handleHeaderSignOut(),
+                      disabled: signingOut,
+                    },
+                  ]}
+                />
               </>
             ) : verificationPending ? (
               <>
@@ -789,6 +857,7 @@ export function App(): React.JSX.Element {
           currentView === 'landing' ? 'py-6 md:py-8' : 'py-10 md:py-14'
         }`}
         role="main"
+        tabIndex={-1}
       >
         {statusNotice && (
           <div
@@ -882,9 +951,9 @@ export function App(): React.JSX.Element {
           </section>
         ) : currentView === 'looking' ? (
           <section aria-labelledby="looking-heading">
-            <h2 id="looking-heading" className="sr-only">
+            <h1 id="looking-heading" className="sr-only">
               Looking for Team
-            </h2>
+            </h1>
             <LookingForTeamPage
               onNavigateToSignIn={() => {
                 setStatusNotice(null);
@@ -929,31 +998,27 @@ export function App(): React.JSX.Element {
                 setRecommendedTeamsRefreshToken((token) => token + 1);
               }}
             />
-            <section aria-labelledby="recommended-teams-view-heading">
-              <h2 id="recommended-teams-view-heading" className="sr-only">
-                Recommended teams
-              </h2>
-              <MfaGate
-                initialChallenge={otpChallenge}
-                onNavigateToSignIn={() => {
-                  setStatusNotice(null);
-                  setApplyTarget(null);
-                  setOtpChallenge(null);
-                  setCurrentView('login');
-                }}
-              >
-                {() => (
-                  <RecommendedTeamsPage
-                    onNavigateToSignIn={goToLogin}
-                    onGoToLookingForTeam={goToLooking}
-                    onGoToProfile={goToAccount}
-                    onBrowseOpenTeams={goToBrowseTeams}
-                    onApply={applyToRecommendedTeam}
-                    refreshToken={recommendedTeamsRefreshToken}
-                  />
-                )}
-              </MfaGate>
-            </section>
+            {/* RecommendedTeamsPage renders its own <section> and <h1>; no duplicate landmark here. */}
+          <MfaGate
+              initialChallenge={otpChallenge}
+              onNavigateToSignIn={() => {
+                setStatusNotice(null);
+                setApplyTarget(null);
+                setOtpChallenge(null);
+                setCurrentView('login');
+              }}
+            >
+              {() => (
+                <RecommendedTeamsPage
+                  onNavigateToSignIn={goToLogin}
+                  onGoToLookingForTeam={goToLooking}
+                  onGoToProfile={goToAccount}
+                  onBrowseOpenTeams={goToBrowseTeams}
+                  onApply={applyToRecommendedTeam}
+                  refreshToken={recommendedTeamsRefreshToken}
+                />
+              )}
+            </MfaGate>
           </>
         ) : currentView === 'browse-teams' ? (
           <>
@@ -977,38 +1042,34 @@ export function App(): React.JSX.Element {
             />
           </>
         ) : currentView === 'requests' ? (
-          <section aria-labelledby="requests-view-heading">
-            <h2 id="requests-view-heading" className="sr-only">
-              Requests
-            </h2>
-            <MfaGate
-              initialChallenge={otpChallenge}
-              onNavigateToSignIn={() => {
-                setStatusNotice(null);
-                setOtpChallenge(null);
-                setCurrentView('login');
-              }}
-            >
-              {() => (
-                <RequestsPage
-                  activeTab={requestsTab}
-                  onTabChange={setRequestsTab}
-                  onStatusNotice={(notice) => setStatusNotice(notice)}
-                  onViewRoster={(eventId) => {
-                    setStatusNotice(null);
-                    closeMenus();
-                    setTeamEventId(eventId);
-                    setCurrentView('team');
-                  }}
-                />
-              )}
-            </MfaGate>
-          </section>
+          // RequestsPage renders its own <section> and <h1>; no duplicate landmark here.
+        <MfaGate
+            initialChallenge={otpChallenge}
+            onNavigateToSignIn={() => {
+              setStatusNotice(null);
+              setOtpChallenge(null);
+              setCurrentView('login');
+            }}
+          >
+            {() => (
+              <RequestsPage
+                activeTab={requestsTab}
+                onTabChange={setRequestsTab}
+                onStatusNotice={(notice) => setStatusNotice(notice)}
+                onViewRoster={(eventId) => {
+                  setStatusNotice(null);
+                  closeMenus();
+                  setTeamEventId(eventId);
+                  setCurrentView('team');
+                }}
+              />
+            )}
+          </MfaGate>
         ) : currentView === 'account' ? (
           <section aria-labelledby="account-heading">
-            <h2 id="account-heading" className="sr-only">
+            <h1 id="account-heading" className="sr-only">
               Your Account
-            </h2>
+            </h1>
             <MfaGate
               initialChallenge={otpChallenge}
               onNavigateToSignIn={() => {
@@ -1030,9 +1091,9 @@ export function App(): React.JSX.Element {
           </section>
         ) : currentView === 'moderation' ? (
           <section aria-labelledby="moderation-heading">
-            <h2 id="moderation-heading" className="sr-only">
+            <h1 id="moderation-heading" className="sr-only">
               Content Moderation Safety Queue
-            </h2>
+            </h1>
             <MfaGate
               initialChallenge={otpChallenge}
               onNavigateToSignIn={() => {
@@ -1053,9 +1114,9 @@ export function App(): React.JSX.Element {
           </section>
         ) : currentView === 'accounts' ? (
           <section aria-labelledby="accounts-heading">
-            <h2 id="accounts-heading" className="sr-only">
+            <h1 id="accounts-heading" className="sr-only">
               Administrative Account Enforcement
-            </h2>
+            </h1>
             <MfaGate
               initialChallenge={otpChallenge}
               onNavigateToSignIn={() => {
@@ -1076,9 +1137,9 @@ export function App(): React.JSX.Element {
           </section>
         ) : currentView === 'audit' ? (
           <section aria-labelledby="audit-heading">
-            <h2 id="audit-heading" className="sr-only">
+            <h1 id="audit-heading" className="sr-only">
               Administrative Audit Records
-            </h2>
+            </h1>
             <MfaGate
               initialChallenge={otpChallenge}
               onNavigateToSignIn={() => {
@@ -1099,9 +1160,9 @@ export function App(): React.JSX.Element {
           </section>
         ) : currentView === 'mfa' ? (
           <section aria-labelledby="mfa-heading">
-            <h2 id="mfa-heading" className="sr-only">
+            <h1 id="mfa-heading" className="sr-only">
               Two-Factor Authentication
-            </h2>
+            </h1>
             <MfaGate
               initialChallenge={otpChallenge}
               onNavigateToSignIn={() => {
@@ -1133,9 +1194,9 @@ export function App(): React.JSX.Element {
           </section>
         ) : currentView === 'verify' ? (
           <section aria-labelledby="verification-heading">
-            <h2 id="verification-heading" className="sr-only">
+            <h1 id="verification-heading" className="sr-only">
               Account Verification
-            </h2>
+            </h1>
             <EmailVerificationView
               initialEmail={verificationEmail}
               onNavigateToSignIn={() => {
@@ -1150,9 +1211,9 @@ export function App(): React.JSX.Element {
           </section>
         ) : currentView === 'login' ? (
           <section aria-labelledby="login-heading">
-            <h2 id="login-heading" className="sr-only">
+            <h1 id="login-heading" className="sr-only">
               Sign In
-            </h2>
+            </h1>
             <LoginForm
               onNavigateToRegister={() => setCurrentView('register')}
               onNavigateToPasswordRecovery={(email) => {
@@ -1174,9 +1235,9 @@ export function App(): React.JSX.Element {
           </section>
         ) : currentView === 'recover' ? (
           <section aria-labelledby="recovery-heading">
-            <h2 id="recovery-heading" className="sr-only">
+            <h1 id="recovery-heading" className="sr-only">
               Password Recovery
-            </h2>
+            </h1>
             <PasswordRecoveryRequestForm
               initialEmail={recoveryEmail}
               onNavigateToSignIn={() => {
@@ -1191,9 +1252,9 @@ export function App(): React.JSX.Element {
           </section>
         ) : currentView === 'reset' ? (
           <section aria-labelledby="password-reset-heading">
-            <h2 id="password-reset-heading" className="sr-only">
+            <h1 id="password-reset-heading" className="sr-only">
               Set New Password
-            </h2>
+            </h1>
             <PasswordResetForm
               onNavigateToSignIn={() => {
                 setStatusNotice(
@@ -1210,9 +1271,9 @@ export function App(): React.JSX.Element {
           </section>
         ) : (
           <section aria-labelledby="registration-heading">
-            <h2 id="registration-heading" className="sr-only">
+            <h1 id="registration-heading" className="sr-only">
               Participant Registration
-            </h2>
+            </h1>
             <RegistrationForm
               onNavigateToVerification={(email) => {
                 if (email) setVerificationEmail(email);
