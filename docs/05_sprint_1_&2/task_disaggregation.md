@@ -486,12 +486,12 @@ Iteration 2 status at this update: US-007 is done and outside the active scope, 
 | Build attachment composer, preview, download, and failure states | Complete the task "Build attachment composer, preview, download, and failure states" for US-035. Preserve message drafts, show upload progress, reject unsafe files clearly, and limit downloads to authorized thread participants. | Brian | — | 0.50 | 0.50 | — |
 | Add tests for rich-chat authorization, privacy, fallback, and limits | Complete the task "Add tests for rich-chat authorization, privacy, fallback, and limits" for US-035. Cover reactions, typing expiry, attachment validation and access, feature flags, rate limits, sensitive-field filtering, and unavailable-service fallback. | Brian | Wei | 0.5 | 0.5 | — |
 | Upload the required diagrams |- | Joel | - | 0.50 | 0.63 | — |
-| Update user and admin manuals | - | Joel | - | 1.0 | 1.62 | — |
+| Update user and admin manuals | - | Joel | - | 1.0 | 1.62 | Additional time was needed to capture and validate real application screenshots, replace existing placeholders, and resolve final screenshot/reference issues. |
 | Update stale US-032 direct messaging documentation |- | Joel | - | 0.17 | 0.13 | — |
-| Update the task disaggregation list in excel and readme file |- | Joel | - | 0.0 | 0.0 | — |
-| Update the wireframes till the current user story |- | Joel | - | 0.0 | 0.0 | — |
-| Fix the prod error | - | Sahil | - | 0.0 | 0.0 | — |
-| Cleanup the repo remove unnecessary docs etc. |- | Sahil | - | 0.0 | 0.0 | — |
+| Update the task disaggregation list in excel and readme file |- | Wei | Joel | 1.5 | 1.0 | — |
+| Update the wireframes till the current user story |- | Joel | - | 0.25 | 0.3 | — |
+| Fix MFA OTP email delivery on Render Free tier via HTTPS API | - | Brian | - | 2.0 | 2.0 | — |
+| Cleanup the repo remove unnecessary docs etc. |- | Sahil | - | 1.0 | 1.0 | — |
 
 ### [US-016](../02_user_stories/user_stories.md#us-016)
 
@@ -545,5 +545,5 @@ Iteration 2 status at this update: US-007 is done and outside the active scope, 
 | [US-033](../02_user_stories/user_stories.md#us-033) | 6 | 5.00 | 0.00 | 6 |
 | [US-034](../02_user_stories/user_stories.md#us-034) | 6 | 5.50 | 0.00 | 6 |
 | [US-029](../02_user_stories/user_stories.md#us-029) | 9 | 4.25 | 4.30 | 0 |
-| [US-035](../02_user_stories/user_stories.md#us-035) | 15 | 5.67 | 5.96 | 4 |
+| [US-035](../02_user_stories/user_stories.md#us-035) | 15 | 10.42 | 10.26 | 0 |
 | [US-016](../02_user_stories/user_stories.md#us-016) | 7 | 11.50 | 0.00 | 7 |
