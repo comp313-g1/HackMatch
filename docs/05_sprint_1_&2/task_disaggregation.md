@@ -492,6 +492,7 @@ Iteration 2 status at this update: US-007 is done and outside the active scope, 
 | Update the wireframes till the current user story |- | Joel | - | 0.25 | 0.3 | — |
 | Fix MFA OTP email delivery on Render Free tier via HTTPS API | - | Brian | - | 2.0 | 2.0 | — |
 | Cleanup the repo remove unnecessary docs etc. |- | Sahil | - | 1.0 | 1.0 | — |
+| Fix accessibility gaps across navigation, menus, headings and markup | Complete the accessibility fixes for US-035 and the shared app shell to meet WCAG 2.2 AA: per-view page titles, focus moved to the page heading and URL sync on navigation, keyboard-operable Account/Admin menus, valid list/heading/landmark structure, label-in-name for the chat button, reduced-motion support, and a guard so Find teammates does not render blank. Verify with axe-core scans, keyboard walkthroughs, and automated tests. | Sahil | - | 0.5 | 0.5 | — |
 
 ### [US-016](../02_user_stories/user_stories.md#us-016)
 
@@ -545,5 +546,5 @@ Iteration 2 status at this update: US-007 is done and outside the active scope, 
 | [US-033](../02_user_stories/user_stories.md#us-033) | 6 | 5.00 | 0.00 | 6 |
 | [US-034](../02_user_stories/user_stories.md#us-034) | 6 | 5.50 | 0.00 | 6 |
 | [US-029](../02_user_stories/user_stories.md#us-029) | 9 | 4.25 | 4.30 | 0 |
-| [US-035](../02_user_stories/user_stories.md#us-035) | 15 | 10.42 | 10.26 | 0 |
+| [US-035](../02_user_stories/user_stories.md#us-035) | 16 | 10.42 | 10.26 | 1 |
 | [US-016](../02_user_stories/user_stories.md#us-016) | 7 | 11.50 | 0.00 | 7 |
